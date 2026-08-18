@@ -1,8 +1,9 @@
-"""Durable CBT synchronization change recorder."""
+"""Durable, batched CBT synchronization change recorder."""
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -10,54 +11,79 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.modules.cbt.sync.models import CBTSyncChange, CBTSyncTenantState
-from app.modules.cbt.sync.repository import CBTSyncRepository
 from app.modules.cbt.sync.schemas import CBTSyncMutation, CBTSyncNotification
 
 CBT_SYNC_NOTIFY_CHANNEL = "weave_cbt_sync"
 
 
 class CBTSyncRecorder:
-    """Record CBT-visible mutations inside the caller's business transaction.
+    """Append one transaction's CBT mutations with one cursor lock and one NOTIFY.
 
-    Neither entry point commits. ``record`` serves ordinary async application code;
-    ``record_sync`` serves SQLAlchemy's synchronous Session event bridge used to
-    capture domain mutations from both API and worker transactions.
+    Business data and sync-log writes share the caller's transaction. A commit
+    publishes both; a rollback publishes neither. Cursors are allocated as one
+    contiguous range so high-volume worker/admin writes do not repeatedly lock the
+    tenant cursor row.
     """
 
     @staticmethod
-    async def record(
+    async def record_many(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        mutation: CBTSyncMutation,
-    ) -> CBTSyncChange:
-        cursor = await CBTSyncRepository.allocate_cursor(db, tenant_id=tenant_id)
-        change = await CBTSyncRepository.create_change(
-            db,
-            tenant_id=tenant_id,
-            cursor=cursor,
-            mutation=mutation,
+        mutations: Sequence[CBTSyncMutation],
+    ) -> list[CBTSyncChange]:
+        if not mutations:
+            return []
+
+        state_table = CBTSyncTenantState.__table__
+        await db.execute(
+            pg_insert(state_table)
+            .values(tenant_id=tenant_id, last_cursor=0)
+            .on_conflict_do_nothing(index_elements=[state_table.c.tenant_id])
         )
+        state = (
+            await db.execute(
+                select(CBTSyncTenantState)
+                .where(CBTSyncTenantState.tenant_id == tenant_id)
+                .with_for_update()
+            )
+        ).scalar_one()
+
+        first_cursor = int(state.last_cursor) + 1
+        changes = [
+            CBTSyncChange(
+                tenant_id=tenant_id,
+                cursor=first_cursor + index,
+                entity_type=mutation.entity_type,
+                entity_id=mutation.entity_id,
+                operation=mutation.operation,
+                schema_version=mutation.schema_version,
+                payload=mutation.payload,
+            )
+            for index, mutation in enumerate(mutations)
+        ]
+        db.add_all(changes)
+        state.last_cursor = first_cursor + len(changes) - 1
+        await db.flush()
+
         notification = CBTSyncNotification(
-            change_id=change.id,
             tenant_id=tenant_id,
-            cursor=cursor,
+            cursor=state.last_cursor,
         ).model_dump_json()
         await db.execute(select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification)))
-        return change
+        return changes
 
     @staticmethod
-    def record_sync(
+    def record_many_sync(
         db: Session,
         *,
         tenant_id: uuid.UUID,
-        mutation: CBTSyncMutation,
-    ) -> tuple[uuid.UUID, int]:
-        """Synchronous equivalent used from SQLAlchemy Session events.
+        mutations: Sequence[CBTSyncMutation],
+    ) -> tuple[int, int] | None:
+        """Synchronous batch writer used by SQLAlchemy Session lifecycle events."""
 
-        PostgreSQL row locking keeps each tenant cursor strictly ordered even when
-        API and worker processes commit academic mutations concurrently.
-        """
+        if not mutations:
+            return None
 
         connection = db.connection()
         if connection.dialect.name != "postgresql":
@@ -75,31 +101,35 @@ class CBTSyncRecorder:
             .where(state_table.c.tenant_id == tenant_id)
             .with_for_update()
         ).scalar_one()
-        cursor = int(previous_cursor) + 1
-        change_id = uuid.uuid4()
-        connection.execute(
-            change_table.insert().values(
-                id=change_id,
-                tenant_id=tenant_id,
-                cursor=cursor,
-                entity_type=mutation.entity_type.value,
-                entity_id=mutation.entity_id,
-                operation=mutation.operation.value,
-                schema_version=mutation.schema_version,
-                payload=mutation.payload,
-                created_at=func.now(),
-                updated_at=func.now(),
+
+        first_cursor = int(previous_cursor) + 1
+        rows = []
+        for index, mutation in enumerate(mutations):
+            rows.append(
+                {
+                    "id": uuid.uuid4(),
+                    "tenant_id": tenant_id,
+                    "cursor": first_cursor + index,
+                    "entity_type": mutation.entity_type.value,
+                    "entity_id": mutation.entity_id,
+                    "operation": mutation.operation.value,
+                    "schema_version": mutation.schema_version,
+                    "payload": mutation.payload,
+                    "created_at": func.now(),
+                    "updated_at": func.now(),
+                }
             )
-        )
+
+        connection.execute(change_table.insert(), rows)
+        last_cursor = first_cursor + len(rows) - 1
         connection.execute(
             update(state_table)
             .where(state_table.c.tenant_id == tenant_id)
-            .values(last_cursor=cursor, updated_at=func.now())
+            .values(last_cursor=last_cursor, updated_at=func.now())
         )
         notification = CBTSyncNotification(
-            change_id=change_id,
             tenant_id=tenant_id,
-            cursor=cursor,
+            cursor=last_cursor,
         ).model_dump_json()
         connection.execute(select(func.pg_notify(CBT_SYNC_NOTIFY_CHANNEL, notification)))
-        return change_id, cursor
+        return first_cursor, last_cursor
