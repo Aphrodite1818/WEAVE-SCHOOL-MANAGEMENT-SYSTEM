@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
+
 from app.config.database import AsyncSessionLocal
 from app.config.logging import get_logger
 from app.modules.cbt.sync.repository import CBTSyncRepository
@@ -16,6 +18,7 @@ from app.modules.cbt.sync.repository import CBTSyncRepository
 logger = get_logger(__name__)
 RETENTION_DAYS = 30
 PRUNE_INTERVAL_SECONDS = 60 * 60
+RETENTION_LOCK_KEY = 873_421_946
 
 
 class CBTSyncRetention:
@@ -58,6 +61,14 @@ class CBTSyncRetention:
         cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
         async with AsyncSessionLocal() as db:
             async with db.begin():
+                acquired = bool(
+                    await db.scalar(
+                        text("SELECT pg_try_advisory_xact_lock(:lock_key)"),
+                        {"lock_key": RETENTION_LOCK_KEY},
+                    )
+                )
+                if not acquired:
+                    return 0
                 deleted = await CBTSyncRepository.prune_before(db, cutoff=cutoff)
         if deleted:
             logger.info("Pruned %s expired CBT sync change rows.", deleted)
