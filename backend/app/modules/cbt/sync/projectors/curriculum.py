@@ -14,9 +14,8 @@ from app.modules.cbt.academics.schemas import (
     CBTCurriculumSubjectSnapshot,
     CBTSubjectSnapshot,
 )
-from app.modules.classes.models import AcademicLevel, ClassRoom, Department
+from app.modules.classes.models import AcademicLevel, Department
 from app.modules.student_academics.curriculum_models import (
-    ClassTermDepartmentAssignment,
     Curriculum,
     CurriculumOffering,
     CurriculumSubject,
@@ -27,7 +26,6 @@ from app.modules.student_academics.models import (
     AcademicTerm,
     AcademicTermStatus,
 )
-from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
 from app.modules.subjects.models import Subject
 
 
@@ -108,89 +106,16 @@ def project_curriculum_subject(
     ).model_dump(mode="json")
 
 
-def _eligible_enrollment_ids(
-    session: Session,
-    *,
-    tenant_id: uuid.UUID,
-    academic_level_id: uuid.UUID,
-    academic_term_id: uuid.UUID,
-    department_id: uuid.UUID | None,
-) -> list[uuid.UUID]:
-    term = session.execute(
-        select(AcademicTerm, AcademicSession)
-        .join(AcademicSession, AcademicSession.id == AcademicTerm.academic_session_id)
-        .where(
-            AcademicTerm.tenant_id == tenant_id,
-            AcademicTerm.id == academic_term_id,
-            AcademicSession.tenant_id == tenant_id,
-        )
-    ).first()
-    if term is None:
-        return []
-    academic_term, academic_session = term
-    if (
-        not academic_session.is_current
-        or academic_session.status
-        not in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
-        or not academic_term.is_current
-        or academic_term.status != AcademicTermStatus.OPEN
-    ):
-        return []
-
-    enrollment_rows = list(
-        session.execute(
-            select(StudentEnrollment.id, StudentEnrollment.class_id)
-            .join(Student, Student.id == StudentEnrollment.student_id)
-            .join(ClassRoom, ClassRoom.id == StudentEnrollment.class_id)
-            .where(
-                StudentEnrollment.tenant_id == tenant_id,
-                StudentEnrollment.academic_level_id == academic_level_id,
-                StudentEnrollment.academic_session_id == academic_term.academic_session_id,
-                StudentEnrollment.is_current.is_(True),
-                Student.status == AcademicStatus.ACTIVE,
-                Student.is_archived.is_(False),
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.academic_level_id == academic_level_id,
-                ClassRoom.is_active.is_(True),
-                ClassRoom.archived_at.is_(None),
-            )
-        ).all()
-    )
-    if department_id is None:
-        return [row.id for row in enrollment_rows]
-
-    department = session.execute(
-        select(Department).where(
-            Department.tenant_id == tenant_id,
-            Department.id == department_id,
-        )
-    ).scalar_one_or_none()
-    if not _visible(department) or department.academic_level_id != academic_level_id:
-        return []
-
-    class_ids = [row.class_id for row in enrollment_rows if row.class_id is not None]
-    if not class_ids:
-        return []
-    specialized_classes = set(
-        session.execute(
-            select(ClassTermDepartmentAssignment.class_id).where(
-                ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                ClassTermDepartmentAssignment.academic_term_id == academic_term_id,
-                ClassTermDepartmentAssignment.department_id == department_id,
-                ClassTermDepartmentAssignment.class_id.in_(class_ids),
-            )
-        ).scalars()
-    )
-    return [
-        row.id
-        for row in enrollment_rows
-        if row.class_id is not None and row.class_id in specialized_classes
-    ]
-
-
 def project_subject_offering(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
+    """Project structural offering rules only.
+
+    Candidate eligibility is derived locally by CBT from synchronized enrollment,
+    class, level, term and department relationships. This keeps offering payloads
+    small and removes the student -> every-offering invalidation fan-out.
+    """
+
     joined = session.execute(
         select(
             CurriculumOffering,
@@ -223,6 +148,7 @@ def project_subject_offering(
     ).first()
     if joined is None:
         return None
+
     offering, curriculum_subject, curriculum, level, subject, term, academic_session = joined
     if (
         not _visible(curriculum_subject)
@@ -246,19 +172,11 @@ def project_subject_offering(
         if not _visible(department) or department.academic_level_id != curriculum.academic_level_id:
             return None
 
-    eligible = _eligible_enrollment_ids(
-        session,
-        tenant_id=tenant_id,
-        academic_level_id=curriculum.academic_level_id,
-        academic_term_id=offering.academic_term_id,
-        department_id=offering.department_id,
-    )
     return CBTCurriculumOfferingSnapshot(
         id=offering.id,
         curriculum_subject_id=offering.curriculum_subject_id,
         academic_term_id=offering.academic_term_id,
         department_id=offering.department_id,
-        eligible_enrollment_ids=eligible,
     ).model_dump(mode="json")
 
 
