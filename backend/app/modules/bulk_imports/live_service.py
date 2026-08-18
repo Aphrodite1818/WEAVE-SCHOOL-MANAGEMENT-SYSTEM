@@ -43,6 +43,7 @@ from app.modules.bulk_imports.service import (
     utc_now,
 )
 from app.modules.bulk_imports.validators import ImportRowValidationResult
+from app.modules.cbt.sync.model_events import prepare_cbt_sync_commit
 from app.modules.realtime.publisher import RealtimePublisher
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
@@ -585,6 +586,11 @@ class BulkImportLiveService:
                         metadata_json=metadata_json,
                     ),
                 )
+                # Bulk rows are created through nested SAVEPOINTs. Prepare the
+                # accumulated CBT-visible mutations explicitly at the chunk's
+                # real transaction boundary so the durable sync rows and NOTIFY
+                # calls are guaranteed to participate in this exact commit.
+                await db.run_sync(prepare_cbt_sync_commit)
                 await db.commit()
                 await _publish_job_event(
                     event_type="bulk_import.progress",
