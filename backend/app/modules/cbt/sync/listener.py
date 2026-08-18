@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import asyncpg
 from pydantic import ValidationError
@@ -13,6 +14,7 @@ from app.config.settings import settings
 from app.modules.cbt.sync.dispatcher import CBTSyncDispatcher
 from app.modules.cbt.sync.manager import cbt_connection_manager
 from app.modules.cbt.sync.recorder import CBT_SYNC_NOTIFY_CHANNEL
+from app.modules.cbt.sync.retention import cbt_sync_retention
 from app.modules.cbt.sync.schemas import CBTSyncNotification
 
 logger = get_logger(__name__)
@@ -45,6 +47,7 @@ class CBTSyncListener:
         if self._runner_task is not None and not self._runner_task.done():
             return
         self._stop_event.clear()
+        await cbt_sync_retention.start()
         self._consumer_task = asyncio.create_task(
             self._consume_notifications(), name="cbt-sync-notification-consumer"
         )
@@ -52,6 +55,7 @@ class CBTSyncListener:
 
     async def stop(self) -> None:
         self._stop_event.set()
+        await cbt_sync_retention.stop()
         connection = self._connection
         if connection is not None and not connection.is_closed():
             try:
@@ -95,7 +99,7 @@ class CBTSyncListener:
                 except asyncio.QueueEmpty:
                     break
 
-            latest_by_tenant: dict[object, int] = {}
+            latest_by_tenant: dict[uuid.UUID, int] = {}
             try:
                 for payload in payloads:
                     notification = self._parse(payload)
@@ -141,9 +145,6 @@ class CBTSyncListener:
                     "CBT sync listener subscribed to PostgreSQL channel %s.",
                     CBT_SYNC_NOTIFY_CHANNEL,
                 )
-                # A LISTEN reconnect may have missed commits. Existing sockets only
-                # need a cursor check; new sockets receive an authoritative cursor
-                # in connection.ready.
                 await cbt_connection_manager.send_to_all(
                     message={"type": "cbt.sync.check"}
                 )
