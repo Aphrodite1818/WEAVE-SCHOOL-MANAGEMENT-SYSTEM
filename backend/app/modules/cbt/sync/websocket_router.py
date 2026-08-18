@@ -1,4 +1,4 @@
-"""Authenticated machine WebSocket used for live CBT synchronization."""
+"""Authenticated machine WebSocket used as the low-latency CBT sync wake path."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from app.core.exceptions import AppException, ForbiddenException
 from app.modules.cbt.auth.schemas import AuthenticatedCBTServer
 from app.modules.cbt.auth.service import CBTMachineAuthService
 from app.modules.cbt.sync.manager import CBTMachineConnection, cbt_connection_manager
+from app.modules.cbt.sync.service import CBTSyncService
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/sync", tags=["CBT Sync"])
@@ -34,6 +35,14 @@ async def _authenticate_server(credential: str) -> AuthenticatedCBTServer:
         return await CBTMachineAuthService.authenticate_server(
             db,
             server_credential=credential,
+        )
+
+
+async def _latest_cursor(current_server: AuthenticatedCBTServer) -> int:
+    async with AsyncSessionLocal() as db:
+        return await CBTSyncService.get_latest_cursor(
+            db,
+            tenant_id=current_server.tenant_id,
         )
 
 
@@ -81,14 +90,7 @@ async def cbt_sync_stream(websocket: WebSocket) -> None:
             {
                 "type": "connection.ready",
                 "server_id": str(current_server.server_id),
-                "reconciliation_required": True,
-            },
-        )
-        await _send(
-            connection,
-            {
-                "type": "cbt.sync.reconcile",
-                "reason": "connection_established",
+                "cursor": await _latest_cursor(current_server),
             },
         )
 
