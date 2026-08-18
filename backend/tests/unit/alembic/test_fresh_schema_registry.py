@@ -1,8 +1,10 @@
 """Regression checks for the fresh Alembic schema baseline."""
 
+from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import configure_mappers
 
 import app.models  # noqa: F401
+from app.modules.student_academics.models import StudentProgressionRun
 from app.shared.base_model import Base
 
 CRITICAL_TABLES = {
@@ -79,3 +81,28 @@ def test_model_registry_has_unique_table_keys() -> None:
     configure_mappers()
     table_keys = list(Base.metadata.tables)
     assert len(table_keys) == len(set(table_keys))
+
+
+def test_progression_run_count_constraints_match_v2_contract() -> None:
+    """Progression accounting must use the persisted v2 counter columns only."""
+
+    constraints = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in StudentProgressionRun.__table__.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+
+    assert "ck_progression_run_nonnegative_counts" in constraints
+    assert "ck_progression_run_count_total" in constraints
+    assert "processed_students" not in " ".join(constraints.values())
+
+    count_total = constraints["ck_progression_run_count_total"]
+    for column_name in (
+        "total_students",
+        "promoted_students",
+        "graduated_students",
+        "skipped_students",
+        "pending_students",
+        "failed_students",
+    ):
+        assert column_name in count_total
