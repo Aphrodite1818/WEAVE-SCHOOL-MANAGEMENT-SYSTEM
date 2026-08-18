@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
+from app.modules.cbt.sync.schemas import SYNC_SCHEMA_VERSION
 from app.shared.base_model import Base, BaseModel, PUBLIC_SCHEMA
 from app.shared.mixins import TimestampMixin
 
@@ -68,8 +69,8 @@ class CBTSyncChange(BaseModel):
     schema_version: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        default=2,
-        server_default=text("2"),
+        default=SYNC_SCHEMA_VERSION,
+        server_default=text(str(SYNC_SCHEMA_VERSION)),
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
