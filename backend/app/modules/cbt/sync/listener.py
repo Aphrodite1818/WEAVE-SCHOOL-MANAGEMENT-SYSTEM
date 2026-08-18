@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+
 import asyncpg
 from pydantic import ValidationError
 from sqlalchemy.engine import make_url
@@ -31,6 +32,8 @@ def _build_asyncpg_dsn() -> str:
 
 
 class CBTSyncListener:
+    """Coalesce committed tenant high-water notifications before WebSocket delivery."""
+
     def __init__(self) -> None:
         self._connection: asyncpg.Connection | None = None
         self._runner_task: asyncio.Task[None] | None = None
@@ -68,33 +71,57 @@ class CBTSyncListener:
             self._queue.put_nowait(payload)
         except asyncio.QueueFull:
             logger.error(
-                "CBT sync notification queue overflowed; forcing connected machines to reconcile."
+                "CBT sync notification queue overflowed; asking connected machines to check cursors."
             )
             asyncio.create_task(
-                cbt_connection_manager.send_to_all(
-                    message={"type": "cbt.sync.reconcile", "reason": "notification_queue_overflow"}
-                )
+                cbt_connection_manager.send_to_all(message={"type": "cbt.sync.check"})
             )
+
+    @staticmethod
+    def _parse(payload: str) -> CBTSyncNotification | None:
+        try:
+            return CBTSyncNotification.model_validate_json(payload)
+        except ValidationError:
+            logger.warning("Ignoring invalid CBT sync notification payload.")
+            return None
 
     async def _consume_notifications(self) -> None:
         while True:
-            payload = await self._queue.get()
+            first_payload = await self._queue.get()
+            payloads = [first_payload]
+            while True:
+                try:
+                    payloads.append(self._queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+
+            latest_by_tenant: dict[object, int] = {}
             try:
-                try:
-                    notification = CBTSyncNotification.model_validate_json(payload)
-                except ValidationError:
-                    logger.warning("Ignoring invalid CBT sync notification payload.")
-                    continue
-                try:
-                    await CBTSyncDispatcher.dispatch(
-                        tenant_id=notification.tenant_id, change_id=notification.change_id
+                for payload in payloads:
+                    notification = self._parse(payload)
+                    if notification is None:
+                        continue
+                    previous = latest_by_tenant.get(notification.tenant_id, 0)
+                    latest_by_tenant[notification.tenant_id] = max(
+                        previous,
+                        notification.cursor,
                     )
-                except Exception:
-                    logger.exception(
-                        "Failed to dispatch CBT sync change %s.", notification.change_id
-                    )
+
+                for tenant_id, cursor in latest_by_tenant.items():
+                    try:
+                        await CBTSyncDispatcher.dispatch(
+                            tenant_id=tenant_id,
+                            cursor=cursor,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to dispatch CBT sync high-water cursor %s for tenant %s.",
+                            cursor,
+                            tenant_id,
+                        )
             finally:
-                self._queue.task_done()
+                for _ in payloads:
+                    self._queue.task_done()
 
     async def _run(self) -> None:
         retry_delay = INITIAL_RETRY_DELAY_SECONDS
@@ -114,9 +141,11 @@ class CBTSyncListener:
                     "CBT sync listener subscribed to PostgreSQL channel %s.",
                     CBT_SYNC_NOTIFY_CHANNEL,
                 )
-                # Always reconcile after LISTEN becomes active. This also closes the initial-startup gap.
+                # A LISTEN reconnect may have missed commits. Existing sockets only
+                # need a cursor check; new sockets receive an authoritative cursor
+                # in connection.ready.
                 await cbt_connection_manager.send_to_all(
-                    message={"type": "cbt.sync.reconcile", "reason": "listener_ready"}
+                    message={"type": "cbt.sync.check"}
                 )
                 retry_delay = INITIAL_RETRY_DELAY_SECONDS
                 await terminated.wait()
