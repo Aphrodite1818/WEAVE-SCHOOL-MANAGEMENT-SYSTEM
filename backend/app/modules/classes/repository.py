@@ -283,7 +283,7 @@ class ClassRoomRepository:
             .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id == class_id)
         )
         if lock:
-            query = query.with_for_update()
+            query = query.with_for_update(of=ClassRoom)
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
