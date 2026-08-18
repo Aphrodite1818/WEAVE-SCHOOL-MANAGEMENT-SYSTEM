@@ -11,6 +11,10 @@ from app.modules.cbt.sync.repository import CBTSyncRepository
 from app.modules.cbt.sync.schemas import CBTSyncChangeResponse, CBTSyncDeltaResponse
 
 
+class CBTSyncCursorExpired(RuntimeError):
+    """The caller is older than the retained delta window and must bootstrap."""
+
+
 class CBTSyncService:
     DEFAULT_PAGE_SIZE = 500
     MAX_PAGE_SIZE = 1000
@@ -43,6 +47,21 @@ class CBTSyncService:
             raise ValueError("limit must be at least 1")
 
         limit = min(limit, cls.MAX_PAGE_SIZE)
+        latest_cursor = await CBTSyncRepository.get_latest_cursor(
+            db,
+            tenant_id=tenant_id,
+        )
+        earliest_cursor = await CBTSyncRepository.get_earliest_cursor(
+            db,
+            tenant_id=tenant_id,
+        )
+        if latest_cursor > after_cursor and (
+            earliest_cursor is None or after_cursor < earliest_cursor - 1
+        ):
+            raise CBTSyncCursorExpired(
+                "CBT synchronization cursor is older than the retained change log."
+            )
+
         rows = await CBTSyncRepository.get_changes_after(
             db,
             tenant_id=tenant_id,
