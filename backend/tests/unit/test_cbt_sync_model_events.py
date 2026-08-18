@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from app.modules.cbt.sync import model_events
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
+from app.modules.cbt.sync.schemas import CBTSyncMutation, SYNC_SCHEMA_VERSION
 from app.modules.classes.models import AcademicLevel
 from app.modules.students.models import Student
 
@@ -49,6 +50,19 @@ def _student() -> Student:
     student.id = uuid4()
     student.tenant_id = uuid4()
     return student
+
+
+def _mutation(
+    entity_type: CBTSyncEntityType,
+    operation: CBTSyncOperation,
+) -> CBTSyncMutation:
+    return CBTSyncMutation(
+        entity_type=entity_type,
+        entity_id=uuid4(),
+        operation=operation,
+        schema_version=SYNC_SCHEMA_VERSION,
+        payload=None if operation == CBTSyncOperation.DELETED else {"id": str(uuid4())},
+    )
 
 
 def test_successful_savepoint_preserves_pending_mutations_until_outer_end() -> None:
@@ -163,7 +177,7 @@ def test_prepare_commit_is_deferred_while_inside_savepoint() -> None:
     assert session.flush_count == 0
 
 
-def test_invisible_lifecycle_updates_become_explicit_deletes() -> None:
+def test_invisible_lifecycle_updates_become_explicit_v3_tombstones() -> None:
     tenant_id = uuid4()
     for entity_type in (
         CBTSyncEntityType.STUDENT_ENROLLMENT,
@@ -182,3 +196,58 @@ def test_invisible_lifecycle_updates_become_explicit_deletes() -> None:
         assert mutation.entity_type == entity_type
         assert mutation.operation == CBTSyncOperation.DELETED
         assert mutation.payload is None
+        assert mutation.schema_version == 3
+
+
+def test_replacement_tombstones_sort_before_new_live_rows() -> None:
+    old_assignment = _mutation(
+        CBTSyncEntityType.TEACHER_ASSIGNMENT,
+        CBTSyncOperation.DELETED,
+    )
+    new_assignment = _mutation(
+        CBTSyncEntityType.TEACHER_ASSIGNMENT,
+        CBTSyncOperation.CREATED,
+    )
+    old_enrollment = _mutation(
+        CBTSyncEntityType.STUDENT_ENROLLMENT,
+        CBTSyncOperation.DELETED,
+    )
+    new_enrollment = _mutation(
+        CBTSyncEntityType.STUDENT_ENROLLMENT,
+        CBTSyncOperation.CREATED,
+    )
+
+    ordered = sorted(
+        [new_assignment, new_enrollment, old_assignment, old_enrollment],
+        key=model_events._mutation_sort_key,
+    )
+
+    assert [item.operation for item in ordered[:2]] == [
+        CBTSyncOperation.DELETED,
+        CBTSyncOperation.DELETED,
+    ]
+    assert old_assignment in ordered[:2]
+    assert old_enrollment in ordered[:2]
+
+
+def test_live_upserts_sort_parent_before_child() -> None:
+    session = _mutation(CBTSyncEntityType.ACADEMIC_SESSION, CBTSyncOperation.CREATED)
+    term = _mutation(CBTSyncEntityType.ACADEMIC_TERM, CBTSyncOperation.CREATED)
+    level = _mutation(CBTSyncEntityType.ACADEMIC_LEVEL, CBTSyncOperation.CREATED)
+    classroom = _mutation(CBTSyncEntityType.CLASS, CBTSyncOperation.CREATED)
+    enrollment = _mutation(CBTSyncEntityType.STUDENT_ENROLLMENT, CBTSyncOperation.CREATED)
+    assignment = _mutation(CBTSyncEntityType.TEACHER_ASSIGNMENT, CBTSyncOperation.CREATED)
+
+    ordered = sorted(
+        [assignment, enrollment, classroom, level, term, session],
+        key=model_events._mutation_sort_key,
+    )
+
+    assert [item.entity_type for item in ordered] == [
+        CBTSyncEntityType.ACADEMIC_SESSION,
+        CBTSyncEntityType.ACADEMIC_TERM,
+        CBTSyncEntityType.ACADEMIC_LEVEL,
+        CBTSyncEntityType.CLASS,
+        CBTSyncEntityType.STUDENT_ENROLLMENT,
+        CBTSyncEntityType.TEACHER_ASSIGNMENT,
+    ]
