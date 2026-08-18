@@ -13,6 +13,7 @@ from app.modules.cbt.sync.models import CBTSyncChange, CBTSyncTenantState
 from app.modules.cbt.sync.schemas import CBTSyncMutation, CBTSyncNotification
 
 CBT_SYNC_NOTIFY_CHANNEL = "weave_cbt_sync"
+SYNC_CHANGE_INSERT_BATCH_SIZE = 1000
 
 
 class CBTSyncRecorder:
@@ -66,10 +67,14 @@ class CBTSyncRecorder:
             for index, mutation in enumerate(mutations)
         ]
 
-        # created_at/updated_at are intentionally omitted here so PostgreSQL uses
-        # the table's timestamp defaults instead of receiving SQL expressions as
-        # asyncpg executemany parameter values.
-        connection.execute(change_table.insert(), rows)
+        # Keep one cursor lock/range but bound each INSERT so large academic
+        # transactions cannot hit PostgreSQL/asyncpg parameter ceilings.
+        for start in range(0, len(rows), SYNC_CHANGE_INSERT_BATCH_SIZE):
+            connection.execute(
+                change_table.insert(),
+                rows[start : start + SYNC_CHANGE_INSERT_BATCH_SIZE],
+            )
+
         last_cursor = first_cursor + len(rows) - 1
         connection.execute(
             update(state_table)
