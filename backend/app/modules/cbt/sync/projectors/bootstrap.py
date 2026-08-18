@@ -1,0 +1,522 @@
+"""Bulk bootstrap projector for the canonical CBT v3 contract.
+
+Incremental sync uses per-entity projectors because only a small dirty set changes.
+Bootstrap is different: it projects the complete current tenant graph, so this
+module loads each relationship family in bulk and avoids row-by-row N+1 queries.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import date
+from typing import Any
+
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.modules.cbt.academics.schemas import (
+    CBTAdminSnapshot,
+    CBTAcademicLevelSnapshot,
+    CBTAcademicSessionSnapshot,
+    CBTAcademicTermSnapshot,
+    CBTArmLabelSnapshot,
+    CBTAssessmentComponentSnapshot,
+    CBTAssessmentSchemeSnapshot,
+    CBTClassSnapshot,
+    CBTClassTermDepartmentSnapshot,
+    CBTCurriculumOfferingSnapshot,
+    CBTCurriculumSnapshot,
+    CBTCurriculumSubjectSnapshot,
+    CBTDepartmentSnapshot,
+    CBTStudentEnrollmentSnapshot,
+    CBTSubjectSnapshot,
+    CBTTeacherAssignmentSnapshot,
+    CBTTeacherSnapshot,
+)
+from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
+from app.modules.student_academics.curriculum_models import (
+    ClassTermDepartmentAssignment,
+    Curriculum,
+    CurriculumOffering,
+    CurriculumSubject,
+)
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicSessionStatus,
+    AcademicTerm,
+    AcademicTermStatus,
+    AssessmentComponent,
+    AssessmentScheme,
+    AssessmentSchemeStatus,
+    TeacherAssignment,
+)
+from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
+from app.modules.subjects.models import Subject
+from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
+from app.modules.teachers.models import (
+    TeacherAccount,
+    TeacherAccountStatus,
+    TeacherMembership,
+    TeacherMembershipStatus,
+)
+
+
+def _value(value: Any) -> Any:
+    return getattr(value, "value", value)
+
+
+def _visible(row: Any) -> bool:
+    return bool(
+        row is not None
+        and getattr(row, "is_active", True)
+        and getattr(row, "archived_at", None) is None
+    )
+
+
+def _ordered(items: list[BaseModel]) -> list[BaseModel]:
+    return sorted(items, key=lambda item: str(item.id))  # type: ignore[attr-defined]
+
+
+def build_bootstrap_sections(
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+) -> dict[str, list[BaseModel]]:
+    sections: dict[str, list[BaseModel]] = {}
+
+    session_rows = list(
+        session.execute(
+            select(AcademicSession).where(AcademicSession.tenant_id == tenant_id)
+        ).scalars()
+    )
+    visible_sessions = {
+        row.id: row
+        for row in session_rows
+        if row.is_current
+        and row.status in {AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}
+    }
+    sections["sessions"] = _ordered(
+        [
+            CBTAcademicSessionSnapshot(
+                id=row.id,
+                name=row.name,
+                status=_value(row.status),
+                is_current=row.is_current,
+            )
+            for row in visible_sessions.values()
+        ]
+    )
+
+    term_rows = list(
+        session.execute(
+            select(AcademicTerm).where(AcademicTerm.tenant_id == tenant_id)
+        ).scalars()
+    )
+    visible_terms = {
+        row.id: row
+        for row in term_rows
+        if row.academic_session_id in visible_sessions
+        and row.is_current
+        and row.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
+    }
+    sections["terms"] = _ordered(
+        [
+            CBTAcademicTermSnapshot(
+                id=row.id,
+                academic_session_id=row.academic_session_id,
+                name=_value(row.name),
+                status=_value(row.status),
+                is_current=row.is_current,
+            )
+            for row in visible_terms.values()
+        ]
+    )
+
+    level_rows = list(
+        session.execute(
+            select(AcademicLevel).where(AcademicLevel.tenant_id == tenant_id)
+        ).scalars()
+    )
+    visible_levels = {row.id: row for row in level_rows if _visible(row)}
+    sections["levels"] = _ordered(
+        [
+            CBTAcademicLevelSnapshot(
+                id=row.id,
+                name=row.name,
+                category=_value(row.category),
+                position=row.position,
+            )
+            for row in visible_levels.values()
+        ]
+    )
+
+    arm_rows = list(
+        session.execute(select(ArmLabel).where(ArmLabel.tenant_id == tenant_id)).scalars()
+    )
+    visible_arms = {row.id: row for row in arm_rows if _visible(row)}
+    sections["arm_labels"] = _ordered(
+        [CBTArmLabelSnapshot(id=row.id, label=row.label) for row in visible_arms.values()]
+    )
+
+    department_rows = list(
+        session.execute(select(Department).where(Department.tenant_id == tenant_id)).scalars()
+    )
+    visible_departments = {
+        row.id: row
+        for row in department_rows
+        if _visible(row) and row.academic_level_id in visible_levels
+    }
+    sections["departments"] = _ordered(
+        [
+            CBTDepartmentSnapshot(
+                id=row.id,
+                academic_level_id=row.academic_level_id,
+                name=row.name,
+            )
+            for row in visible_departments.values()
+        ]
+    )
+
+    class_rows = list(
+        session.execute(select(ClassRoom).where(ClassRoom.tenant_id == tenant_id)).scalars()
+    )
+    visible_classes = {
+        row.id: row
+        for row in class_rows
+        if _visible(row)
+        and row.academic_level_id in visible_levels
+        and row.arm_label_id in visible_arms
+    }
+    sections["classes"] = _ordered(
+        [
+            CBTClassSnapshot(
+                id=row.id,
+                academic_level_id=row.academic_level_id,
+                arm_label_id=row.arm_label_id,
+                display_name=(
+                    f"{visible_levels[row.academic_level_id].name} "
+                    f"{visible_arms[row.arm_label_id].label}"
+                ).strip(),
+                is_active=row.is_active,
+            )
+            for row in visible_classes.values()
+        ]
+    )
+
+    ctd_rows = list(
+        session.execute(
+            select(ClassTermDepartmentAssignment).where(
+                ClassTermDepartmentAssignment.tenant_id == tenant_id
+            )
+        ).scalars()
+    )
+    visible_ctds: dict[uuid.UUID, ClassTermDepartmentAssignment] = {}
+    class_term_department: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID] = {}
+    for row in ctd_rows:
+        term = visible_terms.get(row.academic_term_id)
+        classroom = visible_classes.get(row.class_id)
+        department = visible_departments.get(row.department_id)
+        if (
+            term is None
+            or term.status != AcademicTermStatus.OPEN
+            or classroom is None
+            or department is None
+            or department.academic_level_id != classroom.academic_level_id
+        ):
+            continue
+        visible_ctds[row.id] = row
+        class_term_department[(row.class_id, row.academic_term_id)] = row.department_id
+    sections["class_term_departments"] = _ordered(
+        [
+            CBTClassTermDepartmentSnapshot(
+                id=row.id,
+                class_id=row.class_id,
+                academic_term_id=row.academic_term_id,
+                department_id=row.department_id,
+            )
+            for row in visible_ctds.values()
+        ]
+    )
+
+    subject_rows = list(
+        session.execute(select(Subject).where(Subject.tenant_id == tenant_id)).scalars()
+    )
+    visible_subjects = {row.id: row for row in subject_rows if _visible(row)}
+    sections["subjects"] = _ordered(
+        [
+            CBTSubjectSnapshot(
+                id=row.id,
+                name=row.name,
+                code=row.code,
+                is_active=row.is_active,
+            )
+            for row in visible_subjects.values()
+        ]
+    )
+
+    curriculum_rows = list(
+        session.execute(select(Curriculum).where(Curriculum.tenant_id == tenant_id)).scalars()
+    )
+    visible_curricula = {
+        row.id: row
+        for row in curriculum_rows
+        if row.academic_level_id in visible_levels
+    }
+    sections["curricula"] = _ordered(
+        [
+            CBTCurriculumSnapshot(
+                id=row.id,
+                academic_level_id=row.academic_level_id,
+            )
+            for row in visible_curricula.values()
+        ]
+    )
+
+    curriculum_subject_rows = list(
+        session.execute(
+            select(CurriculumSubject).where(CurriculumSubject.tenant_id == tenant_id)
+        ).scalars()
+    )
+    visible_curriculum_subjects = {
+        row.id: row
+        for row in curriculum_subject_rows
+        if _visible(row)
+        and row.curriculum_id in visible_curricula
+        and row.subject_id in visible_subjects
+    }
+    sections["curriculum_subjects"] = _ordered(
+        [
+            CBTCurriculumSubjectSnapshot(
+                id=row.id,
+                curriculum_id=row.curriculum_id,
+                subject_id=row.subject_id,
+                is_elective=row.is_elective,
+                is_active=row.is_active,
+            )
+            for row in visible_curriculum_subjects.values()
+        ]
+    )
+
+    offering_rows = list(
+        session.execute(
+            select(CurriculumOffering).where(CurriculumOffering.tenant_id == tenant_id)
+        ).scalars()
+    )
+    visible_offerings: dict[uuid.UUID, CurriculumOffering] = {}
+    offering_scopes: set[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]] = set()
+    for row in offering_rows:
+        curriculum_subject = visible_curriculum_subjects.get(row.curriculum_subject_id)
+        term = visible_terms.get(row.academic_term_id)
+        if curriculum_subject is None or term is None or term.status != AcademicTermStatus.OPEN:
+            continue
+        curriculum = visible_curricula[curriculum_subject.curriculum_id]
+        if row.department_id is not None:
+            department = visible_departments.get(row.department_id)
+            if (
+                department is None
+                or department.academic_level_id != curriculum.academic_level_id
+            ):
+                continue
+        visible_offerings[row.id] = row
+        offering_scopes.add(
+            (row.curriculum_subject_id, row.academic_term_id, row.department_id)
+        )
+    sections["offerings"] = _ordered(
+        [
+            CBTCurriculumOfferingSnapshot(
+                id=row.id,
+                curriculum_subject_id=row.curriculum_subject_id,
+                academic_term_id=row.academic_term_id,
+                department_id=row.department_id,
+            )
+            for row in visible_offerings.values()
+        ]
+    )
+
+    scheme_rows = list(
+        session.execute(
+            select(AssessmentScheme).where(AssessmentScheme.tenant_id == tenant_id)
+        ).scalars()
+    )
+    visible_schemes = {
+        row.id: row for row in scheme_rows if row.status == AssessmentSchemeStatus.ACTIVE
+    }
+    sections["assessment_schemes"] = _ordered(
+        [
+            CBTAssessmentSchemeSnapshot(
+                id=row.id,
+                name=row.name,
+                status=_value(row.status),
+            )
+            for row in visible_schemes.values()
+        ]
+    )
+
+    component_rows = list(
+        session.execute(
+            select(AssessmentComponent).where(AssessmentComponent.tenant_id == tenant_id)
+        ).scalars()
+    )
+    sections["assessment_components"] = _ordered(
+        [
+            CBTAssessmentComponentSnapshot(
+                id=row.id,
+                assessment_scheme_id=row.assessment_scheme_id,
+                name=row.name,
+                code=row.code,
+                maximum_score=row.maximum_score,
+                position=row.position,
+                is_active=row.is_active,
+            )
+            for row in component_rows
+            if row.is_active and row.assessment_scheme_id in visible_schemes
+        ]
+    )
+
+    admin_rows = list(
+        session.execute(select(TenantAdmin).where(TenantAdmin.tenant_id == tenant_id)).scalars()
+    )
+    sections["admins"] = _ordered(
+        [
+            CBTAdminSnapshot(
+                id=row.id,
+                email=row.email,
+                status=_value(row.account_status),
+            )
+            for row in admin_rows
+            if row.account_status == TenantAdminStatus.ACTIVE
+            and row.is_active
+            and row.is_verified
+        ]
+    )
+
+    teacher_rows = list(
+        session.execute(
+            select(TeacherMembership, TeacherAccount)
+            .join(TeacherAccount, TeacherAccount.id == TeacherMembership.teacher_account_id)
+            .where(TeacherMembership.tenant_id == tenant_id)
+        ).all()
+    )
+    visible_teachers: dict[uuid.UUID, tuple[TeacherMembership, TeacherAccount]] = {}
+    teacher_snapshots: list[BaseModel] = []
+    for membership, account in teacher_rows:
+        if (
+            membership.status != TeacherMembershipStatus.ACTIVE
+            or account.account_status != TeacherAccountStatus.ACTIVE
+            or not account.is_active
+        ):
+            continue
+        visible_teachers[membership.id] = (membership, account)
+        teacher_snapshots.append(
+            CBTTeacherSnapshot(
+                id=membership.id,
+                teacher_account_id=membership.teacher_account_id,
+                first_name=account.first_name,
+                last_name=account.last_name,
+                staff_id=membership.staff_id,
+                status=_value(membership.status),
+            )
+        )
+    sections["teachers"] = _ordered(teacher_snapshots)
+
+    enrollment_rows = list(
+        session.execute(
+            select(StudentEnrollment, Student)
+            .join(Student, Student.id == StudentEnrollment.student_id)
+            .where(StudentEnrollment.tenant_id == tenant_id)
+        ).all()
+    )
+    enrollment_snapshots: list[BaseModel] = []
+    for enrollment, student in enrollment_rows:
+        academic_session = visible_sessions.get(enrollment.academic_session_id)
+        level = visible_levels.get(enrollment.academic_level_id)
+        classroom = visible_classes.get(enrollment.class_id)
+        if (
+            not enrollment.is_current
+            or academic_session is None
+            or student.status != AcademicStatus.ACTIVE
+            or student.is_archived
+            or level is None
+            or classroom is None
+            or classroom.academic_level_id != enrollment.academic_level_id
+        ):
+            continue
+        enrollment_snapshots.append(
+            CBTStudentEnrollmentSnapshot(
+                id=enrollment.id,
+                student_id=student.id,
+                admission_number=student.admission_number,
+                first_name=student.first_name,
+                last_name=student.last_name,
+                academic_level_id=enrollment.academic_level_id,
+                class_id=enrollment.class_id,
+                academic_session_id=enrollment.academic_session_id,
+                is_current=enrollment.is_current,
+                student_status=_value(student.status),
+            )
+        )
+    sections["student_enrollments"] = _ordered(enrollment_snapshots)
+
+    current_open_term = next(
+        (row for row in visible_terms.values() if row.status == AcademicTermStatus.OPEN),
+        None,
+    )
+    today = date.today()
+    assignment_snapshots: list[BaseModel] = []
+    if current_open_term is not None:
+        assignment_rows = list(
+            session.execute(
+                select(TeacherAssignment).where(TeacherAssignment.tenant_id == tenant_id)
+            ).scalars()
+        )
+        for assignment in assignment_rows:
+            if (
+                not assignment.is_active
+                or assignment.effective_from > today
+                or (
+                    assignment.effective_to is not None
+                    and assignment.effective_to < today
+                )
+                or assignment.teacher_membership_id not in visible_teachers
+                or assignment.class_id not in visible_classes
+                or assignment.curriculum_subject_id not in visible_curriculum_subjects
+            ):
+                continue
+            classroom = visible_classes[assignment.class_id]
+            curriculum_subject = visible_curriculum_subjects[
+                assignment.curriculum_subject_id
+            ]
+            curriculum = visible_curricula[curriculum_subject.curriculum_id]
+            if curriculum.academic_level_id != classroom.academic_level_id:
+                continue
+            department_id = class_term_department.get(
+                (assignment.class_id, current_open_term.id)
+            )
+            if not (
+                (
+                    assignment.curriculum_subject_id,
+                    current_open_term.id,
+                    None,
+                )
+                in offering_scopes
+                or (
+                    assignment.curriculum_subject_id,
+                    current_open_term.id,
+                    department_id,
+                )
+                in offering_scopes
+            ):
+                continue
+            assignment_snapshots.append(
+                CBTTeacherAssignmentSnapshot(
+                    id=assignment.id,
+                    teacher_membership_id=assignment.teacher_membership_id,
+                    class_id=assignment.class_id,
+                    curriculum_subject_id=assignment.curriculum_subject_id,
+                    is_active=assignment.is_active,
+                )
+            )
+    sections["teacher_assignments"] = _ordered(assignment_snapshots)
+
+    return sections
