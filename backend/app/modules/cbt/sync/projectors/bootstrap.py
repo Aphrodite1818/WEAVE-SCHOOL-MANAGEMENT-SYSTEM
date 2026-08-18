@@ -1,14 +1,13 @@
 """Bulk bootstrap projector for the canonical CBT v3 contract.
 
-Incremental sync uses per-entity projectors because only a small dirty set changes.
-Bootstrap is different: it projects the complete current tenant graph, so this
-module loads each relationship family in bulk and avoids row-by-row N+1 queries.
+Incremental sync projects a small dirty set one entity at a time. Bootstrap loads
+whole relationship families in bulk, builds the current graph in memory and avoids
+N+1 query growth for large schools.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import date
 from typing import Any
 
 from pydantic import BaseModel
@@ -78,6 +77,12 @@ def _ordered(items: list[BaseModel]) -> list[BaseModel]:
     return sorted(items, key=lambda item: str(item.id))  # type: ignore[attr-defined]
 
 
+def _tenant_rows(session: Session, model: type[Any], tenant_id: uuid.UUID) -> list[Any]:
+    return list(
+        session.execute(select(model).where(model.tenant_id == tenant_id)).scalars()
+    )
+
+
 def build_bootstrap_sections(
     session: Session,
     *,
@@ -85,11 +90,7 @@ def build_bootstrap_sections(
 ) -> dict[str, list[BaseModel]]:
     sections: dict[str, list[BaseModel]] = {}
 
-    session_rows = list(
-        session.execute(
-            select(AcademicSession).where(AcademicSession.tenant_id == tenant_id)
-        ).scalars()
-    )
+    session_rows = _tenant_rows(session, AcademicSession, tenant_id)
     visible_sessions = {
         row.id: row
         for row in session_rows
@@ -108,11 +109,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    term_rows = list(
-        session.execute(
-            select(AcademicTerm).where(AcademicTerm.tenant_id == tenant_id)
-        ).scalars()
-    )
+    term_rows = _tenant_rows(session, AcademicTerm, tenant_id)
     visible_terms = {
         row.id: row
         for row in term_rows
@@ -133,11 +130,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    level_rows = list(
-        session.execute(
-            select(AcademicLevel).where(AcademicLevel.tenant_id == tenant_id)
-        ).scalars()
-    )
+    level_rows = _tenant_rows(session, AcademicLevel, tenant_id)
     visible_levels = {row.id: row for row in level_rows if _visible(row)}
     sections["levels"] = _ordered(
         [
@@ -151,17 +144,13 @@ def build_bootstrap_sections(
         ]
     )
 
-    arm_rows = list(
-        session.execute(select(ArmLabel).where(ArmLabel.tenant_id == tenant_id)).scalars()
-    )
+    arm_rows = _tenant_rows(session, ArmLabel, tenant_id)
     visible_arms = {row.id: row for row in arm_rows if _visible(row)}
     sections["arm_labels"] = _ordered(
         [CBTArmLabelSnapshot(id=row.id, label=row.label) for row in visible_arms.values()]
     )
 
-    department_rows = list(
-        session.execute(select(Department).where(Department.tenant_id == tenant_id)).scalars()
-    )
+    department_rows = _tenant_rows(session, Department, tenant_id)
     visible_departments = {
         row.id: row
         for row in department_rows
@@ -178,9 +167,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    class_rows = list(
-        session.execute(select(ClassRoom).where(ClassRoom.tenant_id == tenant_id)).scalars()
-    )
+    class_rows = _tenant_rows(session, ClassRoom, tenant_id)
     visible_classes = {
         row.id: row
         for row in class_rows
@@ -204,13 +191,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    ctd_rows = list(
-        session.execute(
-            select(ClassTermDepartmentAssignment).where(
-                ClassTermDepartmentAssignment.tenant_id == tenant_id
-            )
-        ).scalars()
-    )
+    ctd_rows = _tenant_rows(session, ClassTermDepartmentAssignment, tenant_id)
     visible_ctds: dict[uuid.UUID, ClassTermDepartmentAssignment] = {}
     class_term_department: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID] = {}
     for row in ctd_rows:
@@ -239,9 +220,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    subject_rows = list(
-        session.execute(select(Subject).where(Subject.tenant_id == tenant_id)).scalars()
-    )
+    subject_rows = _tenant_rows(session, Subject, tenant_id)
     visible_subjects = {row.id: row for row in subject_rows if _visible(row)}
     sections["subjects"] = _ordered(
         [
@@ -255,9 +234,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    curriculum_rows = list(
-        session.execute(select(Curriculum).where(Curriculum.tenant_id == tenant_id)).scalars()
-    )
+    curriculum_rows = _tenant_rows(session, Curriculum, tenant_id)
     visible_curricula = {
         row.id: row
         for row in curriculum_rows
@@ -265,19 +242,12 @@ def build_bootstrap_sections(
     }
     sections["curricula"] = _ordered(
         [
-            CBTCurriculumSnapshot(
-                id=row.id,
-                academic_level_id=row.academic_level_id,
-            )
+            CBTCurriculumSnapshot(id=row.id, academic_level_id=row.academic_level_id)
             for row in visible_curricula.values()
         ]
     )
 
-    curriculum_subject_rows = list(
-        session.execute(
-            select(CurriculumSubject).where(CurriculumSubject.tenant_id == tenant_id)
-        ).scalars()
-    )
+    curriculum_subject_rows = _tenant_rows(session, CurriculumSubject, tenant_id)
     visible_curriculum_subjects = {
         row.id: row
         for row in curriculum_subject_rows
@@ -298,11 +268,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    offering_rows = list(
-        session.execute(
-            select(CurriculumOffering).where(CurriculumOffering.tenant_id == tenant_id)
-        ).scalars()
-    )
+    offering_rows = _tenant_rows(session, CurriculumOffering, tenant_id)
     visible_offerings: dict[uuid.UUID, CurriculumOffering] = {}
     offering_scopes: set[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]] = set()
     for row in offering_rows:
@@ -313,10 +279,7 @@ def build_bootstrap_sections(
         curriculum = visible_curricula[curriculum_subject.curriculum_id]
         if row.department_id is not None:
             department = visible_departments.get(row.department_id)
-            if (
-                department is None
-                or department.academic_level_id != curriculum.academic_level_id
-            ):
+            if department is None or department.academic_level_id != curriculum.academic_level_id:
                 continue
         visible_offerings[row.id] = row
         offering_scopes.add(
@@ -334,11 +297,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    scheme_rows = list(
-        session.execute(
-            select(AssessmentScheme).where(AssessmentScheme.tenant_id == tenant_id)
-        ).scalars()
-    )
+    scheme_rows = _tenant_rows(session, AssessmentScheme, tenant_id)
     visible_schemes = {
         row.id: row for row in scheme_rows if row.status == AssessmentSchemeStatus.ACTIVE
     }
@@ -353,11 +312,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    component_rows = list(
-        session.execute(
-            select(AssessmentComponent).where(AssessmentComponent.tenant_id == tenant_id)
-        ).scalars()
-    )
+    component_rows = _tenant_rows(session, AssessmentComponent, tenant_id)
     sections["assessment_components"] = _ordered(
         [
             CBTAssessmentComponentSnapshot(
@@ -374,9 +329,7 @@ def build_bootstrap_sections(
         ]
     )
 
-    admin_rows = list(
-        session.execute(select(TenantAdmin).where(TenantAdmin.tenant_id == tenant_id)).scalars()
-    )
+    admin_rows = _tenant_rows(session, TenantAdmin, tenant_id)
     sections["admins"] = _ordered(
         [
             CBTAdminSnapshot(
@@ -458,26 +411,19 @@ def build_bootstrap_sections(
         )
     sections["student_enrollments"] = _ordered(enrollment_snapshots)
 
-    current_open_term = next(
-        (row for row in visible_terms.values() if row.status == AcademicTermStatus.OPEN),
-        None,
-    )
-    today = date.today()
+    open_terms = [
+        row for row in visible_terms.values() if row.status == AcademicTermStatus.OPEN
+    ]
+    if len(open_terms) > 1:
+        raise RuntimeError("More than one current open academic term exists for the tenant.")
+    current_open_term = open_terms[0] if open_terms else None
+
     assignment_snapshots: list[BaseModel] = []
     if current_open_term is not None:
-        assignment_rows = list(
-            session.execute(
-                select(TeacherAssignment).where(TeacherAssignment.tenant_id == tenant_id)
-            ).scalars()
-        )
+        assignment_rows = _tenant_rows(session, TeacherAssignment, tenant_id)
         for assignment in assignment_rows:
             if (
                 not assignment.is_active
-                or assignment.effective_from > today
-                or (
-                    assignment.effective_to is not None
-                    and assignment.effective_to < today
-                )
                 or assignment.teacher_membership_id not in visible_teachers
                 or assignment.class_id not in visible_classes
                 or assignment.curriculum_subject_id not in visible_curriculum_subjects
@@ -515,6 +461,8 @@ def build_bootstrap_sections(
                     class_id=assignment.class_id,
                     curriculum_subject_id=assignment.curriculum_subject_id,
                     is_active=assignment.is_active,
+                    effective_from=assignment.effective_from,
+                    effective_to=assignment.effective_to,
                 )
             )
     sections["teacher_assignments"] = _ordered(assignment_snapshots)
