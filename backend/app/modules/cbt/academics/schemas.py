@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -146,6 +146,8 @@ class CBTTeacherAssignmentSnapshot(SnapshotBase):
     class_id: uuid.UUID
     curriculum_subject_id: uuid.UUID
     is_active: bool
+    effective_from: date
+    effective_to: date | None = None
 
 
 class CBTStudentEnrollmentSnapshot(SnapshotBase):
