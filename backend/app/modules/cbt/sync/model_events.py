@@ -2,9 +2,8 @@
 
 The hook runs on the synchronous Session wrapped by AsyncSession. Business
 writes are flushed first; only then, at the outer transaction commit boundary,
-we project the final state and record durable changes through ``CBTSyncRecorder``.
-The sync log therefore commits or rolls back atomically with the business
-transaction and works identically in API and worker processes.
+we project the final state, normalize visibility changes, order them by
+relationship dependency and append one batched durable cursor range.
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
 from app.modules.cbt.sync.projectors.registry import project_payload
 from app.modules.cbt.sync.recorder import CBTSyncRecorder
-from app.modules.cbt.sync.schemas import CBTSyncMutation
+from app.modules.cbt.sync.schemas import CBTSyncMutation, SYNC_SCHEMA_VERSION
 from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
@@ -49,13 +48,6 @@ class _PendingObject:
 
 @dataclass(slots=True)
 class _SavepointJournal:
-    """Remember only state first touched inside one SAVEPOINT.
-
-    Successful savepoints leave the shared pending state intact. A rolled-back
-    savepoint uses this journal to restore exactly what existed before it began,
-    without discarding mutations collected by earlier successful rows.
-    """
-
     pending_before: dict[tuple[type[Any], int], _PendingObject | None]
     teacher_accounts_added: set[uuid.UUID]
     students_added: set[uuid.UUID]
@@ -88,10 +80,33 @@ MODEL_ENTITY_TYPES: dict[type[Any], CBTSyncEntityType] = {
     TeacherAssignment: CBTSyncEntityType.TEACHER_ASSIGNMENT,
     StudentEnrollment: CBTSyncEntityType.STUDENT_ENROLLMENT,
 }
-
 ENTITY_MODELS: dict[CBTSyncEntityType, type[Any]] = {
     entity_type: model for model, entity_type in MODEL_ENTITY_TYPES.items()
 }
+
+# Upserts are parent-first. Tombstones use the reverse order and are always
+# emitted before upserts so partial unique indexes are released before a
+# replacement row is installed on CBT.
+_UPSERT_ORDER = (
+    CBTSyncEntityType.ACADEMIC_SESSION,
+    CBTSyncEntityType.ACADEMIC_TERM,
+    CBTSyncEntityType.ACADEMIC_LEVEL,
+    CBTSyncEntityType.ARM_LABEL,
+    CBTSyncEntityType.DEPARTMENT,
+    CBTSyncEntityType.CLASS,
+    CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
+    CBTSyncEntityType.SUBJECT,
+    CBTSyncEntityType.CURRICULUM,
+    CBTSyncEntityType.CURRICULUM_SUBJECT,
+    CBTSyncEntityType.ASSESSMENT_SCHEME,
+    CBTSyncEntityType.ASSESSMENT_COMPONENT,
+    CBTSyncEntityType.ADMIN,
+    CBTSyncEntityType.TEACHER,
+    CBTSyncEntityType.STUDENT_ENROLLMENT,
+    CBTSyncEntityType.SUBJECT_OFFERING,
+    CBTSyncEntityType.TEACHER_ASSIGNMENT,
+)
+_ORDER_RANK = {entity_type: index for index, entity_type in enumerate(_UPSERT_ORDER)}
 
 _PENDING_KEY = "cbt_sync_pending_objects"
 _TEACHER_ACCOUNT_KEY = "cbt_sync_teacher_accounts"
@@ -205,21 +220,19 @@ def _collect_pending(session: Session) -> None:
                 pending.pop(key, None)
             else:
                 pending[key] = _PendingObject(obj=obj, operation=merged)
-        elif isinstance(obj, TeacherAccount):
-            if obj.id:
-                teacher_accounts: set[uuid.UUID] = session.info.setdefault(
-                    _TEACHER_ACCOUNT_KEY,
-                    set(),
-                )
-                if journal is not None and obj.id not in teacher_accounts:
-                    journal.teacher_accounts_added.add(obj.id)
-                teacher_accounts.add(obj.id)
-        elif isinstance(obj, Student):
-            if obj.id:
-                students: set[uuid.UUID] = session.info.setdefault(_STUDENT_KEY, set())
-                if journal is not None and obj.id not in students:
-                    journal.students_added.add(obj.id)
-                students.add(obj.id)
+        elif isinstance(obj, TeacherAccount) and obj.id:
+            teacher_accounts: set[uuid.UUID] = session.info.setdefault(
+                _TEACHER_ACCOUNT_KEY,
+                set(),
+            )
+            if journal is not None and obj.id not in teacher_accounts:
+                journal.teacher_accounts_added.add(obj.id)
+            teacher_accounts.add(obj.id)
+        elif isinstance(obj, Student) and obj.id:
+            students: set[uuid.UUID] = session.info.setdefault(_STUDENT_KEY, set())
+            if journal is not None and obj.id not in students:
+                journal.students_added.add(obj.id)
+            students.add(obj.id)
 
 
 def _identity_from_object(pending: _PendingObject) -> _PendingIdentity | None:
@@ -255,15 +268,13 @@ def _append_identity(
     )
 
 
-def _append_refreshes(
-    session: Session,
+def _append_refresh_ids(
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
     *,
     tenant_id: uuid.UUID,
     entity_type: CBTSyncEntityType,
+    entity_ids: Any,
 ) -> None:
-    model = ENTITY_MODELS[entity_type]
-    entity_ids = session.execute(select(model.id).where(model.tenant_id == tenant_id)).scalars()
     for entity_id in entity_ids:
         _append_identity(
             events,
@@ -276,23 +287,41 @@ def _append_refreshes(
         )
 
 
+def _append_refreshes(
+    session: Session,
+    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
+    *,
+    tenant_id: uuid.UUID,
+    entity_type: CBTSyncEntityType,
+) -> None:
+    model = ENTITY_MODELS[entity_type]
+    entity_ids = session.execute(
+        select(model.id).where(model.tenant_id == tenant_id)
+    ).scalars()
+    _append_refresh_ids(
+        events,
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        entity_ids=entity_ids,
+    )
+
+
 def _expand_account_updates(
     session: Session,
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
-) -> set[uuid.UUID]:
-    """Refresh tenant memberships derived from a global teacher-account mutation."""
-
+) -> None:
     account_ids = {value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value}
     if not account_ids:
-        return set()
+        return
+
     rows = session.execute(
         select(TeacherMembership.tenant_id, TeacherMembership.id).where(
             TeacherMembership.teacher_account_id.in_(account_ids)
         )
     ).all()
-    tenant_ids: set[uuid.UUID] = set()
+    membership_ids: list[uuid.UUID] = []
     for tenant_id, membership_id in rows:
-        tenant_ids.add(tenant_id)
+        membership_ids.append(membership_id)
         _append_identity(
             events,
             _PendingIdentity(
@@ -302,27 +331,39 @@ def _expand_account_updates(
                 operation=CBTSyncOperation.UPDATED,
             ),
         )
-    return tenant_ids
+    if not membership_ids:
+        return
+
+    assignment_rows = session.execute(
+        select(TeacherAssignment.tenant_id, TeacherAssignment.id).where(
+            TeacherAssignment.teacher_membership_id.in_(membership_ids)
+        )
+    ).all()
+    for tenant_id, assignment_id in assignment_rows:
+        _append_identity(
+            events,
+            _PendingIdentity(
+                tenant_id=tenant_id,
+                entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
+                entity_id=assignment_id,
+                operation=CBTSyncOperation.UPDATED,
+            ),
+        )
 
 
 def _expand_student_updates(
     session: Session,
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
-) -> set[uuid.UUID]:
-    """Refresh enrollment projections derived from student lifecycle mutations."""
-
+) -> None:
     student_ids = {value for value in session.info.get(_STUDENT_KEY, set()) if value}
     if not student_ids:
-        return set()
-
-    tenant_ids: set[uuid.UUID] = set()
+        return
     rows = session.execute(
         select(StudentEnrollment.tenant_id, StudentEnrollment.id).where(
             StudentEnrollment.student_id.in_(student_ids)
         )
     ).all()
     for tenant_id, enrollment_id in rows:
-        tenant_ids.add(tenant_id)
         _append_identity(
             events,
             _PendingIdentity(
@@ -333,36 +374,58 @@ def _expand_student_updates(
             ),
         )
 
-    # Graduation/archival can remove the last visible enrollment in the same
-    # transaction. Keep the tenant as an offering-eligibility invalidation source.
-    for obj in list(session.new) + list(session.dirty) + list(session.deleted):
-        if isinstance(obj, Student) and obj.id in student_ids and obj.tenant_id:
-            tenant_ids.add(obj.tenant_id)
-    return tenant_ids
+
+def _refresh_assignments_for_membership(
+    session: Session,
+    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
+    membership: TeacherMembership,
+) -> None:
+    ids = session.execute(
+        select(TeacherAssignment.id).where(
+            TeacherAssignment.tenant_id == membership.tenant_id,
+            TeacherAssignment.teacher_membership_id == membership.id,
+        )
+    ).scalars()
+    _append_refresh_ids(
+        events,
+        tenant_id=membership.tenant_id,
+        entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
+        entity_ids=ids,
+    )
+
+
+def _refresh_assignments_for_offering(
+    session: Session,
+    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
+    offering: CurriculumOffering,
+) -> None:
+    ids = session.execute(
+        select(TeacherAssignment.id).where(
+            TeacherAssignment.tenant_id == offering.tenant_id,
+            TeacherAssignment.curriculum_subject_id == offering.curriculum_subject_id,
+        )
+    ).scalars()
+    _append_refresh_ids(
+        events,
+        tenant_id=offering.tenant_id,
+        entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
+        entity_ids=ids,
+    )
 
 
 def _expand_derived_contracts(
     session: Session,
     pending_objects: list[_PendingObject],
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
-    *,
-    student_refresh_tenants: set[uuid.UUID],
-    teacher_refresh_tenants: set[uuid.UUID],
 ) -> None:
-    """Refresh every projector whose visibility/payload depends on changed state.
+    """Refresh projections whose visible state is derived from another model.
 
-    The dependency graph is intentionally explicit. Academic structure changes are
-    low-frequency administrative writes, so a tenant-scoped refresh is safer than
-    attempting to reconstruct every old/new foreign-key path. ``project_payload``
-    remains the sole authority: a refresh becomes an update when the entity is still
-    visible and a delete when its parent/configuration makes it disappear.
+    High-frequency student and teacher changes are targeted. Tenant-wide refreshes
+    remain only for low-frequency academic-structure changes where old/new foreign
+    key paths cannot be reconstructed safely from final ORM state.
     """
 
     refreshes: dict[CBTSyncEntityType, set[uuid.UUID]] = defaultdict(set)
-    for tenant_id in student_refresh_tenants:
-        refreshes[CBTSyncEntityType.SUBJECT_OFFERING].add(tenant_id)
-    for tenant_id in teacher_refresh_tenants:
-        refreshes[CBTSyncEntityType.TEACHER_ASSIGNMENT].add(tenant_id)
 
     for pending in pending_objects:
         obj = pending.obj
@@ -386,7 +449,6 @@ def _expand_derived_contracts(
             for entity_type in (
                 CBTSyncEntityType.CLASS,
                 CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
                 CBTSyncEntityType.STUDENT_ENROLLMENT,
             ):
@@ -401,14 +463,23 @@ def _expand_derived_contracts(
         elif isinstance(obj, ClassRoom):
             for entity_type in (
                 CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
                 CBTSyncEntityType.STUDENT_ENROLLMENT,
             ):
                 refreshes[entity_type].add(tenant_id)
         elif isinstance(obj, ClassTermDepartmentAssignment):
-            refreshes[CBTSyncEntityType.SUBJECT_OFFERING].add(tenant_id)
-            refreshes[CBTSyncEntityType.TEACHER_ASSIGNMENT].add(tenant_id)
+            assignment_ids = session.execute(
+                select(TeacherAssignment.id).where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    TeacherAssignment.class_id == obj.class_id,
+                )
+            ).scalars()
+            _append_refresh_ids(
+                events,
+                tenant_id=tenant_id,
+                entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
+                entity_ids=assignment_ids,
+            )
         elif isinstance(obj, AcademicSession):
             for entity_type in (
                 CBTSyncEntityType.ACADEMIC_TERM,
@@ -440,16 +511,36 @@ def _expand_derived_contracts(
             ):
                 refreshes[entity_type].add(tenant_id)
         elif isinstance(obj, CurriculumSubject):
-            refreshes[CBTSyncEntityType.SUBJECT_OFFERING].add(tenant_id)
-            refreshes[CBTSyncEntityType.TEACHER_ASSIGNMENT].add(tenant_id)
+            offering_ids = session.execute(
+                select(CurriculumOffering.id).where(
+                    CurriculumOffering.tenant_id == tenant_id,
+                    CurriculumOffering.curriculum_subject_id == obj.id,
+                )
+            ).scalars()
+            _append_refresh_ids(
+                events,
+                tenant_id=tenant_id,
+                entity_type=CBTSyncEntityType.SUBJECT_OFFERING,
+                entity_ids=offering_ids,
+            )
+            assignment_ids = session.execute(
+                select(TeacherAssignment.id).where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    TeacherAssignment.curriculum_subject_id == obj.id,
+                )
+            ).scalars()
+            _append_refresh_ids(
+                events,
+                tenant_id=tenant_id,
+                entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
+                entity_ids=assignment_ids,
+            )
         elif isinstance(obj, CurriculumOffering):
-            refreshes[CBTSyncEntityType.TEACHER_ASSIGNMENT].add(tenant_id)
+            _refresh_assignments_for_offering(session, events, obj)
         elif isinstance(obj, AssessmentScheme):
             refreshes[CBTSyncEntityType.ASSESSMENT_COMPONENT].add(tenant_id)
         elif isinstance(obj, TeacherMembership):
-            refreshes[CBTSyncEntityType.TEACHER_ASSIGNMENT].add(tenant_id)
-        elif isinstance(obj, StudentEnrollment):
-            refreshes[CBTSyncEntityType.SUBJECT_OFFERING].add(tenant_id)
+            _refresh_assignments_for_membership(session, events, obj)
 
     for entity_type, tenant_ids in refreshes.items():
         for tenant_id in tenant_ids:
@@ -470,15 +561,9 @@ def _materialize_events(session: Session) -> list[_PendingIdentity]:
         identity = _identity_from_object(pending)
         if identity is not None:
             _append_identity(events, identity)
-    teacher_refresh_tenants = _expand_account_updates(session, events)
-    student_refresh_tenants = _expand_student_updates(session, events)
-    _expand_derived_contracts(
-        session,
-        pending_objects,
-        events,
-        student_refresh_tenants=student_refresh_tenants,
-        teacher_refresh_tenants=teacher_refresh_tenants,
-    )
+    _expand_account_updates(session, events)
+    _expand_student_updates(session, events)
+    _expand_derived_contracts(session, pending_objects, events)
     return list(events.values())
 
 
@@ -491,7 +576,7 @@ def _normalized_mutation(
             entity_type=identity.entity_type,
             entity_id=identity.entity_id,
             operation=CBTSyncOperation.DELETED,
-            schema_version=2,
+            schema_version=SYNC_SCHEMA_VERSION,
             payload=None,
         )
 
@@ -508,43 +593,50 @@ def _normalized_mutation(
             entity_type=identity.entity_type,
             entity_id=identity.entity_id,
             operation=CBTSyncOperation.DELETED,
-            schema_version=2,
+            schema_version=SYNC_SCHEMA_VERSION,
             payload=None,
         )
     return CBTSyncMutation(
         entity_type=identity.entity_type,
         entity_id=identity.entity_id,
         operation=identity.operation,
-        schema_version=2,
+        schema_version=SYNC_SCHEMA_VERSION,
         payload=payload,
     )
+
+
+def _mutation_sort_key(mutation: CBTSyncMutation) -> tuple[int, int, str]:
+    rank = _ORDER_RANK[mutation.entity_type]
+    if mutation.operation == CBTSyncOperation.DELETED:
+        return (0, -rank, str(mutation.entity_id))
+    return (1, rank, str(mutation.entity_id))
 
 
 def _write_changes(session: Session, identities: list[_PendingIdentity]) -> int:
     if not identities:
         return 0
     if session.connection().dialect.name != "postgresql":
-        # Production ordering/notification semantics require PostgreSQL. Unit tests
-        # that use SQLite exercise projection and event materialization separately.
         return 0
 
-    written = 0
+    by_tenant: dict[uuid.UUID, list[CBTSyncMutation]] = defaultdict(list)
     for identity in identities:
         mutation = _normalized_mutation(session, identity)
-        if mutation is None:
-            continue
-        CBTSyncRecorder.record_sync(
+        if mutation is not None:
+            by_tenant[identity.tenant_id].append(mutation)
+
+    written = 0
+    for tenant_id in sorted(by_tenant, key=str):
+        mutations = sorted(by_tenant[tenant_id], key=_mutation_sort_key)
+        CBTSyncRecorder.record_many_sync(
             session,
-            tenant_id=identity.tenant_id,
-            mutation=mutation,
+            tenant_id=tenant_id,
+            mutations=mutations,
         )
-        written += 1
+        written += len(mutations)
     return written
 
 
 def _clear_collected_state(session: Session) -> None:
-    """Discard only the in-memory mutation collector for the current transaction."""
-
     session.info.pop(_PENDING_KEY, None)
     session.info.pop(_TEACHER_ACCOUNT_KEY, None)
     session.info.pop(_STUDENT_KEY, None)
@@ -557,15 +649,7 @@ def _clear_state(session: Session) -> None:
 
 
 def prepare_cbt_sync_commit(session: Session) -> int:
-    """Materialize and consume pending CBT mutations before an outer commit.
-
-    Normal API writes reach this function through SQLAlchemy's ``before_commit``
-    hook. Transaction-heavy workers may also call it explicitly via
-    ``AsyncSession.run_sync`` immediately before their real outer commit. Writing
-    the sync rows here keeps them in the same database transaction as the business
-    changes, while consuming the in-memory collector makes the subsequent
-    ``before_commit`` callback idempotent rather than recording duplicates.
-    """
+    """Materialize and consume pending CBT mutations before the outer commit."""
 
     if session.in_nested_transaction() or session.info.get(_INTERNAL_KEY):
         return 0
@@ -584,9 +668,6 @@ def prepare_cbt_sync_commit(session: Session) -> int:
         session.flush()
         identities = _materialize_events(session)
         written = _write_changes(session, identities)
-        # The durable CBTSyncChange rows and pg_notify calls are now part of the
-        # surrounding transaction. If the business commit fails they roll back
-        # with it, so retaining duplicate in-memory collector state is unnecessary.
         _clear_collected_state(session)
         return written
     finally:
@@ -598,15 +679,10 @@ def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> Non
 
 
 def _before_commit(session: Session) -> None:
-    # SAVEPOINT commits inside bulk/progression workflows must not publish or
-    # clear the shared collector. Only the outer transaction owns the durable
-    # cursor sequence and PostgreSQL NOTIFY side effect.
     prepare_cbt_sync_commit(session)
 
 
 def _after_soft_rollback(session: Session, previous_transaction: Any) -> None:
-    """Undo only collector state introduced by a failed SAVEPOINT."""
-
     if getattr(previous_transaction, "nested", False):
         _restore_savepoint_journal(session, previous_transaction)
     elif getattr(previous_transaction, "parent", None) is None:
@@ -614,8 +690,6 @@ def _after_soft_rollback(session: Session, previous_transaction: Any) -> None:
 
 
 def _after_transaction_end(session: Session, transaction: Any) -> None:
-    """Clear collector state only when the outer transaction is truly over."""
-
     if getattr(transaction, "parent", None) is None:
         _clear_state(session)
 
