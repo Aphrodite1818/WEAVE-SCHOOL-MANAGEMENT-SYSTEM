@@ -1,4 +1,4 @@
-"""Registry for the canonical v2 Cloud -> CBT projection contract."""
+"""Registry for the canonical v3 Cloud -> CBT projection contract."""
 
 from __future__ import annotations
 
@@ -65,5 +65,4 @@ def project_payload(
     entity_type: CBTSyncEntityType,
     entity_id: uuid.UUID,
 ) -> dict[str, Any] | None:
-    projector = PROJECTORS[entity_type]
-    return projector(session, tenant_id, entity_id)
+    return PROJECTORS[entity_type](session, tenant_id, entity_id)
