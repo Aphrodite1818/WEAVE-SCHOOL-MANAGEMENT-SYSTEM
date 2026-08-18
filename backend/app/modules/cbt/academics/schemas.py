@@ -1,4 +1,4 @@
-"""Stable v2 Cloud -> local CBT bootstrap contract."""
+"""Stable v3 Cloud -> local CBT bootstrap contract."""
 
 from __future__ import annotations
 
@@ -8,13 +8,15 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.cbt.sync.schemas import SYNC_SCHEMA_VERSION
+
 
 class SnapshotBase(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class CBTSyncMetadata(SnapshotBase):
-    schema_version: int = 2
+    schema_version: int = SYNC_SCHEMA_VERSION
     snapshot_id: uuid.UUID
     generated_at: datetime
     cursor: int = Field(ge=0)
@@ -105,7 +107,6 @@ class CBTCurriculumOfferingSnapshot(SnapshotBase):
     curriculum_subject_id: uuid.UUID
     academic_term_id: uuid.UUID
     department_id: uuid.UUID | None = None
-    eligible_enrollment_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class CBTAssessmentSchemeSnapshot(SnapshotBase):
