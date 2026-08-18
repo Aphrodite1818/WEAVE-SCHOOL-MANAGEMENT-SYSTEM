@@ -520,14 +520,15 @@ def _normalized_mutation(
     )
 
 
-def _write_changes(session: Session, identities: list[_PendingIdentity]) -> None:
+def _write_changes(session: Session, identities: list[_PendingIdentity]) -> int:
     if not identities:
-        return
+        return 0
     if session.connection().dialect.name != "postgresql":
         # Production ordering/notification semantics require PostgreSQL. Unit tests
         # that use SQLite exercise projection and event materialization separately.
-        return
+        return 0
 
+    written = 0
     for identity in identities:
         mutation = _normalized_mutation(session, identity)
         if mutation is None:
@@ -537,14 +538,59 @@ def _write_changes(session: Session, identities: list[_PendingIdentity]) -> None
             tenant_id=identity.tenant_id,
             mutation=mutation,
         )
+        written += 1
+    return written
 
 
-def _clear_state(session: Session) -> None:
+def _clear_collected_state(session: Session) -> None:
+    """Discard only the in-memory mutation collector for the current transaction."""
+
     session.info.pop(_PENDING_KEY, None)
     session.info.pop(_TEACHER_ACCOUNT_KEY, None)
     session.info.pop(_STUDENT_KEY, None)
-    session.info.pop(_INTERNAL_KEY, None)
     session.info.pop(_SAVEPOINT_JOURNALS_KEY, None)
+
+
+def _clear_state(session: Session) -> None:
+    _clear_collected_state(session)
+    session.info.pop(_INTERNAL_KEY, None)
+
+
+def prepare_cbt_sync_commit(session: Session) -> int:
+    """Materialize and consume pending CBT mutations before an outer commit.
+
+    Normal API writes reach this function through SQLAlchemy's ``before_commit``
+    hook. Transaction-heavy workers may also call it explicitly via
+    ``AsyncSession.run_sync`` immediately before their real outer commit. Writing
+    the sync rows here keeps them in the same database transaction as the business
+    changes, while consuming the in-memory collector makes the subsequent
+    ``before_commit`` callback idempotent rather than recording duplicates.
+    """
+
+    if session.in_nested_transaction() or session.info.get(_INTERNAL_KEY):
+        return 0
+
+    _collect_pending(session)
+    has_pending = bool(
+        session.info.get(_PENDING_KEY)
+        or session.info.get(_TEACHER_ACCOUNT_KEY)
+        or session.info.get(_STUDENT_KEY)
+    )
+    if not has_pending:
+        return 0
+
+    session.info[_INTERNAL_KEY] = True
+    try:
+        session.flush()
+        identities = _materialize_events(session)
+        written = _write_changes(session, identities)
+        # The durable CBTSyncChange rows and pg_notify calls are now part of the
+        # surrounding transaction. If the business commit fails they roll back
+        # with it, so retaining duplicate in-memory collector state is unnecessary.
+        _clear_collected_state(session)
+        return written
+    finally:
+        session.info.pop(_INTERNAL_KEY, None)
 
 
 def _before_flush(session: Session, _flush_context: Any, _instances: Any) -> None:
@@ -555,24 +601,7 @@ def _before_commit(session: Session) -> None:
     # SAVEPOINT commits inside bulk/progression workflows must not publish or
     # clear the shared collector. Only the outer transaction owns the durable
     # cursor sequence and PostgreSQL NOTIFY side effect.
-    if session.in_nested_transaction() or session.info.get(_INTERNAL_KEY):
-        return
-    _collect_pending(session)
-    has_pending = bool(
-        session.info.get(_PENDING_KEY)
-        or session.info.get(_TEACHER_ACCOUNT_KEY)
-        or session.info.get(_STUDENT_KEY)
-    )
-    if not has_pending:
-        return
-
-    session.info[_INTERNAL_KEY] = True
-    try:
-        session.flush()
-        identities = _materialize_events(session)
-        _write_changes(session, identities)
-    finally:
-        session.info.pop(_INTERNAL_KEY, None)
+    prepare_cbt_sync_commit(session)
 
 
 def _after_soft_rollback(session: Session, previous_transaction: Any) -> None:
