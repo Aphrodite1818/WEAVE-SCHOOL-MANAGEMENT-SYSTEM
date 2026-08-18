@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import WebSocket
@@ -18,6 +18,7 @@ from app.modules.cbt.models import CBTServer, CBTServerCredential
 
 SEND_TIMEOUT_SECONDS = 8.0
 AUTHORIZATION_CLOSE_CODE = 4403
+AUTHORIZATION_REVALIDATE_SECONDS = 30
 logger = get_logger(__name__)
 
 
@@ -28,6 +29,10 @@ class CBTMachineConnection:
     tenant_id: uuid.UUID
     websocket: WebSocket
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    authorized_until: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+        + timedelta(seconds=AUTHORIZATION_REVALIDATE_SECONDS)
+    )
 
 
 class CBTConnectionManager:
@@ -93,8 +98,6 @@ class CBTConnectionManager:
 
     @staticmethod
     async def _is_authorized(connection: CBTMachineConnection) -> bool:
-        """Fail closed unless the exact credential that opened the socket is still valid."""
-
         try:
             async with AsyncSessionLocal() as db:
                 resolved = (
@@ -125,7 +128,13 @@ class CBTConnectionManager:
         return credential.expires_at is None or credential.expires_at > datetime.now(timezone.utc)
 
     async def ensure_authorized(self, connection: CBTMachineConnection) -> bool:
+        now = datetime.now(timezone.utc)
+        if now < connection.authorized_until:
+            return True
         if await self._is_authorized(connection):
+            connection.authorized_until = now + timedelta(
+                seconds=AUTHORIZATION_REVALIDATE_SECONDS
+            )
             return True
         await self.disconnect_server(
             connection.server_id,
