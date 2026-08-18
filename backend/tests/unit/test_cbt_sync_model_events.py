@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -8,6 +7,12 @@ from app.modules.cbt.sync import model_events
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
 from app.modules.classes.models import AcademicLevel
 from app.modules.students.models import Student
+
+
+class _Transaction:
+    def __init__(self, *, nested: bool, parent: object | None) -> None:
+        self.nested = nested
+        self.parent = parent
 
 
 class _FakeSession:
@@ -44,7 +49,7 @@ def _student() -> Student:
 
 def test_successful_savepoint_preserves_pending_mutations_until_outer_end() -> None:
     session = _FakeSession()
-    transaction = SimpleNamespace(nested=True, parent=object())
+    transaction = _Transaction(nested=True, parent=object())
     session.nested_transaction = transaction
     level = _level()
     session.new = [level]
@@ -56,7 +61,7 @@ def test_successful_savepoint_preserves_pending_mutations_until_outer_end() -> N
     assert len(pending) == 1  # type: ignore[arg-type]
 
     session.nested_transaction = None
-    outer_transaction = SimpleNamespace(nested=False, parent=None)
+    outer_transaction = _Transaction(nested=False, parent=None)
     model_events._after_transaction_end(session, outer_transaction)  # type: ignore[arg-type]
     assert model_events._PENDING_KEY not in session.info
     assert model_events._SAVEPOINT_JOURNALS_KEY not in session.info
@@ -68,7 +73,7 @@ def test_failed_savepoint_restores_only_state_created_inside_it() -> None:
     session.new = [first_level]
     model_events._collect_pending(session)  # type: ignore[arg-type]
 
-    transaction = SimpleNamespace(nested=True, parent=object())
+    transaction = _Transaction(nested=True, parent=object())
     session.nested_transaction = transaction
     second_level = _level()
     session.new = [second_level]
@@ -91,7 +96,7 @@ def test_failed_savepoint_restores_student_refresh_tracking() -> None:
     session.new = [first_student]
     model_events._collect_pending(session)  # type: ignore[arg-type]
 
-    transaction = SimpleNamespace(nested=True, parent=object())
+    transaction = _Transaction(nested=True, parent=object())
     session.nested_transaction = transaction
     second_student = _student()
     session.new = [second_student]
@@ -108,7 +113,7 @@ def test_outer_rollback_clears_all_pending_state() -> None:
     session.new = [_level(), _student()]
     model_events._collect_pending(session)  # type: ignore[arg-type]
 
-    outer_transaction = SimpleNamespace(nested=False, parent=None)
+    outer_transaction = _Transaction(nested=False, parent=None)
     model_events._after_soft_rollback(session, outer_transaction)  # type: ignore[arg-type]
 
     assert model_events._PENDING_KEY not in session.info
