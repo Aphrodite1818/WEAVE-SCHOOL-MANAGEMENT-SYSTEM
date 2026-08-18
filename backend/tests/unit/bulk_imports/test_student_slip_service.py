@@ -23,8 +23,8 @@ def _row(
     first_name: str,
     last_name: str,
     admission_number: str,
-    class_name: str,
-    class_arm: str,
+    level: str,
+    arm: str,
     setup_code: str = "12345678",
 ) -> dict:
     return {
@@ -33,8 +33,8 @@ def _row(
         "first_name": first_name,
         "last_name": last_name,
         "admission_number": admission_number,
-        "class_name": class_name,
-        "class_arm": class_arm,
+        "level": level,
+        "arm": arm,
         "setup_code": setup_code,
         "access_code_expires_at": _future_iso(),
     }
@@ -66,24 +66,24 @@ async def test_summary_groups_classes_and_reports_printable_credentials() -> Non
             first_name="Ada",
             last_name="Okafor",
             admission_number="BFA/001",
-            class_name="JSS 1",
-            class_arm="Blue",
+            level="JSS1",
+            arm="Blue",
         ),
         _row(
             3,
             first_name="Tobi",
             last_name="Adeleke",
             admission_number="BFA/002",
-            class_name="JSS 1",
-            class_arm="Blue",
+            level="JSS1",
+            arm="Blue",
         ),
         _row(
             4,
             first_name="Mary",
             last_name="James",
             admission_number="BFA/003",
-            class_name="JSS 2",
-            class_arm="",
+            level="JSS2",
+            arm="A",
         ),
     ]
     job, tenant, actor = _context(rows)
@@ -107,10 +107,10 @@ async def test_summary_groups_classes_and_reports_printable_credentials() -> Non
     assert result.total_slips == 3
     assert result.printable_slips == 3
     assert [(item.class_name, item.count) for item in result.classes] == [
-        ("JSS 1 Blue", 2),
-        ("JSS 2", 1),
+        ("JSS1 Blue", 2),
+        ("JSS2 A", 1),
     ]
-    assert result.classes[0].class_key == "name:jss 1 blue"
+    assert result.classes[0].class_key == "name:jss1 blue"
 
 
 @pytest.mark.asyncio
@@ -121,16 +121,16 @@ async def test_list_slips_filters_by_class_and_student_search() -> None:
             first_name="Ada",
             last_name="Okafor",
             admission_number="BFA/001",
-            class_name="JSS 1",
-            class_arm="Blue",
+            level="JSS1",
+            arm="Blue",
         ),
         _row(
             3,
             first_name="Tobi",
             last_name="Adeleke",
             admission_number="BFA/002",
-            class_name="JSS 2",
-            class_arm="Red",
+            level="JSS2",
+            arm="Red",
         ),
     ]
     job, tenant, actor = _context(rows)
@@ -150,7 +150,7 @@ async def test_list_slips_filters_by_class_and_student_search() -> None:
             actor=actor,
             job_id=job.id,
             search="ada",
-            class_key="name:jss 1 blue",
+            class_key="name:jss1 blue",
             page=1,
             page_size=50,
         )
@@ -168,8 +168,8 @@ async def test_print_data_rejects_rows_outside_the_import_job() -> None:
             first_name="Ada",
             last_name="Okafor",
             admission_number="BFA/001",
-            class_name="JSS 1",
-            class_arm="Blue",
+            level="JSS1",
+            arm="Blue",
         )
     ]
     job, tenant, actor = _context(rows)
