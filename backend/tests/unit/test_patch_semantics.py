@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from decimal import Decimal
 
@@ -14,7 +13,6 @@ from app.modules.classes.schemas import (
     ClassRoomUpdate,
 )
 from app.modules.school_calendar.calendar_enums import (
-    SchoolCalendarDayType,
     SchoolCalendarEventAudience,
     SchoolCalendarEventType,
 )
@@ -25,12 +23,12 @@ from app.modules.school_calendar.schemas import (
 )
 from app.modules.student_academics.assessment_schemas import AssessmentComponentUpdate
 from app.modules.student_academics.curriculum_v2_schemas import CurriculumSubjectUpdate
+from app.modules.student_academics.models import AcademicTermName
 from app.modules.student_academics.schemas import (
     AcademicSessionUpdate,
     AcademicTermUpdate,
     GradingScaleUpdate,
 )
-from app.modules.student_academics.models import AcademicTermName
 from app.modules.tenant_branding.schemas import TenantBrandingUpdate
 from app.modules.user_guides.schemas import UserGuideStateUpdate
 from app.tenant_management.schemas import TenantUpdate
