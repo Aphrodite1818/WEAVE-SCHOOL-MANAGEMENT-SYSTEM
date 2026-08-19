@@ -23,6 +23,7 @@ from app.modules.parents.models import (
 from app.modules.students.models import ParentRelationship
 
 PHONE_PATTERN = re.compile(r"^\+?[0-9][0-9()\-\s]{5,28}[0-9]$")
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 class InputBase(BaseModel):
@@ -304,6 +305,17 @@ class ParentMembershipNotificationUpdateRequest(InputBase):
 
     receive_email_notifications: bool | None = None
     receive_push_notifications: bool | None = None
+
+    @field_validator(
+        "receive_email_notifications",
+        "receive_push_notifications",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_notification_preferences(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @model_validator(mode="after")
     def require_notification_change(
