@@ -1,4 +1,5 @@
 import { api, authSession } from "./api";
+import { buildChangedPatch, hasPatchChanges } from "./patchPayload";
 
 const ROLE_CONFIG = {
   admin: {
@@ -44,6 +45,8 @@ const ID_FIELD_BY_ROLE = {
   student: "student_id",
 };
 
+const onboardingStatusByRole = new Map();
+
 export const normalizeRole = (role) => {
   const normalizedRole = String(role || "")
     .trim()
@@ -59,6 +62,28 @@ export const roleFromActorType = (actorType) =>
   ] || null;
 
 const getRoleConfig = (role) => ROLE_CONFIG[normalizeRole(role)] || null;
+
+const rememberOnboardingStatus = (role, status) => {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole && status) {
+    onboardingStatusByRole.set(normalizedRole, status);
+  }
+  return status;
+};
+
+const mergeSubmittedChanges = (role, changes) => {
+  const normalizedRole = normalizeRole(role);
+  const current = onboardingStatusByRole.get(normalizedRole);
+  if (!current) return;
+
+  onboardingStatusByRole.set(normalizedRole, {
+    ...current,
+    current_values: {
+      ...(current.current_values || {}),
+      ...changes,
+    },
+  });
+};
 
 const buildSessionUserFromStatus = (
   role,
@@ -139,21 +164,32 @@ export const onboardingService = {
     if (!roleConfig) return null;
 
     const status = await api.get(roleConfig.statusEndpoint);
+    rememberOnboardingStatus(role, status);
     buildSessionUserFromStatus(role, status);
     return status;
   },
 
   async submitOnboarding(role = this.getCurrentRole(), payload) {
-    const roleConfig = getRoleConfig(role);
+    const normalizedRole = normalizeRole(role);
+    const roleConfig = getRoleConfig(normalizedRole);
     if (!roleConfig) {
       throw new Error("Unsupported onboarding role.");
     }
 
+    const baseline = onboardingStatusByRole.get(normalizedRole)?.current_values;
+    const changes = buildChangedPatch(baseline, payload);
+    if (!hasPatchChanges(changes)) {
+      return onboardingStatusByRole.get(normalizedRole) || null;
+    }
+
     const submit = api[roleConfig.submitMethod] || api.patch;
-    return submit(roleConfig.submitEndpoint, payload);
+    const response = await submit(roleConfig.submitEndpoint, changes);
+    mergeSubmittedChanges(normalizedRole, changes);
+    return response;
   },
 
   updateSessionUserFromStatus(role, status) {
+    rememberOnboardingStatus(role, status);
     return buildSessionUserFromStatus(role, status);
   },
 };
