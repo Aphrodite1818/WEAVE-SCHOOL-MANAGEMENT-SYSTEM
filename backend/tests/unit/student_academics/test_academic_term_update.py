@@ -5,6 +5,7 @@ from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import BadRequestException, ConflictException
 from app.modules.student_academics.models import (
@@ -94,6 +95,11 @@ async def test_create_academic_term_is_always_draft() -> None:
     assert created.is_current is False
 
 
+def test_update_academic_term_rejects_explicit_null_name() -> None:
+    with pytest.raises(ValidationError):
+        AcademicTermUpdate(name=None)
+
+
 @pytest.mark.asyncio
 async def test_update_academic_term_allows_explicit_nullable_dates_to_clear() -> None:
     tenant_id = uuid.uuid4()
@@ -119,7 +125,6 @@ async def test_update_academic_term_allows_explicit_nullable_dates_to_clear() ->
             tenant_id=tenant_id,
             term_id=term.id,
             payload=AcademicTermUpdate(
-                name=None,
                 start_date=None,
                 end_date=None,
             ),
