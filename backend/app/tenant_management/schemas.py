@@ -16,6 +16,7 @@ from pydantic import (
     HttpUrl,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 from app.core.utils.validators import generate_slug
@@ -269,23 +270,29 @@ class TenantUpdate(InputBase):
             return None
         return value.upper()
 
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "TenantUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one tenant field must be provided")
+        return self
+
 
 class TenantOnboardingUpdate(InputBase):
-    """Schema for first-time tenant onboarding completion."""
+    """Sparse tenant onboarding/profile PATCH contract."""
 
-    admission_number_prefix: str = Field(
-        ...,
+    admission_number_prefix: str | None = Field(
+        default=None,
         min_length=2,
         max_length=20,
     )
-    institution_type: InstitutionType
+    institution_type: InstitutionType | None = None
     phone: str | None = Field(default=None, pattern=PHONE_PATTERN)
-    address: str = Field(..., min_length=3, max_length=500)
-    city: str = Field(..., min_length=2, max_length=100)
-    state: str = Field(..., min_length=2, max_length=100)
-    country: str = Field(default="Nigeria", max_length=100)
-    timezone: str = Field(default="Africa/Lagos", max_length=50)
-    language: str = Field(default="en", max_length=10)
+    address: str | None = Field(default=None, min_length=3, max_length=500)
+    city: str | None = Field(default=None, min_length=2, max_length=100)
+    state: str | None = Field(default=None, min_length=2, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
+    timezone: str | None = Field(default=None, max_length=50)
+    language: str | None = Field(default=None, max_length=10)
     school_bot_whatssap_number: str | None = Field(
         default=None,
         pattern=PHONE_PATTERN,
@@ -306,19 +313,43 @@ class TenantOnboardingUpdate(InputBase):
     )
     @classmethod
     def clean_text_fields(cls, value: str | None) -> str | None:
-        """Clean onboarding text fields."""
+        """Clean supplied onboarding/profile text fields."""
 
         return _clean_optional_string(value)
+
+    @field_validator(
+        "admission_number_prefix",
+        "institution_type",
+        "address",
+        "city",
+        "state",
+        "country",
+        "timezone",
+        "language",
+    )
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @field_validator("admission_number_prefix")
     @classmethod
     def normalize_onboarding_admission_number_prefix(
         cls,
-        value: str,
-    ) -> str:
-        """Uppercase the onboarding admission prefix."""
+        value: str | None,
+    ) -> str | None:
+        """Uppercase the onboarding admission prefix when supplied."""
 
+        if value is None:
+            return None
         return value.upper()
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "TenantOnboardingUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one onboarding field must be provided")
+        return self
 
 
 class TenantStatusUpdate(InputBase):
