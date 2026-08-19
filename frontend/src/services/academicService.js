@@ -29,6 +29,12 @@ const stripTermCreateOnlyFields = (payload = {}) => {
   return updatablePayload;
 };
 
+const stripGradingLifecycleFields = (payload = {}) => {
+  const updatablePayload = { ...payload };
+  delete updatablePayload.is_active;
+  return updatablePayload;
+};
+
 const buildTeacherAssignmentPayload = (payload = {}) => ({
   class_id: payload.class_id,
   curriculum_subject_id: payload.curriculum_subject_id,
@@ -157,7 +163,10 @@ export const academicService = {
   createGradingScale: (payload) =>
     api.post("/tenant-admin/academics/grading-scales", payload),
   updateGradingScale: (scaleId, payload) =>
-    api.patch(`/tenant-admin/academics/grading-scales/${scaleId}`, payload),
+    api.patch(
+      `/tenant-admin/academics/grading-scales/${scaleId}`,
+      stripGradingLifecycleFields(payload),
+    ),
   activateGradingScale: (scaleId) =>
     api.post(`/tenant-admin/academics/grading-scales/${scaleId}/activate`, {}),
   deactivateGradingScale: (scaleId) =>
