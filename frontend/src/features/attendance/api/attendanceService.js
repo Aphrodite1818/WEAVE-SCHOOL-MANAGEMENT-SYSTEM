@@ -1,4 +1,14 @@
 import { api } from "../../../services/api";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+  rememberRecord,
+} from "../../../services/patchPayload";
+
+const geofenceSnapshots = new Map();
+let settingsSnapshot = null;
 
 const compactParams = (params = {}) => {
   const query = new URLSearchParams();
@@ -26,6 +36,9 @@ const locationPayload = (position) => ({
   },
 });
 
+const rememberGeofence = (response) =>
+  rememberRecord(geofenceSnapshots, response);
+
 export const getBrowserLocation = () =>
   new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -41,22 +54,67 @@ export const getBrowserLocation = () =>
 
 export const attendanceService = {
   admin: {
-    getSettings: (options) =>
-      api.get("/tenant-admin/attendance/settings", options),
-    updateSettings: (payload) =>
-      api.put("/tenant-admin/attendance/settings", payload),
-    listGeofences: (params = {}, options) =>
-      api.get(withQuery("/tenant-admin/attendance/geofences", params), options),
-    createGeofence: (payload) =>
-      api.post("/tenant-admin/attendance/geofences", payload),
-    updateGeofence: (geofenceId, payload) =>
-      api.patch(`/tenant-admin/attendance/geofences/${geofenceId}`, payload),
-    activateGeofence: (geofenceId) =>
-      api.post(`/tenant-admin/attendance/geofences/${geofenceId}/activate`),
-    deactivateGeofence: (geofenceId) =>
-      api.post(`/tenant-admin/attendance/geofences/${geofenceId}/deactivate`),
-    archiveGeofence: (geofenceId) =>
-      api.post(`/tenant-admin/attendance/geofences/${geofenceId}/archive`),
+    getSettings: async (options) => {
+      const response = await api.get("/tenant-admin/attendance/settings", options);
+      settingsSnapshot = response;
+      return response;
+    },
+    updateSettings: async (payload) => {
+      const changes = buildChangedPatch(settingsSnapshot, payload);
+      if (!hasPatchChanges(changes)) return settingsSnapshot;
+
+      const response = await api.put(
+        "/tenant-admin/attendance/settings",
+        changes,
+      );
+      settingsSnapshot = mergePatchResult(settingsSnapshot, changes, response);
+      return response;
+    },
+    listGeofences: async (params = {}, options) => {
+      const response = await api.get(
+        withQuery("/tenant-admin/attendance/geofences", params),
+        options,
+      );
+      return rememberById(geofenceSnapshots, response);
+    },
+    createGeofence: async (payload) => {
+      const response = await api.post(
+        "/tenant-admin/attendance/geofences",
+        payload,
+      );
+      return rememberGeofence(response);
+    },
+    updateGeofence: async (geofenceId, payload) => {
+      const key = String(geofenceId);
+      const current = geofenceSnapshots.get(key);
+      const changes = buildChangedPatch(current, payload);
+      if (!hasPatchChanges(changes)) return current;
+
+      const response = await api.patch(
+        `/tenant-admin/attendance/geofences/${geofenceId}`,
+        changes,
+      );
+      geofenceSnapshots.set(key, mergePatchResult(current, changes, response));
+      return response;
+    },
+    activateGeofence: async (geofenceId) =>
+      rememberGeofence(
+        await api.post(
+          `/tenant-admin/attendance/geofences/${geofenceId}/activate`,
+        ),
+      ),
+    deactivateGeofence: async (geofenceId) =>
+      rememberGeofence(
+        await api.post(
+          `/tenant-admin/attendance/geofences/${geofenceId}/deactivate`,
+        ),
+      ),
+    archiveGeofence: async (geofenceId) =>
+      rememberGeofence(
+        await api.post(
+          `/tenant-admin/attendance/geofences/${geofenceId}/archive`,
+        ),
+      ),
     previewGeofence: (payload) =>
       api.post("/tenant-admin/attendance/geofences/preview", payload),
     listSheets: (params = {}, options) =>
