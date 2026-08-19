@@ -149,7 +149,12 @@ def test_calendar_configuration_patch_separates_clearable_times() -> None:
 def test_calendar_day_patch_allows_only_intentional_clears() -> None:
     _assert_invalid(SchoolCalendarDayUpdate, day_type=None)
     _assert_invalid(SchoolCalendarDayUpdate, school_open=None)
-    payload = SchoolCalendarDayUpdate(title=None, description=None, opens_at=None, closes_at=None)
+    payload = SchoolCalendarDayUpdate(
+        title=None,
+        description=None,
+        opens_at=None,
+        closes_at=None,
+    )
     assert payload.model_dump(exclude_unset=True) == {
         "title": None,
         "description": None,
