@@ -5,6 +5,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
+
+
 class InputBase(BaseModel):
     """Base for all request/input schemas."""
 
@@ -77,7 +80,7 @@ class SubjectCreate(InputBase):
 
 
 class SubjectUpdate(InputBase):
-    """Pydantic schema for the subjects domain."""
+    """Partial subject update: omitted fields are preserved and nullable fields may be cleared."""
 
     name: str | None = Field(default=None, min_length=2, max_length=100)
     code: str | None = Field(default=None, min_length=2, max_length=30)
@@ -85,20 +88,20 @@ class SubjectUpdate(InputBase):
 
     @field_validator("name", mode="before")
     @classmethod
-    def clean_name(cls, value: str | None) -> str | None:
-        """Normalize name."""
+    def clean_name(cls, value: str | None) -> str:
+        """Reject null/blank names while allowing the field to be omitted entirely."""
 
-        cleaned_value = _clean_optional_string(value)
-
-        if cleaned_value is not None and len(cleaned_value) < 2:
+        if value is None:
+            raise ValueError(f"name {_PATCH_NULL_ERROR}")
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 2:
             raise ValueError("name must be at least 2 characters long")
-
         return cleaned_value
 
     @field_validator("code", "description", mode="before")
     @classmethod
     def clean_optional_text_fields(cls, value: str | None) -> str | None:
-        """Normalize optional text fields."""
+        """Normalize clearable optional text fields."""
 
         return _clean_optional_string(value)
 
