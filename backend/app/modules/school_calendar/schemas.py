@@ -18,6 +18,8 @@ from app.modules.school_calendar.calendar_enums import (
     SchoolCalendarStatus,
 )
 
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
+
 
 class CalendarInputBase(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, use_enum_values=False)
@@ -84,13 +86,28 @@ class SchoolCalendarConfigurationUpdate(CalendarInputBase):
 
     @field_validator("instructional_weekdays")
     @classmethod
-    def validate_weekdays(cls, values: list[int] | None) -> list[int] | None:
-        return None if values is None else _validate_weekdays(values)
+    def validate_weekdays(cls, values: list[int] | None) -> list[int]:
+        if values is None:
+            raise ValueError(f"instructional_weekdays {_PATCH_NULL_ERROR}")
+        return _validate_weekdays(values)
 
     @field_validator("timezone")
     @classmethod
-    def validate_timezone(cls, value: str | None) -> str | None:
-        return None if value is None else _validate_timezone(value)
+    def validate_timezone(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError(f"timezone {_PATCH_NULL_ERROR}")
+        return _validate_timezone(value)
+
+    @field_validator(
+        "default_student_attendance_required",
+        "default_workforce_attendance_required",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_attendance_defaults(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @model_validator(mode="after")
     def validate_update(self):
@@ -148,6 +165,21 @@ class SchoolCalendarDayUpdate(CalendarInputBase):
     closes_at: time | None = None
     reason: str | None = Field(default=None, min_length=3, max_length=500)
     historical_correction_confirmed: bool = False
+
+    @field_validator(
+        "calendar_id",
+        "day_type",
+        "school_open",
+        "student_activity_allowed",
+        "student_attendance_required",
+        "workforce_attendance_required",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @model_validator(mode="after")
     def validate_day(self):
@@ -234,6 +266,21 @@ class SchoolCalendarEventUpdate(CalendarInputBase):
     is_all_day: bool | None = None
     audience: SchoolCalendarEventAudience | None = None
     location: str | None = Field(default=None, max_length=200)
+
+    @field_validator(
+        "title",
+        "event_type",
+        "starts_at",
+        "ends_at",
+        "is_all_day",
+        "audience",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @model_validator(mode="after")
     def validate_event_update(self):
