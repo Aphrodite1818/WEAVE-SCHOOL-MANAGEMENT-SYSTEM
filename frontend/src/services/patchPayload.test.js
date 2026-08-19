@@ -39,6 +39,20 @@ test("buildChangedPatch drops unchanged explicit null values", () => {
   );
 });
 
+test("buildChangedPatch never treats undefined as update intent", () => {
+  assert.deepEqual(
+    buildChangedPatch(
+      { first_name: "Taiwo", phone: "+2348012345678" },
+      { first_name: undefined, phone: undefined },
+    ),
+    {},
+  );
+  assert.deepEqual(
+    buildChangedPatch(null, { first_name: "Taiwo", phone: undefined }),
+    { first_name: "Taiwo" },
+  );
+});
+
 test("buildChangedPatch compares arrays and objects by value", () => {
   const current = {
     skipped_steps: ["one", "two"],
@@ -53,7 +67,7 @@ test("buildChangedPatch compares arrays and objects by value", () => {
   );
 });
 
-test("a missing baseline forwards the caller payload unchanged", () => {
+test("a missing baseline forwards supplied JSON values", () => {
   const payload = { first_name: "Taiwo", phone: null };
   assert.deepEqual(buildChangedPatch(null, payload), payload);
 });
