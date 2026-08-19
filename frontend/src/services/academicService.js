@@ -1,4 +1,17 @@
 import { api } from "./api";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+  rememberRecord,
+} from "./patchPayload";
+
+const sessionsById = new Map();
+const termsById = new Map();
+const gradingScalesById = new Map();
+const assessmentSchemesById = new Map();
+const assessmentComponentsById = new Map();
 
 const queryString = (params = {}) => {
   const query = new URLSearchParams();
@@ -35,6 +48,31 @@ const stripGradingLifecycleFields = (payload = {}) => {
   return updatablePayload;
 };
 
+const rememberAssessmentScheme = (scheme) => {
+  rememberRecord(assessmentSchemesById, scheme);
+  (scheme?.components || []).forEach((component) =>
+    rememberRecord(assessmentComponentsById, component),
+  );
+  return scheme;
+};
+
+const rememberAssessmentSchemes = (response) => {
+  const items = Array.isArray(response) ? response : response?.items || [];
+  items.forEach(rememberAssessmentScheme);
+  return response;
+};
+
+const patchRemembered = async ({ cache, id, payload, request }) => {
+  const key = String(id);
+  const current = cache.get(key);
+  const changes = buildChangedPatch(current, payload);
+  if (!hasPatchChanges(changes)) return current;
+
+  const response = await request(changes);
+  cache.set(key, mergePatchResult(current, changes, response));
+  return response;
+};
+
 const buildTeacherAssignmentPayload = (payload = {}) => ({
   class_id: payload.class_id,
   curriculum_subject_id: payload.curriculum_subject_id,
@@ -58,15 +96,27 @@ const reassignTeacherAssignment = async (assignmentId, payload) => {
 };
 
 export const academicService = {
-  listSessions: (params) =>
-    api.get(`/tenant-admin/academics/sessions${queryString(params)}`),
-  createSession: (payload) =>
-    api.post("/tenant-admin/academics/sessions", sessionPayload(payload)),
-  updateSession: (sessionId, payload) =>
-    api.patch(
-      `/tenant-admin/academics/sessions/${sessionId}`,
+  listSessions: async (params) => {
+    const response = await api.get(
+      `/tenant-admin/academics/sessions${queryString(params)}`,
+    );
+    return rememberById(sessionsById, response);
+  },
+  createSession: async (payload) => {
+    const response = await api.post(
+      "/tenant-admin/academics/sessions",
       sessionPayload(payload),
-    ),
+    );
+    return rememberRecord(sessionsById, response);
+  },
+  updateSession: (sessionId, payload) =>
+    patchRemembered({
+      cache: sessionsById,
+      id: sessionId,
+      payload: sessionPayload(payload),
+      request: (changes) =>
+        api.patch(`/tenant-admin/academics/sessions/${sessionId}`, changes),
+    }),
   openSession: (sessionId) =>
     api.post(`/tenant-admin/academics/sessions/${sessionId}/open`, {
       confirmation: "OPEN_ACADEMIC_SESSION",
@@ -83,14 +133,24 @@ export const academicService = {
   listTeacherSessions: (params) =>
     api.get(`/teachers/academics/sessions${queryString(params)}`),
 
-  listTerms: (params) =>
-    api.get(`/tenant-admin/academics/terms${queryString(params)}`),
-  createTerm: (payload) => api.post("/tenant-admin/academics/terms", payload),
+  listTerms: async (params) => {
+    const response = await api.get(
+      `/tenant-admin/academics/terms${queryString(params)}`,
+    );
+    return rememberById(termsById, response);
+  },
+  createTerm: async (payload) => {
+    const response = await api.post("/tenant-admin/academics/terms", payload);
+    return rememberRecord(termsById, response);
+  },
   updateTerm: (termId, payload) =>
-    api.patch(
-      `/tenant-admin/academics/terms/${termId}`,
-      stripTermCreateOnlyFields(payload),
-    ),
+    patchRemembered({
+      cache: termsById,
+      id: termId,
+      payload: stripTermCreateOnlyFields(payload),
+      request: (changes) =>
+        api.patch(`/tenant-admin/academics/terms/${termId}`, changes),
+    }),
   openTerm: (termId) =>
     api.post(`/tenant-admin/academics/terms/${termId}/open`, {
       confirmation: "OPEN_ACADEMIC_TERM",
@@ -118,27 +178,54 @@ export const academicService = {
   listTeacherTerms: (params) =>
     api.get(`/teachers/academics/terms${queryString(params)}`),
 
-  listAssessmentSchemes: () =>
-    api.get("/tenant-admin/academics/assessment-schemes"),
-  getActiveAssessmentScheme: () =>
-    api.get("/tenant-admin/academics/assessment-schemes/active"),
-  createAssessmentScheme: (payload) =>
-    api.post("/tenant-admin/academics/assessment-schemes", payload),
-  updateAssessmentScheme: (schemeId, payload) =>
-    api.patch(
-      `/tenant-admin/academics/assessment-schemes/${schemeId}`,
+  listAssessmentSchemes: async () => {
+    const response = await api.get(
+      "/tenant-admin/academics/assessment-schemes",
+    );
+    return rememberAssessmentSchemes(response);
+  },
+  getActiveAssessmentScheme: async () => {
+    const response = await api.get(
+      "/tenant-admin/academics/assessment-schemes/active",
+    );
+    return rememberAssessmentScheme(response);
+  },
+  createAssessmentScheme: async (payload) => {
+    const response = await api.post(
+      "/tenant-admin/academics/assessment-schemes",
       payload,
-    ),
-  addAssessmentComponent: (schemeId, payload) =>
-    api.post(
+    );
+    return rememberAssessmentScheme(response);
+  },
+  updateAssessmentScheme: (schemeId, payload) =>
+    patchRemembered({
+      cache: assessmentSchemesById,
+      id: schemeId,
+      payload,
+      request: (changes) =>
+        api.patch(
+          `/tenant-admin/academics/assessment-schemes/${schemeId}`,
+          changes,
+        ),
+    }),
+  addAssessmentComponent: async (schemeId, payload) => {
+    const response = await api.post(
       `/tenant-admin/academics/assessment-schemes/${schemeId}/components`,
       payload,
-    ),
+    );
+    return rememberRecord(assessmentComponentsById, response);
+  },
   updateAssessmentComponent: (schemeId, componentId, payload) =>
-    api.patch(
-      `/tenant-admin/academics/assessment-schemes/${schemeId}/components/${componentId}`,
+    patchRemembered({
+      cache: assessmentComponentsById,
+      id: componentId,
       payload,
-    ),
+      request: (changes) =>
+        api.patch(
+          `/tenant-admin/academics/assessment-schemes/${schemeId}/components/${componentId}`,
+          changes,
+        ),
+    }),
   removeAssessmentComponent: (schemeId, componentId) =>
     api.delete(
       `/tenant-admin/academics/assessment-schemes/${schemeId}/components/${componentId}`,
@@ -158,15 +245,30 @@ export const academicService = {
   getStudentAssessmentScheme: () =>
     api.get("/students/academics/assessment-scheme"),
 
-  listGradingScales: (params) =>
-    api.get(`/tenant-admin/academics/grading-scales${queryString(params)}`),
-  createGradingScale: (payload) =>
-    api.post("/tenant-admin/academics/grading-scales", payload),
+  listGradingScales: async (params) => {
+    const response = await api.get(
+      `/tenant-admin/academics/grading-scales${queryString(params)}`,
+    );
+    return rememberById(gradingScalesById, response);
+  },
+  createGradingScale: async (payload) => {
+    const response = await api.post(
+      "/tenant-admin/academics/grading-scales",
+      payload,
+    );
+    return rememberRecord(gradingScalesById, response);
+  },
   updateGradingScale: (scaleId, payload) =>
-    api.patch(
-      `/tenant-admin/academics/grading-scales/${scaleId}`,
-      stripGradingLifecycleFields(payload),
-    ),
+    patchRemembered({
+      cache: gradingScalesById,
+      id: scaleId,
+      payload: stripGradingLifecycleFields(payload),
+      request: (changes) =>
+        api.patch(
+          `/tenant-admin/academics/grading-scales/${scaleId}`,
+          changes,
+        ),
+    }),
   activateGradingScale: (scaleId) =>
     api.post(`/tenant-admin/academics/grading-scales/${scaleId}/activate`, {}),
   deactivateGradingScale: (scaleId) =>
