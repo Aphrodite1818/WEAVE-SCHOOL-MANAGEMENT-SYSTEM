@@ -5,6 +5,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import BadRequestException
 from app.modules.student_academics.models import GradingScale
@@ -24,8 +25,22 @@ def _scale(tenant_id: uuid.UUID) -> GradingScale:
     )
 
 
+def test_update_grading_scale_rejects_explicit_null_required_values() -> None:
+    with pytest.raises(ValidationError):
+        GradingScaleUpdate(min_score=None)
+    with pytest.raises(ValidationError):
+        GradingScaleUpdate(max_score=None)
+    with pytest.raises(ValidationError):
+        GradingScaleUpdate(grade=None)
+
+
+def test_update_grading_scale_rejects_lifecycle_status_in_patch() -> None:
+    with pytest.raises(ValidationError):
+        GradingScaleUpdate(is_active=False)
+
+
 @pytest.mark.asyncio
-async def test_update_grading_scale_ignores_null_scores_before_comparison() -> None:
+async def test_update_grading_scale_clears_explicit_null_remark() -> None:
     tenant_id = uuid.uuid4()
     scale = _scale(tenant_id)
     db = AsyncMock()
@@ -48,13 +63,11 @@ async def test_update_grading_scale_ignores_null_scores_before_comparison() -> N
             db=db,
             tenant_id=tenant_id,
             scale_id=scale.id,
-            payload=GradingScaleUpdate(min_score=None, max_score=None, grade=None),
+            payload=GradingScaleUpdate(remark=None),
         )
 
     assert updated is scale
-    assert scale.min_score == Decimal("70")
-    assert scale.max_score == Decimal("100")
-    assert scale.grade == "A"
+    assert scale.remark is None
 
 
 @pytest.mark.asyncio
@@ -86,6 +99,7 @@ async def test_update_grading_scale_applies_explicit_scores() -> None:
 
     assert updated.min_score == Decimal("75")
     assert updated.max_score == Decimal("95")
+    assert updated.remark == "Excellent"
 
 
 @pytest.mark.asyncio
