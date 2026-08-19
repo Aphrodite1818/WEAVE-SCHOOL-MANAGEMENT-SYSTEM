@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.communications.enums import (
     AnnouncementAudienceType,
@@ -17,6 +17,8 @@ from app.modules.communications.enums import (
     NotificationSourceType,
     NotificationStatus,
 )
+
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 class InputBase(BaseModel):
@@ -124,6 +126,8 @@ class AnnouncementCreate(InputBase):
 
 
 class AnnouncementUpdate(InputBase):
+    """Sparse announcement update; schedule timestamps may be cleared explicitly."""
+
     title: str | None = Field(default=None, min_length=3, max_length=200)
     body: str | None = Field(default=None, min_length=3, max_length=10000)
     category: AnnouncementCategory | None = None
@@ -131,7 +135,28 @@ class AnnouncementUpdate(InputBase):
     publish_at: datetime | None = None
     expires_at: datetime | None = None
     is_pinned: bool | None = None
-    audiences: list[AnnouncementAudienceCreate] | None = None
+    audiences: list[AnnouncementAudienceCreate] | None = Field(default=None, min_length=1)
+
+    @field_validator(
+        "title",
+        "body",
+        "category",
+        "priority",
+        "is_pinned",
+        "audiences",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "AnnouncementUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one announcement field must be provided")
+        return self
 
 
 class AnnouncementPublishRequest(InputBase):
