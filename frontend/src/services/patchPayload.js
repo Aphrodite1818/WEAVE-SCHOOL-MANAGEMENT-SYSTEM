@@ -31,16 +31,17 @@ export const rememberRecord = (cache, record) => {
   return record;
 };
 
-export const buildChangedPatch = (current, payload = {}) => {
-  if (!current) return { ...payload };
+export const buildChangedPatch = (current, payload = {}) =>
+  Object.entries(payload).reduce((changes, [key, value]) => {
+    // Undefined means the caller did not provide a JSON value. Never convert it
+    // into an update intent; explicit null remains available for clearable fields.
+    if (value === undefined) return changes;
 
-  return Object.entries(payload).reduce((changes, [key, value]) => {
-    if (!valuesEqual(value, current[key])) {
+    if (!current || !valuesEqual(value, current[key])) {
       changes[key] = value;
     }
     return changes;
   }, {});
-};
 
 export const mergePatchResult = (current, changes, response) => ({
   ...(current || {}),
