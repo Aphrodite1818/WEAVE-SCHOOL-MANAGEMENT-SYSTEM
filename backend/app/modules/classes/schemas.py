@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.utils.normalization import normalize_class_name
 from app.modules.classes.models import AcademicCategory
@@ -68,6 +68,12 @@ class AcademicLevelUpdate(InputBase):
             raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
         return value
 
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "AcademicLevelUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one academic level field must be provided")
+        return self
+
 
 class AcademicLevelResponse(OutputBase):
     id: uuid.UUID
@@ -112,6 +118,12 @@ class ArmLabelUpdate(InputBase):
             raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
         return value
 
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "ArmLabelUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one arm label field must be provided")
+        return self
+
 
 class ArmLabelResponse(OutputBase):
     id: uuid.UUID
@@ -140,6 +152,12 @@ class ClassRoomUpdate(InputBase):
         if value is None:
             raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
         return value
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "ClassRoomUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one class field must be provided")
+        return self
 
 
 class ClassRoomArchiveRequest(InputBase):
