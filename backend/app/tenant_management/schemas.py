@@ -27,6 +27,7 @@ from app.tenant_management.models import (
 )
 
 PHONE_PATTERN = r"^\+?[1-9]\d{7,14}$"
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 # ──────────────────────────────────────────────
@@ -207,7 +208,7 @@ class TenantCreate(TenantBase):
 
 
 class TenantUpdate(InputBase):
-    """Schema for general tenant/school profile updates."""
+    """Schema for partial tenant/school profile updates."""
 
     school_name: str | None = Field(default=None, min_length=2, max_length=255)
     email: EmailStr | None = None
@@ -248,6 +249,13 @@ class TenantUpdate(InputBase):
         """Clean optional update text fields."""
 
         return _clean_optional_string(value)
+
+    @field_validator("school_name", "email", "country", "timezone", "language")
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @field_validator("admission_number_prefix")
     @classmethod
