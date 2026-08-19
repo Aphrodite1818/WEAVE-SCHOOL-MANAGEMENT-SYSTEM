@@ -1,6 +1,17 @@
 import { api } from "./api";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+  rememberRecord,
+} from "./patchPayload";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
+
+const adminStudentsById = new Map();
+const studentSelfById = new Map();
+const parentLinksById = new Map();
 
 const buildStudentQuery = ({
   skip = 0,
@@ -24,12 +35,30 @@ const buildStudentQuery = ({
   return params.toString();
 };
 
+const patchAdminStudent = async (studentId, payload) => {
+  const key = String(studentId);
+  const current = adminStudentsById.get(key);
+  const changes = buildChangedPatch(current, payload);
+  if (!hasPatchChanges(changes)) return current;
+
+  const response = await api.patch(
+    `/tenant-admin/students/${studentId}/profile`,
+    changes,
+  );
+  adminStudentsById.set(key, mergePatchResult(current, changes, response));
+  return response;
+};
+
 export const studentService = {
   getStudents: (options = {}) =>
     api.get(`/students?${buildStudentQuery(options)}`),
 
-  getAdminStudents: (options = {}) =>
-    api.get(`/tenant-admin/students?${buildStudentQuery(options)}`),
+  getAdminStudents: async (options = {}) => {
+    const response = await api.get(
+      `/tenant-admin/students?${buildStudentQuery(options)}`,
+    );
+    return rememberById(adminStudentsById, response);
+  },
 
   createStudent: (payload) => api.post("/tenant-admin/students", payload),
 
@@ -38,10 +67,25 @@ export const studentService = {
       purpose: "password_reset",
     }),
 
-  getMyStudent: (requestOptions) => api.get("/students/me", requestOptions),
+  getMyStudent: async (requestOptions) => {
+    const response = await api.get("/students/me", requestOptions);
+    return rememberRecord(studentSelfById, response);
+  },
 
-  updateMyStudentProfile: (payload) =>
-    api.patch("/students/me/profile", payload),
+  updateMyStudentProfile: async (payload) => {
+    const current = [...studentSelfById.values()][0] || null;
+    const changes = buildChangedPatch(current, payload);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch("/students/me/profile", changes);
+    if (response?.id) {
+      studentSelfById.set(
+        String(response.id),
+        mergePatchResult(current, changes, response),
+      );
+    }
+    return response;
+  },
 
   changeMyPassword: (payload) =>
     api.post("/students/me/change-password", payload),
@@ -55,16 +99,19 @@ export const studentService = {
       payload,
     ),
 
-  getMyParentLinks: (requestOptions) =>
-    api.get("/students/me/parent-links", requestOptions),
+  getMyParentLinks: async (requestOptions) => {
+    const response = await api.get("/students/me/parent-links", requestOptions);
+    return rememberById(parentLinksById, response);
+  },
 
   getStudent: (studentId) => api.get(`/students/${studentId}`),
 
-  getAdminStudent: (studentId) =>
-    api.get(`/tenant-admin/students/${studentId}`),
+  getAdminStudent: async (studentId) => {
+    const response = await api.get(`/tenant-admin/students/${studentId}`);
+    return rememberRecord(adminStudentsById, response);
+  },
 
-  updateAdminStudent: (studentId, payload) =>
-    api.patch(`/tenant-admin/students/${studentId}/profile`, payload),
+  updateAdminStudent: patchAdminStudent,
 
   getEnrollmentHistory: (studentId) =>
     api.get(`/tenant-admin/students/${studentId}/enrollments`),
@@ -105,9 +152,19 @@ export const studentService = {
   hardDeleteStudent: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/hard-delete`, payload),
 
-  completeStudentProfile: (studentId, payload) =>
-    api.patch(`/tenant-admin/students/${studentId}/profile`, payload),
+  completeStudentProfile: patchAdminStudent,
 
-  updateParentLink: (linkId, payload) =>
-    api.patch(`/tenant-admin/student-parent-links/${linkId}`, payload),
+  updateParentLink: async (linkId, payload) => {
+    const key = String(linkId);
+    const current = parentLinksById.get(key);
+    const changes = buildChangedPatch(current, payload);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch(
+      `/tenant-admin/student-parent-links/${linkId}`,
+      changes,
+    );
+    parentLinksById.set(key, mergePatchResult(current, changes, response));
+    return response;
+  },
 };
