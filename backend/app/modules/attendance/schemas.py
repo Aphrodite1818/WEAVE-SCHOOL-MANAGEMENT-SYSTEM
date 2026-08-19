@@ -22,6 +22,8 @@ from app.modules.attendance.attendance_enums import (
     WorkforceAttendanceStatus,
 )
 
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
+
 
 class InputBase(BaseModel):
     model_config = ConfigDict(
@@ -58,8 +60,28 @@ class AttendanceSettingsUpdate(InputBase):
     notify_absent_parents: bool | None = None
     notify_absent_staff: bool | None = None
 
+    @field_validator(
+        "timezone",
+        "require_geofence_for_workforce",
+        "geofence_accuracy_threshold_m",
+        "geofence_tolerance_m",
+        "location_raw_retention_days",
+        "location_evidence_retention_days",
+        "require_student_sheet_submission",
+        "notify_absent_parents",
+        "notify_absent_staff",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
     @model_validator(mode="after")
     def validate_windows(self) -> "AttendanceSettingsUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one attendance setting must be provided")
         pairs = (
             ("student_marking_opens_at", "student_marking_closes_at"),
             ("workforce_check_in_opens_at", "workforce_check_in_closes_at"),
@@ -126,6 +148,26 @@ class SchoolGeofenceUpdate(InputBase):
     )
     radius_m: int | None = Field(default=None, gt=0, le=10000)
     is_primary: bool | None = None
+
+    @field_validator(
+        "name",
+        "latitude",
+        "longitude",
+        "radius_m",
+        "is_primary",
+        mode="before",
+    )
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "SchoolGeofenceUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one geofence field must be provided")
+        return self
 
 
 class SchoolGeofenceResponse(OutputBase):
