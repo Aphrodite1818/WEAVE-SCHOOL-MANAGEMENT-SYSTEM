@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import ConflictException
 from app.modules.subjects.models import Subject
@@ -39,6 +40,11 @@ def _subject(tenant_id: uuid.UUID) -> Subject:
         created_at=now,
         updated_at=now,
     )
+
+
+def test_update_subject_rejects_explicit_null_name() -> None:
+    with pytest.raises(ValidationError):
+        SubjectUpdate(name=None)
 
 
 @pytest.mark.asyncio
