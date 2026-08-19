@@ -176,13 +176,20 @@ export const onboardingService = {
       throw new Error("Unsupported onboarding role.");
     }
 
+    const submit = api[roleConfig.submitMethod] || api.patch;
+
+    // Only PATCH contracts are sparse. POST onboarding routes are completion
+    // commands and still require their complete role-specific payload.
+    if (roleConfig.submitMethod !== "patch") {
+      return submit(roleConfig.submitEndpoint, payload);
+    }
+
     const baseline = onboardingStatusByRole.get(normalizedRole)?.current_values;
     const changes = buildChangedPatch(baseline, payload);
     if (!hasPatchChanges(changes)) {
       return onboardingStatusByRole.get(normalizedRole) || null;
     }
 
-    const submit = api[roleConfig.submitMethod] || api.patch;
     const response = await submit(roleConfig.submitEndpoint, changes);
     mergeSubmittedChanges(normalizedRole, changes);
     return response;
