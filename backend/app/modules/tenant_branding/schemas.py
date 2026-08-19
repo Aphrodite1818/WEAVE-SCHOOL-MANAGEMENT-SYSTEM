@@ -6,7 +6,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 class InputBase(BaseModel):
@@ -63,6 +66,19 @@ class TenantBrandingUpdate(InputBase):
         | None
     ) = None
     is_enabled: bool | None = None
+
+    @field_validator("palette_key", "is_enabled", mode="before")
+    @classmethod
+    def reject_null_patch_values(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "TenantBrandingUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one branding field must be provided")
+        return self
 
 
 class TenantBrandingResponse(OutputBase):
