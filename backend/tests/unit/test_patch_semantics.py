@@ -6,12 +6,15 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
+from app.modules.attendance.schemas import AttendanceSettingsUpdate, SchoolGeofenceUpdate
 from app.modules.classes.models import AcademicCategory
 from app.modules.classes.schemas import (
     AcademicLevelUpdate,
     ArmLabelUpdate,
     ClassRoomUpdate,
 )
+from app.modules.communications.schemas import AnnouncementUpdate
+from app.modules.report_cards.schemas import ReportCardCommentsUpdate
 from app.modules.school_calendar.calendar_enums import (
     SchoolCalendarEventAudience,
     SchoolCalendarEventType,
@@ -176,6 +179,56 @@ def test_calendar_event_patch_allows_description_and_location_to_clear() -> None
         "description": None,
         "location": None,
     }
+
+
+def test_announcement_patch_rejects_null_core_fields_and_keeps_clearable_schedule() -> None:
+    _assert_invalid(AnnouncementUpdate)
+    _assert_invalid(AnnouncementUpdate, title=None)
+    _assert_invalid(AnnouncementUpdate, body=None)
+    _assert_invalid(AnnouncementUpdate, category=None)
+    _assert_invalid(AnnouncementUpdate, priority=None)
+    _assert_invalid(AnnouncementUpdate, is_pinned=None)
+    _assert_invalid(AnnouncementUpdate, audiences=None)
+
+    payload = AnnouncementUpdate(publish_at=None, expires_at=None)
+    assert payload.model_dump(exclude_unset=True) == {
+        "publish_at": None,
+        "expires_at": None,
+    }
+
+
+def test_report_card_comment_patch_supports_intentional_clear_only() -> None:
+    _assert_invalid(ReportCardCommentsUpdate)
+    payload = ReportCardCommentsUpdate(class_teacher_comment=None)
+    assert payload.model_dump(exclude_unset=True) == {"class_teacher_comment": None}
+
+
+def test_attendance_settings_update_rejects_null_config_and_allows_time_clear() -> None:
+    _assert_invalid(AttendanceSettingsUpdate)
+    _assert_invalid(AttendanceSettingsUpdate, timezone=None)
+    _assert_invalid(AttendanceSettingsUpdate, require_geofence_for_workforce=None)
+    _assert_invalid(AttendanceSettingsUpdate, geofence_accuracy_threshold_m=None)
+
+    payload = AttendanceSettingsUpdate(
+        student_marking_opens_at=None,
+        student_marking_closes_at=None,
+    )
+    assert payload.model_dump(exclude_unset=True) == {
+        "student_marking_opens_at": None,
+        "student_marking_closes_at": None,
+    }
+
+
+def test_geofence_patch_rejects_null_core_fields_and_allows_description_clear() -> None:
+    _assert_invalid(SchoolGeofenceUpdate)
+    _assert_invalid(SchoolGeofenceUpdate, name=None)
+    _assert_invalid(SchoolGeofenceUpdate, latitude=None)
+    _assert_invalid(SchoolGeofenceUpdate, longitude=None)
+    _assert_invalid(SchoolGeofenceUpdate, radius_m=None)
+    _assert_invalid(SchoolGeofenceUpdate, is_primary=None)
+
+    payload = SchoolGeofenceUpdate(description=None)
+    assert payload.model_dump(exclude_unset=True) == {"description": None}
 
 
 def test_valid_non_null_patch_values_remain_accepted() -> None:
