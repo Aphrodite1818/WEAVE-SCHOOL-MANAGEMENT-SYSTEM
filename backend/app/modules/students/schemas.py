@@ -29,6 +29,8 @@ from app.modules.students.models import (
     StudentProfileStatus,
 )
 
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
+
 
 class InputBase(BaseModel):
     """Base configuration for student request schemas."""
@@ -228,7 +230,7 @@ class StudentAdminProfileUpdate(InputBase):
 
 
 class StudentSelfUpdate(InputBase):
-    """Student-controlled profile update."""
+    """Student-controlled partial profile update."""
 
     first_name: str | None = Field(default=None, min_length=1, max_length=100)
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
@@ -243,10 +245,13 @@ class StudentSelfUpdate(InputBase):
 
     @model_validator(mode="after")
     def require_at_least_one_change(self) -> "StudentSelfUpdate":
-        """Reject empty self-service updates."""
+        """Reject empty updates and explicit nulls for required profile fields."""
 
         if not self.model_fields_set:
             raise ValueError("at least one profile field must be provided")
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} {_PATCH_NULL_ERROR}")
         return self
 
 
@@ -574,10 +579,13 @@ class StudentParentLinkUpdateRequest(InputBase):
 
     @model_validator(mode="after")
     def require_at_least_one_change(self) -> "StudentParentLinkUpdateRequest":
-        """Reject empty link preference updates."""
+        """Reject empty updates and explicit null preference values."""
 
         if not self.model_fields_set:
             raise ValueError("at least one link field must be provided")
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} {_PATCH_NULL_ERROR}")
         return self
 
 
