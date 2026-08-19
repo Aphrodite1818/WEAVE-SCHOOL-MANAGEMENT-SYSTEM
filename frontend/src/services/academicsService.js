@@ -1,5 +1,16 @@
 import { api } from "./api";
 import { filterClasses } from "./classSearch";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+  rememberRecord,
+} from "./patchPayload";
+
+const academicLevelsById = new Map();
+const classesById = new Map();
+const armLabelsById = new Map();
 
 const buildQuery = (options = {}, map = {}) => {
   const params = new URLSearchParams();
@@ -40,15 +51,36 @@ const normalizeClassPayload = (payload = {}) => ({
     : {}),
 });
 
+const patchRemembered = async ({ cache, id, payload, request }) => {
+  const key = String(id);
+  const current = cache.get(key);
+  const changes = buildChangedPatch(current, payload);
+  if (!hasPatchChanges(changes)) return current;
+
+  const response = await request(changes);
+  cache.set(key, mergePatchResult(current, changes, response));
+  return response;
+};
+
 export const academicLevelService = {
   getCategories: () => api.get("/academic-levels/categories"),
-  getLevels: (options = {}) =>
-    api.get(
+  getLevels: async (options = {}) => {
+    const response = await api.get(
       `/academic-levels?${buildQuery(options, { activeOnly: "active_only", includeArchived: "include_archived" })}`,
-    ),
-  createLevel: (payload) => api.post("/academic-levels", payload),
+    );
+    return rememberById(academicLevelsById, response);
+  },
+  createLevel: async (payload) => {
+    const response = await api.post("/academic-levels", payload);
+    return rememberRecord(academicLevelsById, response);
+  },
   updateLevel: (levelId, payload) =>
-    api.patch(`/academic-levels/${levelId}`, payload),
+    patchRemembered({
+      cache: academicLevelsById,
+      id: levelId,
+      payload,
+      request: (changes) => api.patch(`/academic-levels/${levelId}`, changes),
+    }),
   removeLevelFromSetup: (levelId) =>
     api.post(`/tenant-admin/setup-assistant/levels/${levelId}/remove`, {}),
 };
@@ -62,6 +94,7 @@ export const classService = {
         { ...requestOptions, ...(signal ? { signal } : {}) },
       ),
     );
+    rememberById(classesById, result);
     const items = filterClasses(result.items, queryOptions.search);
     return {
       ...result,
@@ -69,10 +102,20 @@ export const classService = {
       total: queryOptions.search ? items.length : result.total,
     };
   },
-  createClass: (payload) =>
-    api.post("/classes", normalizeClassPayload(payload)),
+  createClass: async (payload) => {
+    const response = await api.post(
+      "/classes",
+      normalizeClassPayload(payload),
+    );
+    return rememberRecord(classesById, response);
+  },
   updateClass: (classId, payload) =>
-    api.patch(`/classes/${classId}`, normalizeClassPayload(payload)),
+    patchRemembered({
+      cache: classesById,
+      id: classId,
+      payload: normalizeClassPayload(payload),
+      request: (changes) => api.patch(`/classes/${classId}`, changes),
+    }),
   activateClass: (classId) =>
     api.post(`/classes/${classId}/activate`, {
       confirmation: "ACTIVATE_CLASSROOM",
@@ -103,13 +146,24 @@ export const departmentService = {
 };
 
 export const armLabelService = {
-  getArmLabels: (options = {}) =>
-    api.get(
+  getArmLabels: async (options = {}) => {
+    const response = await api.get(
       `/classes/arm-labels?${buildQuery(options, { activeOnly: "active_only", includeArchived: "include_archived" })}`,
-    ),
-  createArmLabel: (payload) =>
-    api.post("/classes/arm-labels", { label: payload.label }),
+    );
+    return rememberById(armLabelsById, response);
+  },
+  createArmLabel: async (payload) => {
+    const response = await api.post("/classes/arm-labels", {
+      label: payload.label,
+    });
+    return rememberRecord(armLabelsById, response);
+  },
   updateArmLabel: (id, payload) =>
-    api.patch(`/classes/arm-labels/${id}`, payload),
+    patchRemembered({
+      cache: armLabelsById,
+      id,
+      payload,
+      request: (changes) => api.patch(`/classes/arm-labels/${id}`, changes),
+    }),
   archiveArmLabel: (id) => api.post(`/classes/arm-labels/${id}/archive`, {}),
 };
