@@ -545,9 +545,6 @@ class TenantService:
             exclude_unset=True,
         )
 
-        if not update_data:
-            return tenant
-
         school_name = update_data.get("school_name")
 
         if school_name is not None:
@@ -657,12 +654,13 @@ class TenantService:
         tenant_id: uuid.UUID,
         payload: TenantOnboardingUpdate,
     ) -> Tenant:
-        """Update the tenant onboarding fields."""
+        """Apply only onboarding/profile fields explicitly supplied by the client."""
 
+        update_data = payload.model_dump(mode="json", exclude_unset=True)
         return await TenantService.update_tenant_profile(
             db=db,
             tenant_id=tenant_id,
-            payload=TenantUpdate(**payload.model_dump(mode="json")),
+            payload=TenantUpdate(**update_data),
         )
 
     @staticmethod
