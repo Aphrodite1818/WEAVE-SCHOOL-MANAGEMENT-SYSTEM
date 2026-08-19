@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 class OutputBase(BaseModel):
@@ -17,6 +21,19 @@ class CurriculumSubjectCreate(BaseModel):
 class CurriculumSubjectUpdate(BaseModel):
     is_elective: bool | None = None
     is_active: bool | None = None
+
+    @field_validator("is_elective", "is_active", mode="before")
+    @classmethod
+    def reject_null_boolean_updates(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "CurriculumSubjectUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one curriculum subject field must be provided")
+        return self
 
 
 class CurriculumSubjectResponse(OutputBase):
