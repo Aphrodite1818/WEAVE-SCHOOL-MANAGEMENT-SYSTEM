@@ -32,9 +32,10 @@ from app.modules.student_academics.schemas import (
     AcademicTermUpdate,
     GradingScaleUpdate,
 )
+from app.modules.subjects.schemas import SubjectUpdate
 from app.modules.tenant_branding.schemas import TenantBrandingUpdate
 from app.modules.user_guides.schemas import UserGuideStateUpdate
-from app.tenant_management.schemas import TenantUpdate
+from app.tenant_management.schemas import TenantOnboardingUpdate, TenantUpdate
 
 
 def _assert_invalid(factory, **values) -> None:
@@ -43,6 +44,9 @@ def _assert_invalid(factory, **values) -> None:
 
 
 def test_academic_structure_patch_rejects_null_non_clearable_fields() -> None:
+    _assert_invalid(AcademicLevelUpdate)
+    _assert_invalid(ArmLabelUpdate)
+    _assert_invalid(ClassRoomUpdate)
     _assert_invalid(AcademicLevelUpdate, name=None)
     _assert_invalid(AcademicLevelUpdate, category=None)
     _assert_invalid(AcademicLevelUpdate, position=None)
@@ -95,6 +99,16 @@ def test_grading_scale_patch_preserves_clearable_remark() -> None:
     assert payload.model_dump(exclude_unset=True) == {"remark": None}
 
 
+def test_subject_patch_rejects_empty_or_null_name_and_allows_optional_clears() -> None:
+    _assert_invalid(SubjectUpdate)
+    _assert_invalid(SubjectUpdate, name=None)
+    payload = SubjectUpdate(code=None, description=None)
+    assert payload.model_dump(exclude_unset=True) == {
+        "code": None,
+        "description": None,
+    }
+
+
 def test_branding_patch_rejects_null_and_empty_updates() -> None:
     _assert_invalid(TenantBrandingUpdate, palette_key=None)
     _assert_invalid(TenantBrandingUpdate, is_enabled=None)
@@ -117,6 +131,7 @@ def test_user_guide_patch_preserves_clearable_fields_only() -> None:
 
 
 def test_tenant_patch_rejects_null_core_identity_but_allows_optional_clears() -> None:
+    _assert_invalid(TenantUpdate)
     _assert_invalid(TenantUpdate, school_name=None)
     _assert_invalid(TenantUpdate, email=None)
     _assert_invalid(TenantUpdate, country=None)
@@ -128,6 +143,21 @@ def test_tenant_patch_rejects_null_core_identity_but_allows_optional_clears() ->
         "phone": None,
         "address": None,
         "institution_type": None,
+    }
+
+
+def test_tenant_onboarding_patch_is_sparse_and_preserves_omitted_fields() -> None:
+    _assert_invalid(TenantOnboardingUpdate)
+    _assert_invalid(TenantOnboardingUpdate, admission_number_prefix=None)
+    _assert_invalid(TenantOnboardingUpdate, institution_type=None)
+    _assert_invalid(TenantOnboardingUpdate, address=None)
+    _assert_invalid(TenantOnboardingUpdate, city=None)
+    _assert_invalid(TenantOnboardingUpdate, state=None)
+
+    payload = TenantOnboardingUpdate(phone=None, city="Lagos")
+    assert payload.model_dump(exclude_unset=True) == {
+        "phone": None,
+        "city": "Lagos",
     }
 
 
