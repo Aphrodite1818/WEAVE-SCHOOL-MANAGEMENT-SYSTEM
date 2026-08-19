@@ -1,7 +1,17 @@
 import { API_BASE_URL, api, authSession } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+  rememberRecord,
+} from "./patchPayload";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
+
+const membershipSnapshots = new Map();
+let myTeacherSnapshot = null;
 
 const normalizeTeacherMembershipStatus = (status) =>
   status === "ended" ? "inactive" : status;
@@ -96,6 +106,14 @@ const normalizeTeacherMembership = (teacher) => {
   };
 };
 
+const rememberMemberships = (response) => {
+  const items = Array.isArray(response) ? response : response?.items || [];
+  items.forEach((item) =>
+    rememberRecord(membershipSnapshots, normalizeTeacherMembership(item)),
+  );
+  return response;
+};
+
 export const teacherService = {
   registerAccount: (payload) =>
     api.post("/teachers/accounts/register", payload, {
@@ -119,8 +137,12 @@ export const teacherService = {
       },
     ),
 
-  getTeachers: (options = {}) =>
-    api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
+  getTeachers: async (options = {}) => {
+    const response = await api.get(
+      `/teachers/memberships?${buildTeacherQuery(options)}`,
+    );
+    return rememberMemberships(response);
+  },
 
   createInvitation: (payload) => api.post("/teachers/invitations", payload),
 
@@ -130,14 +152,36 @@ export const teacherService = {
   revokeInvitation: (invitationId) =>
     api.post(`/teachers/invitations/${invitationId}/revoke`),
 
-  listMemberships: (options = {}) =>
-    api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
+  listMemberships: async (options = {}) => {
+    const response = await api.get(
+      `/teachers/memberships?${buildTeacherQuery(options)}`,
+    );
+    return rememberMemberships(response);
+  },
 
-  getMembership: (membershipId) =>
-    api.get(`/teachers/memberships/${membershipId}`),
+  getMembership: async (membershipId) => {
+    const response = await api.get(`/teachers/memberships/${membershipId}`);
+    const normalized = normalizeTeacherMembership(response);
+    rememberRecord(membershipSnapshots, normalized);
+    return response;
+  },
 
-  updateMembership: (membershipId, payload) =>
-    api.patch(`/teachers/memberships/${membershipId}`, payload),
+  updateMembership: async (membershipId, payload) => {
+    const key = String(membershipId);
+    const current = membershipSnapshots.get(key);
+    const changes = buildChangedPatch(current, payload);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch(
+      `/teachers/memberships/${membershipId}`,
+      changes,
+    );
+    membershipSnapshots.set(
+      key,
+      mergePatchResult(current, changes, normalizeTeacherMembership(response)),
+    );
+    return response;
+  },
 
   suspendMembership: (membershipId, reason) =>
     api.post(`/teachers/memberships/${membershipId}/suspend`, { reason }),
@@ -166,8 +210,13 @@ export const teacherService = {
       subject_ids: subjectIds,
     }),
 
-  getMyTeacher: async (requestOptions) =>
-    normalizeTeacherMembership(await api.get("/teachers/me", requestOptions)),
+  getMyTeacher: async (requestOptions) => {
+    const response = normalizeTeacherMembership(
+      await api.get("/teachers/me", requestOptions),
+    );
+    myTeacherSnapshot = response;
+    return response;
+  },
 
   getMySubjects: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;
@@ -198,7 +247,15 @@ export const teacherService = {
   },
 
   updateMyTeacherProfile: async (payload) => {
-    const response = await api.patch("/teachers/accounts/me/profile", payload);
+    const changes = buildChangedPatch(myTeacherSnapshot, payload);
+    if (!hasPatchChanges(changes)) return myTeacherSnapshot;
+
+    const response = await api.patch("/teachers/accounts/me/profile", changes);
+    myTeacherSnapshot = mergePatchResult(
+      myTeacherSnapshot,
+      changes,
+      normalizeTeacherMembership(response),
+    );
     clearDashboardMetricsCache();
     return response;
   },
