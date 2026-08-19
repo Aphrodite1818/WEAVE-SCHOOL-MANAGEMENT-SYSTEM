@@ -21,6 +21,8 @@ from app.modules.student_academics.models import (
     StudentProgressionRunStatus,
 )
 
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
+
 
 class InputBase(BaseModel):
     model_config = ConfigDict(
@@ -73,10 +75,12 @@ class AcademicSessionUpdate(InputBase):
     end_date: date | None = None
     next_academic_session_id: uuid.UUID | None = None
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
-    def validate_name(cls, value: str | None) -> str | None:
-        return None if value is None else validate_academic_session_name(value)
+    def validate_name(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError(f"name {_PATCH_NULL_ERROR}")
+        return validate_academic_session_name(value)
 
     @model_validator(mode="after")
     def validate_update(self):
@@ -136,6 +140,13 @@ class AcademicTermUpdate(InputBase):
     name: AcademicTermName | None = None
     start_date: date | None = None
     end_date: date | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def reject_null_name(cls, value):
+        if value is None:
+            raise ValueError(f"name {_PATCH_NULL_ERROR}")
+        return value
 
     @model_validator(mode="after")
     def validate_update(self):
@@ -216,17 +227,25 @@ class GradingScaleCreate(InputBase):
 
 
 class GradingScaleUpdate(InputBase):
+    """Partial grading-scale update; activation uses dedicated lifecycle routes."""
+
     min_score: Decimal | None = Field(default=None, ge=0, le=100)
     max_score: Decimal | None = Field(default=None, ge=0, le=100)
     grade: str | None = Field(default=None, min_length=1, max_length=10)
     remark: str | None = Field(default=None, max_length=100)
-    is_active: bool | None = None
+
+    @field_validator("min_score", "max_score", mode="before")
+    @classmethod
+    def reject_null_scores(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @field_validator("grade", mode="before")
     @classmethod
-    def normalize_grade_value(cls, value: str | None) -> str | None:
+    def normalize_grade_value(cls, value: str | None) -> str:
         if value is None:
-            return None
+            raise ValueError(f"grade {_PATCH_NULL_ERROR}")
         normalized = normalize_grade(value)
         if normalized is None:
             raise ValueError("grade cannot be empty")
@@ -243,6 +262,13 @@ class GradingScaleUpdate(InputBase):
         if not self.model_fields_set:
             raise ValueError("at least one grading scale field must be provided")
         return self
+
+    def model_dump(self, *args, **kwargs):
+        """Preserve explicit nulls for clearable fields in legacy service callers."""
+
+        if kwargs.get("exclude_unset"):
+            kwargs["exclude_none"] = False
+        return super().model_dump(*args, **kwargs)
 
 
 class GradingScaleResponse(OutputBase):
