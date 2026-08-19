@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 _PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
@@ -104,6 +104,12 @@ class SubjectUpdate(InputBase):
         """Normalize clearable optional text fields."""
 
         return _clean_optional_string(value)
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "SubjectUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one subject field must be provided")
+        return self
 
 
 class SubjectStatusUpdate(InputBase):
