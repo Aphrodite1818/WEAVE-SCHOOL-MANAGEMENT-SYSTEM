@@ -1,4 +1,11 @@
 import { api } from "./api";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+  rememberRecord,
+} from "./patchPayload";
 
 export const NOTIFICATIONS_CHANGED_EVENT = "weave:notifications-changed";
 export const NOTIFICATION_REALTIME_EVENTS = [
@@ -6,6 +13,8 @@ export const NOTIFICATION_REALTIME_EVENTS = [
   "notification.updated",
   "notification.dismissed",
 ];
+
+const announcementSnapshots = new Map();
 
 export function emitNotificationsChanged() {
   if (typeof window !== "undefined") {
@@ -49,17 +58,51 @@ const announcementBasePath = (mode) =>
     : "/tenant-admin/announcements";
 
 export const communicationAnnouncementService = {
-  list: (mode, params) =>
-    api.get(withQuery(announcementBasePath(mode), params)),
-  create: (mode, payload) => api.post(announcementBasePath(mode), payload),
-  update: (mode, id, payload) =>
-    api.patch(`${announcementBasePath(mode)}/${id}`, payload),
+  list: async (mode, params) => {
+    const response = await api.get(withQuery(announcementBasePath(mode), params));
+    return rememberById(announcementSnapshots, response);
+  },
+  create: async (mode, payload) => {
+    const response = await api.post(announcementBasePath(mode), payload);
+    return rememberRecord(announcementSnapshots, response);
+  },
+  update: async (mode, id, payload) => {
+    const key = String(id);
+    const current = announcementSnapshots.get(key);
+    const changes = buildChangedPatch(current, payload);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch(
+      `${announcementBasePath(mode)}/${id}`,
+      changes,
+    );
+    announcementSnapshots.set(
+      key,
+      mergePatchResult(current, changes, response),
+    );
+    return response;
+  },
   preview: (mode, payload) =>
     api.post(`${announcementBasePath(mode)}/preview`, payload),
-  publish: (mode, id, payload = {}) =>
-    api.post(`${announcementBasePath(mode)}/${id}/publish`, payload),
-  archive: (mode, id) =>
-    api.post(`${announcementBasePath(mode)}/${id}/archive`, {}),
-  cancel: (mode, id) =>
-    api.post(`${announcementBasePath(mode)}/${id}/cancel`, {}),
+  publish: async (mode, id, payload = {}) => {
+    const response = await api.post(
+      `${announcementBasePath(mode)}/${id}/publish`,
+      payload,
+    );
+    return rememberRecord(announcementSnapshots, response);
+  },
+  archive: async (mode, id) => {
+    const response = await api.post(
+      `${announcementBasePath(mode)}/${id}/archive`,
+      {},
+    );
+    return rememberRecord(announcementSnapshots, response);
+  },
+  cancel: async (mode, id) => {
+    const response = await api.post(
+      `${announcementBasePath(mode)}/${id}/cancel`,
+      {},
+    );
+    return rememberRecord(announcementSnapshots, response);
+  },
 };
