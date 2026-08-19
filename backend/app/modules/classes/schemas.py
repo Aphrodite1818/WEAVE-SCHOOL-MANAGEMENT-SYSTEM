@@ -10,6 +10,9 @@ from app.core.utils.normalization import normalize_class_name
 from app.modules.classes.models import AcademicCategory
 
 
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
+
+
 class InputBase(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, use_enum_values=False)
 
@@ -48,6 +51,23 @@ class AcademicLevelUpdate(InputBase):
     category: AcademicCategory | None = None
     position: int | None = Field(default=None, gt=0)
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def validate_name_patch(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError(f"name {_PATCH_NULL_ERROR}")
+        normalized = normalize_class_name(value)
+        if normalized is None:
+            raise ValueError("academic level name cannot be empty")
+        return normalized
+
+    @field_validator("category", "position", mode="before")
+    @classmethod
+    def reject_null_required_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
 
 class AcademicLevelResponse(OutputBase):
     id: uuid.UUID
@@ -85,6 +105,13 @@ class ArmLabelUpdate(InputBase):
     label: str | None = Field(default=None, min_length=1, max_length=20)
     is_active: bool | None = None
 
+    @field_validator("label", "is_active", mode="before")
+    @classmethod
+    def reject_null_required_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
 
 class ArmLabelResponse(OutputBase):
     id: uuid.UUID
@@ -106,6 +133,13 @@ class ClassRoomUpdate(InputBase):
     academic_level_id: uuid.UUID | None = None
     arm_label_id: uuid.UUID | None = None
     teacher_membership_id: uuid.UUID | None = None
+
+    @field_validator("academic_level_id", "arm_label_id", mode="before")
+    @classmethod
+    def reject_null_required_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
 
 class ClassRoomArchiveRequest(InputBase):
