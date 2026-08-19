@@ -48,8 +48,16 @@ class ReportCardGenerateRequest(InputBase):
 
 
 class ReportCardCommentsUpdate(InputBase):
+    """Sparse report-card comment update; explicit null clears a comment."""
+
     class_teacher_comment: str | None = Field(default=None, max_length=2000)
     principal_comment: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "ReportCardCommentsUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one report card comment field must be provided")
+        return self
 
 
 class ReportCardSubjectComponentResponse(OutputBase):
