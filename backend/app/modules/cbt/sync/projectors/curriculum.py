@@ -30,11 +30,12 @@ from app.modules.subjects.models import Subject
 
 
 def _visible(row: Any) -> bool:
-    return bool(
-        row is not None
-        and getattr(row, "is_active", True)
-        and getattr(row, "archived_at", None) is None
-    )
+    if row is None:
+        return False
+    status = getattr(row, "status", None)
+    if status is not None and getattr(status, "value", status) != "active":
+        return False
+    return bool(getattr(row, "is_active", True) and getattr(row, "archived_at", None) is None)
 
 
 def project_subject(

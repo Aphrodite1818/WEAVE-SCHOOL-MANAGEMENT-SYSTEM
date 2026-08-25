@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.classes.category_catalog import category_supports_departments
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import (
     AcademicLevelRepository,
     ClassRoomRepository,
@@ -61,6 +62,10 @@ class AcademicCurriculumService:
             )
         ).scalar_one_or_none()
         if row is None and create:
+            if level.status != AcademicLevelStatus.ACTIVE:
+                raise ConflictException(
+                    "Academic level must be active before curriculum is configured."
+                )
             row = Curriculum(tenant_id=tenant_id, academic_level_id=level_id)
             db.add(row)
             await db.flush()
@@ -98,6 +103,10 @@ class AcademicCurriculumService:
         tenant = await TenantRepository.get_by_id(db, tenant_id)
         if level is None:
             raise NotFoundException("Academic level not found.")
+        if level.status != AcademicLevelStatus.ACTIVE:
+            raise ConflictException(
+                "Academic level must be active before specialization is configured."
+            )
         if tenant is None or tenant.institution_type is None:
             raise ConflictException(
                 "Institution type is required before department specialization can be configured."
@@ -335,6 +344,11 @@ class AcademicCurriculumService:
         if subject_context is None:
             raise NotFoundException("Active curriculum subject not found.")
         curriculum_subject, curriculum = subject_context
+        level = await AcademicLevelRepository.get_by_id(
+            db, tenant_id, curriculum.academic_level_id
+        )
+        if level is None or level.status != AcademicLevelStatus.ACTIVE:
+            raise ConflictException("Academic level must be active before offerings are configured.")
         term = await AcademicCurriculumService._term(
             db, tenant_id, payload.academic_term_id, lock=True
         )

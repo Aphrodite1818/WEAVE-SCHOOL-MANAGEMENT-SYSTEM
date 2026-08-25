@@ -13,7 +13,7 @@ from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.category_catalog import categories_for
-from app.modules.classes.models import AcademicLevel
+from app.modules.classes.models import AcademicLevel, AcademicLevelStatus
 from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.parents.repository import ParentMembershipRepository
 from app.modules.school_calendar.repository import SchoolCalendarRepository
@@ -313,7 +313,7 @@ class AcademicProgressionService:
         level = await AcademicLevelRepository.get_by_id(
             db, actor.tenant_id, enrollment.academic_level_id, lock=True
         )
-        if level is None or not level.is_active or level.archived_at is not None:
+        if level is None or level.status != AcademicLevelStatus.ACTIVE:
             raise ConflictException("Enrollment academic level is missing or inactive.")
         target_level = await AcademicProgressionService.resolve_next_level(
             db, tenant_id=actor.tenant_id, current_level=level

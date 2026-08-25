@@ -28,6 +28,7 @@ from app.modules.classes.category_catalog import (
 from app.modules.classes.models import (
     AcademicCategory,
     AcademicLevel,
+    AcademicLevelStatus,
     ArmLabel,
     ClassRoom,
     Department,
@@ -116,6 +117,108 @@ class AcademicLevelService:
                 "Department specialization cannot be required for this academic level category"
             )
 
+
+
+    @staticmethod
+    def _has_any_usage(dependencies: dict[str, int]) -> bool:
+        """
+        True once the academic level has ever been meaningfully used
+
+        Historical usage counts too. Once this becomes True, structural identity
+        such as category and progression position should be treated as protected
+        """
+
+        historical_keys = (
+            "classes_total",
+            "departments_total",
+            "curriculum_subjects_total",
+            "enrollments_total",
+        )
+
+        return any(dependencies.get(key, 0) > 0 for key in historical_keys)
+
+    @staticmethod
+    def _has_live_dependencies(dependencies: dict[str, int]) -> bool:
+        """
+        True while the academic level is still actively used by the current academic
+        configuration or current students
+        """
+
+        live_keys = (
+            "classes_active",
+            "departments_active",
+            "curriculum_subjects_active",
+            "enrollments_current",
+        )
+
+        return any(dependencies.get(key, 0) > 0 for key in live_keys)
+
+    @staticmethod
+    def _can_hard_delete(dependencies: dict[str, int]) -> bool:
+        """
+        Physical deletion is allowed only when the level has never been used
+        """
+
+        return not AcademicLevelService._has_any_usage(dependencies)
+
+    @staticmethod
+    def _can_archive(dependencies: dict[str, int]) -> bool:
+        """
+        Historical dependencies are allowed during archival
+
+        Only live dependencies block archival. The archive service itself should
+        additionally require the AcademicLevel to already be inactive
+        """
+
+        return not AcademicLevelService._has_live_dependencies(dependencies)
+
+    @staticmethod
+    def _live_dependency_counts(dependencies: dict[str, int]) -> dict[str, int]:
+        return {
+            key: value
+            for key, value in dependencies.items()
+            if key
+            in {
+                "classes_active",
+                "departments_active",
+                "curriculum_subjects_active",
+                "enrollments_current",
+            }
+            and value > 0
+        }
+
+    @staticmethod
+    async def _validate_publication_contract(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        level: AcademicLevel,
+    ) -> None:
+        await AcademicLevelService._validate_category(db, tenant_id, level.category)
+        await AcademicLevelService._validate_specialization_rule(
+            db,
+            tenant_id,
+            category=level.category,
+            specialization_required_from_term_position=(
+                level.specialization_required_from_term_position
+            ),
+        )
+        owner = await AcademicLevelRepository.get_by_category_position(
+            db,
+            tenant_id,
+            level.category,
+            level.position,
+            exclude_id=level.id,
+        )
+        if owner:
+            raise ConflictException("Another academic level already uses this category position")
+
+    @staticmethod
+    def _ensure_active_level(level: AcademicLevel | None, *, missing_message: str) -> AcademicLevel:
+        if level is None or level.status != AcademicLevelStatus.ACTIVE:
+            raise NotFoundException(missing_message)
+        return level
+
+
     @staticmethod
     async def create(
         db: AsyncSession, actor: TenantAdmin, payload: AcademicLevelCreate
@@ -128,7 +231,7 @@ class AcademicLevelService:
             actor.tenant_id,
             category=payload.category,
             specialization_required_from_term_position=(
-                payload.specialization_required_from_position
+                payload.specialization_required_from_term_position
             ),
         )
         if await AcademicLevelRepository.get_by_normalized_name(db, actor.tenant_id, payload.name):
@@ -143,7 +246,7 @@ class AcademicLevelService:
             normalized_name=normalized_class_name_key(payload.name),
             category=payload.category,
             position=payload.position,
-            is_active=True,
+            status=AcademicLevelStatus.DRAFT,
             specialization_required_from_term_position=payload.specialization_required_from_term_position,
         )
         try:
@@ -181,9 +284,18 @@ class AcademicLevelService:
         )
         if level is None:
             raise NotFoundException("Academic level not found")
-        if level.archived_at:
+        if level.status == AcademicLevelStatus.ARCHIVED:
             raise ConflictException("Archived academic levels cannot be updated")
         data = payload.model_dump(exclude_unset=True)
+        structural_fields = {
+            "category",
+            "position",
+            "specialization_required_from_term_position",
+        }
+        if level.status != AcademicLevelStatus.DRAFT and structural_fields.intersection(data):
+            raise ConflictException(
+                "Academic level structure is locked after activation. Only the name can be edited."
+            )
         if "category" in data:
             await AcademicLevelService._validate_category(db, actor.tenant_id, data["category"])
         target_category = data.get("category", level.category)
@@ -221,18 +333,130 @@ class AcademicLevelService:
         return AcademicLevelResponse.model_validate(level)
 
     @staticmethod
-    async def purge_setup_level(
+    async def activate(
         db: AsyncSession, actor: TenantAdmin, academic_level_id: uuid.UUID
     ) -> AcademicLevelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         level = await AcademicLevelRepository.get_by_id(
             db, actor.tenant_id, academic_level_id, lock=True
         )
-        if not level:
+        if level is None:
             raise NotFoundException("Academic level not found")
+        if level.status == AcademicLevelStatus.ARCHIVED:
+            raise ConflictException("Restore this academic level before activation")
+        if level.status == AcademicLevelStatus.ACTIVE:
+            return AcademicLevelResponse.model_validate(level)
+        if level.status not in {AcademicLevelStatus.DRAFT, AcademicLevelStatus.INACTIVE}:
+            raise ConflictException("Academic level cannot be activated from its current status")
+        if level.status == AcademicLevelStatus.DRAFT:
+            await AcademicLevelService._validate_publication_contract(db, actor.tenant_id, level)
+        level.status = AcademicLevelStatus.ACTIVE
+        await AcademicLevelRepository.save(db, level)
+        await db.commit()
+        await db.refresh(level)
+        return AcademicLevelResponse.model_validate(level)
+
+    @staticmethod
+    async def deactivate(
+        db: AsyncSession, actor: TenantAdmin, academic_level_id: uuid.UUID
+    ) -> AcademicLevelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        level = await AcademicLevelRepository.get_by_id(
+            db, actor.tenant_id, academic_level_id, lock=True
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        if level.status != AcademicLevelStatus.ACTIVE:
+            raise ConflictException("Only active academic levels can be deactivated")
         counts = await AcademicLevelRepository.count_setup_dependencies(
             db, actor.tenant_id, level.id
         )
-        if any(counts.values()):
+        live_counts = AcademicLevelService._live_dependency_counts(counts)
+        if live_counts:
+            raise ConflictException(
+                "This academic level still has live dependencies and cannot be deactivated.",
+                payload={"dependency_counts": live_counts},
+            )
+        level.status = AcademicLevelStatus.INACTIVE
+        await AcademicLevelRepository.save(db, level)
+        await db.commit()
+        await db.refresh(level)
+        return AcademicLevelResponse.model_validate(level)
+
+    @staticmethod
+    async def archive(
+        db: AsyncSession, actor: TenantAdmin, academic_level_id: uuid.UUID
+    ) -> AcademicLevelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        level = await AcademicLevelRepository.get_by_id(
+            db, actor.tenant_id, academic_level_id, lock=True
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        if level.status == AcademicLevelStatus.DRAFT:
+            raise ConflictException("Delete draft academic levels instead of archiving them")
+        if level.status == AcademicLevelStatus.ACTIVE:
+            raise ConflictException("Deactivate the academic level before archiving")
+        if level.status == AcademicLevelStatus.ARCHIVED:
+            return AcademicLevelResponse.model_validate(level)
+        counts = await AcademicLevelRepository.count_setup_dependencies(
+            db, actor.tenant_id, level.id
+        )
+        live_counts = AcademicLevelService._live_dependency_counts(counts)
+        if live_counts:
+            raise ConflictException(
+                "This academic level still has live dependencies and cannot be archived.",
+                payload={"dependency_counts": live_counts},
+            )
+        level.status = AcademicLevelStatus.ARCHIVED
+        level.archived_at = datetime.now(timezone.utc)
+        level.archived_by_admin_id = actor.id
+        await AcademicLevelRepository.save(db, level)
+        await db.commit()
+        await db.refresh(level)
+        return AcademicLevelResponse.model_validate(level)
+
+    @staticmethod
+    async def restore(
+        db: AsyncSession, actor: TenantAdmin, academic_level_id: uuid.UUID
+    ) -> AcademicLevelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        level = await AcademicLevelRepository.get_by_id(
+            db, actor.tenant_id, academic_level_id, lock=True
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        if level.status != AcademicLevelStatus.ARCHIVED:
+            raise ConflictException("Only archived academic levels can be restored")
+        level.status = AcademicLevelStatus.INACTIVE
+        level.archived_at = None
+        level.archived_by_admin_id = None
+        await AcademicLevelRepository.save(db, level)
+        await db.commit()
+        await db.refresh(level)
+        return AcademicLevelResponse.model_validate(level)
+
+    @staticmethod
+    async def delete_if_unused(
+        db: AsyncSession, actor: TenantAdmin, academic_level_id: uuid.UUID
+    ) -> AcademicLevelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        level = await AcademicLevelRepository.get_by_id(
+            db, actor.tenant_id, academic_level_id, lock=True
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        if level.status != AcademicLevelStatus.DRAFT:
+            raise ConflictException("Only draft academic levels can be deleted")
+        counts = await AcademicLevelRepository.count_setup_dependencies(
+            db, actor.tenant_id, level.id
+        )
+        if not AcademicLevelService._can_hard_delete(counts):
             raise ConflictException(
                 "This academic level is already referenced and cannot be removed.",
                 payload={"dependency_counts": counts},
@@ -241,6 +465,8 @@ class AcademicLevelService:
         await AcademicLevelRepository.delete(db, level)
         await db.commit()
         return response
+
+    purge_setup_level = delete_if_unused
 
 
 class DepartmentService:
@@ -254,8 +480,9 @@ class DepartmentService:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, academic_level_id)
-        if not level or not level.is_active or level.archived_at:
-            raise NotFoundException("Active academic level not found")
+        level = AcademicLevelService._ensure_active_level(
+            level, missing_message="Active academic level not found"
+        )
         institution_type = await _tenant_institution_type(db, actor.tenant_id)
         if not category_supports_departments(institution_type, level.category):
             raise ConflictException(
@@ -383,7 +610,7 @@ class ClassRoomService:
     async def _validate_structure(db, tenant_id, level_id, arm_label_id):
         level = await AcademicLevelRepository.get_by_id(db, tenant_id, level_id)
         arm = await ArmLabelRepository.get_by_id(db, tenant_id, arm_label_id)
-        if not level or not level.is_active or level.archived_at:
+        if not level or level.status != AcademicLevelStatus.ACTIVE:
             raise BadRequestException("Academic level must be active")
         if not arm or not arm.is_active or arm.archived_at:
             raise BadRequestException("Arm label must be active")

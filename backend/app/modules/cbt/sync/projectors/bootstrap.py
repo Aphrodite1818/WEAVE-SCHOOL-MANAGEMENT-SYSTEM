@@ -66,11 +66,12 @@ def _value(value: Any) -> Any:
 
 
 def _visible(row: Any) -> bool:
-    return bool(
-        row is not None
-        and getattr(row, "is_active", True)
-        and getattr(row, "archived_at", None) is None
-    )
+    if row is None:
+        return False
+    status = getattr(row, "status", None)
+    if status is not None and _value(status) != "active":
+        return False
+    return bool(getattr(row, "is_active", True) and getattr(row, "archived_at", None) is None)
 
 
 def _ordered(items: list[BaseModel]) -> list[BaseModel]:
@@ -137,6 +138,7 @@ def build_bootstrap_sections(
                 name=row.name,
                 category=_value(row.category),
                 position=row.position,
+                status=_value(row.status),
             )
             for row in visible_levels.values()
         ]

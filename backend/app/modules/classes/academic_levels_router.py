@@ -56,3 +56,48 @@ async def update_academic_level(
     current_user: CurrentTenantAdmin,
 ):
     return await AcademicLevelService.update(db, current_user, academic_level_id, payload)
+
+
+@router.post("/{academic_level_id}/activate", response_model=AcademicLevelResponse)
+async def activate_academic_level(
+    academic_level_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+):
+    return await AcademicLevelService.activate(db, current_user, academic_level_id)
+
+
+@router.post("/{academic_level_id}/deactivate", response_model=AcademicLevelResponse)
+async def deactivate_academic_level(
+    academic_level_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+):
+    return await AcademicLevelService.deactivate(db, current_user, academic_level_id)
+
+
+@router.post("/{academic_level_id}/archive", response_model=AcademicLevelResponse)
+async def archive_academic_level(
+    academic_level_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+):
+    return await AcademicLevelService.archive(db, current_user, academic_level_id)
+
+
+@router.post("/{academic_level_id}/restore", response_model=AcademicLevelResponse)
+async def restore_academic_level(
+    academic_level_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+):
+    return await AcademicLevelService.restore(db, current_user, academic_level_id)
+
+
+@router.delete("/{academic_level_id}", response_model=AcademicLevelResponse)
+async def delete_academic_level(
+    academic_level_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+):
+    return await AcademicLevelService.delete_if_unused(db, current_user, academic_level_id)

@@ -13,7 +13,7 @@ from app.modules.cbt.academics.schemas import (
     CBTTeacherAssignmentSnapshot,
     CBTTeacherSnapshot,
 )
-from app.modules.classes.models import ClassRoom
+from app.modules.classes.models import AcademicLevel, AcademicLevelStatus, ClassRoom
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
@@ -135,7 +135,8 @@ def project_teacher_assignment(
         return None
 
     context = session.execute(
-        select(ClassRoom, CurriculumSubject, Curriculum)
+        select(ClassRoom, CurriculumSubject, Curriculum, AcademicLevel)
+        .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
         .join(
             Curriculum,
             Curriculum.academic_level_id == ClassRoom.academic_level_id,
@@ -149,6 +150,8 @@ def project_teacher_assignment(
             ClassRoom.id == assignment.class_id,
             ClassRoom.is_active.is_(True),
             ClassRoom.archived_at.is_(None),
+            AcademicLevel.tenant_id == tenant_id,
+            AcademicLevel.status == AcademicLevelStatus.ACTIVE,
             Curriculum.tenant_id == tenant_id,
             CurriculumSubject.tenant_id == tenant_id,
             CurriculumSubject.id == assignment.curriculum_subject_id,
@@ -158,7 +161,7 @@ def project_teacher_assignment(
     if context is None:
         return None
 
-    classroom, curriculum_subject, _curriculum = context
+    classroom, curriculum_subject, _curriculum, _level = context
     class_department_id = session.execute(
         select(ClassTermDepartmentAssignment.department_id).where(
             ClassTermDepartmentAssignment.tenant_id == tenant_id,

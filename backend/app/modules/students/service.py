@@ -27,6 +27,7 @@ from app.modules.auth.models import AuthSession, AuthSessionActorType
 from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.email_outbox.service import EmailOutboxService
 from app.modules.parents.models import (
@@ -293,7 +294,7 @@ class StudentService:
         level = await AcademicLevelRepository.get_by_id(
             db, tenant_id, payload.academic_level_id, lock=True
         )
-        if level is None or not level.is_active or level.archived_at is not None:
+        if level is None or level.status != AcademicLevelStatus.ACTIVE:
             raise NotFoundException("Academic level not found or inactive.")
 
         classroom = None

@@ -14,6 +14,7 @@ from app.modules.bulk_imports.templates import (
     TEMPLATE_VERSION_BY_RESOURCE,
 )
 from app.modules.bulk_imports.validators import BulkImportValidator, ImportRowValidationResult
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import (
     AcademicLevelRepository,
     ArmLabelRepository,
@@ -27,7 +28,7 @@ def _active_level(level_id, name="JSS1"):
     return SimpleNamespace(
         id=level_id,
         name=name,
-        is_active=True,
+        status=AcademicLevelStatus.ACTIVE,
         archived_at=None,
     )
 

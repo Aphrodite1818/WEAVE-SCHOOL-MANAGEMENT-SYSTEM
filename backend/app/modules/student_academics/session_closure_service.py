@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.communications.enums import (
     AnnouncementPriority,
@@ -221,7 +222,7 @@ class SessionClosureService:
         terminal_students = 0
         for level_id, student_count in enrollment_counts_by_level.items():
             level = await AcademicLevelRepository.get_by_id(db, tenant_id, level_id)
-            if level is None or not level.is_active or level.archived_at is not None:
+            if level is None or level.status != AcademicLevelStatus.ACTIVE:
                 invalid_levels += 1
                 blockers.append(f"An active enrollment references invalid level {level_id}.")
                 continue

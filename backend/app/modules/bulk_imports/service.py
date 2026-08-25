@@ -80,6 +80,7 @@ from app.modules.classes.repository import (
     ClassRoomRepository,
     DepartmentRepository,
 )
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.parents.repository import ParentAccountRepository
 from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
 from app.modules.student_academics.repository import StudentAcademicRepository
@@ -515,7 +516,7 @@ class BulkImportService:
                     error_message=f"Academic level {level_name} does not exist.",
                 )
                 continue
-            if not level.is_active or level.archived_at is not None:
+            if level.status != AcademicLevelStatus.ACTIVE:
                 append_validation_error(
                     validation_result=validation_result,
                     field_name="level",

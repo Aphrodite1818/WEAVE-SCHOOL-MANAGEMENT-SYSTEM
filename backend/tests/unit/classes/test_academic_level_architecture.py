@@ -8,16 +8,29 @@ import pytest
 import sqlalchemy as sa
 from pydantic import ValidationError
 
-from app.core.exceptions import ConflictException
+from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.modules.classes.models import (
     AcademicCategory,
     AcademicLevel,
+    AcademicLevelStatus,
     ArmLabel,
     ClassRoom,
     Department,
 )
-from app.modules.classes.schemas import ArmLabelCreate, ClassRoomCreate, ClassRoomUpdate
-from app.modules.classes.service import ArmLabelService, ClassRoomService
+from app.modules.classes.schemas import (
+    AcademicLevelCreate,
+    AcademicLevelUpdate,
+    ArmLabelCreate,
+    ClassRoomCreate,
+    ClassRoomUpdate,
+    DepartmentCreate,
+)
+from app.modules.classes.service import (
+    AcademicLevelService,
+    ArmLabelService,
+    ClassRoomService,
+    DepartmentService,
+)
 from app.modules.student_academics.curriculum_models import CurriculumSubject
 from app.modules.student_academics.models import TeacherAssignment
 from app.modules.student_academics.schemas import TeacherAssignmentCreate
@@ -57,6 +70,8 @@ def test_teacher_assignment_contract_is_concrete_class_and_curriculum_subject() 
 
 def test_academic_tables_expose_canonical_foreign_keys() -> None:
     assert "normalized_name" in AcademicLevel.__table__.columns
+    assert "status" in AcademicLevel.__table__.columns
+    assert "is_active" not in AcademicLevel.__table__.columns
     assert "academic_level_id" in ClassRoom.__table__.columns
     assert "arm_label_id" in ClassRoom.__table__.columns
     assert "normalized_arm" not in ClassRoom.__table__.columns
@@ -65,6 +80,313 @@ def test_academic_tables_expose_canonical_foreign_keys() -> None:
     assert "class_id" in TeacherAssignment.__table__.columns
     assert "curriculum_subject_id" in TeacherAssignment.__table__.columns
     assert "level_subject_id" not in TeacherAssignment.__table__.columns
+
+
+def test_academic_level_response_exposes_status_not_is_active() -> None:
+    from app.modules.classes.schemas import AcademicLevelResponse
+
+    fields = AcademicLevelResponse.model_fields
+    assert "status" in fields
+    assert "is_active" not in fields
+
+
+@pytest.mark.asyncio
+async def test_created_academic_level_starts_as_draft() -> None:
+    tenant_id = uuid.uuid4()
+    db = AsyncMock()
+    created: dict[str, AcademicLevel] = {}
+
+    async def add(_db, level):
+        level.id = uuid.uuid4()
+        level.created_at = datetime.now(timezone.utc)
+        level.updated_at = level.created_at
+        created["level"] = level
+        return level
+
+    with (
+        patch(
+            "app.modules.classes.service._tenant_institution_type",
+            new=AsyncMock(return_value="secondary"),
+        ),
+        patch(
+            "app.modules.classes.service.category_definition",
+            return_value=object(),
+        ),
+        patch(
+            "app.modules.classes.service.category_supports_departments",
+            return_value=True,
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_normalized_name",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_category_position",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("app.modules.classes.service.AcademicLevelRepository.add", new=add),
+    ):
+        response = await AcademicLevelService.create(
+            db=db,
+            actor=_admin(tenant_id),
+            payload=AcademicLevelCreate(
+                name="JSS1",
+                category=AcademicCategory.JUNIOR_SECONDARY,
+                position=1,
+            ),
+        )
+
+    assert created["level"].status == AcademicLevelStatus.DRAFT
+    assert response.status == AcademicLevelStatus.DRAFT
+
+
+@pytest.mark.asyncio
+async def test_draft_academic_level_allows_structural_edit() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.DRAFT)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=level),
+        ),
+        patch(
+            "app.modules.classes.service._tenant_institution_type",
+            new=AsyncMock(return_value="secondary"),
+        ),
+        patch(
+            "app.modules.classes.service.category_definition",
+            return_value=object(),
+        ),
+        patch(
+            "app.modules.classes.service.category_supports_departments",
+            return_value=True,
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_category_position",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.save",
+            new=AsyncMock(return_value=level),
+        ),
+    ):
+        response = await AcademicLevelService.update(
+            db=db,
+            actor=_admin(tenant_id),
+            academic_level_id=level.id,
+            payload=AcademicLevelUpdate(
+                category=AcademicCategory.SENIOR_SECONDARY,
+                position=2,
+                specialization_required_from_term_position=2,
+            ),
+        )
+
+    assert response.category == AcademicCategory.SENIOR_SECONDARY
+    assert response.position == 2
+    assert response.specialization_required_from_term_position == 2
+
+
+@pytest.mark.asyncio
+async def test_active_academic_level_locks_structural_fields() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.ACTIVE)
+
+    with patch(
+        "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+        new=AsyncMock(return_value=level),
+    ):
+        with pytest.raises(ConflictException, match="structure is locked"):
+            await AcademicLevelService.update(
+                db=AsyncMock(),
+                actor=_admin(tenant_id),
+                academic_level_id=level.id,
+                payload=AcademicLevelUpdate(position=2),
+            )
+
+
+@pytest.mark.asyncio
+async def test_archived_academic_level_cannot_activate_directly() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.ARCHIVED)
+    level.archived_at = datetime.now(timezone.utc)
+
+    with patch(
+        "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+        new=AsyncMock(return_value=level),
+    ):
+        with pytest.raises(ConflictException, match="Restore this academic level"):
+            await AcademicLevelService.activate(
+                db=AsyncMock(),
+                actor=_admin(tenant_id),
+                academic_level_id=level.id,
+            )
+
+
+@pytest.mark.asyncio
+async def test_draft_academic_level_can_be_hard_deleted_without_usage() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.DRAFT)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=level),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.count_setup_dependencies",
+            new=AsyncMock(
+                return_value={
+                    "classes_total": 0,
+                    "departments_total": 0,
+                    "curriculum_subjects_total": 0,
+                    "enrollments_total": 0,
+                }
+            ),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.delete",
+            new=AsyncMock(),
+        ) as delete_level,
+    ):
+        response = await AcademicLevelService.delete_if_unused(
+            db=db,
+            actor=_admin(tenant_id),
+            academic_level_id=level.id,
+        )
+
+    assert response.status == AcademicLevelStatus.DRAFT
+    delete_level.assert_awaited_once_with(db, level)
+
+
+@pytest.mark.asyncio
+async def test_draft_level_cannot_create_department() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.DRAFT)
+
+    with patch(
+        "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+        new=AsyncMock(return_value=level),
+    ):
+        with pytest.raises(NotFoundException, match="Active academic level not found"):
+            await DepartmentService.create(
+                db=AsyncMock(),
+                actor=_admin(tenant_id),
+                academic_level_id=level.id,
+                payload=DepartmentCreate(name="Science"),
+            )
+
+
+@pytest.mark.asyncio
+async def test_draft_level_cannot_create_classroom() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.DRAFT)
+    arm = ArmLabel(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        label="A",
+        normalized_label="a",
+        is_active=True,
+    )
+
+    with (
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=level),
+        ),
+        patch(
+            "app.modules.classes.service.ArmLabelRepository.get_by_id",
+            new=AsyncMock(return_value=arm),
+        ),
+    ):
+        with pytest.raises(BadRequestException, match="Academic level must be active"):
+            await ClassRoomService.create_classroom(
+                db=AsyncMock(),
+                actor=_admin(tenant_id),
+                payload=ClassRoomCreate(
+                    academic_level_id=level.id,
+                    arm_label_id=arm.id,
+                ),
+            )
+
+
+@pytest.mark.asyncio
+async def test_live_dependencies_block_level_deactivation() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.ACTIVE)
+
+    with (
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=level),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.count_setup_dependencies",
+            new=AsyncMock(
+                return_value={
+                    "classes_active": 1,
+                    "departments_active": 0,
+                    "curriculum_subjects_active": 0,
+                    "enrollments_current": 0,
+                }
+            ),
+        ),
+    ):
+        with pytest.raises(ConflictException) as exc_info:
+            await AcademicLevelService.deactivate(
+                db=AsyncMock(),
+                actor=_admin(tenant_id),
+                academic_level_id=level.id,
+            )
+
+    assert exc_info.value.payload == {"dependency_counts": {"classes_active": 1}}
+
+
+@pytest.mark.asyncio
+async def test_archive_and_restore_keep_restored_level_inactive() -> None:
+    tenant_id = uuid.uuid4()
+    level = _academic_level(tenant_id, status=AcademicLevelStatus.INACTIVE)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=level),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.count_setup_dependencies",
+            new=AsyncMock(
+                return_value={
+                    "classes_active": 0,
+                    "departments_active": 0,
+                    "curriculum_subjects_active": 0,
+                    "enrollments_current": 0,
+                }
+            ),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.save",
+            new=AsyncMock(return_value=level),
+        ),
+    ):
+        archived = await AcademicLevelService.archive(
+            db=db,
+            actor=_admin(tenant_id),
+            academic_level_id=level.id,
+        )
+        assert archived.status == AcademicLevelStatus.ARCHIVED
+        assert level.archived_at is not None
+
+        restored = await AcademicLevelService.restore(
+            db=db,
+            actor=_admin(tenant_id),
+            academic_level_id=level.id,
+        )
+
+    assert restored.status == AcademicLevelStatus.INACTIVE
+    assert restored.archived_at is None
 
 
 def test_department_name_uniqueness_is_scoped_to_academic_level() -> None:
@@ -252,7 +574,7 @@ def _classroom(
         normalized_name="JSS1",
         category=AcademicCategory.JUNIOR_SECONDARY,
         position=1,
-        is_active=True,
+        status=AcademicLevelStatus.ACTIVE,
         created_at=now,
         updated_at=now,
     )
@@ -273,6 +595,25 @@ def _classroom(
         arm_label_id=arm_label.id,
         arm_label_ref=arm_label,
         is_active=active,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _academic_level(
+    tenant_id: uuid.UUID,
+    *,
+    status: AcademicLevelStatus,
+) -> AcademicLevel:
+    now = datetime.now(timezone.utc)
+    return AcademicLevel(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        name="JSS1",
+        normalized_name="JSS1",
+        category=AcademicCategory.JUNIOR_SECONDARY,
+        position=1,
+        status=status,
         created_at=now,
         updated_at=now,
     )

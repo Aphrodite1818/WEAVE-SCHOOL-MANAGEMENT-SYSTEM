@@ -4,7 +4,12 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.classes.models import AcademicCategory, AcademicLevel, Department
+from app.modules.classes.models import (
+    AcademicCategory,
+    AcademicLevel,
+    AcademicLevelStatus,
+    Department,
+)
 from app.tenant_management.models import Tenant
 
 
@@ -19,7 +24,7 @@ async def test_same_department_name_is_allowed_on_different_levels(
         normalized_name="ss1",
         category=AcademicCategory.SENIOR_SECONDARY,
         position=1,
-        is_active=True,
+        status=AcademicLevelStatus.ACTIVE,
     )
     second_level = AcademicLevel(
         tenant_id=tenant.id,
@@ -27,7 +32,7 @@ async def test_same_department_name_is_allowed_on_different_levels(
         normalized_name="ss2",
         category=AcademicCategory.SENIOR_SECONDARY,
         position=2,
-        is_active=True,
+        status=AcademicLevelStatus.ACTIVE,
     )
     db_session.add_all([first_level, second_level])
     await db_session.flush()
@@ -64,7 +69,7 @@ async def test_same_department_name_is_rejected_twice_on_same_level(
         normalized_name="ss1",
         category=AcademicCategory.SENIOR_SECONDARY,
         position=1,
-        is_active=True,
+        status=AcademicLevelStatus.ACTIVE,
     )
     db_session.add(level)
     await db_session.flush()

@@ -8,8 +8,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
-from app.modules.student_academics.curriculum_models import Curriculum
+from app.modules.classes.models import (
+    AcademicLevel,
+    AcademicLevelStatus,
+    ArmLabel,
+    ClassRoom,
+    Department,
+)
+from app.modules.student_academics.curriculum_models import Curriculum, CurriculumSubject
 from app.modules.student_academics.models import TeacherAssignment
 from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
 
@@ -84,43 +90,122 @@ class AcademicLevelRepository:
     ):
         query = select(AcademicLevel).where(AcademicLevel.tenant_id == tenant_id)
         if active_only:
-            query = query.where(
-                AcademicLevel.is_active.is_(True), AcademicLevel.archived_at.is_(None)
-            )
+            query = query.where(AcademicLevel.status == AcademicLevelStatus.ACTIVE)
         elif not include_archived:
-            query = query.where(AcademicLevel.archived_at.is_(None))
+            query = query.where(AcademicLevel.status != AcademicLevelStatus.ARCHIVED)
         query = query.order_by(AcademicLevel.category, AcademicLevel.position, AcademicLevel.name)
         return list((await db.execute(query)).scalars().all())
 
+
+
     @staticmethod
     async def count_setup_dependencies(
-        db: AsyncSession, tenant_id: uuid.UUID, level_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        level_id: uuid.UUID,
     ) -> dict[str, int]:
-        async def count(model, predicate):
-            return int(
-                (
-                    await db.execute(select(func.count()).select_from(model).where(predicate))
-                ).scalar_one()
+        """
+        Return all AcademicLevel dependency counts needed by lifecycle rules.
+
+        Total counts tell us whether the level has ever been structurally used.
+        Active/current counts tell us whether the level is still in live use.
+
+        An empty Curriculum container is intentionally not treated as real usage.
+        Actual curriculum usage begins when CurriculumSubject rows exist.
+        """
+
+        def count_subquery(model, *conditions):
+            return (
+                select(func.count())
+                .select_from(model)
+                .where(*conditions)
+                .scalar_subquery()
             )
 
-        return {
-            "classes": await count(
+        curriculum_ids = select(Curriculum.id).where(
+            Curriculum.tenant_id == tenant_id,
+            Curriculum.academic_level_id == level_id,
+        )
+
+        query = select(
+            # ---------------------------------------------------------
+            # Classes
+            # ---------------------------------------------------------
+            count_subquery(
                 ClassRoom,
-                (ClassRoom.tenant_id == tenant_id) & (ClassRoom.academic_level_id == level_id),
-            ),
-            "departments": await count(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.academic_level_id == level_id,
+            ).label("classes_total"),
+
+            count_subquery(
+                ClassRoom,
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.academic_level_id == level_id,
+                ClassRoom.is_active.is_(True),
+                ClassRoom.archived_at.is_(None),
+            ).label("classes_active"),
+
+            # ---------------------------------------------------------
+            # Departments
+            # ---------------------------------------------------------
+            count_subquery(
                 Department,
-                (Department.tenant_id == tenant_id) & (Department.academic_level_id == level_id),
-            ),
-            "curricula": await count(
-                Curriculum,
-                (Curriculum.tenant_id == tenant_id) & (Curriculum.academic_level_id == level_id),
-            ),
-            "enrollments": await count(
+                Department.tenant_id == tenant_id,
+                Department.academic_level_id == level_id,
+            ).label("departments_total"),
+
+            count_subquery(
+                Department,
+                Department.tenant_id == tenant_id,
+                Department.academic_level_id == level_id,
+                Department.is_active.is_(True),
+                Department.archived_at.is_(None),
+            ).label("departments_active"),
+
+            # ---------------------------------------------------------
+            # Curriculum subjects
+            # ---------------------------------------------------------
+            count_subquery(
+                CurriculumSubject,
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.curriculum_id.in_(curriculum_ids),
+            ).label("curriculum_subjects_total"),
+
+            count_subquery(
+                CurriculumSubject,
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.curriculum_id.in_(curriculum_ids),
+                CurriculumSubject.is_active.is_(True),
+            ).label("curriculum_subjects_active"),
+
+            # ---------------------------------------------------------
+            # Student enrollments
+            # ---------------------------------------------------------
+            count_subquery(
                 StudentEnrollment,
-                (StudentEnrollment.tenant_id == tenant_id)
-                & (StudentEnrollment.academic_level_id == level_id),
-            ),
+                StudentEnrollment.tenant_id == tenant_id,
+                StudentEnrollment.academic_level_id == level_id,
+            ).label("enrollments_total"),
+
+            count_subquery(
+                StudentEnrollment,
+                StudentEnrollment.tenant_id == tenant_id,
+                StudentEnrollment.academic_level_id == level_id,
+                StudentEnrollment.is_current.is_(True),
+            ).label("enrollments_current"),
+        )
+
+        row = (await db.execute(query)).one()
+
+        return {
+            "classes_total": int(row.classes_total),
+            "classes_active": int(row.classes_active),
+            "departments_total": int(row.departments_total),
+            "departments_active": int(row.departments_active),
+            "curriculum_subjects_total": int(row.curriculum_subjects_total),
+            "curriculum_subjects_active": int(row.curriculum_subjects_active),
+            "enrollments_total": int(row.enrollments_total),
+            "enrollments_current": int(row.enrollments_current),
         }
 
 

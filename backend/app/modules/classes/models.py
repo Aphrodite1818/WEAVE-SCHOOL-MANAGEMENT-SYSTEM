@@ -41,6 +41,13 @@ class AcademicCategory(str, PyEnum):
     SENIOR_SECONDARY = "SENIOR_SECONDARY"
 
 
+class AcademicLevelStatus(str, PyEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    ARCHIVED = "archived"
+
+
 class AcademicLevel(BaseModel):
     """Tenant-scoped curriculum level. Class arms organize students inside the level."""
 
@@ -61,8 +68,16 @@ class AcademicLevel(BaseModel):
     specialization_required_from_term_position: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default="true", nullable=False
+    status: Mapped[AcademicLevelStatus] = mapped_column(
+        SQLEnum(
+            AcademicLevelStatus,
+            name="academic_level_status",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        default=AcademicLevelStatus.DRAFT,
+        server_default=AcademicLevelStatus.DRAFT.value,
+        nullable=False,
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -92,10 +107,13 @@ class AcademicLevel(BaseModel):
         ),
         CheckConstraint("position > 0", name="ck_academic_levels_position_positive"),
         CheckConstraint(
-            "archived_at IS NULL OR is_active = false",
-            name="ck_academic_levels_archived_requires_inactive",
+            """
+            (status = 'archived' AND archived_at IS NOT NULL)
+            OR (status <> 'archived' AND archived_at IS NULL AND archived_by_admin_id IS NULL)
+            """,
+            name="ck_academic_levels_archive_metadata_matches_status",
         ),
-        Index("ix_academic_levels_tenant_active", "tenant_id", "is_active"),
+        Index("ix_academic_levels_tenant_status", "tenant_id", "status"),
         Index("ix_academic_levels_tenant_category_position", "tenant_id", "category", "position"),
         Index("ix_academic_levels_tenant_archived", "tenant_id", "archived_at"),
     )

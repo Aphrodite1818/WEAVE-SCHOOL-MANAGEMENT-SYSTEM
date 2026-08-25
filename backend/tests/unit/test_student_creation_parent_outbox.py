@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import AcademicLevelRepository, ClassRoomRepository
 from app.modules.email_outbox.models import EmailOutbox
 from app.modules.email_outbox.repository import EmailOutboxRepository
@@ -235,7 +236,7 @@ async def test_student_creation_queues_one_parent_email_per_parent(
     monkeypatch.setattr(
         AcademicLevelRepository,
         "get_by_id",
-        AsyncMock(return_value=SimpleNamespace(id=level_id, is_active=True, archived_at=None)),
+        AsyncMock(return_value=SimpleNamespace(id=level_id, status=AcademicLevelStatus.ACTIVE)),
     )
     monkeypatch.setattr(
         ClassRoomRepository,

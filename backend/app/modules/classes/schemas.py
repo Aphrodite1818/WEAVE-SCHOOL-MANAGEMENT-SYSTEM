@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.utils.normalization import normalize_class_name
-from app.modules.classes.models import AcademicCategory
+from app.modules.classes.models import AcademicCategory, AcademicLevelStatus
 
 
 _PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
@@ -32,7 +32,7 @@ class AcademicLevelBase(InputBase):
     name: str = Field(min_length=1, max_length=100)
     category: AcademicCategory
     position: int = Field(gt=0)
-    specialization_required_from_position: int | None = Field(default=None, ge=1, le=3)
+    specialization_required_from_term_position: int | None = Field(default=None, ge=1, le=3)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -87,7 +87,7 @@ class AcademicLevelResponse(OutputBase):
     name: str
     category: AcademicCategory
     position: int
-    is_active: bool
+    status: AcademicLevelStatus
     specialization_required_from_term_position: int | None = None
     archived_at: datetime | None = None
     archived_by_admin_id: uuid.UUID | None = None

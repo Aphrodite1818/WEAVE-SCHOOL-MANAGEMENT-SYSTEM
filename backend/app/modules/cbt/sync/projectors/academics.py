@@ -32,11 +32,12 @@ def _value(value: Any) -> Any:
 
 
 def _visible(row: Any) -> bool:
-    return bool(
-        row is not None
-        and getattr(row, "is_active", True)
-        and getattr(row, "archived_at", None) is None
-    )
+    if row is None:
+        return False
+    status = getattr(row, "status", None)
+    if status is not None and _value(status) != "active":
+        return False
+    return bool(getattr(row, "is_active", True) and getattr(row, "archived_at", None) is None)
 
 
 def project_academic_level(
@@ -55,6 +56,7 @@ def project_academic_level(
         name=row.name,
         category=_value(row.category),
         position=row.position,
+        status=_value(row.status),
     ).model_dump(mode="json")
 
 
