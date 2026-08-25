@@ -99,12 +99,38 @@ class AcademicLevelService:
             raise BadRequestException(f"{category.value} is not valid for this institution type.")
 
     @staticmethod
+    async def _validate_specialization_rule(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        category: AcademicCategory,
+        specialization_required_from_term_position: int | None,
+    ) -> None:
+        if specialization_required_from_term_position is None:
+            return
+
+        institution_type = await _tenant_institution_type(db, tenant_id)
+
+        if not category_supports_departments(institution_type, category):
+            raise BadRequestException(
+                "Department specialization cannot be required for this academic level category"
+            )
+
+    @staticmethod
     async def create(
         db: AsyncSession, actor: TenantAdmin, payload: AcademicLevelCreate
     ) -> AcademicLevelResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         await AcademicLevelService._validate_category(db, actor.tenant_id, payload.category)
+        await AcademicLevelService._validate_specialization_rule(
+            db,
+            actor.tenant_id,
+            category=payload.category,
+            specialization_required_from_term_position=(
+                payload.specialization_required_from_position
+            ),
+        )
         if await AcademicLevelRepository.get_by_normalized_name(db, actor.tenant_id, payload.name):
             raise ConflictException("Academic level with this name already exists")
         if await AcademicLevelRepository.get_by_category_position(
@@ -118,6 +144,7 @@ class AcademicLevelService:
             category=payload.category,
             position=payload.position,
             is_active=True,
+            specialization_required_from_term_position=payload.specialization_required_from_term_position,
         )
         try:
             await AcademicLevelRepository.add(db, level)
@@ -146,7 +173,7 @@ class AcademicLevelService:
         actor: TenantAdmin,
         academic_level_id: uuid.UUID,
         payload: AcademicLevelUpdate,
-    ):
+    ) -> AcademicLevelResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         level = await AcademicLevelRepository.get_by_id(
@@ -161,6 +188,17 @@ class AcademicLevelService:
             await AcademicLevelService._validate_category(db, actor.tenant_id, data["category"])
         target_category = data.get("category", level.category)
         target_position = data.get("position", level.position)
+        target_specialization_position = data.get(
+            "specialization_required_from_term_position",
+            level.specialization_required_from_term_position,
+        )
+
+        await AcademicLevelService._validate_specialization_rule(
+            db,
+            actor.tenant_id,
+            category=target_category,
+            specialization_required_from_term_position=target_specialization_position,
+        )
         owner = await AcademicLevelRepository.get_by_category_position(
             db, actor.tenant_id, target_category, target_position, exclude_id=level.id
         )
@@ -176,13 +214,16 @@ class AcademicLevelService:
             level.normalized_name = normalized_class_name_key(data["name"])
         level.category = target_category
         level.position = target_position
+        level.specialization_required_from_term_position = target_specialization_position
         await AcademicLevelRepository.save(db, level)
         await db.commit()
         await db.refresh(level)
         return AcademicLevelResponse.model_validate(level)
 
     @staticmethod
-    async def purge_setup_level(db: AsyncSession, actor: TenantAdmin, academic_level_id: uuid.UUID):
+    async def purge_setup_level(
+        db: AsyncSession, actor: TenantAdmin, academic_level_id: uuid.UUID
+    ) -> AcademicLevelResponse:
         level = await AcademicLevelRepository.get_by_id(
             db, actor.tenant_id, academic_level_id, lock=True
         )

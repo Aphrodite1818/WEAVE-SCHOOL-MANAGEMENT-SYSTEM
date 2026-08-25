@@ -32,6 +32,7 @@ class AcademicLevelBase(InputBase):
     name: str = Field(min_length=1, max_length=100)
     category: AcademicCategory
     position: int = Field(gt=0)
+    specialization_required_from_position: int | None = Field(default=None, ge=1, le=3)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -50,6 +51,11 @@ class AcademicLevelUpdate(InputBase):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     category: AcademicCategory | None = None
     position: int | None = Field(default=None, gt=0)
+
+    # none deliberately means this level
+    # does not require department specialization
+
+    specialization_required_from_term_position: int | None = Field(default=None, ge=1, le=3)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -82,6 +88,7 @@ class AcademicLevelResponse(OutputBase):
     category: AcademicCategory
     position: int
     is_active: bool
+    specialization_required_from_term_position: int | None = None
     archived_at: datetime | None = None
     archived_by_admin_id: uuid.UUID | None = None
     created_at: datetime

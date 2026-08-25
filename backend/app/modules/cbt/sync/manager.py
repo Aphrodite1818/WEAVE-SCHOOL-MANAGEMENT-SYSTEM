@@ -30,8 +30,9 @@ class CBTMachineConnection:
     websocket: WebSocket
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     authorized_until: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-        + timedelta(seconds=AUTHORIZATION_REVALIDATE_SECONDS)
+        default_factory=lambda: (
+            datetime.now(timezone.utc) + timedelta(seconds=AUTHORIZATION_REVALIDATE_SECONDS)
+        )
     )
 
 
@@ -132,9 +133,7 @@ class CBTConnectionManager:
         if now < connection.authorized_until:
             return True
         if await self._is_authorized(connection):
-            connection.authorized_until = now + timedelta(
-                seconds=AUTHORIZATION_REVALIDATE_SECONDS
-            )
+            connection.authorized_until = now + timedelta(seconds=AUTHORIZATION_REVALIDATE_SECONDS)
             return True
         await self.disconnect_server(
             connection.server_id,

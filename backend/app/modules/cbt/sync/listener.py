@@ -145,9 +145,7 @@ class CBTSyncListener:
                     "CBT sync listener subscribed to PostgreSQL channel %s.",
                     CBT_SYNC_NOTIFY_CHANNEL,
                 )
-                await cbt_connection_manager.send_to_all(
-                    message={"type": "cbt.sync.check"}
-                )
+                await cbt_connection_manager.send_to_all(message={"type": "cbt.sync.check"})
                 retry_delay = INITIAL_RETRY_DELAY_SECONDS
                 await terminated.wait()
             except asyncio.CancelledError:

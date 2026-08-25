@@ -9,7 +9,10 @@ import pytest
 from app.modules.bulk_imports.models import ImportResourceType
 from app.modules.bulk_imports.normalizers import BulkImportNormalizer
 from app.modules.bulk_imports.service import BulkImportService
-from app.modules.bulk_imports.templates import DATA_HEADERS_BY_RESOURCE, TEMPLATE_VERSION_BY_RESOURCE
+from app.modules.bulk_imports.templates import (
+    DATA_HEADERS_BY_RESOURCE,
+    TEMPLATE_VERSION_BY_RESOURCE,
+)
 from app.modules.bulk_imports.validators import BulkImportValidator, ImportRowValidationResult
 from app.modules.classes.repository import (
     AcademicLevelRepository,

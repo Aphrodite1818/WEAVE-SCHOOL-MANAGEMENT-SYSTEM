@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     event,
+    Integer,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -57,6 +58,9 @@ class AcademicLevel(BaseModel):
         nullable=False,
     )
     position: Mapped[int] = mapped_column(nullable=False)
+    specialization_required_from_term_position: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )
@@ -78,6 +82,13 @@ class AcademicLevel(BaseModel):
         ),
         UniqueConstraint(
             "tenant_id", "category", "position", name="uq_academic_levels_tenant_category_position"
+        ),
+        CheckConstraint(
+            """
+            specialization_required_from_term_position IS NULL
+            OR specialization_required_from_term_position BETWEEN 1 AND 3
+            """,
+            name="ck_academic_levels_specialization_term_position",
         ),
         CheckConstraint("position > 0", name="ck_academic_levels_position_positive"),
         CheckConstraint(

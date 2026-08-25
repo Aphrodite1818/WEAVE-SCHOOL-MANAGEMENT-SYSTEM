@@ -78,9 +78,7 @@ def _ordered(items: list[BaseModel]) -> list[BaseModel]:
 
 
 def _tenant_rows(session: Session, model: type[Any], tenant_id: uuid.UUID) -> list[Any]:
-    return list(
-        session.execute(select(model).where(model.tenant_id == tenant_id)).scalars()
-    )
+    return list(session.execute(select(model).where(model.tenant_id == tenant_id)).scalars())
 
 
 def build_bootstrap_sections(
@@ -236,9 +234,7 @@ def build_bootstrap_sections(
 
     curriculum_rows = _tenant_rows(session, Curriculum, tenant_id)
     visible_curricula = {
-        row.id: row
-        for row in curriculum_rows
-        if row.academic_level_id in visible_levels
+        row.id: row for row in curriculum_rows if row.academic_level_id in visible_levels
     }
     sections["curricula"] = _ordered(
         [
@@ -282,9 +278,7 @@ def build_bootstrap_sections(
             if department is None or department.academic_level_id != curriculum.academic_level_id:
                 continue
         visible_offerings[row.id] = row
-        offering_scopes.add(
-            (row.curriculum_subject_id, row.academic_term_id, row.department_id)
-        )
+        offering_scopes.add((row.curriculum_subject_id, row.academic_term_id, row.department_id))
     sections["offerings"] = _ordered(
         [
             CBTCurriculumOfferingSnapshot(
@@ -338,9 +332,7 @@ def build_bootstrap_sections(
                 status=_value(row.account_status),
             )
             for row in admin_rows
-            if row.account_status == TenantAdminStatus.ACTIVE
-            and row.is_active
-            and row.is_verified
+            if row.account_status == TenantAdminStatus.ACTIVE and row.is_active and row.is_verified
         ]
     )
 
@@ -411,9 +403,7 @@ def build_bootstrap_sections(
         )
     sections["student_enrollments"] = _ordered(enrollment_snapshots)
 
-    open_terms = [
-        row for row in visible_terms.values() if row.status == AcademicTermStatus.OPEN
-    ]
+    open_terms = [row for row in visible_terms.values() if row.status == AcademicTermStatus.OPEN]
     if len(open_terms) > 1:
         raise RuntimeError("More than one current open academic term exists for the tenant.")
     current_open_term = open_terms[0] if open_terms else None
@@ -430,15 +420,11 @@ def build_bootstrap_sections(
             ):
                 continue
             classroom = visible_classes[assignment.class_id]
-            curriculum_subject = visible_curriculum_subjects[
-                assignment.curriculum_subject_id
-            ]
+            curriculum_subject = visible_curriculum_subjects[assignment.curriculum_subject_id]
             curriculum = visible_curricula[curriculum_subject.curriculum_id]
             if curriculum.academic_level_id != classroom.academic_level_id:
                 continue
-            department_id = class_term_department.get(
-                (assignment.class_id, current_open_term.id)
-            )
+            department_id = class_term_department.get((assignment.class_id, current_open_term.id))
             if not (
                 (
                     assignment.curriculum_subject_id,

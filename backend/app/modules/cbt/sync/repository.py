@@ -34,23 +34,17 @@ class CBTSyncRepository:
     @staticmethod
     async def get_latest_cursor(db: AsyncSession, *, tenant_id: uuid.UUID) -> int:
         result = await db.execute(
-            select(CBTSyncTenantState.last_cursor).where(
-                CBTSyncTenantState.tenant_id == tenant_id
-            )
+            select(CBTSyncTenantState.last_cursor).where(CBTSyncTenantState.tenant_id == tenant_id)
         )
         return result.scalar_one_or_none() or 0
 
     @staticmethod
     async def get_earliest_cursor(db: AsyncSession, *, tenant_id: uuid.UUID) -> int | None:
         return await db.scalar(
-            select(func.min(CBTSyncChange.cursor)).where(
-                CBTSyncChange.tenant_id == tenant_id
-            )
+            select(func.min(CBTSyncChange.cursor)).where(CBTSyncChange.tenant_id == tenant_id)
         )
 
     @staticmethod
     async def prune_before(db: AsyncSession, *, cutoff: datetime) -> int:
-        result = await db.execute(
-            delete(CBTSyncChange).where(CBTSyncChange.created_at < cutoff)
-        )
+        result = await db.execute(delete(CBTSyncChange).where(CBTSyncChange.created_at < cutoff))
         return int(result.rowcount or 0)

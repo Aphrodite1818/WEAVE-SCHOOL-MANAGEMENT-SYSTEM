@@ -160,9 +160,7 @@ def _current_savepoint_journal(session: Session) -> _SavepointJournal | None:
 
 
 def _restore_savepoint_journal(session: Session, transaction: Any) -> None:
-    journals: dict[Any, _SavepointJournal] | None = session.info.get(
-        _SAVEPOINT_JOURNALS_KEY
-    )
+    journals: dict[Any, _SavepointJournal] | None = session.info.get(_SAVEPOINT_JOURNALS_KEY)
     if not journals:
         return
     journal = journals.pop(transaction, None)
@@ -295,9 +293,7 @@ def _append_refreshes(
     entity_type: CBTSyncEntityType,
 ) -> None:
     model = ENTITY_MODELS[entity_type]
-    entity_ids = session.execute(
-        select(model.id).where(model.tenant_id == tenant_id)
-    ).scalars()
+    entity_ids = session.execute(select(model.id).where(model.tenant_id == tenant_id)).scalars()
     _append_refresh_ids(
         events,
         tenant_id=tenant_id,
