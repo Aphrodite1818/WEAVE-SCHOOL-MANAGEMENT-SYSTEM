@@ -282,20 +282,29 @@ class AcademicCurriculumService:
 
         updates = payload.model_dump(exclude_unset=True)
         if updates:
-            result_id = (
-                await db.execute(
-                    select(StudentSubjectResult.id)
-                    .where(
-                        StudentSubjectResult.tenant_id == tenant_id,
-                        StudentSubjectResult.curriculum_subject_id == row.id,
+            # is_elective is historical curriculum meaning. Once results reference
+            # this row, changing it would reinterpret old academic history.
+            # is_active is lifecycle state only: it may still be toggled so the
+            # subject can be retired from or restored to future curriculum use
+            # without deleting or rewriting historical results.
+            elective_changes = (
+                "is_elective" in updates and updates["is_elective"] != row.is_elective
+            )
+            if elective_changes:
+                result_id = (
+                    await db.execute(
+                        select(StudentSubjectResult.id)
+                        .where(
+                            StudentSubjectResult.tenant_id == tenant_id,
+                            StudentSubjectResult.curriculum_subject_id == row.id,
+                        )
+                        .limit(1)
                     )
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if result_id is not None:
-                raise ConflictException(
-                    "Curriculum subject settings cannot change after results reference the subject."
-                )
+                ).scalar_one_or_none()
+                if result_id is not None:
+                    raise ConflictException(
+                        "Curriculum subject elective setting cannot change after results reference the subject."
+                    )
             for key, value in updates.items():
                 setattr(row, key, value)
 
