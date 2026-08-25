@@ -138,7 +138,6 @@ def build_bootstrap_sections(
                 name=row.name,
                 category=_value(row.category),
                 position=row.position,
-                status=_value(row.status),
             )
             for row in visible_levels.values()
         ]
