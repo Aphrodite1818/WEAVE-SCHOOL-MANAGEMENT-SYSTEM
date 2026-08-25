@@ -54,7 +54,6 @@ class CBTAcademicLevelSnapshot(SnapshotBase):
     name: str
     category: str
     position: int
-    status: str
 
 
 class CBTArmLabelSnapshot(SnapshotBase):
