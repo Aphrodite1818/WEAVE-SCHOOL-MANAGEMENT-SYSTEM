@@ -56,7 +56,6 @@ def project_academic_level(
         name=row.name,
         category=_value(row.category),
         position=row.position,
-        status=_value(row.status),
     ).model_dump(mode="json")
 
 
