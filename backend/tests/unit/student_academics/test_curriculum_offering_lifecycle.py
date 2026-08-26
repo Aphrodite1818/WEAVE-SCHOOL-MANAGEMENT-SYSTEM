@@ -187,13 +187,30 @@ async def test_add_offering_checks_academic_write_guard_before_loading_context(m
         context,
     )
     tenant_id = uuid4()
+    db = AsyncMock()
 
     with pytest.raises(RuntimeError, match="stop after guard"):
         await AcademicCurriculumService.add_offering(
-            AsyncMock(),
+            db,
             tenant_id,
             uuid4(),
             CurriculumOfferingCreate(academic_term_id=uuid4()),
         )
 
-    guard.assert_awaited_once_with(AsyncMock.ANY if False else guard.await_args.args[0] if guard.await_args.args else None)
+    guard.assert_awaited_once_with(db, tenant_id=tenant_id)
+
+
+@pytest.mark.asyncio
+async def test_remove_offering_checks_academic_write_guard_before_lookup(monkeypatch) -> None:
+    guard = AsyncMock()
+    monkeypatch.setattr(
+        "app.modules.student_academics.curriculum_v2_service.ensure_academic_write_window",
+        guard,
+    )
+    tenant_id = uuid4()
+    db = SimpleNamespace(execute=AsyncMock(side_effect=RuntimeError("stop after guard")))
+
+    with pytest.raises(RuntimeError, match="stop after guard"):
+        await AcademicCurriculumService.remove_offering(db, tenant_id, uuid4())
+
+    guard.assert_awaited_once_with(db, tenant_id=tenant_id)
