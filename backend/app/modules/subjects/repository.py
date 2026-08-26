@@ -86,8 +86,10 @@ class SubjectRepository:
         db: AsyncSession,
         tenant_id: UUID,
         subject_id: UUID,
+        *,
+        lock: bool = False,
     ) -> Subject | None:
-        result = await db.execute(
+        query = (
             select(Subject)
             .options(*_subject_teacher_load_options())
             .where(
@@ -95,7 +97,9 @@ class SubjectRepository:
                 Subject.id == subject_id,
             )
         )
-        return result.scalar_one_or_none()
+        if lock:
+            query = query.with_for_update(of=Subject)
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def get_subject_by_name(
@@ -228,20 +232,16 @@ class SubjectRepository:
         *,
         skip: int = 0,
         limit: int = 100,
-        is_active: bool | None = None,
         search: str | None = None,
     ) -> tuple[list[Subject], int]:
         filters = [
             Subject.tenant_id == tenant_id,
+            Subject.is_active.is_(True),
             Subject.archived_at.is_(None),
             TeacherMembershipSubject.tenant_id == tenant_id,
             TeacherMembershipSubject.teacher_membership_id == teacher_id,
             TeacherMembershipSubject.is_active.is_(True),
         ]
-        if is_active is not None:
-            filters.append(Subject.is_active.is_(is_active))
-            if is_active:
-                filters.append(Subject.archived_at.is_(None))
         if search:
             pattern = f"%{search.strip()}%"
             filters.append(
@@ -281,131 +281,220 @@ class SubjectRepository:
         await db.flush()
 
     @staticmethod
-    async def count_subject_dependencies(
+    async def count_dependencies(
         db: AsyncSession,
         tenant_id: UUID,
         subject_id: UUID,
     ) -> dict[str, int]:
-        from app.modules.report_cards.models import ReportCardSubjectLine
+        """Return historical and live references to one subject in one query."""
+
+        from app.modules.report_cards.models import ReportCard, ReportCardSubjectLine
         from app.modules.student_academics.curriculum_models import CurriculumSubject
         from app.modules.student_academics.models import (
+            AcademicTerm,
+            AcademicTermStatus,
             StudentSubjectResult,
             TeacherAssignment,
         )
 
-        curriculum_subject_count = (
+        live_term_statuses = (
+            AcademicTermStatus.DRAFT,
+            AcademicTermStatus.OPEN,
+            AcademicTermStatus.CLOSING,
+        )
+
+        def count_subquery(model, *conditions):
+            return select(func.count()).select_from(model).where(*conditions).scalar_subquery()
+
+        curriculum_subjects_total = count_subquery(
+            CurriculumSubject,
+            CurriculumSubject.tenant_id == tenant_id,
+            CurriculumSubject.subject_id == subject_id,
+        )
+        curriculum_subjects_live = count_subquery(
+            CurriculumSubject,
+            CurriculumSubject.tenant_id == tenant_id,
+            CurriculumSubject.subject_id == subject_id,
+            CurriculumSubject.is_active.is_(True),
+        )
+        teacher_links_total = count_subquery(
+            TeacherMembershipSubject,
+            TeacherMembershipSubject.tenant_id == tenant_id,
+            TeacherMembershipSubject.subject_id == subject_id,
+        )
+        teacher_links_live = count_subquery(
+            TeacherMembershipSubject,
+            TeacherMembershipSubject.tenant_id == tenant_id,
+            TeacherMembershipSubject.subject_id == subject_id,
+            TeacherMembershipSubject.is_active.is_(True),
+        )
+        teacher_assignments_total = (
+            select(func.count())
+            .select_from(TeacherAssignment)
+            .join(CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id)
+            .where(
+                TeacherAssignment.tenant_id == tenant_id,
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.subject_id == subject_id,
+            )
+            .scalar_subquery()
+        )
+        teacher_assignments_live = (
+            select(func.count())
+            .select_from(TeacherAssignment)
+            .join(CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id)
+            .where(
+                TeacherAssignment.tenant_id == tenant_id,
+                TeacherAssignment.is_active.is_(True),
+                TeacherAssignment.effective_to.is_(None),
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.subject_id == subject_id,
+            )
+            .scalar_subquery()
+        )
+        results_total = count_subquery(
+            StudentSubjectResult,
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.subject_id == subject_id,
+        )
+        results_live = (
+            select(func.count())
+            .select_from(StudentSubjectResult)
+            .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
+            .where(
+                StudentSubjectResult.tenant_id == tenant_id,
+                StudentSubjectResult.subject_id == subject_id,
+                AcademicTerm.tenant_id == tenant_id,
+                AcademicTerm.status.in_(live_term_statuses),
+            )
+            .scalar_subquery()
+        )
+        report_card_lines_total = count_subquery(
+            ReportCardSubjectLine,
+            ReportCardSubjectLine.tenant_id == tenant_id,
+            ReportCardSubjectLine.subject_id == subject_id,
+        )
+        report_card_lines_live = (
+            select(func.count())
+            .select_from(ReportCardSubjectLine)
+            .join(ReportCard, ReportCard.id == ReportCardSubjectLine.report_card_id)
+            .join(AcademicTerm, AcademicTerm.id == ReportCard.academic_term_id)
+            .where(
+                ReportCardSubjectLine.tenant_id == tenant_id,
+                ReportCardSubjectLine.subject_id == subject_id,
+                ReportCard.tenant_id == tenant_id,
+                AcademicTerm.tenant_id == tenant_id,
+                AcademicTerm.status.in_(live_term_statuses),
+            )
+            .scalar_subquery()
+        )
+
+        row = (
             await db.execute(
-                select(func.count())
-                .select_from(CurriculumSubject)
-                .where(
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.subject_id == subject_id,
+                select(
+                    curriculum_subjects_total.label("curriculum_subjects_total"),
+                    curriculum_subjects_live.label("curriculum_subjects_live"),
+                    teacher_links_total.label("teacher_links_total"),
+                    teacher_links_live.label("teacher_links_live"),
+                    teacher_assignments_total.label("teacher_assignments_total"),
+                    teacher_assignments_live.label("teacher_assignments_live"),
+                    results_total.label("results_total"),
+                    results_live.label("results_live"),
+                    report_card_lines_total.label("report_card_lines_total"),
+                    report_card_lines_live.label("report_card_lines_live"),
                 )
             )
-        ).scalar_one()
-        teacher_link_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(TeacherMembershipSubject)
-                .where(
-                    TeacherMembershipSubject.tenant_id == tenant_id,
-                    TeacherMembershipSubject.subject_id == subject_id,
-                )
-            )
-        ).scalar_one()
-        teacher_assignment_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(TeacherAssignment)
-                .join(
-                    CurriculumSubject,
-                    CurriculumSubject.id == TeacherAssignment.curriculum_subject_id,
-                )
-                .where(
-                    TeacherAssignment.tenant_id == tenant_id,
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.subject_id == subject_id,
-                )
-            )
-        ).scalar_one()
-        result_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(StudentSubjectResult)
-                .where(
-                    StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.subject_id == subject_id,
-                )
-            )
-        ).scalar_one()
-        report_card_line_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(ReportCardSubjectLine)
-                .where(
-                    ReportCardSubjectLine.tenant_id == tenant_id,
-                    ReportCardSubjectLine.subject_id == subject_id,
-                )
-            )
-        ).scalar_one()
+        ).one()
         return {
-            "curriculum_subjects": int(curriculum_subject_count),
-            "teacher_links": int(teacher_link_count),
-            "teacher_assignments": int(teacher_assignment_count),
-            "results": int(result_count),
-            "report_card_lines": int(report_card_line_count),
+            "curriculum_subjects_total": int(row.curriculum_subjects_total),
+            "curriculum_subjects_live": int(row.curriculum_subjects_live),
+            "teacher_links_total": int(row.teacher_links_total),
+            "teacher_links_live": int(row.teacher_links_live),
+            "teacher_assignments_total": int(row.teacher_assignments_total),
+            "teacher_assignments_live": int(row.teacher_assignments_live),
+            "results_total": int(row.results_total),
+            "results_live": int(row.results_live),
+            "report_card_lines_total": int(row.report_card_lines_total),
+            "report_card_lines_live": int(row.report_card_lines_live),
         }
 
     @staticmethod
-    async def count_live_subject_dependencies(
+    async def count_total_dependencies_for_subjects(
         db: AsyncSession,
         tenant_id: UUID,
-        subject_id: UUID,
-    ) -> dict[str, int]:
-        from app.modules.student_academics.curriculum_models import CurriculumSubject
-        from app.modules.student_academics.models import TeacherAssignment
+        subject_ids: list[UUID],
+    ) -> dict[UUID, dict[str, int]]:
+        """Batch total dependency counts for admin list delete-eligibility."""
 
-        active_curriculum_subject_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(CurriculumSubject)
-                .where(
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.subject_id == subject_id,
-                    CurriculumSubject.is_active.is_(True),
-                )
-            )
-        ).scalar_one()
-        active_teacher_link_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(TeacherMembershipSubject)
-                .where(
-                    TeacherMembershipSubject.tenant_id == tenant_id,
-                    TeacherMembershipSubject.subject_id == subject_id,
-                    TeacherMembershipSubject.is_active.is_(True),
-                )
-            )
-        ).scalar_one()
-        active_teacher_assignment_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(TeacherAssignment)
-                .join(
-                    CurriculumSubject,
-                    CurriculumSubject.id == TeacherAssignment.curriculum_subject_id,
-                )
-                .where(
-                    TeacherAssignment.tenant_id == tenant_id,
-                    TeacherAssignment.is_active.is_(True),
-                    TeacherAssignment.effective_to.is_(None),
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.subject_id == subject_id,
-                )
-            )
-        ).scalar_one()
-        return {
-            "active_curriculum_subjects": int(active_curriculum_subject_count),
-            "active_teacher_links": int(active_teacher_link_count),
-            "active_teacher_assignments": int(active_teacher_assignment_count),
+        from app.modules.report_cards.models import ReportCardSubjectLine
+        from app.modules.student_academics.curriculum_models import CurriculumSubject
+        from app.modules.student_academics.models import StudentSubjectResult, TeacherAssignment
+
+        if not subject_ids:
+            return {}
+
+        keys = (
+            "curriculum_subjects_total",
+            "teacher_links_total",
+            "teacher_assignments_total",
+            "results_total",
+            "report_card_lines_total",
+        )
+        counts: dict[UUID, dict[str, int]] = {
+            subject_id: {key: 0 for key in keys} for subject_id in subject_ids
         }
+
+        async def apply_grouped(query, key: str) -> None:
+            for subject_id, count in (await db.execute(query)).all():
+                if subject_id in counts:
+                    counts[subject_id][key] = int(count)
+
+        await apply_grouped(
+            select(CurriculumSubject.subject_id, func.count())
+            .where(
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.subject_id.in_(subject_ids),
+            )
+            .group_by(CurriculumSubject.subject_id),
+            "curriculum_subjects_total",
+        )
+        await apply_grouped(
+            select(TeacherMembershipSubject.subject_id, func.count())
+            .where(
+                TeacherMembershipSubject.tenant_id == tenant_id,
+                TeacherMembershipSubject.subject_id.in_(subject_ids),
+            )
+            .group_by(TeacherMembershipSubject.subject_id),
+            "teacher_links_total",
+        )
+        await apply_grouped(
+            select(CurriculumSubject.subject_id, func.count())
+            .select_from(TeacherAssignment)
+            .join(CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id)
+            .where(
+                TeacherAssignment.tenant_id == tenant_id,
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.subject_id.in_(subject_ids),
+            )
+            .group_by(CurriculumSubject.subject_id),
+            "teacher_assignments_total",
+        )
+        await apply_grouped(
+            select(StudentSubjectResult.subject_id, func.count())
+            .where(
+                StudentSubjectResult.tenant_id == tenant_id,
+                StudentSubjectResult.subject_id.in_(subject_ids),
+            )
+            .group_by(StudentSubjectResult.subject_id),
+            "results_total",
+        )
+        await apply_grouped(
+            select(ReportCardSubjectLine.subject_id, func.count())
+            .where(
+                ReportCardSubjectLine.tenant_id == tenant_id,
+                ReportCardSubjectLine.subject_id.in_(subject_ids),
+            )
+            .group_by(ReportCardSubjectLine.subject_id),
+            "report_card_lines_total",
+        )
+        return counts
