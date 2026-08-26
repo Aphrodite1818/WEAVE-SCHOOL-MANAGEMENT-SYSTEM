@@ -733,6 +733,15 @@ class DepartmentService:
 
 class ArmLabelService:
     @staticmethod
+    def _has_any_usage(dependencies: dict[str, int]) -> bool:
+        return dependencies.get("classes_total", 0) > 0
+
+    @staticmethod
+    def _live_dependency_counts(dependencies: dict[str, int]) -> dict[str, int]:
+        classes_live = dependencies.get("classes_live", 0)
+        return {"classes_live": classes_live} if classes_live > 0 else {}
+
+    @staticmethod
     async def create(db: AsyncSession, actor: TenantAdmin, payload: ArmLabelCreate):
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
@@ -743,7 +752,10 @@ class ArmLabelService:
         if await ArmLabelRepository.get_by_normalized_label(db, actor.tenant_id, normalized):
             raise ConflictException("Arm label with this name already exists")
         row = ArmLabel(
-            tenant_id=actor.tenant_id, label=label, normalized_label=normalized, is_active=True
+            tenant_id=actor.tenant_id,
+            label=label,
+            normalized_label=normalized,
+            is_active=True,
         )
         await ArmLabelRepository.add(db, row)
         await db.commit()
@@ -752,11 +764,16 @@ class ArmLabelService:
 
     @staticmethod
     async def list(db: AsyncSession, actor, *, active_only=False, include_archived=False):
+        if not actor.tenant_id:
+            raise ForbiddenException("Actor is not attached to a tenant")
+
+        is_admin = isinstance(actor, TenantAdmin)
+        effective_active_only = active_only if is_admin else True
         rows = await ArmLabelRepository.list_for_tenant(
             db,
             actor.tenant_id,
-            active_only=active_only,
-            include_archived=include_archived and isinstance(actor, TenantAdmin),
+            active_only=effective_active_only,
+            include_archived=include_archived and is_admin,
         )
         return [ArmLabelResponse.model_validate(row) for row in rows]
 
@@ -764,45 +781,173 @@ class ArmLabelService:
     async def update(
         db: AsyncSession, actor: TenantAdmin, arm_label_id: uuid.UUID, payload: ArmLabelUpdate
     ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         row = await ArmLabelRepository.get_by_id(db, actor.tenant_id, arm_label_id, lock=True)
-        if not row:
+        if row is None:
             raise NotFoundException("Arm label not found")
-        if row.archived_at:
+        if row.archived_at is not None:
             raise ConflictException("Archived arm labels cannot be updated")
-        if payload.label is not None:
-            label = normalize_class_arm(payload.label)
-            normalized = normalized_class_arm_key(label)
-            existing = await ArmLabelRepository.get_by_normalized_label(
-                db, actor.tenant_id, normalized
-            )
-            if existing and existing.id != row.id:
-                raise ConflictException("Arm label with this name already exists")
+
+        label = normalize_class_arm(payload.label)
+        if not label:
+            raise BadRequestException("Arm label is required")
+        normalized = normalized_class_arm_key(label)
+
+        if normalized == row.normalized_label:
             row.label = label
-            row.normalized_label = normalized
-        if payload.is_active is not None:
-            row.is_active = payload.is_active
+            await ArmLabelRepository.save(db, row)
+            await db.commit()
+            await db.refresh(row)
+            return ArmLabelResponse.model_validate(row)
+
+        dependencies = await ArmLabelRepository.count_dependencies(
+            db, actor.tenant_id, row.id
+        )
+        if ArmLabelService._has_any_usage(dependencies):
+            raise ConflictException(
+                "This arm label has already been used and can no longer be renamed.",
+                payload={"dependency_counts": dependencies},
+            )
+
+        existing = await ArmLabelRepository.get_by_normalized_label(
+            db, actor.tenant_id, normalized
+        )
+        if existing is not None and existing.id != row.id:
+            raise ConflictException("Arm label with this name already exists")
+
+        row.label = label
+        row.normalized_label = normalized
         await ArmLabelRepository.save(db, row)
         await db.commit()
         await db.refresh(row)
         return ArmLabelResponse.model_validate(row)
 
     @staticmethod
-    async def archive(db: AsyncSession, actor: TenantAdmin, arm_label_id: uuid.UUID):
+    async def deactivate(
+        db: AsyncSession, actor: TenantAdmin, arm_label_id: uuid.UUID
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         row = await ArmLabelRepository.get_by_id(db, actor.tenant_id, arm_label_id, lock=True)
-        if not row:
+        if row is None:
             raise NotFoundException("Arm label not found")
-        count = await ArmLabelRepository.count_class_dependencies(db, actor.tenant_id, row.id)
-        if count:
+        if row.archived_at is not None:
+            raise ConflictException("Archived arm labels cannot be deactivated")
+        if not row.is_active:
+            return ArmLabelResponse.model_validate(row)
+
+        dependencies = await ArmLabelRepository.count_dependencies(
+            db, actor.tenant_id, row.id
+        )
+        live_dependencies = ArmLabelService._live_dependency_counts(dependencies)
+        if live_dependencies:
             raise ConflictException(
-                "Arm label is used by classes and cannot be archived.",
-                payload={"dependency_counts": {"classes": count}},
+                "This arm label still has active classrooms and cannot be deactivated.",
+                payload={"dependency_counts": live_dependencies},
             )
+
         row.is_active = False
-        row.archived_at = datetime.now(timezone.utc)
         await ArmLabelRepository.save(db, row)
         await db.commit()
         await db.refresh(row)
         return ArmLabelResponse.model_validate(row)
+
+    @staticmethod
+    async def activate(
+        db: AsyncSession, actor: TenantAdmin, arm_label_id: uuid.UUID
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ArmLabelRepository.get_by_id(db, actor.tenant_id, arm_label_id, lock=True)
+        if row is None:
+            raise NotFoundException("Arm label not found")
+        if row.archived_at is not None:
+            raise ConflictException("Restore this arm label before activating it")
+        if row.is_active:
+            return ArmLabelResponse.model_validate(row)
+
+        row.is_active = True
+        await ArmLabelRepository.save(db, row)
+        await db.commit()
+        await db.refresh(row)
+        return ArmLabelResponse.model_validate(row)
+
+    @staticmethod
+    async def archive(
+        db: AsyncSession, actor: TenantAdmin, arm_label_id: uuid.UUID
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ArmLabelRepository.get_by_id(db, actor.tenant_id, arm_label_id, lock=True)
+        if row is None:
+            raise NotFoundException("Arm label not found")
+        if row.archived_at is not None:
+            return ArmLabelResponse.model_validate(row)
+        if row.is_active:
+            raise ConflictException("Deactivate the arm label before archiving it")
+
+        dependencies = await ArmLabelRepository.count_dependencies(
+            db, actor.tenant_id, row.id
+        )
+        live_dependencies = ArmLabelService._live_dependency_counts(dependencies)
+        if live_dependencies:
+            raise ConflictException(
+                "This arm label still has active classrooms and cannot be archived.",
+                payload={"dependency_counts": live_dependencies},
+            )
+
+        row.is_active = False
+        row.archived_at = datetime.now(timezone.utc)
+        row.archived_by_admin_id = actor.id
+        await ArmLabelRepository.save(db, row)
+        await db.commit()
+        await db.refresh(row)
+        return ArmLabelResponse.model_validate(row)
+
+    @staticmethod
+    async def restore(
+        db: AsyncSession, actor: TenantAdmin, arm_label_id: uuid.UUID
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ArmLabelRepository.get_by_id(db, actor.tenant_id, arm_label_id, lock=True)
+        if row is None:
+            raise NotFoundException("Arm label not found")
+        if row.archived_at is None:
+            raise ConflictException("Only archived arm labels can be restored")
+
+        row.archived_at = None
+        row.archived_by_admin_id = None
+        row.is_active = False
+        await ArmLabelRepository.save(db, row)
+        await db.commit()
+        await db.refresh(row)
+        return ArmLabelResponse.model_validate(row)
+
+    @staticmethod
+    async def hard_delete(
+        db: AsyncSession, actor: TenantAdmin, arm_label_id: uuid.UUID
+    ) -> ArmLabelResponse:
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ArmLabelRepository.get_by_id(db, actor.tenant_id, arm_label_id, lock=True)
+        if row is None:
+            raise NotFoundException("Arm label not found")
+
+        dependencies = await ArmLabelRepository.count_dependencies(
+            db, actor.tenant_id, row.id
+        )
+        if ArmLabelService._has_any_usage(dependencies):
+            raise ConflictException(
+                "This arm label has already been used and cannot be permanently deleted.",
+                payload={"dependency_counts": dependencies},
+            )
+
+        response = ArmLabelResponse.model_validate(row)
+        await ArmLabelRepository.delete(db, row)
+        await db.commit()
+        return response
 
 
 class ClassRoomService:
