@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
-    get_current_teacher,
     get_current_tenant_admin,
     get_current_tenant_member,
 )
@@ -31,7 +30,6 @@ from app.modules.tenant_admins.models import TenantAdmin
 router = APIRouter(tags=["Subjects"])
 
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
-CurrentTeacher: TypeAlias = Annotated[Teacher, Depends(get_current_teacher)]
 CurrentSubjectViewer: TypeAlias = Annotated[
     TenantAdmin | Teacher, Depends(get_current_tenant_member)
 ]
@@ -47,20 +45,15 @@ async def _subject_response(
     if not include_delete_eligibility:
         return response
 
-    counts = await SubjectRepository.count_subject_dependencies(
+    counts = await SubjectRepository.count_dependencies(
         db=db,
         tenant_id=subject.tenant_id,
         subject_id=subject.id,
     )
-    can_delete = (
-        subject.is_active is False
-        and subject.archived_at is None
-        and not any(count > 0 for count in counts.values())
-    )
     return response.model_copy(
         update={
             "dependency_counts": counts,
-            "can_delete": can_delete,
+            "can_delete": not SubjectService._has_any_usage(counts),
         }
     )
 
@@ -76,8 +69,6 @@ async def create_subject(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> Subject:
-    """Create subject."""
-
     return await SubjectService.create_subject(
         db=db,
         actor=current_user,
@@ -100,8 +91,6 @@ async def list_subjects(
     search: str | None = Query(default=None, min_length=1, max_length=100),
     lifecycle_status: Literal["active", "inactive", "archived"] | None = Query(default=None),
 ) -> SubjectListResponse:
-    """List subjects."""
-
     subjects, total = await SubjectService.list_subjects(
         db=db,
         actor=current_user,
@@ -113,17 +102,29 @@ async def list_subjects(
         lifecycle_status=(lifecycle_status if isinstance(current_user, TenantAdmin) else None),
     )
 
-    return SubjectListResponse(
-        items=[
-            await _subject_response(
-                db,
-                subject,
-                include_delete_eligibility=isinstance(current_user, TenantAdmin),
-            )
-            for subject in subjects
-        ],
-        total=total,
+    if not isinstance(current_user, TenantAdmin):
+        return SubjectListResponse(
+            items=[SubjectResponse.model_validate(subject) for subject in subjects],
+            total=total,
+        )
+
+    dependency_map = await SubjectRepository.count_total_dependencies_for_subjects(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        subject_ids=[subject.id for subject in subjects],
     )
+    items: list[SubjectResponse] = []
+    for subject in subjects:
+        counts = dependency_map.get(subject.id, {})
+        items.append(
+            SubjectResponse.model_validate(subject).model_copy(
+                update={
+                    "dependency_counts": counts,
+                    "can_delete": not any(count > 0 for count in counts.values()),
+                }
+            )
+        )
+    return SubjectListResponse(items=items, total=total)
 
 
 @router.get(
@@ -135,13 +136,16 @@ async def get_subject(
     subject_id: UUID,
     db: DbSession,
     current_user: CurrentSubjectViewer,
-) -> Subject:
-    """Return subject."""
-
-    return await SubjectService.get_subject(
+) -> SubjectResponse:
+    subject = await SubjectService.get_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
+    )
+    return await _subject_response(
+        db,
+        subject,
+        include_delete_eligibility=isinstance(current_user, TenantAdmin),
     )
 
 
@@ -156,8 +160,6 @@ async def update_subject(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> Subject:
-    """Update subject."""
-
     return await SubjectService.update_subject(
         db=db,
         actor=current_user,
@@ -177,8 +179,6 @@ async def activate_subject(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> Subject:
-    """Activate subject."""
-
     _ = payload.confirmation
     return await SubjectService.activate_subject(
         db=db,
@@ -198,8 +198,6 @@ async def deactivate_subject(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> Subject:
-    """Deactivate subject."""
-
     _ = payload.confirmation
     subject = await SubjectService.deactivate_subject(
         db=db,
@@ -255,7 +253,7 @@ async def restore_subject(
 @router.delete(
     "/{subject_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a subject",
+    summary="Permanently delete a never-used subject",
 )
 async def delete_subject(
     subject_id: UUID,
@@ -263,10 +261,8 @@ async def delete_subject(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> None:
-    """Delete subject."""
-
     _ = payload.confirmation
-    await SubjectService.delete_subject(
+    await SubjectService.hard_delete_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
