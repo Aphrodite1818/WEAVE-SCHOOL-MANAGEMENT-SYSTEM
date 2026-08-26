@@ -23,6 +23,7 @@ from app.modules.student_academics.models import (
     AcademicSessionStatus,
     AcademicTermName,
     AcademicTermStatus,
+    TeacherAssignmentState,
 )
 from app.modules.student_academics.progression_service import AcademicProgressionService
 from app.modules.student_academics.schemas import (
@@ -307,11 +308,10 @@ async def open_academic_term(
     current_admin: CurrentTenantAdmin,
 ) -> AcademicTermResponse:
     _ = payload.confirmation
-    return await StudentAcademicService.open_academic_term(
+    return await AcademicProgressionService.open_term(
         db,
-        current_admin.tenant_id,
-        term_id,
-        current_admin.id,
+        actor=current_admin,
+        term_id=term_id,
     )
 
 
@@ -515,15 +515,13 @@ async def list_teacher_assignments(
     class_id: UUID | None = Query(default=None),
     curriculum_subject_id: UUID | None = Query(default=None),
     subject_id: UUID | None = Query(default=None),
-    status: str | None = Query(default=None, pattern="^(active|ended)$"),
+    status_filter: TeacherAssignmentState | None = Query(default=None, alias="status"),
     effective_from_from: date | None = Query(default=None),
     effective_from_to: date | None = Query(default=None),
     search: str | None = Query(default=None, max_length=100),
-    active_only: bool = Query(default=False),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=25, ge=1, le=100),
 ) -> TeacherAssignmentListResponse:
-    resolved_status = "active" if active_only and status is None else status
     items, total = await StudentAcademicService.list_teacher_assignment_responses(
         db,
         current_admin.tenant_id,
@@ -531,7 +529,7 @@ async def list_teacher_assignments(
         class_id=class_id,
         curriculum_subject_id=curriculum_subject_id,
         subject_id=subject_id,
-        status=resolved_status,
+        status=status_filter.value if status_filter is not None else None,
         effective_from_from=effective_from_from,
         effective_from_to=effective_from_to,
         search=search,
@@ -708,7 +706,7 @@ async def list_my_assignments(
         db,
         current_teacher.tenant_id,
         teacher_id=current_teacher.id,
-        status="active",
+        status=TeacherAssignmentState.CURRENT.value,
     )
     return TeacherAssignmentListResponse(items=items, total=total)
 
@@ -731,7 +729,7 @@ async def list_my_assignment_students(
         or assignment.teacher_membership_id != current_teacher.id
         or not assignment.is_active
     ):
-        raise ForbiddenException("You may view students only for your active assignments.")
+        raise ForbiddenException("You may view students only for your current assignments.")
     students, total = await StudentService.list_students(
         db,
         current_teacher,
