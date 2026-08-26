@@ -79,11 +79,16 @@ class CurriculumResolutionService:
             .order_by(CurriculumSubject.subject_id, CurriculumOffering.department_id)
         )
 
-        # A department-specific offering takes precedence over a general offering
-        # for the same curriculum subject, preventing duplicate subject cards/results.
+        # Writes enforce one scope model per subject/term: general OR department-specific.
+        # If both somehow reach resolution, fail loudly rather than inventing precedence.
         resolved: dict[uuid.UUID, ResolvedCurriculumOffering] = {}
         for offering, curriculum_subject in result.all():
-            candidate = ResolvedCurriculumOffering(
+            if curriculum_subject.id in resolved:
+                raise ConflictException(
+                    "Curriculum offering scope is ambiguous for this term. "
+                    "Use either a general offering or department-specific offerings, not both."
+                )
+            resolved[curriculum_subject.id] = ResolvedCurriculumOffering(
                 curriculum_offering_id=offering.id,
                 curriculum_subject_id=curriculum_subject.id,
                 subject_id=curriculum_subject.subject_id,
@@ -91,11 +96,6 @@ class CurriculumResolutionService:
                 department_id=offering.department_id,
                 is_elective=curriculum_subject.is_elective,
             )
-            current = resolved.get(curriculum_subject.id)
-            if current is None or (
-                current.department_id is None and candidate.department_id is not None
-            ):
-                resolved[curriculum_subject.id] = candidate
         return list(resolved.values())
 
     @staticmethod
