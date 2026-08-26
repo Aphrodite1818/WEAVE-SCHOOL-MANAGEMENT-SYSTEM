@@ -14,6 +14,7 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_admin,
 )
 from app.core.exceptions import ConflictException
+from app.modules.student_academics.academic_lock import acquire_academic_lifecycle_lock
 from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
@@ -33,10 +34,13 @@ async def ensure_academic_write_window(
 ) -> None:
     """Reject academic writes while the tenant's current session is closing.
 
-    This is the canonical domain guard. Route dependencies call it for HTTP
-    requests, while services/workers can invoke it directly so the invariant
-    cannot be bypassed by a script, background job, or newly added endpoint.
+    The tenant academic lifecycle advisory lock is acquired before checking the
+    session state and remains held until the caller's transaction commits or
+    rolls back. Session lifecycle transitions use the same lock, preventing a
+    structural write that observed OPEN from committing after OPEN -> CLOSING.
     """
+
+    await acquire_academic_lifecycle_lock(db, tenant_id=tenant_id)
 
     closing_session = (
         await db.execute(
