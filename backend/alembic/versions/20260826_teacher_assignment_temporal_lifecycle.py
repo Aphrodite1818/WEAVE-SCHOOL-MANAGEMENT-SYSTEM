@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import ExcludeConstraint
 
-revision: str = "20260826_teacher_assignment_temporal"
+revision: str = "teacher_assignment_temporal"
 down_revision: Union[str, Sequence[str], None] = "20260826_curr_subj_lifecycle"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

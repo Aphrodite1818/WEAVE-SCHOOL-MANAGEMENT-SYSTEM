@@ -29,7 +29,6 @@ def _assignment() -> TeacherAssignment:
         class_id=uuid.uuid4(),
         curriculum_subject_id=uuid.uuid4(),
         teacher_membership_id=uuid.uuid4(),
-        is_active=True,
         effective_from=date(2026, 1, 10),
         effective_to=None,
         created_at=now,
@@ -51,6 +50,14 @@ async def test_end_assignment_preserves_history() -> None:
             new=AsyncMock(return_value=assignment),
         ),
         patch(
+            "app.modules.student_academics.service.StudentAcademicService._teacher_assignment_term_context",
+            new=AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._ensure_backdated_assignment_change_safe",
+            new=AsyncMock(),
+        ),
+        patch(
             "app.modules.student_academics.service.StudentAcademicService._record_teacher_assignment_audit",
             new=AsyncMock(),
         ),
@@ -63,7 +70,11 @@ async def test_end_assignment_preserves_history() -> None:
             db,
             assignment.tenant_id,
             assignment.id,
-            TeacherAssignmentEnd(effective_to=assignment.effective_from),
+            TeacherAssignmentEnd(
+                academic_term_id=uuid.uuid4(),
+                effective_to=assignment.effective_from,
+                reason="end assignment",
+            ),
         )
     assert assignment.is_active is False
     assert assignment.effective_to == assignment.effective_from
