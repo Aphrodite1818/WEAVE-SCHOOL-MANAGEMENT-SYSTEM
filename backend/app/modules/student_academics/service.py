@@ -1191,7 +1191,7 @@ class StudentAcademicService:
         current = Decimal("0.00")
         for scale in sorted_scales:
             if scale.min_score > current:
-                missing.append(f"{current}-{scale.min_score - Decimal('0.01')}")
+                missing.append(f"{current}-{scale.min_score - Decimal('0.01')}" )
             elif scale.min_score < current:
                 overlaps.append(f"{scale.min_score}-{current}")
             current = max(current, scale.max_score + Decimal("0.01"))
@@ -1233,21 +1233,26 @@ class StudentAcademicService:
         *,
         tenant_id: uuid.UUID,
         curriculum_subject_id: uuid.UUID,
+        require_active: bool = True,
     ) -> tuple[CurriculumSubject, Curriculum]:
-        row = (
-            await db.execute(
-                select(CurriculumSubject, Curriculum)
-                .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
-                .where(
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.id == curriculum_subject_id,
-                    CurriculumSubject.is_active.is_(True),
-                    Curriculum.tenant_id == tenant_id,
-                )
+        query = (
+            select(CurriculumSubject, Curriculum)
+            .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+            .where(
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.id == curriculum_subject_id,
+                Curriculum.tenant_id == tenant_id,
             )
-        ).first()
+        )
+        if require_active:
+            query = query.where(CurriculumSubject.is_active.is_(True))
+        row = (await db.execute(query)).first()
         if row is None:
-            raise NotFoundException("Curriculum subject not found or inactive.")
+            raise NotFoundException(
+                "Curriculum subject not found or inactive."
+                if require_active
+                else "Curriculum subject not found."
+            )
         return row[0], row[1]
 
     @staticmethod
@@ -1328,6 +1333,7 @@ class StudentAcademicService:
             db,
             tenant_id=assignment.tenant_id,
             curriculum_subject_id=assignment.curriculum_subject_id,
+            require_active=False,
         )
         classroom = await ClassRoomRepository.get_by_id(
             db, assignment.tenant_id, assignment.class_id
