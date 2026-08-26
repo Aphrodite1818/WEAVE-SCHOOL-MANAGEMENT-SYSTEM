@@ -79,10 +79,10 @@ async def remove_subject_from_setup(
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> SubjectResponse:
-    """Remove a subject from the assisted setup flow without lifecycle confirmations."""
+    """Remove a never-used subject from the assisted setup flow."""
 
     _ = payload
-    subject = await SubjectService.purge_setup_subject(
+    subject = await SubjectService.hard_delete_subject(
         db=db,
         actor=current_user,
         subject_id=subject_id,
