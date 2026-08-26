@@ -1,4 +1,4 @@
-"""Student creation, enrollment, access-code, linking, and lifecycle services."""
+"""Student creation, access-code, linking, and lifecycle services."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
+from app.modules.attendance.models import StudentAttendanceRecord
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth.models import AuthSession, AuthSessionActorType
 from app.modules.auth_identity.models import ActorType, IdentifierType
@@ -40,6 +41,7 @@ from app.modules.parents.repository import (
     ParentInvitationRepository,
     ParentMembershipRepository,
 )
+from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
     StudentProgressionRepository,
@@ -47,6 +49,7 @@ from app.modules.student_academics.lifecycle_repository import (
 from app.modules.student_academics.models import (
     AcademicSessionStatus,
     AcademicTermStatus,
+    StudentProgressionItem,
     StudentProgressionItemStatus,
     StudentSubjectResult,
 )
@@ -76,13 +79,9 @@ from app.modules.students.repository import (
 from app.modules.students.schemas import (
     StudentAdminAccessCodeResponse,
     StudentAdminProfileUpdate,
-    StudentBatchClassAssignmentRequest,
-    StudentBatchClassAssignmentResponse,
     StudentChangePasswordRequest,
-    StudentClassChangeRequest,
     StudentCreate,
     StudentDetailResponse,
-    StudentEnrollmentDetailResponse,
     StudentHardDeleteEligibilityResponse,
     StudentLifecycleTransitionResponse,
     StudentOnboardingStatusResponse,
@@ -98,11 +97,11 @@ from app.modules.students.schemas import (
     StudentSelfUpdate,
 )
 from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.repository import TenantRepository
 from app.tenant_management.identifier_service import (
     TenantIdentifierKind,
     TenantIdentifierService,
 )
+from app.tenant_management.repository import TenantRepository
 
 
 def _utc_now() -> datetime:
@@ -179,18 +178,18 @@ class StudentService:
         db: AsyncSession,
         student: Student,
     ) -> StudentDetailResponse:
-        classroom = None
-        if student.class_id:
-            classroom = await ClassRoomRepository.get_by_id(
-                db,
-                student.tenant_id,
-                student.class_id,
-            )
         enrollment = await StudentEnrollmentRepository.get_current(
             db,
             student.tenant_id,
             student.id,
         )
+        classroom = None
+        if enrollment is not None and enrollment.class_id is not None:
+            classroom = await ClassRoomRepository.get_by_id(
+                db,
+                student.tenant_id,
+                enrollment.class_id,
+            )
         academic_level = None
         if enrollment is not None:
             academic_level = await AcademicLevelRepository.get_by_id(
@@ -228,6 +227,7 @@ class StudentService:
         )
         current_term = terms[0] if terms else None
         student_data = StudentResponse.model_validate(student).model_dump()
+        student_data["class_id"] = enrollment.class_id if enrollment else None
         student_data["academic_level_id"] = enrollment.academic_level_id if enrollment else None
 
         return StudentDetailResponse(
@@ -252,7 +252,7 @@ class StudentService:
     ) -> StudentDetailResponse:
         """Create student, enrollment, access code, and invitations atomically."""
 
-        tenant_id = StudentService._require_tenant_admin(actor)
+        StudentService._require_tenant_admin(actor)
         try:
             created = await StudentService._create_student_with_lifecycle(
                 db,
@@ -286,8 +286,8 @@ class StudentService:
     ) -> StudentCreationWorkflowResult:
         """Create a student lifecycle graph without committing.
 
-        The caller owns the transaction. This keeps manual creation and bulk
-        import on the same atomic workflow while preserving their commit rules.
+        The caller owns the transaction. Manual creation and bulk import therefore
+        share exactly the same canonical StudentEnrollment construction.
         """
 
         tenant_id = StudentService._require_tenant_admin(actor)
@@ -347,7 +347,6 @@ class StudentService:
             passport_photo_url=None,
             admission_date=today,
             graduation_date=None,
-            class_id=classroom.id if classroom else None,
             status=AcademicStatus.ACTIVE,
             account_status=StudentAccountStatus.ACTIVE,
             is_verified=True,
@@ -369,10 +368,9 @@ class StudentService:
                 class_id=classroom.id if classroom else None,
                 academic_session_id=session.id,
                 started_on=today,
-                is_current=True,
-                outcome=StudentEnrollmentOutcome.ENROLLED,
-                reason="Initial admission",
-                changed_by_admin_id=actor.id,
+                entry_outcome=StudentEnrollmentOutcome.ENROLLED,
+                entry_reason="Initial admission",
+                created_by_admin_id=actor.id,
             ),
         )
         await AuthIdentityService.create_for_actor(
@@ -816,194 +814,6 @@ class ParentInvitationService:
         return invitation
 
 
-class StudentEnrollmentService:
-    @staticmethod
-    async def list_history(
-        db: AsyncSession,
-        *,
-        tenant_id: UUID,
-        student_id: UUID,
-    ) -> list[StudentEnrollmentDetailResponse]:
-        student = await StudentRepository.get_by_id(
-            db,
-            tenant_id,
-            student_id,
-            include_archived=True,
-        )
-        if student is None:
-            raise NotFoundException("Student not found.")
-
-        rows = await StudentEnrollmentRepository.list_for_student(
-            db,
-            tenant_id,
-            student_id,
-        )
-        output: list[StudentEnrollmentDetailResponse] = []
-        for row in rows:
-            classroom = (
-                await ClassRoomRepository.get_by_id(db, tenant_id, row.class_id)
-                if row.class_id is not None
-                else None
-            )
-            level = await AcademicLevelRepository.get_by_id(db, tenant_id, row.academic_level_id)
-            session = await AcademicSessionLifecycleRepository.get_by_id(
-                db,
-                tenant_id,
-                row.academic_session_id,
-            )
-            output.append(
-                StudentEnrollmentDetailResponse(
-                    **StudentEnrollmentDetailResponse.model_validate(row).model_dump(
-                        exclude={
-                            "class_name",
-                            "class_arm",
-                            "academic_level_name",
-                            "academic_session_name",
-                        }
-                    ),
-                    class_name=classroom.academic_level_name if classroom else None,
-                    class_arm=classroom.arm if classroom else None,
-                    academic_level_name=level.name if level else None,
-                    academic_session_name=(session.name if session else None),
-                )
-            )
-        return output
-
-    @staticmethod
-    async def change_class(
-        db: AsyncSession,
-        *,
-        actor: TenantAdmin,
-        student_id: UUID,
-        payload: StudentClassChangeRequest,
-    ) -> StudentDetailResponse:
-        tenant_id = StudentService._require_tenant_admin(actor)
-        student = await StudentRepository.get_by_id(
-            db,
-            tenant_id,
-            student_id,
-            lock=True,
-        )
-        if student is None:
-            raise NotFoundException("Student not found.")
-        if student.status not in {
-            AcademicStatus.ACTIVE,
-            AcademicStatus.SUSPENDED,
-        }:
-            raise BadRequestException("Only active or suspended students can change class.")
-
-        target_class = await ClassRoomRepository.get_by_id(
-            db,
-            tenant_id,
-            payload.target_class_id,
-            lock=True,
-        )
-        if (
-            target_class is None
-            or not target_class.is_active
-            or target_class.archived_at is not None
-        ):
-            raise NotFoundException("Target class not found.")
-        session = await AcademicSessionLifecycleRepository.get_by_id(
-            db,
-            tenant_id,
-            payload.academic_session_id,
-            lock=True,
-        )
-        if (
-            session is None
-            or not session.is_current
-            or session.status != AcademicSessionStatus.OPEN
-        ):
-            raise NotFoundException("Academic session not found.")
-
-        current = await StudentEnrollmentRepository.get_current(
-            db,
-            tenant_id,
-            student.id,
-            lock=True,
-        )
-        if current is None:
-            raise ConflictException("Student has no current enrollment to close.")
-        if target_class.academic_level_id != current.academic_level_id:
-            raise BadRequestException(
-                "Class assignment cannot change the student's academic level."
-            )
-        if current.class_id == target_class.id:
-            raise ConflictException("Student is already in the target class.")
-
-        if current.academic_session_id != session.id:
-            raise ConflictException(
-                "Class assignment must update the student's current academic session enrollment."
-            )
-
-        current.outcome = StudentEnrollmentOutcome(payload.outcome)
-        current.reason = payload.reason
-        current.changed_by_admin_id = actor.id
-        current.class_id = target_class.id
-        await StudentEnrollmentRepository.save(db, current)
-
-        student.class_id = target_class.id
-        await StudentRepository.save(db, student)
-        await db.commit()
-        await db.refresh(student)
-        return await StudentService._build_detail_response(db, student)
-
-    @staticmethod
-    async def assign_class_batch(
-        db: AsyncSession,
-        *,
-        actor: TenantAdmin,
-        payload: StudentBatchClassAssignmentRequest,
-    ) -> StudentBatchClassAssignmentResponse:
-        """Atomically place students without changing their academic level."""
-        tenant_id = StudentService._require_tenant_admin(actor)
-        target_class = await ClassRoomRepository.get_by_id(
-            db,
-            tenant_id,
-            payload.target_class_id,
-            lock=True,
-        )
-        if (
-            target_class is None
-            or not target_class.is_active
-            or target_class.archived_at is not None
-        ):
-            raise NotFoundException("Target class not found.")
-
-        resolved: list[tuple[Student, StudentEnrollment]] = []
-        for student_id in payload.student_ids:
-            student = await StudentRepository.get_by_id(db, tenant_id, student_id, lock=True)
-            if student is None or student.is_archived:
-                raise NotFoundException(f"Student {student_id} not found.")
-            enrollment = await StudentEnrollmentRepository.get_current(
-                db, tenant_id, student.id, lock=True
-            )
-            if enrollment is None:
-                raise ConflictException(
-                    f"Student {student.admission_number} has no current enrollment."
-                )
-            if enrollment.academic_level_id != target_class.academic_level_id:
-                raise BadRequestException(
-                    f"Student {student.admission_number} is not enrolled in the target class level."
-                )
-            resolved.append((student, enrollment))
-
-        for student, enrollment in resolved:
-            enrollment.class_id = target_class.id
-            enrollment.reason = payload.reason
-            enrollment.changed_by_admin_id = actor.id
-            student.class_id = target_class.id
-            await StudentEnrollmentRepository.save(db, enrollment)
-            await StudentRepository.save(db, student)
-        await db.commit()
-        return StudentBatchClassAssignmentResponse(
-            updated_student_ids=[student.id for student, _ in resolved],
-            target_class_id=target_class.id,
-            updated_count=len(resolved),
-        )
-
-
 class StudentLifecycleService:
     @staticmethod
     async def _revoke_student_access(
@@ -1048,11 +858,7 @@ class StudentLifecycleService:
             target = ParentMembershipStatus.ACTIVE
         elif (
             counts.get(StudentParentLinkStatus.READ_ONLY, 0) > 0
-            or counts.get(
-                StudentParentLinkStatus.ALUMNI_READ_ONLY,
-                0,
-            )
-            > 0
+            or counts.get(StudentParentLinkStatus.ALUMNI_READ_ONLY, 0) > 0
         ):
             target = ParentMembershipStatus.READ_ONLY
         else:
@@ -1137,15 +943,15 @@ class StudentLifecycleService:
                 lock=True,
             )
             if current is not None:
-                current.is_current = False
+                if effective_date < current.started_on:
+                    raise ConflictException("Lifecycle exit cannot predate the current enrollment.")
                 current.ended_on = effective_date
-                current.outcome = StudentEnrollmentOutcome(target_status.value)
-                current.reason = reason
-                current.changed_by_admin_id = actor.id
+                current.exit_outcome = StudentEnrollmentOutcome(target_status.value)
+                current.exit_reason = reason
+                current.ended_by_admin_id = actor.id
                 await StudentEnrollmentRepository.save(db, current)
 
             student.status = target_status
-            student.class_id = None
             student.promotion_hold = True
             student.is_active = False
             student.account_status = StudentAccountStatus.INACTIVE
@@ -1326,14 +1132,12 @@ class StudentLifecycleService:
                 class_id=classroom.id,
                 academic_session_id=session.id,
                 started_on=effective_date,
-                is_current=True,
-                outcome=StudentEnrollmentOutcome.RECLASSIFIED,
-                reason=reason,
-                changed_by_admin_id=actor.id,
+                entry_outcome=StudentEnrollmentOutcome.REINSTATED,
+                entry_reason=reason,
+                created_by_admin_id=actor.id,
             ),
         )
         student.status = AcademicStatus.ACTIVE
-        student.class_id = classroom.id
         student.promotion_hold = False
         student.is_active = True
         student.account_status = StudentAccountStatus.ACTIVE
@@ -1563,18 +1367,77 @@ class StudentLifecycleService:
         ):
             blockers.append("parent_links")
 
-        result_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(StudentSubjectResult)
-                .where(
-                    StudentSubjectResult.tenant_id == tenant_id,
-                    StudentSubjectResult.student_id == student_id,
+        result_count = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(StudentSubjectResult)
+                    .where(
+                        StudentSubjectResult.tenant_id == tenant_id,
+                        StudentSubjectResult.student_id == student_id,
+                    )
                 )
-            )
-        ).scalar_one()
+            ).scalar_one()
+            or 0
+        )
         if result_count:
             blockers.append("academic_results")
+
+        attendance_count = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(StudentAttendanceRecord)
+                    .where(
+                        StudentAttendanceRecord.tenant_id == tenant_id,
+                        StudentAttendanceRecord.student_id == student_id,
+                    )
+                )
+            ).scalar_one()
+            or 0
+        )
+        if attendance_count:
+            blockers.append("attendance")
+
+        progression_count = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(StudentProgressionItem)
+                    .where(
+                        StudentProgressionItem.tenant_id == tenant_id,
+                        StudentProgressionItem.student_id == student_id,
+                    )
+                )
+            ).scalar_one()
+            or 0
+        )
+        if progression_count:
+            blockers.append("progression_history")
+
+        report_card_count = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(ReportCard)
+                    .where(
+                        ReportCard.tenant_id == tenant_id,
+                        ReportCard.student_id == student_id,
+                    )
+                )
+            ).scalar_one()
+            or 0
+        )
+        if report_card_count:
+            blockers.append("report_cards")
+
+        enrollments = await StudentEnrollmentRepository.list_for_student(
+            db,
+            tenant_id,
+            student_id,
+        )
+        if len(enrollments) > 1 or any(row.ended_on is not None for row in enrollments):
+            blockers.append("enrollment_history")
 
         return StudentHardDeleteEligibilityResponse(
             student_id=student.id,
