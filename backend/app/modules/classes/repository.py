@@ -47,8 +47,27 @@ class AcademicLevelRepository:
 
     @staticmethod
     async def save(db: AsyncSession, level: AcademicLevel) -> AcademicLevel:
+        """Persist a level and guarantee the one-curriculum invariant once active."""
+
         db.add(level)
         await db.flush()
+        if level.status == AcademicLevelStatus.ACTIVE:
+            curriculum = (
+                await db.execute(
+                    select(Curriculum).where(
+                        Curriculum.tenant_id == level.tenant_id,
+                        Curriculum.academic_level_id == level.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if curriculum is None:
+                db.add(
+                    Curriculum(
+                        tenant_id=level.tenant_id,
+                        academic_level_id=level.id,
+                    )
+                )
+                await db.flush()
         return level
 
     @staticmethod
