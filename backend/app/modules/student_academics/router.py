@@ -308,10 +308,11 @@ async def open_academic_term(
     current_admin: CurrentTenantAdmin,
 ) -> AcademicTermResponse:
     _ = payload.confirmation
-    return await AcademicProgressionService.open_term(
+    return await StudentAcademicService.open_academic_term(
         db,
-        actor=current_admin,
-        term_id=term_id,
+        current_admin.tenant_id,
+        term_id,
+        current_admin.id,
     )
 
 
