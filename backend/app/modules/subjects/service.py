@@ -45,6 +45,16 @@ class SubjectService:
             raise ForbiddenException(detail="Actor is not attached to a tenant.")
 
     @staticmethod
+    def _normalize_name(value: str) -> tuple[str, str]:
+        name = normalize_display_text(value)
+        if not name:
+            raise BadRequestException(detail="Subject name is required.")
+        normalized_name = normalize_subject_name(name)
+        if not normalized_name:
+            raise BadRequestException(detail="Subject name is required.")
+        return name, normalized_name
+
+    @staticmethod
     def _has_any_usage(counts: dict[str, int]) -> bool:
         return any(value > 0 for key, value in counts.items() if key.endswith("_total"))
 
@@ -84,10 +94,7 @@ class SubjectService:
         SubjectService._ensure_tenant_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
-        name = normalize_display_text(subject_data.name)
-        if not name:
-            raise BadRequestException(detail="Subject name is required.")
-        normalized_name = normalize_subject_name(name)
+        name, normalized_name = SubjectService._normalize_name(subject_data.name)
         existing_name = await SubjectRepository.get_subject_by_normalized_name(
             db=db,
             tenant_id=actor.tenant_id,
@@ -220,10 +227,7 @@ class SubjectService:
         target_normalized_code = subject.normalized_code
 
         if "name" in update_data:
-            target_name = normalize_display_text(update_data["name"])
-            if not target_name:
-                raise BadRequestException(detail="Subject name is required.")
-            target_normalized_name = normalize_subject_name(target_name)
+            target_name, target_normalized_name = SubjectService._normalize_name(update_data["name"])
         if "code" in update_data:
             target_code = normalize_subject_code(update_data["code"])
             target_normalized_code = target_code
