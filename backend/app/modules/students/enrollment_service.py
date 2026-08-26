@@ -163,7 +163,7 @@ class StudentEnrollmentService:
         enrollment: StudentEnrollment,
         effective_date: date,
     ) -> None:
-        if effective_date >= date.today():
+        if effective_date > date.today():
             return
         counts = await StudentEnrollmentService._segment_dependency_counts(
             db,
@@ -174,7 +174,7 @@ class StudentEnrollmentService:
         blockers = {key: value for key, value in counts.items() if value > 0}
         if blockers:
             raise ConflictException(
-                "The enrollment cannot be backdated across preserved academic evidence.",
+                "The enrollment cannot be split across preserved academic evidence.",
                 payload={"dependency_counts": blockers},
             )
 
@@ -491,7 +491,7 @@ class StudentEnrollmentService:
 
         effective_date = payload.effective_date
         resolved: list[tuple[Student, StudentEnrollment]] = []
-        for student_id in payload.student_ids:
+        for student_id in sorted(payload.student_ids, key=lambda value: value.int):
             student = await StudentRepository.get_by_id(db, tenant_id, student_id, lock=True)
             if student is None or student.is_archived:
                 raise NotFoundException(f"Student {student_id} not found.")
