@@ -100,11 +100,13 @@ def upgrade() -> None:
         """
     )
 
-    op.drop_constraint(
-        "ck_closed_academic_session_not_current",
-        "academic_sessions",
-        schema=SCHEMA,
-        type_="check",
+    # Earlier development baselines used this weaker check. The fresh baseline
+    # may not contain it, so make the cutover independent of baseline history.
+    op.execute(
+        """
+        ALTER TABLE public.academic_sessions
+        DROP CONSTRAINT IF EXISTS ck_closed_academic_session_not_current
+        """
     )
 
     op.create_check_constraint(
