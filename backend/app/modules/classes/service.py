@@ -56,7 +56,7 @@ from app.modules.classes.schemas import (
 )
 from app.modules.parents.models import Parent
 from app.modules.student_academics.write_guard import ensure_academic_write_window
-from app.modules.students.models import AcademicStatus, Student
+from app.modules.students.models import Student
 from app.modules.students.repository import StudentParentLinkRepository
 from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherMembershipStatus
 from app.modules.teachers.repository import TeacherMembershipRepository
@@ -120,55 +120,30 @@ class AcademicLevelService:
 
     @staticmethod
     def _has_any_usage(dependencies: dict[str, int]) -> bool:
-        """
-        True once the academic level has ever been meaningfully used
-
-        Historical usage counts too. Once this becomes True, structural identity
-        such as category and progression position should be treated as protected
-        """
-
         historical_keys = (
             "classes_total",
             "departments_total",
             "curriculum_subjects_total",
             "enrollments_total",
         )
-
         return any(dependencies.get(key, 0) > 0 for key in historical_keys)
 
     @staticmethod
     def _has_live_dependencies(dependencies: dict[str, int]) -> bool:
-        """
-        True while the academic level is still actively used by the current academic
-        configuration or current students
-        """
-
         live_keys = (
             "classes_active",
             "departments_active",
             "curriculum_subjects_active",
             "enrollments_current",
         )
-
         return any(dependencies.get(key, 0) > 0 for key in live_keys)
 
     @staticmethod
     def _can_hard_delete(dependencies: dict[str, int]) -> bool:
-        """
-        Physical deletion is allowed only when the level has never been used
-        """
-
         return not AcademicLevelService._has_any_usage(dependencies)
 
     @staticmethod
     def _can_archive(dependencies: dict[str, int]) -> bool:
-        """
-        Historical dependencies are allowed during archival
-
-        Only live dependencies block archival. The archive service itself should
-        additionally require the AcademicLevel to already be inactive
-        """
-
         return not AcademicLevelService._has_live_dependencies(dependencies)
 
     @staticmethod
@@ -532,20 +507,11 @@ class DepartmentService:
 
     @staticmethod
     def _live_dependency_counts(dependencies: dict[str, int]) -> dict[str, int]:
-        """
-        Return only dependencies that still belong to live academic terms
-        """
-
         live_keys = ("class_assignments_live", "offerings_live")
-
         return {key: dependencies.get(key, 0) for key in live_keys if dependencies.get(key, 0) > 0}
 
     @staticmethod
     def _has_any_usage(dependencies: dict[str, int]) -> bool:
-        """
-        A department is considered historically used once either a class-term
-        assignment or curriculum offering has ever refrenced it
-        """
         return (
             dependencies.get("class_assignments_total", 0) > 0
             or dependencies.get("offerings_total", 0) > 0
@@ -556,28 +522,21 @@ class DepartmentService:
         db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
-
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-
         department = await DepartmentRepository.get_by_id(
             db, actor.tenant_id, department_id, lock=True
         )
-
         if department is None:
             raise NotFoundException("Department not found")
-
         if department.archived_at is not None:
             raise ConflictException("Archived departments cannot be deactivated")
-
         if not department.is_active:
             return DepartmentResponse.model_validate(department)
 
         dependencies = await DepartmentRepository.count_dependencies(
             db, actor.tenant_id, department.id
         )
-
         live_dependencies = DepartmentService._live_dependency_counts(dependencies)
-
         if live_dependencies:
             raise ConflictException(
                 "This department still has live academic dependencies and cannot be deactivated",
@@ -585,11 +544,9 @@ class DepartmentService:
             )
 
         department.is_active = False
-
         await DepartmentRepository.save(db, department)
         await db.commit()
         await db.refresh(department)
-
         return DepartmentResponse.model_validate(department)
 
     @staticmethod
@@ -597,82 +554,63 @@ class DepartmentService:
         db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
-
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-
         department = await DepartmentRepository.get_by_id(
             db, actor.tenant_id, department_id, lock=True
         )
-
         if department is None:
             raise NotFoundException("Department not found")
-
         if department.archived_at is not None:
             raise ConflictException("Restore this department before activating it")
-
         if department.is_active:
             return DepartmentResponse.model_validate(department)
 
         level = await AcademicLevelRepository.get_by_id(
             db, actor.tenant_id, department.academic_level_id
         )
-
         if level is None:
             raise NotFoundException("Academic level not found")
-
         if level.status != AcademicLevelStatus.ACTIVE:
             raise ConflictException(
                 "The academic level must be active before this department can be activated"
             )
 
         institution_type = await _tenant_institution_type(db, actor.tenant_id)
-
         if not category_supports_departments(institution_type, level.category):
             raise ConflictException("Departments are not supported by this academic level category")
 
         department.is_active = True
-
         await DepartmentRepository.save(db, department)
         await db.commit()
         await db.refresh(department)
-
         return DepartmentResponse.model_validate(department)
 
     @staticmethod
     async def restore(db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID):
         AcademicLevelService._ensure_admin(actor)
-
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-
         department = await DepartmentRepository.get_by_id(
             db, actor.tenant_id, department_id, lock=True
         )
-
         if department is None:
             raise NotFoundException("Department not found")
-
         if department.archived_at is None:
             raise ConflictException("Only archived departments can be restored")
 
         level = await AcademicLevelRepository.get_by_id(
             db, actor.tenant_id, department.academic_level_id
         )
-
         if level is None:
             raise NotFoundException("Academic level not found")
-
         if level.status == AcademicLevelStatus.ARCHIVED:
             raise ConflictException("Restore the academic level before restoring this department")
 
         department.archived_at = None
         department.archived_by_admin_id = None
         department.is_active = False
-
         await DepartmentRepository.save(db, department)
-
         await db.commit()
         await db.refresh(department)
-
         return DepartmentResponse.model_validate(department)
 
     @staticmethod
@@ -680,28 +618,21 @@ class DepartmentService:
         db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
-
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-
         department = await DepartmentRepository.get_by_id(
             db, actor.tenant_id, department_id, lock=True
         )
-
         if department is None:
             raise NotFoundException("Department not found")
-
         if department.archived_at is not None:
             return DepartmentResponse.model_validate(department)
-
         if department.is_active:
             raise ConflictException("Deactivate the department before archiving it")
 
         dependencies = await DepartmentRepository.count_dependencies(
             db, actor.tenant_id, department.id
         )
-
         live_dependencies = DepartmentService._live_dependency_counts(dependencies)
-
         if live_dependencies:
             raise ConflictException(
                 "This department still has live academic dependencies and cannot be archived",
@@ -711,11 +642,9 @@ class DepartmentService:
         department.is_active = False
         department.archived_at = datetime.now(timezone.utc)
         department.archived_by_admin_id = actor.id
-
         await DepartmentRepository.save(db, department)
         await db.commit()
         await db.refresh(department)
-
         return DepartmentResponse.model_validate(department)
 
     @staticmethod
@@ -723,53 +652,38 @@ class DepartmentService:
         db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID, payload: DepartmentUpdate
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
-
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-
         department = await DepartmentRepository.get_by_id(
             db, actor.tenant_id, department_id, lock=True
         )
-
         if department is None:
             raise NotFoundException("Department not found")
-
         if department.archived_at is not None:
             raise ConflictException("Archived departments cannot be updated")
 
         data = payload.model_dump(exclude_unset=True)
-
         if "name" not in data:
             return DepartmentResponse.model_validate(department)
 
         name = normalize_display_text(data["name"])
-
         if not name:
             raise BadRequestException("Department name is required")
-
         normalized = name.casefold()
 
-        # Nothing actually changed.
         if normalized == department.normalized_name:
             department.name = name
-
             await DepartmentRepository.save(db, department)
             await db.commit()
             await db.refresh(department)
-
             return DepartmentResponse.model_validate(department)
 
         dependencies = await DepartmentRepository.count_dependencies(
-            db,
-            actor.tenant_id,
-            department.id,
+            db, actor.tenant_id, department.id
         )
-
         if DepartmentService._has_any_usage(dependencies):
             raise ConflictException(
                 "This department has already been used and can no longer be renamed.",
-                payload={
-                    "dependency_counts": dependencies,
-                },
+                payload={"dependency_counts": dependencies},
             )
 
         existing = await DepartmentRepository.get_by_normalized_name(
@@ -778,17 +692,14 @@ class DepartmentService:
             department.academic_level_id,
             normalized,
         )
-
         if existing is not None and existing.id != department.id:
             raise ConflictException("Department with this name already exists for this level.")
 
         department.name = name
         department.normalized_name = normalized
-
         await DepartmentRepository.save(db, department)
         await db.commit()
         await db.refresh(department)
-
         return DepartmentResponse.model_validate(department)
 
     @staticmethod
@@ -798,45 +709,25 @@ class DepartmentService:
         department_id: uuid.UUID,
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
-
-        await ensure_academic_write_window(
-            db,
-            tenant_id=actor.tenant_id,
-        )
-
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         department = await DepartmentRepository.get_by_id(
-            db,
-            actor.tenant_id,
-            department_id,
-            lock=True,
+            db, actor.tenant_id, department_id, lock=True
         )
-
         if department is None:
             raise NotFoundException("Department not found")
 
         dependencies = await DepartmentRepository.count_dependencies(
-            db,
-            actor.tenant_id,
-            department.id,
+            db, actor.tenant_id, department.id
         )
-
         if DepartmentService._has_any_usage(dependencies):
             raise ConflictException(
                 "This department has already been used and cannot be permanently deleted.",
-                payload={
-                    "dependency_counts": dependencies,
-                },
+                payload={"dependency_counts": dependencies},
             )
 
         response = DepartmentResponse.model_validate(department)
-
-        await DepartmentRepository.delete(
-            db,
-            department,
-        )
-
+        await DepartmentRepository.delete(db, department)
         await db.commit()
-
         return response
 
 
@@ -915,6 +806,17 @@ class ArmLabelService:
 
 
 class ClassRoomService:
+    LIVE_DEPENDENCY_KEYS = (
+        "students_assigned_live",
+        "enrollments_current",
+        "teacher_assignments_active",
+        "department_assignments_live",
+        "results_live",
+        "attendance_sheets_live",
+        "report_cards_live",
+        "progression_items_live",
+    )
+
     @staticmethod
     async def _validate_teacher(db, tenant_id, teacher_membership_id):
         if teacher_membership_id is None:
@@ -940,7 +842,30 @@ class ClassRoomService:
             raise BadRequestException("Arm label must be active")
 
     @staticmethod
+    def _has_any_usage(dependencies: dict[str, int]) -> bool:
+        return any(value > 0 for key, value in dependencies.items() if key.endswith("_total"))
+
+    @staticmethod
+    def _live_dependency_counts(dependencies: dict[str, int]) -> dict[str, int]:
+        return {
+            key: dependencies.get(key, 0)
+            for key in ClassRoomService.LIVE_DEPENDENCY_KEYS
+            if dependencies.get(key, 0) > 0
+        }
+
+    @staticmethod
+    async def _ensure_no_live_dependencies(db, tenant_id, class_id):
+        dependencies = await ClassRoomRepository.count_class_dependencies(db, tenant_id, class_id)
+        live_dependencies = ClassRoomService._live_dependency_counts(dependencies)
+        if live_dependencies:
+            raise ConflictException(
+                "This class still has live academic dependencies.",
+                payload={"dependency_counts": live_dependencies},
+            )
+
+    @staticmethod
     async def create_classroom(db, actor: TenantAdmin, payload: ClassRoomCreate):
+        AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         await ClassRoomService._validate_structure(
             db, actor.tenant_id, payload.academic_level_id, payload.arm_label_id
@@ -964,13 +889,20 @@ class ClassRoomService:
 
     @staticmethod
     async def get_classroom_by_id(db, actor, class_id):
+        if not actor.tenant_id:
+            raise ForbiddenException("Actor is not attached to a tenant")
         row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
         if not row:
+            raise NotFoundException("Classroom not found")
+        if not isinstance(actor, TenantAdmin) and (not row.is_active or row.archived_at is not None):
             raise NotFoundException("Classroom not found")
         return ClassRoomResponse.model_validate(row)
 
     @staticmethod
     async def get_all_classrooms(db, actor, skip=0, limit=100, include_archived=False):
+        if not actor.tenant_id:
+            raise ForbiddenException("Actor is not attached to a tenant")
+
         if isinstance(actor, TenantAdmin):
             rows = await ClassRoomRepository.list_for_tenant(
                 db,
@@ -996,7 +928,16 @@ class ClassRoomService:
             ids = list(
                 {link.student.class_id for link in links if link.student and link.student.class_id}
             )
-            rows = await ClassRoomRepository.list_by_ids(db, actor.tenant_id, ids)
+            rows = await ClassRoomRepository.list_by_ids(
+                db,
+                actor.tenant_id,
+                ids,
+                active_only=True,
+            )
+
+        if not isinstance(actor, TenantAdmin):
+            rows = [row for row in rows if row and row.is_active and row.archived_at is None]
+
         return [ClassRoomResponse.model_validate(row) for row in rows if row]
 
     @staticmethod
@@ -1011,25 +952,43 @@ class ClassRoomService:
     async def update_classroom(
         db, actor: TenantAdmin, class_id: uuid.UUID, payload: ClassRoomUpdate
     ):
+        AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
+        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id, lock=True)
         if not row:
             raise NotFoundException("Classroom not found")
         if row.archived_at:
             raise ConflictException("Archived classrooms cannot be updated")
+
         data = payload.model_dump(exclude_unset=True)
         level_id = data.get("academic_level_id", row.academic_level_id)
         arm_id = data.get("arm_label_id", row.arm_label_id)
-        await ClassRoomService._validate_structure(db, actor.tenant_id, level_id, arm_id)
+        structural_change = (
+            ("academic_level_id" in data and level_id != row.academic_level_id)
+            or ("arm_label_id" in data and arm_id != row.arm_label_id)
+        )
+
+        if structural_change:
+            dependencies = await ClassRoomRepository.count_class_dependencies(
+                db, actor.tenant_id, row.id
+            )
+            if ClassRoomService._has_any_usage(dependencies):
+                raise ConflictException(
+                    "Classroom level and arm are locked after the class is first used.",
+                    payload={"dependency_counts": dependencies},
+                )
+            await ClassRoomService._validate_structure(db, actor.tenant_id, level_id, arm_id)
+            existing = await ClassRoomRepository.get_by_level_arm_label(
+                db, actor.tenant_id, level_id, arm_id
+            )
+            if existing and existing.id != row.id:
+                raise ConflictException("This class arm already exists for the level")
+
         if "teacher_membership_id" in data:
             await ClassRoomService._validate_teacher(
                 db, actor.tenant_id, data["teacher_membership_id"]
             )
-        existing = await ClassRoomRepository.get_by_level_arm_label(
-            db, actor.tenant_id, level_id, arm_id
-        )
-        if existing and existing.id != row.id:
-            raise ConflictException("This class arm already exists for the level")
+
         for key, value in data.items():
             setattr(row, key, value)
         await ClassRoomRepository.save(db, row)
@@ -1038,78 +997,110 @@ class ClassRoomService:
         return ClassRoomResponse.model_validate(reloaded or row)
 
     @staticmethod
-    async def _ensure_no_live_dependencies(db, tenant_id, class_id):
-        for status in (AcademicStatus.ACTIVE, AcademicStatus.SUSPENDED):
-            if await ClassRoomRepository.count_assigned_students_by_status(
-                db, tenant_id, class_id, status
-            ):
-                raise ConflictException("This class still has students assigned to it.")
-        if await ClassRoomRepository.count_current_enrollments(db, tenant_id, class_id):
-            raise ConflictException("This class still has current student enrollments.")
-        if await ClassRoomRepository.count_active_teacher_assignments(db, tenant_id, class_id):
-            raise ConflictException("This class still has active teacher assignments.")
-
-    @staticmethod
-    async def deactivate_classroom(db, actor, class_id):
-        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
+    async def deactivate_classroom(db, actor: TenantAdmin, class_id):
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id, lock=True)
         if not row:
             raise NotFoundException("Classroom not found")
-        if row.is_active:
-            await ClassRoomService._ensure_no_live_dependencies(db, actor.tenant_id, row.id)
-            row.is_active = False
-            await ClassRoomRepository.save(db, row)
-            await db.commit()
+        if row.archived_at is not None:
+            raise ConflictException("Archived classrooms cannot be deactivated")
+        if not row.is_active:
+            return ClassRoomResponse.model_validate(row)
+
+        await ClassRoomService._ensure_no_live_dependencies(db, actor.tenant_id, row.id)
+        row.is_active = False
+        await ClassRoomRepository.save(db, row)
+        await db.commit()
+        await db.refresh(row)
         return ClassRoomResponse.model_validate(row)
 
     @staticmethod
-    async def activate_classroom(db, actor, class_id):
-        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
+    async def activate_classroom(db, actor: TenantAdmin, class_id):
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id, lock=True)
         if not row:
             raise NotFoundException("Classroom not found")
         if row.archived_at:
             raise ConflictException("Restore this class before activation")
+        if row.is_active:
+            return ClassRoomResponse.model_validate(row)
+
+        await ClassRoomService._validate_structure(
+            db, actor.tenant_id, row.academic_level_id, row.arm_label_id
+        )
         row.is_active = True
         await ClassRoomRepository.save(db, row)
         await db.commit()
+        await db.refresh(row)
         return ClassRoomResponse.model_validate(row)
 
     @staticmethod
-    async def archive_classroom(db, actor, class_id):
-        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
+    async def archive_classroom(db, actor: TenantAdmin, class_id):
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id, lock=True)
         if not row:
             raise NotFoundException("Classroom not found")
+        if row.archived_at is not None:
+            return ClassRoomResponse.model_validate(row)
         if row.is_active:
             raise ConflictException("Deactivate the class before archiving")
+
         await ClassRoomService._ensure_no_live_dependencies(db, actor.tenant_id, row.id)
+        row.is_active = False
         row.archived_at = datetime.now(timezone.utc)
         row.archived_by_admin_id = actor.id
         await ClassRoomRepository.save(db, row)
         await db.commit()
+        await db.refresh(row)
         return ClassRoomResponse.model_validate(row)
 
     @staticmethod
-    async def restore_classroom(db, actor, class_id):
-        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
+    async def restore_classroom(db, actor: TenantAdmin, class_id):
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id, lock=True)
         if not row:
             raise NotFoundException("Classroom not found")
+        if row.archived_at is None:
+            raise ConflictException("Only archived classrooms can be restored")
+
+        level = await AcademicLevelRepository.get_by_id(db, actor.tenant_id, row.academic_level_id)
+        arm = await ArmLabelRepository.get_by_id(db, actor.tenant_id, row.arm_label_id)
+        if level is None:
+            raise NotFoundException("Academic level not found")
+        if arm is None:
+            raise NotFoundException("Arm label not found")
+        if level.status == AcademicLevelStatus.ARCHIVED:
+            raise ConflictException("Restore the academic level before restoring this class")
+        if arm.archived_at is not None:
+            raise ConflictException("Restore the arm label before restoring this class")
+
         row.archived_at = None
         row.archived_by_admin_id = None
         row.is_active = False
         await ClassRoomRepository.save(db, row)
         await db.commit()
+        await db.refresh(row)
         return ClassRoomResponse.model_validate(row)
 
     @staticmethod
-    async def purge_setup_classroom(db, actor, class_id):
-        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
+    async def purge_setup_classroom(db, actor: TenantAdmin, class_id):
+        AcademicLevelService._ensure_admin(actor)
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id, lock=True)
         if not row:
             raise NotFoundException("Classroom not found")
+
         counts = await ClassRoomRepository.count_class_dependencies(db, actor.tenant_id, row.id)
-        if any(counts.values()):
+        if ClassRoomService._has_any_usage(counts):
             raise ConflictException(
                 "This class is already referenced and cannot be removed.",
                 payload={"dependency_counts": counts},
             )
+
         response = ClassRoomResponse.model_validate(row)
         await ClassRoomRepository.delete_classroom(db, row)
         await db.commit()
