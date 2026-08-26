@@ -4,7 +4,7 @@ from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
+from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
 from app.modules.parents.models import Parent, ParentAccount
 from app.modules.search.schemas import TenantSearchResult
 from app.modules.student_academics.models import (
@@ -88,12 +88,10 @@ class TenantSearchService:
                 select(Student, ClassRoom)
                 .options(
                     selectinload(ClassRoom.academic_level),
-                    selectinload(ClassRoom.department),
                     selectinload(ClassRoom.arm_label_ref),
                 )
                 .outerjoin(ClassRoom, ClassRoom.id == Student.class_id)
                 .outerjoin(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
-                .outerjoin(Department, Department.id == ClassRoom.department_id)
                 .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
                 .where(
                     Student.tenant_id == tenant_id,
@@ -102,7 +100,6 @@ class TenantSearchService:
                         Student.last_name.ilike(term),
                         Student.admission_number.ilike(term),
                         AcademicLevel.name.ilike(term),
-                        Department.name.ilike(term),
                         ArmLabel.label.ilike(term),
                     ),
                 )
@@ -192,17 +189,14 @@ class TenantSearchService:
                     select(ClassRoom)
                     .options(
                         selectinload(ClassRoom.academic_level),
-                        selectinload(ClassRoom.department),
                         selectinload(ClassRoom.arm_label_ref),
                     )
                     .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
-                    .outerjoin(Department, Department.id == ClassRoom.department_id)
                     .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
                     .where(
                         ClassRoom.tenant_id == tenant_id,
                         or_(
                             AcademicLevel.name.ilike(term),
-                            Department.name.ilike(term),
                             ArmLabel.label.ilike(term),
                         ),
                     )
@@ -267,7 +261,6 @@ class TenantSearchService:
                 select(ClassRoom, Subject)
                 .options(
                     selectinload(ClassRoom.academic_level),
-                    selectinload(ClassRoom.department),
                     selectinload(ClassRoom.arm_label_ref),
                 )
                 .join(
@@ -336,7 +329,6 @@ class TenantSearchService:
                     select(Student, ClassRoom)
                     .options(
                         selectinload(ClassRoom.academic_level),
-                        selectinload(ClassRoom.department),
                         selectinload(ClassRoom.arm_label_ref),
                     )
                     .outerjoin(ClassRoom, ClassRoom.id == Student.class_id)
@@ -379,7 +371,6 @@ class TenantSearchService:
                 )
                 .options(
                     selectinload(ClassRoom.academic_level),
-                    selectinload(ClassRoom.department),
                     selectinload(ClassRoom.arm_label_ref),
                 )
                 .join(Student, Student.id == StudentSubjectResult.student_id)

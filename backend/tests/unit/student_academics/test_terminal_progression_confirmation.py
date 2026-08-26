@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import ConflictException
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.student_academics.lifecycle_repository import StudentProgressionRepository
 from app.modules.student_academics.progression_service import AcademicProgressionService
@@ -51,8 +52,7 @@ async def test_terminal_student_cannot_be_graduated_without_confirmation(monkeyp
     )
     level = SimpleNamespace(
         id=level_id,
-        is_active=True,
-        archived_at=None,
+        status=AcademicLevelStatus.ACTIVE,
         name="Final Level",
     )
     actor = SimpleNamespace(id=uuid4(), tenant_id=tenant_id)

@@ -19,20 +19,20 @@ def change(cursor: int):
         entity_type=CBTSyncEntityType.ACADEMIC_LEVEL,
         entity_id=uuid4(),
         operation=CBTSyncOperation.UPDATED,
-        schema_version=2,
+        schema_version=3,
         payload={"id": str(uuid4()), "name": f"Level {cursor}"},
         created_at=datetime(2026, 8, 17, 12, cursor, tzinfo=timezone.utc),
     )
 
 
-def test_mutation_uses_v2_and_requires_full_payload_for_upsert() -> None:
+def test_mutation_uses_v3_and_requires_full_payload_for_upsert() -> None:
     mutation = CBTSyncMutation(
         entity_type=CBTSyncEntityType.SUBJECT,
         entity_id=uuid4(),
         operation=CBTSyncOperation.UPDATED,
         payload={"name": "Mathematics"},
     )
-    assert mutation.schema_version == 2
+    assert mutation.schema_version == 3
 
     with pytest.raises(ValidationError, match="require a payload"):
         CBTSyncMutation(
@@ -65,7 +65,7 @@ def test_serialize_change_uses_created_at_as_occurred_at() -> None:
     assert response.event_id == row.id
     assert response.cursor == 1
     assert response.occurred_at == row.created_at
-    assert response.schema_version == 2
+    assert response.schema_version == 3
 
 
 @pytest.mark.asyncio
@@ -74,6 +74,8 @@ async def test_delta_recovery_is_ordered_paginated_and_tenant_scoped(monkeypatch
     rows = [change(11), change(12), change(13)]
     get_changes = AsyncMock(return_value=rows)
     monkeypatch.setattr(CBTSyncRepository, "get_changes_after", get_changes)
+    monkeypatch.setattr(CBTSyncRepository, "get_latest_cursor", AsyncMock(return_value=13))
+    monkeypatch.setattr(CBTSyncRepository, "get_earliest_cursor", AsyncMock(return_value=11))
 
     response = await CBTSyncService.get_changes_after(
         AsyncMock(),
@@ -101,6 +103,8 @@ async def test_empty_delta_preserves_last_applied_cursor(monkeypatch) -> None:
         "get_changes_after",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(CBTSyncRepository, "get_latest_cursor", AsyncMock(return_value=44))
+    monkeypatch.setattr(CBTSyncRepository, "get_earliest_cursor", AsyncMock(return_value=None))
 
     response = await CBTSyncService.get_changes_after(
         AsyncMock(),

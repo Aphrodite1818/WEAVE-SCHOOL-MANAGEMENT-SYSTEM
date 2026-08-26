@@ -353,11 +353,11 @@ class AcademicCurriculumService:
         if subject_context is None:
             raise NotFoundException("Active curriculum subject not found.")
         curriculum_subject, curriculum = subject_context
-        level = await AcademicLevelRepository.get_by_id(
-            db, tenant_id, curriculum.academic_level_id
-        )
+        level = await AcademicLevelRepository.get_by_id(db, tenant_id, curriculum.academic_level_id)
         if level is None or level.status != AcademicLevelStatus.ACTIVE:
-            raise ConflictException("Academic level must be active before offerings are configured.")
+            raise ConflictException(
+                "Academic level must be active before offerings are configured."
+            )
         term = await AcademicCurriculumService._term(
             db, tenant_id, payload.academic_term_id, lock=True
         )

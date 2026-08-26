@@ -93,6 +93,7 @@ def test_student_create_normalizes_parent_email() -> None:
         first_name="Taiwo",
         last_name="Student",
         date_of_birth=date(2012, 1, 1),
+        academic_level_id=uuid4(),
         class_id=uuid4(),
         parents=[
             {
@@ -109,7 +110,8 @@ def test_teacher_assignment_contract_uses_membership_id() -> None:
     payload = TeacherAssignmentCreate(
         teacher_membership_id=membership_id,
         class_id=uuid4(),
-        level_subject_id=uuid4(),
+        curriculum_subject_id=uuid4(),
+        academic_term_id=uuid4(),
     )
     assert payload.teacher_membership_id == membership_id
 
@@ -118,7 +120,8 @@ def test_teacher_assignment_contract_uses_membership_id() -> None:
             {
                 "teacher_id": str(uuid4()),
                 "class_id": str(uuid4()),
-                "level_subject_id": str(uuid4()),
+                "curriculum_subject_id": str(uuid4()),
+                "academic_term_id": str(uuid4()),
             }
         )
 

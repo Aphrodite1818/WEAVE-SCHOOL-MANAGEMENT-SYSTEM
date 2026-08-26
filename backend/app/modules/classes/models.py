@@ -126,7 +126,7 @@ class Department(BaseModel):
 
     academic_level_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("academic_levels.id", ondelete="CASCADE"),
+        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -136,6 +136,9 @@ class Department(BaseModel):
         Boolean, default=True, server_default="true", nullable=False
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
+    )
 
     academic_level: Mapped[AcademicLevel] = relationship(
         "AcademicLevel", back_populates="departments"
@@ -149,8 +152,11 @@ class Department(BaseModel):
             name="uq_departments_tenant_level_name",
         ),
         CheckConstraint(
-            "archived_at IS NULL OR is_active = false",
-            name="ck_departments_archived_requires_inactive",
+            """
+            (archived_at IS NULL AND archived_by_admin_id IS NULL)
+            OR (archived_at IS NOT NULL AND is_active = false)
+            """,
+            name="ck_departments_archive_metadata_consistency",
         ),
         Index("ix_departments_tenant_level_active", "tenant_id", "academic_level_id", "is_active"),
     )

@@ -99,6 +99,10 @@ class DepartmentCreate(InputBase):
     name: str = Field(min_length=1, max_length=100)
 
 
+class DepartmentUpdate(InputBase):
+    name: str | None
+
+
 class DepartmentResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -106,6 +110,7 @@ class DepartmentResponse(OutputBase):
     name: str
     is_active: bool
     archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 

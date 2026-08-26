@@ -7,7 +7,7 @@ def test_student_subject_result_identity_is_stable_across_teacher_reassignment()
     constraint = next(
         item
         for item in StudentSubjectResult.__table__.constraints
-        if isinstance(item, UniqueConstraint) and item.name == "uq_student_subject_result_scope"
+        if isinstance(item, UniqueConstraint) and item.name == "uq_student_subject_result_scope_v2"
     )
 
     assert [column.name for column in constraint.columns] == [

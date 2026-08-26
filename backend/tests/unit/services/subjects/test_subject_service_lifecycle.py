@@ -157,14 +157,16 @@ async def test_active_subject_cannot_be_archived() -> None:
     [
         (
             {
-                "active_level_subjects": 1,
+                "active_curriculum_subjects": 1,
+                "active_teacher_links": 0,
                 "active_teacher_assignments": 0,
             },
-            "actively offered",
+            "active in one or more curricula",
         ),
         (
             {
-                "active_level_subjects": 0,
+                "active_curriculum_subjects": 0,
+                "active_teacher_links": 0,
                 "active_teacher_assignments": 1,
             },
             "active teacher assignments",

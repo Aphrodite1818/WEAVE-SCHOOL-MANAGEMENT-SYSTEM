@@ -58,7 +58,7 @@ class ClassTermDepartmentAssignment(BaseModel):
         UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False
     )
     department_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=False
     )
     assigned_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
@@ -80,7 +80,7 @@ class CurriculumOffering(BaseModel):
         UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False
     )
     department_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="CASCADE"), nullable=True
+        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=True
     )
     __table_args__ = (
         # This constraint enforces one row per concrete department. PostgreSQL

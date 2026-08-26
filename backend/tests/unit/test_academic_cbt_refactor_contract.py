@@ -32,9 +32,9 @@ def test_department_name_uniqueness_is_level_scoped() -> None:
     )
 
 
-def test_obsolete_specialization_threshold_contract_is_gone() -> None:
-    assert "specialization_required_from_term_position" not in AcademicLevel.__dict__
-    assert "specialization_required_from_term_position" not in AcademicLevel.__table__.c
+def test_academic_level_specialization_threshold_contract_is_explicit() -> None:
+    column = AcademicLevel.__table__.c.specialization_required_from_term_position
+    assert column.nullable is True
 
 
 def test_progression_run_persists_terminal_graduation_approval() -> None:

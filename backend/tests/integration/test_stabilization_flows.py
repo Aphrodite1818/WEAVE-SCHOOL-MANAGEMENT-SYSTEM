@@ -26,7 +26,13 @@ from app.modules.auth.models import (
 from app.modules.auth.otp_service import OTPService
 from app.modules.auth.schemas import VerifyOTP
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
-from app.modules.classes.models import AcademicLevel, AcademicLevelStatus, ClassRoom
+from app.modules.classes.models import (
+    AcademicCategory,
+    AcademicLevel,
+    AcademicLevelStatus,
+    ArmLabel,
+    ClassRoom,
+)
 from app.modules.parents.models import (
     Parent,
     ParentAccount,
@@ -502,13 +508,20 @@ async def test_student_default_password_first_login_flow(
 ) -> None:
     tenant = await create_tenant(db_session, suffix="student")
     admin = await create_tenant_admin(db_session, tenant=tenant, email="admin-student@example.com")
-    level = AcademicLevel(tenant_id=tenant.id, name="JSS1", status=AcademicLevelStatus.ACTIVE)
-    db_session.add(level)
+    level = AcademicLevel(
+        tenant_id=tenant.id,
+        name="JSS1",
+        category=AcademicCategory.JUNIOR_SECONDARY,
+        position=1,
+        status=AcademicLevelStatus.ACTIVE,
+    )
+    arm = ArmLabel(tenant_id=tenant.id, label="A", normalized_label="a", is_active=True)
+    db_session.add_all([level, arm])
     await db_session.flush()
     classroom = ClassRoom(
         tenant_id=tenant.id,
         academic_level_id=level.id,
-        arm="A",
+        arm_label_id=arm.id,
         is_active=True,
     )
     academic_session = AcademicSession(
@@ -537,6 +550,7 @@ async def test_student_default_password_first_login_flow(
             "first_name": "Ada",
             "last_name": "Lovelace",
             "date_of_birth": "2012-05-01",
+            "academic_level_id": str(level.id),
             "class_id": str(classroom.id),
             "gender": "female",
         },
@@ -798,15 +812,18 @@ async def test_analytics_endpoints_return_real_counts(
     level = AcademicLevel(
         tenant_id=active_tenant.id,
         name="JSS1",
+        category=AcademicCategory.JUNIOR_SECONDARY,
+        position=1,
         status=AcademicLevelStatus.ACTIVE,
     )
-    db_session.add(level)
+    arm = ArmLabel(tenant_id=active_tenant.id, label="A", normalized_label="a", is_active=True)
+    db_session.add_all([level, arm])
     await db_session.flush()
     db_session.add(
         ClassRoom(
             tenant_id=active_tenant.id,
             academic_level_id=level.id,
-            arm="A",
+            arm_label_id=arm.id,
         )
     )
     db_session.add(

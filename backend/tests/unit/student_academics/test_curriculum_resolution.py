@@ -121,6 +121,7 @@ async def test_specialization_blocks_only_when_next_term_requires_it(monkeypatch
         name=AcademicTermName.FIRST_TERM,
     )
     next_term = SimpleNamespace(
+        id=uuid4(),
         academic_session_id=session_id,
         name=AcademicTermName.SECOND_TERM,
     )
@@ -157,26 +158,26 @@ async def test_specialization_blocks_only_when_next_term_requires_it(monkeypatch
 
     assert counts == {"students_missing_department": 1}
     assert blockers == [
-        "1 Custom Foundation Stage students require department assignment before Second Term."
+        "1 Custom Foundation Stage students are in classes without a department for Second Term."
     ]
 
 
 @pytest.mark.asyncio
-async def test_effective_department_assignment_allows_classless_student(monkeypatch):
+async def test_class_department_assignment_satisfies_specialization_blocker(monkeypatch):
     tenant_id = uuid4()
     session_id = uuid4()
     level_id = uuid4()
+    class_id = uuid4()
     current = SimpleNamespace(
         academic_session_id=session_id,
         name=AcademicTermName.FIRST_TERM,
     )
     next_term = SimpleNamespace(
+        id=uuid4(),
         academic_session_id=session_id,
         name=AcademicTermName.SECOND_TERM,
     )
-    enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=None)
-    assignment = SimpleNamespace(student_enrollment_id=enrollment.id)
-    department = SimpleNamespace(is_active=True, archived_at=None)
+    enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=class_id)
     level = SimpleNamespace(
         id=level_id,
         name="Stage Alpha",
@@ -192,7 +193,7 @@ async def test_effective_department_assignment_allows_classless_student(monkeypa
             side_effect=[
                 Result(scalars=[current, next_term]),
                 Result(scalars=[enrollment]),
-                Result(rows=[(assignment, next_term, department)]),
+                Result(scalars=[class_id]),
             ]
         )
     )
@@ -250,4 +251,4 @@ async def test_inactive_department_assignment_does_not_satisfy_specialization_bl
     )
 
     assert counts == {"students_missing_department": 1}
-    assert blockers == ["1 Stage Alpha students require department assignment before Second Term."]
+    assert blockers == ["1 Stage Alpha students are in classes without a department for Second Term."]

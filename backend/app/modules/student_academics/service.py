@@ -1265,9 +1265,7 @@ class StudentAcademicService:
             raise ConflictException("Classroom must be active before assigning a teacher.")
         level = await AcademicLevelRepository.get_by_id(db, tenant_id, classroom.academic_level_id)
         if level is None or level.status != AcademicLevelStatus.ACTIVE:
-            raise ConflictException(
-                "Academic level must be active before assigning a teacher."
-            )
+            raise ConflictException("Academic level must be active before assigning a teacher.")
         if classroom.academic_level_id != curriculum.academic_level_id:
             raise ConflictException(
                 "The selected curriculum subject does not belong to the class academic level."
