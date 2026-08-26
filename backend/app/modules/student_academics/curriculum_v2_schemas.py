@@ -14,15 +14,20 @@ class OutputBase(BaseModel):
 
 
 class CurriculumSubjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     subject_id: uuid.UUID
     is_elective: bool = False
 
 
 class CurriculumSubjectUpdate(BaseModel):
-    is_elective: bool | None = None
-    is_active: bool | None = None
+    """Semantic configuration only; lifecycle uses dedicated endpoints."""
 
-    @field_validator("is_elective", "is_active", mode="before")
+    model_config = ConfigDict(extra="forbid")
+
+    is_elective: bool | None = None
+
+    @field_validator("is_elective", mode="before")
     @classmethod
     def reject_null_boolean_updates(cls, value, info):
         if value is None:
