@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus
+from app.modules.students.enrollment_service import StudentEnrollmentService
 from app.modules.students.models import (
     AcademicStatus,
     Student,
@@ -20,10 +21,9 @@ from app.modules.students.schemas import (
     StudentAdminProfileUpdate,
     StudentEnrollmentDetailResponse,
 )
-from app.modules.students.service import StudentEnrollmentService
 
 
-def _student(tenant_id: uuid.UUID, class_id: uuid.UUID) -> Student:
+def _student(tenant_id: uuid.UUID) -> Student:
     now = datetime.now(timezone.utc)
     return Student(
         id=uuid.uuid4(),
@@ -40,7 +40,6 @@ def _student(tenant_id: uuid.UUID, class_id: uuid.UUID) -> Student:
         admission_date=date(2026, 1, 10),
         status=AcademicStatus.ACTIVE,
         profile_status=StudentProfileStatus.COMPLETE,
-        class_id=class_id,
         is_archived=False,
         created_at=now,
         updated_at=now,
@@ -53,7 +52,7 @@ def test_admin_profile_update_rejects_class_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enrollment_history_adds_display_labels_once() -> None:
+async def test_enrollment_history_returns_canonical_segment_with_display_labels() -> None:
     tenant_id = uuid.uuid4()
     student_id = uuid.uuid4()
     class_id = uuid.uuid4()
@@ -68,8 +67,8 @@ async def test_enrollment_history_adds_display_labels_once() -> None:
         class_id=class_id,
         academic_session_id=session_id,
         started_on=date(2026, 9, 1),
-        is_current=True,
-        outcome=StudentEnrollmentOutcome.ENROLLED,
+        entry_outcome=StudentEnrollmentOutcome.ENROLLED,
+        entry_reason="Initial admission",
         created_at=now,
         updated_at=now,
     )
@@ -82,40 +81,39 @@ async def test_enrollment_history_adds_display_labels_once() -> None:
         status=AcademicSessionStatus.OPEN,
         is_current=True,
     )
+    db = AsyncMock()
+    result = MagicMock()
+    result.all.return_value = [(enrollment, classroom, level, session)]
+    db.execute.return_value = result
 
-    with (
-        patch(
-            "app.modules.students.service.StudentRepository.get_by_id",
-            new=AsyncMock(return_value=_student(tenant_id, class_id)),
-        ),
-        patch(
-            "app.modules.students.service.StudentEnrollmentRepository.list_for_student",
-            new=AsyncMock(return_value=[enrollment]),
-        ),
-        patch(
-            "app.modules.students.service.ClassRoomRepository.get_by_id",
-            new=AsyncMock(return_value=classroom),
-        ),
-        patch(
-            "app.modules.students.service.AcademicLevelRepository.get_by_id",
-            new=AsyncMock(return_value=level),
-        ),
-        patch(
-            "app.modules.students.service.AcademicSessionLifecycleRepository.get_by_id",
-            new=AsyncMock(return_value=session),
-        ),
+    with patch(
+        "app.modules.students.enrollment_service.StudentRepository.get_by_id",
+        new=AsyncMock(return_value=_student(tenant_id)),
     ):
         rows = await StudentEnrollmentService.list_history(
-            AsyncMock(),
+            db,
             tenant_id=tenant_id,
             student_id=student_id,
         )
 
     assert rows == [
         StudentEnrollmentDetailResponse(
-            **StudentEnrollmentDetailResponse.model_validate(enrollment).model_dump(
-                exclude={"class_name", "class_arm", "academic_level_name", "academic_session_name"}
-            ),
+            id=enrollment.id,
+            tenant_id=tenant_id,
+            student_id=student_id,
+            academic_level_id=level_id,
+            class_id=class_id,
+            academic_session_id=session_id,
+            started_on=date(2026, 9, 1),
+            ended_on=None,
+            entry_outcome=StudentEnrollmentOutcome.ENROLLED,
+            exit_outcome=None,
+            entry_reason="Initial admission",
+            exit_reason=None,
+            created_by_admin_id=None,
+            ended_by_admin_id=None,
+            created_at=now,
+            updated_at=now,
             class_name="JSS 1",
             class_arm="Blue",
             academic_level_name="JSS 1",
