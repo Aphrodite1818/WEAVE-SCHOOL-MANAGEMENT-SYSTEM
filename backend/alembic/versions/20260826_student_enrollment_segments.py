@@ -25,6 +25,8 @@ SCHEMA = "public"
 
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS btree_gist")
+    op.execute("ALTER TYPE public.student_enrollment_outcome ADD VALUE IF NOT EXISTS 'demoted'")
+    op.execute("ALTER TYPE public.student_enrollment_outcome ADD VALUE IF NOT EXISTS 'reinstated'")
 
     # Enrollment metadata: preserve the existing entry information before
     # introducing explicit exit metadata.
@@ -46,26 +48,23 @@ def upgrade() -> None:
         new_column_name="created_by_admin_id",
         schema=SCHEMA,
     )
+    enrollment_outcome = sa.Enum(
+        "enrolled",
+        "promoted",
+        "repeated",
+        "demoted",
+        "reclassified",
+        "reinstated",
+        "withdrawn",
+        "expelled",
+        "graduated",
+        name="student_enrollment_outcome",
+        schema=SCHEMA,
+        create_type=False,
+    )
     op.add_column(
         "student_enrollments",
-        sa.Column(
-            "exit_outcome",
-            sa.Enum(
-                "enrolled",
-                "promoted",
-                "repeated",
-                "demoted",
-                "reclassified",
-                "reinstated",
-                "withdrawn",
-                "expelled",
-                "graduated",
-                name="student_enrollment_outcome",
-                schema=SCHEMA,
-                create_type=False,
-            ),
-            nullable=True,
-        ),
+        sa.Column("exit_outcome", enrollment_outcome, nullable=True),
         schema=SCHEMA,
     )
     op.add_column(
@@ -84,9 +83,8 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
 
-    # Existing ended rows used the single outcome/reason pair as exit metadata.
-    # Copy that information so no development history becomes structurally
-    # incomplete during the cutover.
+    # Existing ended rows used the single outcome/reason pair as their final
+    # lifecycle event, so preserve it as exit metadata too.
     op.execute(
         """
         UPDATE public.student_enrollments
