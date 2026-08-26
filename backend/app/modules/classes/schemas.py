@@ -134,13 +134,12 @@ class ArmLabelCreate(InputBase):
 
 class ArmLabelUpdate(InputBase):
     label: str | None = Field(default=None, min_length=1, max_length=20)
-    is_active: bool | None = None
 
-    @field_validator("label", "is_active", mode="before")
+    @field_validator("label", mode="before")
     @classmethod
-    def reject_null_required_fields(cls, value, info):
+    def reject_null_label(cls, value: str | None) -> str:
         if value is None:
-            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+            raise ValueError(f"label {_PATCH_NULL_ERROR}")
         return value
 
     @model_validator(mode="after")
@@ -150,12 +149,33 @@ class ArmLabelUpdate(InputBase):
         return self
 
 
+class ArmLabelActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_ARM_LABEL"]
+
+
+class ArmLabelDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_ARM_LABEL"]
+
+
+class ArmLabelArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_ARM_LABEL"]
+
+
+class ArmLabelRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_ARM_LABEL"]
+
+
+class ArmLabelDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_ARM_LABEL"]
+
+
 class ArmLabelResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     label: str
     is_active: bool
     archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
