@@ -64,6 +64,48 @@ async def update_curriculum_subject(
     )
 
 
+@router.post(
+    "/curriculum-subjects/{curriculum_subject_id}/activate",
+    response_model=CurriculumSubjectResponse,
+)
+async def activate_curriculum_subject(
+    curriculum_subject_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AcademicCurriculumService.activate_subject(
+        db, current_admin.tenant_id, curriculum_subject_id
+    )
+
+
+@router.post(
+    "/curriculum-subjects/{curriculum_subject_id}/deactivate",
+    response_model=CurriculumSubjectResponse,
+)
+async def deactivate_curriculum_subject(
+    curriculum_subject_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AcademicCurriculumService.deactivate_subject(
+        db, current_admin.tenant_id, curriculum_subject_id
+    )
+
+
+@router.delete(
+    "/curriculum-subjects/{curriculum_subject_id}",
+    response_model=CurriculumSubjectResponse,
+)
+async def delete_curriculum_subject(
+    curriculum_subject_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AcademicCurriculumService.hard_delete_subject(
+        db, current_admin.tenant_id, curriculum_subject_id
+    )
+
+
 @router.get(
     "/curriculum-subjects/{curriculum_subject_id}/offerings",
     response_model=list[CurriculumOfferingResponse],
