@@ -18,9 +18,12 @@ from sqlalchemy import (
     Index,
     String,
     UniqueConstraint,
+    func,
+    select,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ExcludeConstraint, UUID
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
@@ -76,16 +79,17 @@ class ParentLinkVerifiedByType(str, PyEnum):
 
 
 class StudentEnrollmentOutcome(str, PyEnum):
-    """How a student entered or left one enrolment record."""
+    """Reason an immutable enrollment segment started or ended."""
 
     ENROLLED = "enrolled"
     PROMOTED = "promoted"
     REPEATED = "repeated"
+    DEMOTED = "demoted"
     RECLASSIFIED = "reclassified"
+    REINSTATED = "reinstated"
     WITHDRAWN = "withdrawn"
     EXPELLED = "expelled"
     GRADUATED = "graduated"
-    ARCHIVED = "archived"
 
 
 class StudentProfileStatus(str, PyEnum):
@@ -119,7 +123,12 @@ class StudentParentLinkRequestStatus(str, PyEnum):
 
 
 class Student(BaseModel):
-    """Student actor account and academic profile."""
+    """Student actor account and academic profile.
+
+    Class placement is intentionally not persisted on this row. StudentEnrollment
+    is the sole academic placement authority; ``class_id`` below is only a derived
+    read projection for query/display convenience.
+    """
 
     __tablename__ = "students"
 
@@ -180,11 +189,6 @@ class Student(BaseModel):
         server_default=text("CURRENT_DATE"),
     )
     graduation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    class_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("classes.id", ondelete="RESTRICT"),
-        nullable=True,
-    )
     status: Mapped[AcademicStatus] = mapped_column(
         SQLEnum(
             AcademicStatus,
@@ -262,6 +266,29 @@ class Student(BaseModel):
         viewonly=True,
     )
 
+    @hybrid_property
+    def class_id(self) -> uuid.UUID | None:
+        """Derived current class; never persisted on students."""
+
+        loaded = self.__dict__.get("enrollments")
+        if loaded is None:
+            return None
+        current = next((row for row in loaded if row.ended_on is None), None)
+        return current.class_id if current is not None else None
+
+    @class_id.expression
+    def class_id(cls):
+        return (
+            select(StudentEnrollment.class_id)
+            .where(
+                StudentEnrollment.tenant_id == cls.tenant_id,
+                StudentEnrollment.student_id == cls.id,
+                StudentEnrollment.ended_on.is_(None),
+            )
+            .correlate(cls)
+            .scalar_subquery()
+        )
+
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
@@ -287,35 +314,20 @@ class Student(BaseModel):
         ),
         CheckConstraint(
             """
-            status NOT IN ('withdrawn', 'expelled', 'graduated')
-            OR class_id IS NULL
-            """,
-            name="ck_students_terminal_status_has_no_current_class",
-        ),
-        CheckConstraint(
-            """
             status <> 'graduated'
             OR graduation_date IS NOT NULL
             """,
             name="ck_students_graduated_has_date",
         ),
         Index("ix_students_tenant_admission_number", "tenant_id", "admission_number"),
-        Index("ix_students_tenant_class", "tenant_id", "class_id"),
         Index("ix_students_tenant_status", "tenant_id", "status"),
         Index("ix_students_tenant_account_status", "tenant_id", "account_status"),
         Index("ix_students_tenant_archived", "tenant_id", "is_archived"),
-        Index(
-            "ix_students_tenant_class_status_archived",
-            "tenant_id",
-            "class_id",
-            "status",
-            "is_archived",
-        ),
     )
 
 
 class StudentEnrollment(BaseModel):
-    """Historical record of one student's placement in one class and session."""
+    """Immutable historical segment of one student's academic placement."""
 
     __tablename__ = "student_enrollments"
 
@@ -341,13 +353,7 @@ class StudentEnrollment(BaseModel):
     )
     started_on: Mapped[date] = mapped_column(Date, nullable=False)
     ended_on: Mapped[date | None] = mapped_column(Date, nullable=True)
-    is_current: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default="true",
-    )
-    outcome: Mapped[StudentEnrollmentOutcome] = mapped_column(
+    entry_outcome: Mapped[StudentEnrollmentOutcome] = mapped_column(
         SQLEnum(
             StudentEnrollmentOutcome,
             name="student_enrollment_outcome",
@@ -358,8 +364,23 @@ class StudentEnrollment(BaseModel):
         default=StudentEnrollmentOutcome.ENROLLED,
         server_default=StudentEnrollmentOutcome.ENROLLED.value,
     )
-    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    changed_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+    exit_outcome: Mapped[StudentEnrollmentOutcome | None] = mapped_column(
+        SQLEnum(
+            StudentEnrollmentOutcome,
+            name="student_enrollment_outcome",
+            schema=PUBLIC_SCHEMA,
+            values_callable=enum_values,
+        ),
+        nullable=True,
+    )
+    entry_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    exit_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    ended_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
         nullable=True,
@@ -375,31 +396,49 @@ class StudentEnrollment(BaseModel):
         foreign_keys=[academic_session_id],
     )
 
+    @hybrid_property
+    def is_current(self) -> bool:
+        return self.ended_on is None
+
+    @is_current.expression
+    def is_current(cls):
+        return cls.ended_on.is_(None)
+
     __table_args__ = (
-        CheckConstraint(
-            """
-            (
-                is_current = true
-                AND ended_on IS NULL
-            )
-            OR
-            (
-                is_current = false
-                AND ended_on IS NOT NULL
-            )
-            """,
-            name="ck_student_enrollment_current_end_consistency",
-        ),
         CheckConstraint(
             "ended_on IS NULL OR ended_on >= started_on",
             name="ck_student_enrollment_date_order",
+        ),
+        CheckConstraint(
+            """
+            (
+                ended_on IS NULL
+                AND exit_outcome IS NULL
+                AND exit_reason IS NULL
+                AND ended_by_admin_id IS NULL
+            )
+            OR
+            (
+                ended_on IS NOT NULL
+                AND exit_outcome IS NOT NULL
+                AND exit_reason IS NOT NULL
+            )
+            """,
+            name="ck_student_enrollment_exit_consistency",
         ),
         Index(
             "uq_student_enrollments_one_current",
             "tenant_id",
             "student_id",
             unique=True,
-            postgresql_where=text("is_current = true"),
+            postgresql_where=text("ended_on IS NULL"),
+        ),
+        ExcludeConstraint(
+            ("tenant_id", "="),
+            ("student_id", "="),
+            (func.daterange(started_on, ended_on, "[]"), "&&"),
+            name="excl_student_enrollments_effective_overlap",
+            using="gist",
         ),
         Index("ix_student_enrollments_tenant_student", "tenant_id", "student_id"),
         Index("ix_student_enrollments_tenant_class", "tenant_id", "class_id"),
