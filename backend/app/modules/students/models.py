@@ -300,52 +300,13 @@ class StudentEnrollment(BaseModel):
 
     @hybrid_property
     def is_current(self) -> bool:
-        return self.ended_on is None
+        """Return whether this placement segment is still open."""
 
-    @is_current.setter
-    def is_current(self, value: bool) -> None:
-        # ``ended_on`` is the sole persisted authority. Accept the old constructor/
-        # transition hint so callers can be migrated incrementally without storing
-        # a second lifecycle flag. Setting False is completed by assigning ended_on.
-        if value and self.ended_on is not None:
-            raise ValueError("An ended enrollment cannot be marked current.")
+        return self.ended_on is None
 
     @is_current.expression
     def is_current(cls):
         return cls.ended_on.is_(None)
-
-    @property
-    def outcome(self) -> StudentEnrollmentOutcome:
-        return self.exit_outcome if self.ended_on is not None and self.exit_outcome else self.entry_outcome
-
-    @outcome.setter
-    def outcome(self, value: StudentEnrollmentOutcome) -> None:
-        if self.ended_on is None:
-            self.entry_outcome = value
-        else:
-            self.exit_outcome = value
-
-    @property
-    def reason(self) -> str | None:
-        return self.exit_reason if self.ended_on is not None else self.entry_reason
-
-    @reason.setter
-    def reason(self, value: str | None) -> None:
-        if self.ended_on is None:
-            self.entry_reason = value
-        else:
-            self.exit_reason = value
-
-    @property
-    def changed_by_admin_id(self) -> uuid.UUID | None:
-        return self.ended_by_admin_id if self.ended_on is not None else self.created_by_admin_id
-
-    @changed_by_admin_id.setter
-    def changed_by_admin_id(self, value: uuid.UUID | None) -> None:
-        if self.ended_on is None:
-            self.created_by_admin_id = value
-        else:
-            self.ended_by_admin_id = value
 
     __table_args__ = (
         CheckConstraint("ended_on IS NULL OR ended_on >= started_on", name="ck_student_enrollment_date_order"),
