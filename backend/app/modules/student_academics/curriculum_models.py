@@ -17,7 +17,7 @@ from app.shared.base_model import BaseModel
 class Curriculum(BaseModel):
     __tablename__ = "curricula"
     academic_level_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_levels.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("academic_levels.id", ondelete="RESTRICT"), nullable=False
     )
     __table_args__ = (
         UniqueConstraint("tenant_id", "academic_level_id", name="uq_curricula_tenant_level"),
