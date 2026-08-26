@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,8 +59,13 @@ def _utc_now() -> datetime:
 class SessionClosureService:
     """Own the OPEN -> CLOSING -> CLOSED lifecycle and progression hand-off."""
 
+    # The heavy worker has a one-hour job timeout. Give ARQ a small grace period
+    # before a PROCESSING run is considered abandoned and manually recoverable.
+    PROCESSING_STALE_AFTER = timedelta(minutes=65)
+
     CHECKED_ITEMS = [
         "A next draft academic session is configured.",
+        "The current and next academic sessions have complete non-overlapping date ranges.",
         "Every term in the current session is closed.",
         "No result remains draft, submitted, or approved-but-unlocked.",
         "No draft report card remains unpublished.",
@@ -117,6 +122,73 @@ class SessionClosureService:
             else:
                 summary["failed"] += 1
         return summary
+
+    @staticmethod
+    def _next_session_date_blockers(
+        *,
+        session: AcademicSession,
+        next_session: AcademicSession,
+    ) -> list[str]:
+        blockers: list[str] = []
+        if session.start_date is None or session.end_date is None:
+            blockers.append(
+                "The current academic session must have complete start and end dates before closure."
+            )
+        if next_session.start_date is None or next_session.end_date is None:
+            blockers.append(
+                "The next academic session must have complete start and end dates before closure."
+            )
+            return blockers
+        if next_session.end_date <= next_session.start_date:
+            blockers.append("The next academic session end date must be after its start date.")
+        if session.end_date is not None and next_session.start_date <= session.end_date:
+            blockers.append(
+                "The next academic session must start after the current academic session ends."
+            )
+        return blockers
+
+    @staticmethod
+    def _processing_is_stale(
+        run: StudentProgressionRun,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        if run.status != StudentProgressionRunStatus.PROCESSING:
+            return False
+        if run.started_at is None:
+            return True
+        reference = now or _utc_now()
+        started_at = run.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        return started_at <= reference - SessionClosureService.PROCESSING_STALE_AFTER
+
+    @staticmethod
+    async def _enqueue_progression_safely(
+        *,
+        run: StudentProgressionRun,
+        tenant_id: uuid.UUID,
+        retry: bool = False,
+    ) -> bool:
+        """Dispatch progression without turning a committed CLOSING state into a 500.
+
+        ARQ returns ``None`` when the deterministic job id already exists. That is
+        still a successful hand-off for the initial request. Connectivity/runtime
+        exceptions are the meaningful failure signal and leave the durable run in
+        PENDING so a repeated start/retry request can dispatch it again.
+        """
+
+        from app.core.queue.arq import enqueue_session_progression_job
+
+        try:
+            queued = await enqueue_session_progression_job(
+                run_id=str(run.id),
+                tenant_id=str(tenant_id),
+                retry=retry,
+            )
+        except Exception:
+            return False
+        return bool(queued) or not retry
 
     @staticmethod
     async def _run_detail(
@@ -188,6 +260,12 @@ class SessionClosureService:
                     "The next academic session must remain in draft until final closure."
                 )
             else:
+                blockers.extend(
+                    SessionClosureService._next_session_date_blockers(
+                        session=session,
+                        next_session=next_session,
+                    )
+                )
                 terms = list(
                     (
                         await db.execute(
@@ -312,6 +390,14 @@ class SessionClosureService:
             db, actor.tenant_id, session.id, lock=True
         )
         if session.status == AcademicSessionStatus.CLOSING and existing is not None:
+            if existing.status == StudentProgressionRunStatus.PENDING:
+                await db.commit()
+                queued = await SessionClosureService._enqueue_progression_safely(
+                    run=existing,
+                    tenant_id=actor.tenant_id,
+                )
+            else:
+                queued = existing.status == StudentProgressionRunStatus.PROCESSING
             return SessionClosureStartResponse(
                 started=True,
                 session=AcademicSessionResponse.model_validate(session),
@@ -319,11 +405,7 @@ class SessionClosureService:
                 progression_run=await SessionClosureService._run_detail(
                     db, tenant_id=actor.tenant_id, run=existing
                 ),
-                queued=existing.status
-                in {
-                    StudentProgressionRunStatus.PENDING,
-                    StudentProgressionRunStatus.PROCESSING,
-                },
+                queued=queued,
             )
         if session.status != AcademicSessionStatus.OPEN or not session.is_current:
             raise ConflictException("Only the current open session can enter closing.")
@@ -407,13 +489,10 @@ class SessionClosureService:
         await db.refresh(session)
         await db.refresh(run)
 
-        from app.core.queue.arq import enqueue_session_progression_job
-
-        queued = await enqueue_session_progression_job(
-            run_id=str(run.id), tenant_id=str(actor.tenant_id)
+        queued = await SessionClosureService._enqueue_progression_safely(
+            run=run,
+            tenant_id=actor.tenant_id,
         )
-        if not queued:
-            queued = True
 
         return SessionClosureStartResponse(
             started=True,
@@ -447,6 +526,17 @@ class SessionClosureService:
             raise ConflictException("Progression session records are incomplete.")
         if session.status != AcademicSessionStatus.CLOSING:
             raise ConflictException("Progression can run only while the session is closing.")
+        if next_session.status != AcademicSessionStatus.DRAFT:
+            raise ConflictException("The next academic session must remain draft during progression.")
+        date_blockers = SessionClosureService._next_session_date_blockers(
+            session=session,
+            next_session=next_session,
+        )
+        if date_blockers:
+            raise ConflictException(
+                "Progression session dates are invalid.",
+                payload={"blocker_messages": date_blockers},
+            )
         actor = (
             await db.execute(
                 select(TenantAdmin).where(
@@ -480,7 +570,9 @@ class SessionClosureService:
         )
         if run.total_students == 0:
             run.total_students = len(enrollments)
-        effective_date = session.end_date or date.today()
+        if session.end_date is None:
+            raise ConflictException("The closing academic session is missing its end date.")
+        effective_date = session.end_date
 
         for enrollment in enrollments:
             try:
@@ -637,7 +729,7 @@ class SessionClosureService:
         session_id: uuid.UUID,
     ) -> SessionClosureStatusResponse:
         session = await AcademicSessionLifecycleRepository.get_by_id(
-            db, actor.tenant_id, session_id
+            db, actor.tenant_id, session_id, lock=True
         )
         run = await StudentProgressionRepository.get_run_by_session(
             db, actor.tenant_id, session_id, lock=True
@@ -646,22 +738,39 @@ class SessionClosureService:
             raise NotFoundException("Session progression run not found.")
         if session.status != AcademicSessionStatus.CLOSING:
             raise ConflictException("Only a closing session can retry progression.")
-        if run.status not in {
+
+        allowed = run.status in {
             StudentProgressionRunStatus.FAILED,
             StudentProgressionRunStatus.PENDING,
-        }:
-            raise ConflictException("Only failed or pending progression can be retried.")
+        }
+        if run.status == StudentProgressionRunStatus.PROCESSING:
+            if not SessionClosureService._processing_is_stale(run):
+                raise ConflictException(
+                    "Progression is still processing and cannot be retried yet."
+                )
+            allowed = True
+        if not allowed:
+            raise ConflictException(
+                "Only failed, pending, or stale processing progression can be retried."
+            )
+
         run.status = StudentProgressionRunStatus.PENDING
+        run.started_at = None
         run.completed_at = None
         run.failure_reason = None
         run.initiated_by_admin_id = actor.id
         await StudentProgressionRepository.save_run(db, run)
         await db.commit()
-        from app.core.queue.arq import enqueue_session_progression_job
 
-        await enqueue_session_progression_job(
-            run_id=str(run.id), tenant_id=str(actor.tenant_id), retry=True
+        queued = await SessionClosureService._enqueue_progression_safely(
+            run=run,
+            tenant_id=actor.tenant_id,
+            retry=True,
         )
+        if not queued:
+            raise ConflictException(
+                "Progression is pending but could not be queued. Retry the progression request."
+            )
         return await SessionClosureService.status(
             db, tenant_id=actor.tenant_id, session_id=session_id
         )
@@ -692,6 +801,15 @@ class SessionClosureService:
         )
         if next_session is None or next_session.status != AcademicSessionStatus.DRAFT:
             raise ConflictException("The next session is missing or is no longer draft.")
+        date_blockers = SessionClosureService._next_session_date_blockers(
+            session=session,
+            next_session=next_session,
+        )
+        if date_blockers:
+            raise ConflictException(
+                "Academic session dates are no longer valid for closure.",
+                payload={"blocker_messages": date_blockers},
+            )
 
         now = _utc_now()
         session.status = AcademicSessionStatus.CLOSED
