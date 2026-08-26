@@ -69,6 +69,11 @@ def upgrade() -> None:
         "ALTER TABLE public.subjects "
         "DROP CONSTRAINT IF EXISTS ck_subjects_archived_requires_inactive"
     )
+    op.execute(
+        "UPDATE public.subjects "
+        "SET archived_by_admin_id = NULL "
+        "WHERE archived_at IS NULL AND archived_by_admin_id IS NOT NULL"
+    )
     op.create_check_constraint(
         "ck_subjects_archive_metadata_consistency",
         "subjects",
