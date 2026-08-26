@@ -136,7 +136,6 @@ class Student(BaseModel):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-
     account_status: Mapped[StudentAccountStatus] = mapped_column(
         SQLEnum(
             StudentAccountStatus,
@@ -148,24 +147,9 @@ class Student(BaseModel):
         default=StudentAccountStatus.ACTIVE,
         server_default=StudentAccountStatus.ACTIVE.value,
     )
-    is_verified: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-    )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default="true",
-    )
-    password_reset_required: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default="true",
-    )
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    password_reset_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     gender: Mapped[Gender | None] = mapped_column(
@@ -253,10 +237,7 @@ class Student(BaseModel):
             """,
             name="ck_students_archive_consistency",
         ),
-        CheckConstraint(
-            "status <> 'graduated' OR graduation_date IS NOT NULL",
-            name="ck_students_graduated_has_date",
-        ),
+        CheckConstraint("status <> 'graduated' OR graduation_date IS NOT NULL", name="ck_students_graduated_has_date"),
         Index("ix_students_tenant_admission_number", "tenant_id", "admission_number"),
         Index("ix_students_tenant_status", "tenant_id", "status"),
         Index("ix_students_tenant_account_status", "tenant_id", "account_status"),
@@ -321,13 +302,18 @@ class StudentEnrollment(BaseModel):
     def is_current(self) -> bool:
         return self.ended_on is None
 
+    @is_current.setter
+    def is_current(self, value: bool) -> None:
+        # ``ended_on`` is the sole persisted authority. Accept the old constructor/
+        # transition hint so callers can be migrated incrementally without storing
+        # a second lifecycle flag. Setting False is completed by assigning ended_on.
+        if value and self.ended_on is not None:
+            raise ValueError("An ended enrollment cannot be marked current.")
+
     @is_current.expression
     def is_current(cls):
         return cls.ended_on.is_(None)
 
-    # Contextual read/write conveniences for code that treats the active segment's
-    # event as its entry and a closed segment's event as its exit. These are not
-    # persisted aliases and do not reintroduce duplicate lifecycle state.
     @property
     def outcome(self) -> StudentEnrollmentOutcome:
         return self.exit_outcome if self.ended_on is not None and self.exit_outcome else self.entry_outcome
@@ -402,9 +388,6 @@ class StudentEnrollment(BaseModel):
     )
 
 
-# Read-only current-class projection. It is part of Student SELECTs but has no
-# backing students.class_id column and therefore cannot become a second source of
-# placement truth.
 Student.class_id = column_property(  # type: ignore[attr-defined]
     select(StudentEnrollment.class_id)
     .where(
