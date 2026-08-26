@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
@@ -21,6 +22,7 @@ from app.modules.student_academics.curriculum_models import (
     CurriculumOffering,
     CurriculumSubject,
 )
+from app.modules.student_academics.curriculum_v2_repository import CurriculumSubjectRepository
 from app.modules.student_academics.curriculum_v2_schemas import (
     ClassTermDepartmentResponse,
     CurriculumOfferingCreate,
@@ -35,6 +37,7 @@ from app.modules.student_academics.models import (
     AcademicTermStatus,
     StudentSubjectResult,
 )
+from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.subjects.models import Subject
 from app.tenant_management.repository import TenantRepository
 
@@ -73,6 +76,114 @@ class AcademicCurriculumService:
                 "Curriculum not found. Activate the academic level before configuring curriculum."
             )
         return row
+
+    @staticmethod
+    async def _curriculum_subject_response(
+        db: AsyncSession,
+        row: CurriculumSubject,
+    ) -> CurriculumSubjectResponse:
+        subject = (
+            await db.execute(
+                select(Subject).where(
+                    Subject.tenant_id == row.tenant_id,
+                    Subject.id == row.subject_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if subject is None:
+            raise NotFoundException("Subject not found.")
+        return CurriculumSubjectResponse(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            curriculum_id=row.curriculum_id,
+            subject_id=row.subject_id,
+            subject_name=subject.name,
+            subject_code=subject.code,
+            is_elective=row.is_elective,
+            is_active=row.is_active,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    @staticmethod
+    async def _curriculum_subject_context(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
+        *,
+        lock: bool = False,
+        require_active_level: bool = False,
+        require_active_subject: bool = False,
+    ) -> tuple[CurriculumSubject, Curriculum, Subject]:
+        context = await CurriculumSubjectRepository.get_context(
+            db,
+            tenant_id,
+            curriculum_subject_id,
+            lock=lock,
+        )
+        if context is None:
+            raise NotFoundException("Curriculum subject not found.")
+        row, curriculum = context
+        level = await AcademicLevelRepository.get_by_id(
+            db,
+            tenant_id,
+            curriculum.academic_level_id,
+        )
+        if level is None:
+            raise NotFoundException("Academic level not found.")
+        if require_active_level and level.status != AcademicLevelStatus.ACTIVE:
+            raise ConflictException(
+                "Academic level must be active before curriculum membership is changed."
+            )
+        subject = (
+            await db.execute(
+                select(Subject).where(
+                    Subject.tenant_id == tenant_id,
+                    Subject.id == row.subject_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if subject is None:
+            raise NotFoundException("Subject not found.")
+        if require_active_subject and (
+            not subject.is_active or subject.archived_at is not None
+        ):
+            raise ConflictException(
+                "Subject must be active before this curriculum membership can be activated."
+            )
+        return row, curriculum, subject
+
+    @staticmethod
+    def _live_curriculum_subject_dependencies(
+        dependencies: dict[str, int],
+    ) -> dict[str, int]:
+        keys = ("offerings_live", "teacher_assignments_active", "results_live")
+        return {
+            key: dependencies.get(key, 0)
+            for key in keys
+            if dependencies.get(key, 0) > 0
+        }
+
+    @staticmethod
+    def _has_any_curriculum_subject_usage(dependencies: dict[str, int]) -> bool:
+        keys = (
+            "offerings_total",
+            "teacher_assignments_total",
+            "teacher_assignment_audits_total",
+            "results_total",
+        )
+        return any(dependencies.get(key, 0) > 0 for key in keys)
+
+    @staticmethod
+    def _elective_semantic_blockers(dependencies: dict[str, int]) -> dict[str, int]:
+        """Lock elective meaning once the membership reaches published/history use."""
+
+        keys = ("offerings_published", "results_total")
+        return {
+            key: dependencies.get(key, 0)
+            for key in keys
+            if dependencies.get(key, 0) > 0
+        }
 
     @staticmethod
     async def _term(
@@ -214,6 +325,7 @@ class AcademicCurriculumService:
         level_id: uuid.UUID,
         payload: CurriculumSubjectCreate,
     ) -> CurriculumSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         curriculum = await AcademicCurriculumService._curriculum(
             db,
             tenant_id,
@@ -232,15 +344,12 @@ class AcademicCurriculumService:
         ).scalar_one_or_none()
         if subject is None:
             raise NotFoundException("Active subject not found.")
-        existing = (
-            await db.execute(
-                select(CurriculumSubject).where(
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.curriculum_id == curriculum.id,
-                    CurriculumSubject.subject_id == subject.id,
-                )
-            )
-        ).scalar_one_or_none()
+        existing = await CurriculumSubjectRepository.get_for_curriculum_subject(
+            db,
+            tenant_id,
+            curriculum.id,
+            subject.id,
+        )
         if existing:
             raise ConflictException("This subject is already in the level curriculum.")
         row = CurriculumSubject(
@@ -250,21 +359,14 @@ class AcademicCurriculumService:
             is_elective=payload.is_elective,
             is_active=True,
         )
-        db.add(row)
-        await db.commit()
-        await db.refresh(row)
-        return CurriculumSubjectResponse(
-            id=row.id,
-            tenant_id=row.tenant_id,
-            curriculum_id=row.curriculum_id,
-            subject_id=row.subject_id,
-            subject_name=subject.name,
-            subject_code=subject.code,
-            is_elective=row.is_elective,
-            is_active=row.is_active,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
+        try:
+            await CurriculumSubjectRepository.add(db, row)
+            await db.commit()
+            await db.refresh(row)
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException("This subject is already in the level curriculum.") from exc
+        return await AcademicCurriculumService._curriculum_subject_response(db, row)
 
     @staticmethod
     async def update_subject(
@@ -273,69 +375,126 @@ class AcademicCurriculumService:
         curriculum_subject_id: uuid.UUID,
         payload: CurriculumSubjectUpdate,
     ) -> CurriculumSubjectResponse:
-        row = (
-            await db.execute(
-                select(CurriculumSubject)
-                .where(
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.id == curriculum_subject_id,
-                )
-                .with_for_update()
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
+        row, _curriculum, _subject = await AcademicCurriculumService._curriculum_subject_context(
+            db,
+            tenant_id,
+            curriculum_subject_id,
+            lock=True,
+            require_active_level=True,
+        )
+        if not row.is_active:
+            raise ConflictException(
+                "Inactive curriculum subjects cannot be edited. Activate the membership first."
             )
-        ).scalar_one_or_none()
-        if row is None:
-            raise NotFoundException("Curriculum subject not found.")
+        if payload.is_elective == row.is_elective:
+            return await AcademicCurriculumService._curriculum_subject_response(db, row)
 
-        updates = payload.model_dump(exclude_unset=True)
-        if updates:
-            # is_elective is historical curriculum meaning. Once results reference
-            # this row, changing it would reinterpret old academic history.
-            # is_active is lifecycle state only: it may still be toggled so the
-            # subject can be retired from or restored to future curriculum use
-            # without deleting or rewriting historical results.
-            elective_changes = (
-                "is_elective" in updates and updates["is_elective"] != row.is_elective
+        dependencies = await CurriculumSubjectRepository.count_dependencies(
+            db,
+            tenant_id,
+            row.id,
+        )
+        blockers = AcademicCurriculumService._elective_semantic_blockers(dependencies)
+        if blockers:
+            raise ConflictException(
+                "Curriculum subject elective meaning is locked after operational use.",
+                payload={"dependency_counts": blockers},
             )
-            if elective_changes:
-                result_id = (
-                    await db.execute(
-                        select(StudentSubjectResult.id)
-                        .where(
-                            StudentSubjectResult.tenant_id == tenant_id,
-                            StudentSubjectResult.curriculum_subject_id == row.id,
-                        )
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-                if result_id is not None:
-                    raise ConflictException(
-                        "Curriculum subject elective setting cannot change after results reference the subject."
-                    )
-            for key, value in updates.items():
-                setattr(row, key, value)
-
-        subject = (
-            await db.execute(
-                select(Subject).where(
-                    Subject.tenant_id == tenant_id,
-                    Subject.id == row.subject_id,
-                )
-            )
-        ).scalar_one()
+        row.is_elective = payload.is_elective
+        await CurriculumSubjectRepository.save(db, row)
         await db.commit()
         await db.refresh(row)
-        return CurriculumSubjectResponse(
-            id=row.id,
-            tenant_id=row.tenant_id,
-            curriculum_id=row.curriculum_id,
-            subject_id=row.subject_id,
-            subject_name=subject.name,
-            subject_code=subject.code,
-            is_elective=row.is_elective,
-            is_active=row.is_active,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+        return await AcademicCurriculumService._curriculum_subject_response(db, row)
+
+    @staticmethod
+    async def activate_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
+    ) -> CurriculumSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
+        row, _curriculum, _subject = await AcademicCurriculumService._curriculum_subject_context(
+            db,
+            tenant_id,
+            curriculum_subject_id,
+            lock=True,
+            require_active_level=True,
+            require_active_subject=True,
         )
+        if row.is_active:
+            return await AcademicCurriculumService._curriculum_subject_response(db, row)
+        row.is_active = True
+        await CurriculumSubjectRepository.save(db, row)
+        await db.commit()
+        await db.refresh(row)
+        return await AcademicCurriculumService._curriculum_subject_response(db, row)
+
+    @staticmethod
+    async def deactivate_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
+    ) -> CurriculumSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
+        row, _curriculum, _subject = await AcademicCurriculumService._curriculum_subject_context(
+            db,
+            tenant_id,
+            curriculum_subject_id,
+            lock=True,
+            require_active_level=True,
+        )
+        if not row.is_active:
+            return await AcademicCurriculumService._curriculum_subject_response(db, row)
+        dependencies = await CurriculumSubjectRepository.count_dependencies(
+            db,
+            tenant_id,
+            row.id,
+        )
+        blockers = AcademicCurriculumService._live_curriculum_subject_dependencies(dependencies)
+        if blockers:
+            raise ConflictException(
+                "This curriculum subject still has live academic dependencies and cannot be deactivated.",
+                payload={"dependency_counts": blockers},
+            )
+        row.is_active = False
+        await CurriculumSubjectRepository.save(db, row)
+        await db.commit()
+        await db.refresh(row)
+        return await AcademicCurriculumService._curriculum_subject_response(db, row)
+
+    @staticmethod
+    async def hard_delete_subject(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
+    ) -> CurriculumSubjectResponse:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
+        row, _curriculum, _subject = await AcademicCurriculumService._curriculum_subject_context(
+            db,
+            tenant_id,
+            curriculum_subject_id,
+            lock=True,
+        )
+        dependencies = await CurriculumSubjectRepository.count_dependencies(
+            db,
+            tenant_id,
+            row.id,
+        )
+        if AcademicCurriculumService._has_any_curriculum_subject_usage(dependencies):
+            counts = {
+                key: value
+                for key, value in dependencies.items()
+                if key.endswith("_total") and value > 0
+            }
+            raise ConflictException(
+                "This curriculum subject has already been used and cannot be permanently deleted.",
+                payload={"dependency_counts": counts},
+            )
+        response = await AcademicCurriculumService._curriculum_subject_response(db, row)
+        await CurriculumSubjectRepository.delete(db, row)
+        await db.commit()
+        return response
 
     @staticmethod
     async def add_offering(
