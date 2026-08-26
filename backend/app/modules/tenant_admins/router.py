@@ -11,6 +11,10 @@ from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.modules.students.admin_contracts import StudentAdminContractService
 from app.modules.students.creation_service import StudentCreationService
+from app.modules.students.enrollment_schemas import (
+    StudentBatchClassAssignmentRequest,
+    StudentClassChangeRequest,
+)
 from app.modules.students.enrollment_service import StudentEnrollmentService
 from app.modules.students.models import (
     AcademicStatus,
@@ -22,9 +26,7 @@ from app.modules.students.schemas import (
     StudentAdminAccessCodeResponse,
     StudentAdminProfileUpdate,
     StudentArchiveRequest,
-    StudentBatchClassAssignmentRequest,
     StudentBatchClassAssignmentResponse,
-    StudentClassChangeRequest,
     StudentCreate,
     StudentDetailResponse,
     StudentEnrollmentListResponse,
