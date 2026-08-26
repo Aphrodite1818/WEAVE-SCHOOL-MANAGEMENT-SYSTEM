@@ -30,7 +30,7 @@ class CurriculumSubject(BaseModel):
         UUID(as_uuid=True), ForeignKey("curricula.id", ondelete="CASCADE"), nullable=False
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("subjects.id", ondelete="RESTRICT"), nullable=False
     )
     is_elective: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
