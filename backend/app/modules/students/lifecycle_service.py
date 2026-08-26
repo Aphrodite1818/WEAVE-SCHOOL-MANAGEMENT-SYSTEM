@@ -12,7 +12,7 @@ from app.modules.student_academics.lifecycle_repository import AcademicSessionLi
 from app.modules.student_academics.models import AcademicSessionStatus
 from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.students.enrollment_service import StudentEnrollmentService
-from app.modules.students.models import AcademicStatus, StudentEnrollmentOutcome
+from app.modules.students.models import AcademicStatus
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.students.schemas import StudentLifecycleTransitionResponse, StudentResponse
 from app.modules.students.service import StudentLifecycleService as LegacyStudentLifecycleService
@@ -41,8 +41,6 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         if effective_date < current.started_on:
             raise ConflictException("Lifecycle exit cannot predate the current enrollment.")
 
-        # ended_on is inclusive for terminal exits. Evidence on the final day is
-        # valid; only evidence after that day contradicts a backdated exit.
         if effective_date < date.today():
             counts = await StudentEnrollmentService._segment_dependency_counts(
                 db,
@@ -249,7 +247,7 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
                     "Reinstatement must begin after the previous enrollment ended."
                 )
 
-        response = await LegacyStudentLifecycleService.reinstate_expelled(
+        return await LegacyStudentLifecycleService.reinstate_expelled(
             db,
             actor=actor,
             student_id=student_id,
@@ -259,16 +257,16 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
             reason=reason,
         )
 
-        current = await StudentEnrollmentRepository.get_current(
+    @staticmethod
+    async def hard_delete(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+    ) -> None:
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        await LegacyStudentLifecycleService.hard_delete(
             db,
-            actor.tenant_id,
-            student_id,
-            lock=True,
+            actor=actor,
+            student_id=student_id,
         )
-        if current is not None:
-            current.entry_outcome = StudentEnrollmentOutcome.REINSTATED
-            current.entry_reason = reason
-            current.created_by_admin_id = actor.id
-            await StudentEnrollmentRepository.save(db, current)
-            await db.commit()
-        return response
