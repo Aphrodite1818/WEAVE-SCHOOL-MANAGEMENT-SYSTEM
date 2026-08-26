@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -68,3 +68,53 @@ async def test_end_assignment_preserves_history() -> None:
     assert assignment.is_active is False
     assert assignment.effective_to == assignment.effective_from
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_historical_assignment_context_can_load_inactive_curriculum_subject() -> None:
+    tenant_id = uuid.uuid4()
+    curriculum_subject = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        curriculum_id=uuid.uuid4(),
+        is_active=False,
+    )
+    curriculum = SimpleNamespace(
+        id=curriculum_subject.curriculum_id,
+        tenant_id=tenant_id,
+    )
+    result = MagicMock()
+    result.first.return_value = (curriculum_subject, curriculum)
+    db = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+    loaded_subject, loaded_curriculum = (
+        await StudentAcademicService._load_curriculum_subject_context(
+            db,
+            tenant_id=tenant_id,
+            curriculum_subject_id=curriculum_subject.id,
+            require_active=False,
+        )
+    )
+
+    assert loaded_subject is curriculum_subject
+    assert loaded_curriculum is curriculum
+    statement = db.execute.await_args.args[0]
+    assert "curriculum_subjects.is_active" not in str(statement.whereclause)
+
+
+@pytest.mark.asyncio
+async def test_operational_assignment_context_requires_active_curriculum_subject() -> None:
+    tenant_id = uuid.uuid4()
+    result = MagicMock()
+    result.first.return_value = None
+    db = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+    with pytest.raises(Exception):
+        await StudentAcademicService._load_curriculum_subject_context(
+            db,
+            tenant_id=tenant_id,
+            curriculum_subject_id=uuid.uuid4(),
+        )
+
+    statement = db.execute.await_args.args[0]
+    assert "curriculum_subjects.is_active" in str(statement.whereclause)
