@@ -9,8 +9,13 @@ from app.core.dependencies.route_guards import (
     get_current_tenant_member,
 )
 from app.modules.classes.schemas import (
+    ArmLabelActivateRequest,
+    ArmLabelArchiveRequest,
     ArmLabelCreate,
+    ArmLabelDeactivateRequest,
+    ArmLabelDeleteRequest,
     ArmLabelResponse,
+    ArmLabelRestoreRequest,
     ArmLabelUpdate,
     ClassRoomActivateRequest,
     ClassRoomArchiveRequest,
@@ -76,13 +81,59 @@ async def update_arm_label(
     return await ArmLabelService.update(db, current_user, arm_label_id, payload)
 
 
-@router.post("/arm-labels/{arm_label_id}/archive", response_model=ArmLabelResponse)
-async def archive_arm_label(
+@router.post("/arm-labels/{arm_label_id}/activate", response_model=ArmLabelResponse)
+async def activate_arm_label(
     arm_label_id: uuid.UUID,
+    payload: ArmLabelActivateRequest,
     db: DbSession,
     current_user: CurrentTenantAdmin,
 ) -> ArmLabelResponse:
+    _ = payload.confirmation
+    return await ArmLabelService.activate(db, current_user, arm_label_id)
+
+
+@router.post("/arm-labels/{arm_label_id}/deactivate", response_model=ArmLabelResponse)
+async def deactivate_arm_label(
+    arm_label_id: uuid.UUID,
+    payload: ArmLabelDeactivateRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ArmLabelResponse:
+    _ = payload.confirmation
+    return await ArmLabelService.deactivate(db, current_user, arm_label_id)
+
+
+@router.post("/arm-labels/{arm_label_id}/archive", response_model=ArmLabelResponse)
+async def archive_arm_label(
+    arm_label_id: uuid.UUID,
+    payload: ArmLabelArchiveRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ArmLabelResponse:
+    _ = payload.confirmation
     return await ArmLabelService.archive(db, current_user, arm_label_id)
+
+
+@router.post("/arm-labels/{arm_label_id}/restore", response_model=ArmLabelResponse)
+async def restore_arm_label(
+    arm_label_id: uuid.UUID,
+    payload: ArmLabelRestoreRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ArmLabelResponse:
+    _ = payload.confirmation
+    return await ArmLabelService.restore(db, current_user, arm_label_id)
+
+
+@router.delete("/arm-labels/{arm_label_id}", response_model=ArmLabelResponse)
+async def hard_delete_arm_label(
+    arm_label_id: uuid.UUID,
+    payload: ArmLabelDeleteRequest,
+    db: DbSession,
+    current_user: CurrentTenantAdmin,
+) -> ArmLabelResponse:
+    _ = payload.confirmation
+    return await ArmLabelService.hard_delete(db, current_user, arm_label_id)
 
 
 @router.post(
