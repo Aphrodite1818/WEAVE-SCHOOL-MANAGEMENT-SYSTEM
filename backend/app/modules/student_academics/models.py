@@ -158,11 +158,26 @@ class AcademicSession(BaseModel):
             unique=True,
             postgresql_where=text("is_current = true AND status IN ('open', 'closing')"),
         ),
+        ExcludeConstraint(
+            ("tenant_id", "="),
+            (func.daterange(start_date, end_date, "[]"), "&&"),
+            name="excl_academic_sessions_date_overlap",
+            using="gist",
+            where=text("start_date IS NOT NULL AND end_date IS NOT NULL"),
+        ),
         Index("ix_academic_sessions_tenant_status", "tenant_id", "status"),
         Index("ix_academic_sessions_tenant_next", "tenant_id", "next_academic_session_id"),
         CheckConstraint(
             "next_academic_session_id IS NULL OR next_academic_session_id <> id",
             name="ck_academic_session_next_not_self",
+        ),
+        CheckConstraint(
+            "start_date IS NULL OR end_date IS NULL OR end_date > start_date",
+            name="ck_academic_session_date_range",
+        ),
+        CheckConstraint(
+            "status = 'draft' OR (start_date IS NOT NULL AND end_date IS NOT NULL)",
+            name="ck_academic_session_operational_dates",
         ),
         CheckConstraint(
             """
@@ -173,8 +188,9 @@ class AcademicSession(BaseModel):
             name="ck_academic_session_status_timestamps",
         ),
         CheckConstraint(
-            "status <> 'closed' OR is_current = false",
-            name="ck_closed_academic_session_not_current",
+            "((status IN ('open', 'closing')) AND is_current = true) OR "
+            "((status IN ('draft', 'closed')) AND is_current = false)",
+            name="ck_academic_session_current_matches_status",
         ),
     )
 
