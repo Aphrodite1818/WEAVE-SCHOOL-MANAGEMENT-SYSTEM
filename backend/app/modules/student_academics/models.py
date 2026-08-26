@@ -20,9 +20,13 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     UUID,
+    and_,
+    func,
+    or_,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ExcludeConstraint, JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
@@ -63,6 +67,12 @@ class AcademicSessionStatus(str, PyEnum):
     OPEN = "open"
     CLOSED = "closed"
     CLOSING = "closing"
+
+
+class TeacherAssignmentState(str, PyEnum):
+    SCHEDULED = "scheduled"
+    CURRENT = "current"
+    ENDED = "ended"
 
 
 class StudentProgressionRunStatus(str, PyEnum):
@@ -358,26 +368,55 @@ class TeacherAssignment(BaseModel):
         nullable=False,
         index=True,
     )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default="true", nullable=False
-    )
     effective_from: Mapped[date] = mapped_column(
         Date, nullable=False, server_default=text("CURRENT_DATE")
     )
     effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    @property
+    def state(self) -> TeacherAssignmentState:
+        today = date.today()
+        if self.effective_from > today:
+            return TeacherAssignmentState.SCHEDULED
+        if self.effective_to is not None and self.effective_to < today:
+            return TeacherAssignmentState.ENDED
+        return TeacherAssignmentState.CURRENT
+
+    @hybrid_property
+    def is_active(self) -> bool:
+        """Derived operational convenience; effective dates remain authoritative."""
+
+        return self.state == TeacherAssignmentState.CURRENT
+
+    @is_active.inplace.expression
+    @classmethod
+    def _is_active_expression(cls):
+        today = func.current_date()
+        return and_(
+            cls.effective_from <= today,
+            or_(cls.effective_to.is_(None), cls.effective_to >= today),
+        )
+
     __table_args__ = (
-        Index(
-            "uq_teacher_assignment_active_class_curriculum_subject",
-            "class_id",
-            "curriculum_subject_id",
-            unique=True,
-            postgresql_where=text("is_active = true"),
+        ExcludeConstraint(
+            ("tenant_id", "="),
+            ("class_id", "="),
+            ("curriculum_subject_id", "="),
+            (func.daterange(effective_from, effective_to, "[]"), "&&"),
+            name="excl_teacher_assignments_effective_overlap",
+            using="gist",
         ),
         Index(
             "ix_teacher_assignments_tenant_membership",
             "tenant_id",
             "teacher_membership_id",
+        ),
+        Index(
+            "ix_teacher_assignments_scope_effective_from",
+            "tenant_id",
+            "class_id",
+            "curriculum_subject_id",
+            "effective_from",
         ),
         CheckConstraint(
             "effective_to IS NULL OR effective_to >= effective_from",
