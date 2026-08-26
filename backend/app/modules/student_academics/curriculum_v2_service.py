@@ -263,11 +263,7 @@ class AcademicCurriculumService:
         term_id: uuid.UUID,
         department_id: uuid.UUID | None,
     ) -> set[uuid.UUID]:
-        """Return specialized memberships that apply to one department in one term.
-
-        General offerings are deliberately excluded because they survive a department
-        change and therefore cannot make the specialization correction unsafe.
-        """
+        """Return currently visible specialized memberships for one department and term."""
 
         if department_id is None:
             return set()
@@ -279,6 +275,7 @@ class AcademicCurriculumService:
                     CurriculumSubject.id == CurriculumOffering.curriculum_subject_id,
                 )
                 .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+                .join(Subject, Subject.id == CurriculumSubject.subject_id)
                 .where(
                     CurriculumOffering.tenant_id == tenant_id,
                     CurriculumOffering.academic_term_id == term_id,
@@ -287,6 +284,9 @@ class AcademicCurriculumService:
                     CurriculumSubject.is_active.is_(True),
                     Curriculum.tenant_id == tenant_id,
                     Curriculum.academic_level_id == academic_level_id,
+                    Subject.tenant_id == tenant_id,
+                    Subject.is_active.is_(True),
+                    Subject.archived_at.is_(None),
                 )
             )
         ).scalars()
@@ -339,9 +339,7 @@ class AcademicCurriculumService:
         if term.start_date is None and term.end_date is None:
             assignment_query = assignment_query.where(TeacherAssignment.is_active.is_(True))
 
-        teacher_assignments = int(
-            (await db.execute(assignment_query)).scalar_one() or 0
-        )
+        teacher_assignments = int((await db.execute(assignment_query)).scalar_one() or 0)
         return {
             "results": results,
             "teacher_assignments": teacher_assignments,
@@ -444,45 +442,6 @@ class AcademicCurriculumService:
                 },
             )
         )
-
-    @staticmethod
-    async def _ensure_term_configuration_mutable(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        term: AcademicTerm,
-        class_id: uuid.UUID | None = None,
-        curriculum_subject_id: uuid.UUID | None = None,
-    ) -> None:
-        """Legacy scope guard retained for non-department curriculum configuration."""
-
-        if term.status in {AcademicTermStatus.CLOSING, AcademicTermStatus.CLOSED}:
-            raise ConflictException(
-                "Curriculum specialization cannot be changed after term closing begins."
-            )
-        if term.status != AcademicTermStatus.OPEN:
-            return
-
-        query = select(StudentSubjectResult.id).where(
-            StudentSubjectResult.tenant_id == tenant_id,
-            StudentSubjectResult.academic_term_id == term.id,
-        )
-        if class_id is not None:
-            query = query.where(StudentSubjectResult.class_id == class_id)
-        if curriculum_subject_id is not None:
-            query = query.where(StudentSubjectResult.curriculum_subject_id == curriculum_subject_id)
-        result_id = (await db.execute(query.limit(1))).scalar_one_or_none()
-        if result_id is not None:
-            scope = (
-                "this class"
-                if class_id is not None
-                else "this curriculum subject"
-                if curriculum_subject_id is not None
-                else "this term"
-            )
-            raise ConflictException(
-                f"Curriculum specialization is locked because results already exist for {scope}."
-            )
 
     @staticmethod
     async def _offering_open_term_dependencies(
@@ -1012,9 +971,7 @@ class AcademicCurriculumService:
     ) -> ClassTermDepartmentResponse:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
         term = await AcademicCurriculumService._term(db, tenant_id, term_id, lock=True)
-        classroom = await ClassRoomRepository.get_by_id(
-            db, tenant_id, class_id, lock=True
-        )
+        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id, lock=True)
         department = await DepartmentRepository.get_by_id(
             db, tenant_id, department_id, lock=True
         )
@@ -1046,15 +1003,13 @@ class AcademicCurriculumService:
         if old_department_id == department_id:
             return ClassTermDepartmentResponse.model_validate(row)
 
-        affected_subject_ids = (
-            await AcademicCurriculumService._ensure_class_department_change_mutable(
-                db,
-                tenant_id=tenant_id,
-                classroom=classroom,
-                term=term,
-                old_department_id=old_department_id,
-                new_department_id=department_id,
-            )
+        affected_subject_ids = await AcademicCurriculumService._ensure_class_department_change_mutable(
+            db,
+            tenant_id=tenant_id,
+            classroom=classroom,
+            term=term,
+            old_department_id=old_department_id,
+            new_department_id=department_id,
         )
         if row is None:
             row = ClassTermDepartmentAssignment(
@@ -1097,9 +1052,7 @@ class AcademicCurriculumService:
     ) -> None:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
         term = await AcademicCurriculumService._term(db, tenant_id, term_id, lock=True)
-        classroom = await ClassRoomRepository.get_by_id(
-            db, tenant_id, class_id, lock=True
-        )
+        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id, lock=True)
         if classroom is None:
             raise NotFoundException("Class not found.")
         level = await AcademicCurriculumService._ensure_department_capability(
@@ -1120,22 +1073,23 @@ class AcademicCurriculumService:
         ).scalar_one_or_none()
         if row is None:
             return
-        if AcademicCurriculumService._specialization_required_for_term(level, term):
+
+        old_department_id = row.department_id
+        affected_subject_ids = await AcademicCurriculumService._ensure_class_department_change_mutable(
+            db,
+            tenant_id=tenant_id,
+            classroom=classroom,
+            term=term,
+            old_department_id=old_department_id,
+            new_department_id=None,
+        )
+        if (
+            term.status == AcademicTermStatus.OPEN
+            and AcademicCurriculumService._specialization_required_for_term(level, term)
+        ):
             raise ConflictException(
                 "This academic level requires department specialization for this term, so the class assignment cannot be cleared."
             )
-
-        old_department_id = row.department_id
-        affected_subject_ids = (
-            await AcademicCurriculumService._ensure_class_department_change_mutable(
-                db,
-                tenant_id=tenant_id,
-                classroom=classroom,
-                term=term,
-                old_department_id=old_department_id,
-                new_department_id=None,
-            )
-        )
         if term.status == AcademicTermStatus.OPEN and admin_id is not None:
             AcademicCurriculumService._record_open_term_specialization_audit(
                 db,
