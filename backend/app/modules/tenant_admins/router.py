@@ -16,6 +16,7 @@ from app.modules.students.enrollment_schemas import (
     StudentClassChangeRequest,
 )
 from app.modules.students.enrollment_service import StudentEnrollmentService
+from app.modules.students.lifecycle_service import StudentLifecycleService
 from app.modules.students.models import (
     AcademicStatus,
     StudentAccessCodePurpose,
@@ -48,7 +49,6 @@ from app.modules.students.schemas import (
 )
 from app.modules.students.service import (
     StudentAccessCodeService,
-    StudentLifecycleService,
     StudentParentLinkRequestService,
     StudentParentLinkService,
     StudentService,
