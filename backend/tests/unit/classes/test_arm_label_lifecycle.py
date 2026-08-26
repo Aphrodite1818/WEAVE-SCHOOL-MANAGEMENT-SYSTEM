@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -187,7 +187,7 @@ async def test_non_admin_listing_is_forced_to_active_only() -> None:
         )
 
     list_labels.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         tenant_id,
         active_only=True,
         include_archived=False,
