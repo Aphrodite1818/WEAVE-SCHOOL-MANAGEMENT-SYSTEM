@@ -473,20 +473,18 @@ async def test_class_arm_with_live_enrollment_cannot_be_deactivated() -> None:
             new=AsyncMock(return_value=classroom),
         ),
         patch(
-            "app.modules.classes.service.ClassRoomRepository.count_assigned_students_by_status",
-            new=AsyncMock(side_effect=[0, 0]),
-        ),
-        patch(
-            "app.modules.classes.service.ClassRoomRepository.count_current_enrollments",
-            new=AsyncMock(return_value=1),
+            "app.modules.classes.service.ClassRoomRepository.count_class_dependencies",
+            new=AsyncMock(return_value={"enrollments_current": 1}),
         ),
     ):
-        with pytest.raises(ConflictException, match="current student enrollments"):
+        with pytest.raises(ConflictException) as exc_info:
             await ClassRoomService.deactivate_classroom(
                 db=AsyncMock(),
                 actor=_admin(tenant_id),
                 class_id=classroom.id,
             )
+
+    assert exc_info.value.payload == {"dependency_counts": {"enrollments_current": 1}}
 
 
 @pytest.mark.asyncio
@@ -500,6 +498,14 @@ async def test_restored_class_arm_remains_inactive() -> None:
         patch(
             "app.modules.classes.service.ClassRoomRepository.get_by_id",
             new=AsyncMock(return_value=classroom),
+        ),
+        patch(
+            "app.modules.classes.service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=classroom.academic_level),
+        ),
+        patch(
+            "app.modules.classes.service.ArmLabelRepository.get_by_id",
+            new=AsyncMock(return_value=classroom.arm_label_ref),
         ),
         patch(
             "app.modules.classes.service.ClassRoomRepository.save",
