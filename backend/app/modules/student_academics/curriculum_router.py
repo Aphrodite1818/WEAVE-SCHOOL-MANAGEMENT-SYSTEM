@@ -150,6 +150,20 @@ async def remove_offering(
 
 
 @router.get(
+    "/terms/{academic_term_id}/class-departments",
+    response_model=list[ClassTermDepartmentResponse],
+)
+async def list_class_term_departments(
+    academic_term_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AcademicCurriculumService.list_class_departments(
+        db, current_admin.tenant_id, academic_term_id
+    )
+
+
+@router.get(
     "/classes/{class_id}/terms/{academic_term_id}/department",
     response_model=ClassTermDepartmentResponse | None,
 )
@@ -196,6 +210,10 @@ async def clear_class_term_department(
     current_admin: CurrentTenantAdmin,
 ):
     await AcademicCurriculumService.clear_class_department(
-        db, current_admin.tenant_id, class_id, academic_term_id
+        db,
+        current_admin.tenant_id,
+        class_id,
+        academic_term_id,
+        current_admin.id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
