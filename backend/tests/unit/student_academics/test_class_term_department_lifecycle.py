@@ -84,7 +84,7 @@ async def test_open_term_department_change_checks_only_changed_specialized_subje
 @pytest.mark.asyncio
 async def test_general_subject_activity_does_not_block_department_correction(monkeypatch) -> None:
     specialized = AsyncMock(side_effect=[set(), set()])
-    dependencies = AsyncMock()
+    dependencies = AsyncMock(return_value={"results": 0, "teacher_assignments": 0})
     monkeypatch.setattr(
         AcademicCurriculumService,
         "_specialized_offering_subject_ids",

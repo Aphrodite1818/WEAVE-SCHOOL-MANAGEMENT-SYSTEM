@@ -1,6 +1,6 @@
 """Harden CurriculumSubject lifecycle and historical foreign keys.
 
-Revision ID: 20260826_curriculum_subject_lifecycle
+Revision ID: 20260826_curr_subj_lifecycle
 Revises: 20260826_curriculum_container
 Create Date: 2026-08-26
 
@@ -13,7 +13,7 @@ from typing import Sequence, Union
 from alembic import op
 
 
-revision: str = "20260826_curriculum_subject_lifecycle"
+revision: str = "20260826_curr_subj_lifecycle"
 down_revision: Union[str, Sequence[str], None] = "20260826_curriculum_container"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -86,21 +86,19 @@ def upgrade() -> None:
         table_name="curriculum_offerings",
         column_name="curriculum_subject_id",
         target_table="curriculum_subjects",
-        constraint_name="fk_curriculum_offerings_curriculum_subject_id_curriculum_subjects",
+        constraint_name="fk_curr_offerings_curriculum_subject_id",
     )
     _replace_with_restrict(
         table_name="teacher_assignments",
         column_name="curriculum_subject_id",
         target_table="curriculum_subjects",
-        constraint_name="fk_teacher_assignments_curriculum_subject_id_curriculum_subjects",
+        constraint_name="fk_teacher_assignments_curriculum_subject_id",
     )
     _replace_with_restrict(
         table_name="teacher_assignment_lifecycle_audits",
         column_name="curriculum_subject_id",
         target_table="curriculum_subjects",
-        constraint_name=(
-            "fk_teacher_assignment_lifecycle_audits_curriculum_subject_id_curriculum_subjects"
-        ),
+        constraint_name="fk_teacher_assignment_audits_curr_subject_id",
     )
 
 
