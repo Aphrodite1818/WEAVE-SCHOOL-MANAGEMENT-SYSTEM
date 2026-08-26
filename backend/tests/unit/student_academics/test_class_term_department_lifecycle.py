@@ -210,7 +210,7 @@ def test_specialization_requirement_starts_at_configured_term_position() -> None
 
 
 @pytest.mark.asyncio
-async def test_clear_required_term_specialization_is_rejected(monkeypatch) -> None:
+async def test_clear_required_open_term_specialization_is_rejected(monkeypatch) -> None:
     tenant_id = uuid4()
     class_id = uuid4()
     term_id = uuid4()
@@ -245,6 +245,11 @@ async def test_clear_required_term_specialization_is_rejected(monkeypatch) -> No
         "_ensure_department_capability",
         AsyncMock(return_value=level),
     )
+    monkeypatch.setattr(
+        AcademicCurriculumService,
+        "_ensure_class_department_change_mutable",
+        AsyncMock(return_value=set()),
+    )
 
     with pytest.raises(ConflictException, match="requires department specialization"):
         await AcademicCurriculumService.clear_class_department(
@@ -256,6 +261,63 @@ async def test_clear_required_term_specialization_is_rejected(monkeypatch) -> No
         )
 
     db.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_required_draft_term_specialization_can_be_cleared(monkeypatch) -> None:
+    tenant_id = uuid4()
+    class_id = uuid4()
+    term_id = uuid4()
+    assignment = SimpleNamespace(id=uuid4(), department_id=uuid4())
+    classroom = SimpleNamespace(id=class_id, academic_level_id=uuid4())
+    level = SimpleNamespace(specialization_required_from_term_position=2)
+    term = SimpleNamespace(
+        id=term_id,
+        name=AcademicTermName.SECOND_TERM,
+        status=AcademicTermStatus.DRAFT,
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = assignment
+    db = SimpleNamespace(
+        execute=AsyncMock(return_value=result),
+        delete=AsyncMock(),
+        commit=AsyncMock(),
+    )
+
+    monkeypatch.setattr(
+        "app.modules.student_academics.curriculum_v2_service.ensure_academic_write_window",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        AcademicCurriculumService,
+        "_term",
+        AsyncMock(return_value=term),
+    )
+    monkeypatch.setattr(
+        "app.modules.student_academics.curriculum_v2_service.ClassRoomRepository.get_by_id",
+        AsyncMock(return_value=classroom),
+    )
+    monkeypatch.setattr(
+        AcademicCurriculumService,
+        "_ensure_department_capability",
+        AsyncMock(return_value=level),
+    )
+    monkeypatch.setattr(
+        AcademicCurriculumService,
+        "_ensure_class_department_change_mutable",
+        AsyncMock(return_value=set()),
+    )
+
+    await AcademicCurriculumService.clear_class_department(
+        db,
+        tenant_id,
+        class_id,
+        term_id,
+        uuid4(),
+    )
+
+    db.delete.assert_awaited_once_with(assignment)
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
