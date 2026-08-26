@@ -100,7 +100,20 @@ class DepartmentCreate(InputBase):
 
 
 class DepartmentUpdate(InputBase):
-    name: str | None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def reject_null_name(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError(f"name {_PATCH_NULL_ERROR}")
+        return value
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "DepartmentUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one department field must be provided")
+        return self
 
 
 class DepartmentResponse(OutputBase):
