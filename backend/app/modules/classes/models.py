@@ -173,12 +173,18 @@ class ArmLabel(BaseModel):
         Boolean, default=True, server_default="true", nullable=False
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
+    )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "normalized_label", name="uq_arm_labels_tenant_label"),
         CheckConstraint(
-            "archived_at IS NULL OR is_active = false",
-            name="ck_arm_labels_archived_requires_inactive",
+            """
+            (archived_at IS NULL AND archived_by_admin_id IS NULL)
+            OR (archived_at IS NOT NULL AND is_active = false)
+            """,
+            name="ck_arm_labels_archive_metadata_consistency",
         ),
         Index("ix_arm_labels_tenant_active", "tenant_id", "is_active"),
     )
