@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +36,7 @@ from app.modules.student_academics.models import (
     AcademicTerm,
     AcademicTermStatus,
     StudentSubjectResult,
+    TeacherAssignment,
 )
 from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.subjects.models import Subject
@@ -276,6 +277,99 @@ class AcademicCurriculumService:
             )
 
     @staticmethod
+    async def _offering_open_term_dependencies(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        term: AcademicTerm,
+        curriculum_subject_id: uuid.UUID,
+        department_id: uuid.UUID | None,
+    ) -> dict[str, int]:
+        """Count operational evidence that depends on one offering scope in an open term."""
+
+        result_query = select(func.count(StudentSubjectResult.id)).where(
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.academic_term_id == term.id,
+            StudentSubjectResult.curriculum_subject_id == curriculum_subject_id,
+        )
+        assignment_query = select(func.count(TeacherAssignment.id)).where(
+            TeacherAssignment.tenant_id == tenant_id,
+            TeacherAssignment.curriculum_subject_id == curriculum_subject_id,
+        )
+
+        if department_id is not None:
+            result_query = result_query.join(
+                ClassTermDepartmentAssignment,
+                and_(
+                    ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                    ClassTermDepartmentAssignment.class_id == StudentSubjectResult.class_id,
+                    ClassTermDepartmentAssignment.academic_term_id == term.id,
+                    ClassTermDepartmentAssignment.department_id == department_id,
+                ),
+            )
+            assignment_query = assignment_query.join(
+                ClassTermDepartmentAssignment,
+                and_(
+                    ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                    ClassTermDepartmentAssignment.class_id == TeacherAssignment.class_id,
+                    ClassTermDepartmentAssignment.academic_term_id == term.id,
+                    ClassTermDepartmentAssignment.department_id == department_id,
+                ),
+            )
+
+        if term.start_date is not None:
+            assignment_query = assignment_query.where(
+                or_(
+                    TeacherAssignment.effective_to.is_(None),
+                    TeacherAssignment.effective_to >= term.start_date,
+                )
+            )
+        if term.end_date is not None:
+            assignment_query = assignment_query.where(
+                TeacherAssignment.effective_from <= term.end_date
+            )
+
+        results = int((await db.execute(result_query)).scalar_one() or 0)
+        teacher_assignments = int((await db.execute(assignment_query)).scalar_one() or 0)
+        return {
+            "results": results,
+            "teacher_assignments": teacher_assignments,
+        }
+
+    @staticmethod
+    async def _ensure_offering_change_mutable(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        term: AcademicTerm,
+        curriculum_subject_id: uuid.UUID,
+        department_id: uuid.UUID | None,
+        removing: bool,
+    ) -> None:
+        """Protect a term offering without over-freezing legitimate open-term corrections."""
+
+        if term.status in {AcademicTermStatus.CLOSING, AcademicTermStatus.CLOSED}:
+            raise ConflictException(
+                "Curriculum offerings cannot be changed after term closing begins."
+            )
+        if not removing or term.status != AcademicTermStatus.OPEN:
+            return
+
+        dependencies = await AcademicCurriculumService._offering_open_term_dependencies(
+            db,
+            tenant_id=tenant_id,
+            term=term,
+            curriculum_subject_id=curriculum_subject_id,
+            department_id=department_id,
+        )
+        blockers = {key: value for key, value in dependencies.items() if value > 0}
+        if blockers:
+            raise ConflictException(
+                "This curriculum offering is already in operational use and cannot be removed from the open term.",
+                payload={"dependency_counts": blockers},
+            )
+
+    @staticmethod
     async def get_curriculum(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -503,34 +597,32 @@ class AcademicCurriculumService:
         curriculum_subject_id: uuid.UUID,
         payload: CurriculumOfferingCreate,
     ) -> CurriculumOfferingResponse:
-        subject_context = (
-            await db.execute(
-                select(CurriculumSubject, Curriculum)
-                .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
-                .where(
-                    CurriculumSubject.tenant_id == tenant_id,
-                    CurriculumSubject.id == curriculum_subject_id,
-                    CurriculumSubject.is_active.is_(True),
-                    Curriculum.tenant_id == tenant_id,
-                )
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
+        curriculum_subject, curriculum, _subject = (
+            await AcademicCurriculumService._curriculum_subject_context(
+                db,
+                tenant_id,
+                curriculum_subject_id,
+                lock=True,
+                require_active_level=True,
+                require_active_subject=True,
             )
-        ).first()
-        if subject_context is None:
-            raise NotFoundException("Active curriculum subject not found.")
-        curriculum_subject, curriculum = subject_context
-        level = await AcademicLevelRepository.get_by_id(db, tenant_id, curriculum.academic_level_id)
-        if level is None or level.status != AcademicLevelStatus.ACTIVE:
+        )
+        if not curriculum_subject.is_active:
             raise ConflictException(
-                "Academic level must be active before offerings are configured."
+                "Curriculum subject must be active before an offering can be configured."
             )
+
         term = await AcademicCurriculumService._term(
             db, tenant_id, payload.academic_term_id, lock=True
         )
-        await AcademicCurriculumService._ensure_term_configuration_mutable(
+        await AcademicCurriculumService._ensure_offering_change_mutable(
             db,
             tenant_id=tenant_id,
             term=term,
             curriculum_subject_id=curriculum_subject.id,
+            department_id=payload.department_id,
+            removing=False,
         )
 
         if payload.department_id is not None:
@@ -582,9 +674,15 @@ class AcademicCurriculumService:
             academic_term_id=term.id,
             department_id=payload.department_id,
         )
-        db.add(row)
-        await db.commit()
-        await db.refresh(row)
+        try:
+            db.add(row)
+            await db.commit()
+            await db.refresh(row)
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                "This curriculum offering already exists for the selected scope."
+            ) from exc
         return CurriculumOfferingResponse.model_validate(row)
 
     @staticmethod
@@ -613,6 +711,19 @@ class AcademicCurriculumService:
         tenant_id: uuid.UUID,
         offering_id: uuid.UUID,
     ) -> None:
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
+        row = (
+            await db.execute(
+                select(CurriculumOffering).where(
+                    CurriculumOffering.tenant_id == tenant_id,
+                    CurriculumOffering.id == offering_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise NotFoundException("Curriculum offering not found.")
+
+        term = await AcademicCurriculumService._term(db, tenant_id, row.academic_term_id, lock=True)
         row = (
             await db.execute(
                 select(CurriculumOffering)
@@ -625,12 +736,14 @@ class AcademicCurriculumService:
         ).scalar_one_or_none()
         if row is None:
             raise NotFoundException("Curriculum offering not found.")
-        term = await AcademicCurriculumService._term(db, tenant_id, row.academic_term_id, lock=True)
-        await AcademicCurriculumService._ensure_term_configuration_mutable(
+
+        await AcademicCurriculumService._ensure_offering_change_mutable(
             db,
             tenant_id=tenant_id,
             term=term,
             curriculum_subject_id=row.curriculum_subject_id,
+            department_id=row.department_id,
+            removing=True,
         )
         await db.delete(row)
         await db.commit()
