@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.core.exceptions import ConflictException
 from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.student_academics.curriculum_service import (
     CurriculumResolutionService,
@@ -26,7 +27,7 @@ class Result:
 
 
 @pytest.mark.asyncio
-async def test_department_offering_overrides_common_offering_for_same_curriculum_subject():
+async def test_general_and_department_offering_overlap_is_rejected():
     tenant_id = uuid4()
     level_id = uuid4()
     term_id = uuid4()
@@ -49,6 +50,39 @@ async def test_department_offering_overrides_common_offering_for_same_curriculum
         )
     )
 
+    with pytest.raises(ConflictException, match="scope is ambiguous"):
+        await CurriculumResolutionService.resolve_curriculum_offerings(
+            db,
+            tenant_id=tenant_id,
+            academic_level_id=level_id,
+            academic_term_id=term_id,
+            department_id=department_id,
+        )
+
+    statement = str(db.execute.await_args.args[0])
+    assert "curriculum_offerings.tenant_id" in statement
+    assert "curriculum_subjects.tenant_id" in statement
+    assert "curricula.academic_level_id" in statement
+    assert "subject_offerings" not in statement
+    assert "level_subjects" not in statement
+
+
+@pytest.mark.asyncio
+async def test_department_offering_resolves_when_it_is_the_only_applicable_scope():
+    tenant_id = uuid4()
+    level_id = uuid4()
+    term_id = uuid4()
+    department_id = uuid4()
+    curriculum_subject = SimpleNamespace(
+        id=uuid4(),
+        subject_id=uuid4(),
+        is_elective=False,
+    )
+    specialized = SimpleNamespace(id=uuid4(), department_id=department_id)
+    db = SimpleNamespace(
+        execute=AsyncMock(return_value=Result(rows=[(specialized, curriculum_subject)]))
+    )
+
     resolved = await CurriculumResolutionService.resolve_curriculum_offerings(
         db,
         tenant_id=tenant_id,
@@ -61,12 +95,6 @@ async def test_department_offering_overrides_common_offering_for_same_curriculum
     assert resolved[0].curriculum_subject_id == curriculum_subject.id
     assert resolved[0].curriculum_offering_id == specialized.id
     assert resolved[0].department_id == department_id
-    statement = str(db.execute.await_args.args[0])
-    assert "curriculum_offerings.tenant_id" in statement
-    assert "curriculum_subjects.tenant_id" in statement
-    assert "curricula.academic_level_id" in statement
-    assert "subject_offerings" not in statement
-    assert "level_subjects" not in statement
 
 
 @pytest.mark.asyncio
