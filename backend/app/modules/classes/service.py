@@ -515,12 +515,18 @@ class DepartmentService:
         active_only=False,
         include_archived: bool = False,
     ) -> list[DepartmentResponse]:
+        if not actor.tenant_id:
+            raise ForbiddenException("Actor is not attached to a tenant")
+
+        is_admin = isinstance(actor, TenantAdmin)
+        effective_active_only = active_only if is_admin else True
+
         rows = await DepartmentRepository.list_for_level(
             db,
             actor.tenant_id,
             academic_level_id,
-            active_only=active_only,
-            include_archived=(include_archived and isinstance(actor, TenantAdmin)),
+            active_only=effective_active_only,
+            include_archived=(include_archived and is_admin),
         )
         return [DepartmentResponse.model_validate(row) for row in rows]
 
@@ -723,6 +729,9 @@ class DepartmentService:
         department = await DepartmentRepository.get_by_id(
             db, actor.tenant_id, department_id, lock=True
         )
+
+        if department is None:
+            raise NotFoundException("Department not found")
 
         if department.archived_at is not None:
             raise ConflictException("Archived departments cannot be updated")
