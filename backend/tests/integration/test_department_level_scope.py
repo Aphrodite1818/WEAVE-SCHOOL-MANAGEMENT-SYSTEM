@@ -231,21 +231,26 @@ def _term(
 ) -> tuple[AcademicSession, AcademicTerm]:
     now = datetime.now(timezone.utc)
     session_id = uuid4()
+    index = list(AcademicTermStatus).index(status)
+    session_start = date(2026 + index, 1, 1)
+    session_end = date(2026 + index, 12, 31)
     session = AcademicSession(
         id=session_id,
         tenant_id=tenant_id,
         name=f"2026/{status.value}",
-        start_date=date(2026, 1, 1),
-        end_date=date(2026, 12, 31),
-        status=AcademicSessionStatus.OPEN,
+        start_date=session_start,
+        end_date=session_end,
+        status=AcademicSessionStatus.CLOSED,
         is_current=False,
+        closing_started_at=now,
+        closed_at=now,
     )
     term = AcademicTerm(
         tenant_id=tenant_id,
         academic_session_id=session_id,
         name=AcademicTermName.FIRST_TERM,
-        start_date=date(2026, 1, 1),
-        end_date=date(2026, 3, 31),
+        start_date=date(2026 + index, 1, 1),
+        end_date=date(2026 + index, 3, 31),
         status=status,
         is_current=False,
     )

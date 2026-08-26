@@ -177,4 +177,4 @@ async def test_academic_write_guard_allows_non_closing_session():
     db = SimpleNamespace(execute=AsyncMock(return_value=result))
 
     await ensure_academic_write_window(db, tenant_id=uuid.uuid4())
-    db.execute.assert_awaited_once()
+    assert db.execute.await_count == 2
