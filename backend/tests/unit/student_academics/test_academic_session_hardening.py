@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.exceptions import ConflictException
+from app.core.exceptions import BadRequestException, ConflictException
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
@@ -16,7 +16,9 @@ from app.modules.student_academics.models import (
     StudentProgressionRun,
     StudentProgressionRunStatus,
 )
+from app.modules.student_academics.open_session_config_router import configure_academic_session
 from app.modules.student_academics.progression_service import AcademicProgressionService
+from app.modules.student_academics.schemas import AcademicSessionUpdate
 from app.modules.student_academics.session_closure_service import SessionClosureService
 from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.students.models import StudentEnrollment
@@ -302,4 +304,91 @@ async def test_blocked_progression_item_is_reprocessed_on_retry() -> None:
                 enrollment=enrollment,
                 next_session=next_session,
                 effective_date=date(2027, 7, 31),
+            )
+
+
+@pytest.mark.asyncio
+async def test_open_session_configuration_cannot_clear_required_dates() -> None:
+    tenant_id = uuid.uuid4()
+    session = _session(
+        tenant_id,
+        name="2026/2027",
+        start_date=date(2026, 9, 1),
+        end_date=date(2027, 7, 31),
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+    )
+    admin = MagicMock()
+    admin.id = uuid.uuid4()
+    admin.tenant_id = tenant_id
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.student_academics.open_session_config_router.ensure_academic_write_window",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.open_session_config_router.StudentAcademicRepository.get_academic_session_by_id",
+            new=AsyncMock(return_value=session),
+        ),
+    ):
+        with pytest.raises(BadRequestException):
+            await configure_academic_session(
+                session_id=session.id,
+                payload=AcademicSessionUpdate(start_date=None, end_date=None),
+                db=db,
+                current_admin=admin,
+            )
+
+
+@pytest.mark.asyncio
+async def test_open_session_configuration_requires_draft_next_session() -> None:
+    tenant_id = uuid.uuid4()
+    session = _session(
+        tenant_id,
+        name="2026/2027",
+        start_date=date(2026, 9, 1),
+        end_date=date(2027, 7, 31),
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+    )
+    next_session = _session(
+        tenant_id,
+        name="2027/2028",
+        start_date=date(2027, 9, 1),
+        end_date=date(2028, 7, 31),
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+    )
+    admin = MagicMock()
+    admin.id = uuid.uuid4()
+    admin.tenant_id = tenant_id
+    db = AsyncMock()
+    get_session = AsyncMock(side_effect=[session, next_session])
+
+    with (
+        patch(
+            "app.modules.student_academics.open_session_config_router.ensure_academic_write_window",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.open_session_config_router.StudentAcademicRepository.get_academic_session_by_id",
+            new=get_session,
+        ),
+        patch(
+            "app.modules.student_academics.open_session_config_router.StudentAcademicRepository.list_terms_by_session",
+            new=AsyncMock(return_value=([], 0)),
+        ),
+        patch(
+            "app.modules.student_academics.open_session_config_router.StudentAcademicService._validate_next_session_link",
+            new=AsyncMock(),
+        ),
+    ):
+        with pytest.raises(ConflictException):
+            await configure_academic_session(
+                session_id=session.id,
+                payload=AcademicSessionUpdate(next_academic_session_id=next_session.id),
+                db=db,
+                current_admin=admin,
             )
