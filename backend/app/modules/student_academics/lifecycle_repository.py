@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.student_academics.academic_lock import acquire_academic_lifecycle_lock
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
@@ -24,6 +25,8 @@ class AcademicSessionLifecycleRepository:
         *,
         lock: bool = False,
     ) -> AcademicSession | None:
+        if lock:
+            await acquire_academic_lifecycle_lock(db, tenant_id=tenant_id)
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.id == session_id,
@@ -40,6 +43,8 @@ class AcademicSessionLifecycleRepository:
         *,
         lock: bool = False,
     ) -> AcademicSession | None:
+        if lock:
+            await acquire_academic_lifecycle_lock(db, tenant_id=tenant_id)
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.is_current.is_(True),
