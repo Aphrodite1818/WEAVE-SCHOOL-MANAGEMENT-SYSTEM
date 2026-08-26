@@ -25,6 +25,10 @@ from app.modules.student_academics.models import (
 )
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.write_guard import ensure_academic_write_window
+from app.modules.students.enrollment_schemas import (
+    StudentBatchClassAssignmentRequest,
+    StudentClassChangeRequest,
+)
 from app.modules.students.models import (
     AcademicStatus,
     Student,
@@ -33,9 +37,7 @@ from app.modules.students.models import (
 )
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.students.schemas import (
-    StudentBatchClassAssignmentRequest,
     StudentBatchClassAssignmentResponse,
-    StudentClassChangeRequest,
     StudentDetailResponse,
     StudentEnrollmentDetailResponse,
 )
@@ -143,7 +145,6 @@ class StudentEnrollmentService:
                 AcademicTerm.id == StudentSubjectResult.academic_term_id,
             ).where(
                 AcademicTerm.tenant_id == tenant_id,
-                # Missing term dates are not safe evidence for a backdated rewrite.
                 (
                     AcademicTerm.end_date.is_(None)
                     | (AcademicTerm.end_date >= on_or_after)
@@ -488,7 +489,7 @@ class StudentEnrollmentService:
         if session is None:
             raise ConflictException("An open academic session is required for class placement.")
 
-        effective_date = getattr(payload, "effective_date", date.today())
+        effective_date = payload.effective_date
         resolved: list[tuple[Student, StudentEnrollment]] = []
         for student_id in payload.student_ids:
             student = await StudentRepository.get_by_id(db, tenant_id, student_id, lock=True)
