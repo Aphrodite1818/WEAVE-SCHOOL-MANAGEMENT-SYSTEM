@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.modules.attendance.attendance_enums import StudentAttendanceSheetStatus
+from app.modules.attendance.models import StudentAttendanceSheet
 from app.modules.classes.models import (
     AcademicLevel,
     AcademicLevelStatus,
@@ -15,13 +17,24 @@ from app.modules.classes.models import (
     ClassRoom,
     Department,
 )
+from app.modules.communications.models import AnnouncementAudience
+from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.curriculum_models import (
-    Curriculum,
-    CurriculumSubject,
-    CurriculumOffering,
     ClassTermDepartmentAssignment,
+    Curriculum,
+    CurriculumOffering,
+    CurriculumSubject,
 )
-from app.modules.student_academics.models import TeacherAssignment, AcademicTermStatus, AcademicTerm
+from app.modules.student_academics.models import (
+    AcademicTerm,
+    AcademicTermStatus,
+    StudentProgressionItem,
+    StudentProgressionRun,
+    StudentProgressionRunStatus,
+    StudentSubjectResult,
+    TeacherAssignment,
+    TeacherAssignmentLifecycleAudit,
+)
 from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
 
 
@@ -126,9 +139,6 @@ class AcademicLevelRepository:
         )
 
         query = select(
-            # ---------------------------------------------------------
-            # Classes
-            # ---------------------------------------------------------
             count_subquery(
                 ClassRoom,
                 ClassRoom.tenant_id == tenant_id,
@@ -141,9 +151,6 @@ class AcademicLevelRepository:
                 ClassRoom.is_active.is_(True),
                 ClassRoom.archived_at.is_(None),
             ).label("classes_active"),
-            # ---------------------------------------------------------
-            # Departments
-            # ---------------------------------------------------------
             count_subquery(
                 Department,
                 Department.tenant_id == tenant_id,
@@ -156,9 +163,6 @@ class AcademicLevelRepository:
                 Department.is_active.is_(True),
                 Department.archived_at.is_(None),
             ).label("departments_active"),
-            # ---------------------------------------------------------
-            # Curriculum subjects
-            # ---------------------------------------------------------
             count_subquery(
                 CurriculumSubject,
                 CurriculumSubject.tenant_id == tenant_id,
@@ -170,9 +174,6 @@ class AcademicLevelRepository:
                 CurriculumSubject.curriculum_id.in_(curriculum_ids),
                 CurriculumSubject.is_active.is_(True),
             ).label("curriculum_subjects_active"),
-            # ---------------------------------------------------------
-            # Student enrollments
-            # ---------------------------------------------------------
             count_subquery(
                 StudentEnrollment,
                 StudentEnrollment.tenant_id == tenant_id,
@@ -257,14 +258,10 @@ class DepartmentRepository:
                 Department.is_active.is_(True),
                 Department.archived_at.is_(None),
             )
-
         elif not include_archived:
-            query = query.where(
-                Department.archived_at.is_(None),
-            )
+            query = query.where(Department.archived_at.is_(None))
 
         query = query.order_by(Department.name)
-
         return list((await db.execute(query)).scalars().all())
 
     @staticmethod
@@ -284,20 +281,6 @@ class DepartmentRepository:
         tenant_id: uuid.UUID,
         department_id: uuid.UUID,
     ) -> dict[str, int]:
-        """
-        Return Department dependency counts used by lifecycle rules.
-
-        Total counts represent all historical and current usage.
-
-        Live counts represent usage attached to terms that are still capable of
-        affecting current/future academic configuration:
-        - DRAFT
-        - OPEN
-        - CLOSING
-
-        CLOSED-term references are historical and therefore do not count as live.
-        """
-
         live_term_statuses = (
             AcademicTermStatus.DRAFT,
             AcademicTermStatus.OPEN,
@@ -313,14 +296,10 @@ class DepartmentRepository:
             )
             .scalar_subquery()
         )
-
         class_assignments_live = (
             select(func.count())
             .select_from(ClassTermDepartmentAssignment)
-            .join(
-                AcademicTerm,
-                AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id,
-            )
+            .join(AcademicTerm, AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id)
             .where(
                 ClassTermDepartmentAssignment.tenant_id == tenant_id,
                 ClassTermDepartmentAssignment.department_id == department_id,
@@ -329,7 +308,6 @@ class DepartmentRepository:
             )
             .scalar_subquery()
         )
-
         offerings_total = (
             select(func.count())
             .select_from(CurriculumOffering)
@@ -339,14 +317,10 @@ class DepartmentRepository:
             )
             .scalar_subquery()
         )
-
         offerings_live = (
             select(func.count())
             .select_from(CurriculumOffering)
-            .join(
-                AcademicTerm,
-                AcademicTerm.id == CurriculumOffering.academic_term_id,
-            )
+            .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
             .where(
                 CurriculumOffering.tenant_id == tenant_id,
                 CurriculumOffering.department_id == department_id,
@@ -362,9 +336,7 @@ class DepartmentRepository:
             offerings_total.label("offerings_total"),
             offerings_live.label("offerings_live"),
         )
-
         row = (await db.execute(query)).one()
-
         return {
             "class_assignments_total": int(row.class_assignments_total),
             "class_assignments_live": int(row.class_assignments_live),
@@ -523,27 +495,30 @@ class ClassRoomRepository:
             .where(
                 ClassRoom.tenant_id == tenant_id,
                 ClassRoom.teacher_membership_id == teacher_membership_id,
+                ClassRoom.is_active.is_(True),
                 ClassRoom.archived_at.is_(None),
             )
         )
         return list((await db.execute(query)).scalars().unique().all())
 
     @staticmethod
-    async def list_by_ids(db: AsyncSession, tenant_id: uuid.UUID, class_ids: list[uuid.UUID]):
+    async def list_by_ids(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_ids: list[uuid.UUID],
+        *,
+        active_only: bool = False,
+    ):
         if not class_ids:
             return []
-        return list(
-            (
-                await db.execute(
-                    select(ClassRoom)
-                    .options(*ClassRoomRepository.LOAD)
-                    .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id.in_(class_ids))
-                )
-            )
-            .scalars()
-            .unique()
-            .all()
+        query = (
+            select(ClassRoom)
+            .options(*ClassRoomRepository.LOAD)
+            .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id.in_(class_ids))
         )
+        if active_only:
+            query = query.where(ClassRoom.is_active.is_(True), ClassRoom.archived_at.is_(None))
+        return list((await db.execute(query)).scalars().unique().all())
 
     @staticmethod
     async def count_assigned_students_by_status(
@@ -603,11 +578,196 @@ class ClassRoomRepository:
     async def count_class_dependencies(
         db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID
     ) -> dict[str, int]:
+        """Return historical and live references to one concrete classroom."""
+
+        live_term_statuses = (
+            AcademicTermStatus.DRAFT,
+            AcademicTermStatus.OPEN,
+            AcademicTermStatus.CLOSING,
+        )
+        live_attendance_statuses = (
+            StudentAttendanceSheetStatus.DRAFT,
+            StudentAttendanceSheetStatus.SUBMITTED,
+            StudentAttendanceSheetStatus.APPROVED,
+        )
+        live_progression_statuses = (
+            StudentProgressionRunStatus.PENDING,
+            StudentProgressionRunStatus.PROCESSING,
+        )
+
+        def count_subquery(model, *conditions):
+            return select(func.count()).select_from(model).where(*conditions).scalar_subquery()
+
+        students_assigned_total = count_subquery(
+            Student,
+            Student.tenant_id == tenant_id,
+            Student.class_id == class_id,
+        )
+        students_assigned_live = count_subquery(
+            Student,
+            Student.tenant_id == tenant_id,
+            Student.class_id == class_id,
+            Student.status.in_((AcademicStatus.ACTIVE, AcademicStatus.SUSPENDED)),
+            Student.is_archived.is_(False),
+        )
+        enrollments_total = count_subquery(
+            StudentEnrollment,
+            StudentEnrollment.tenant_id == tenant_id,
+            StudentEnrollment.class_id == class_id,
+        )
+        enrollments_current = count_subquery(
+            StudentEnrollment,
+            StudentEnrollment.tenant_id == tenant_id,
+            StudentEnrollment.class_id == class_id,
+            StudentEnrollment.is_current.is_(True),
+        )
+        teacher_assignments_total = count_subquery(
+            TeacherAssignment,
+            TeacherAssignment.tenant_id == tenant_id,
+            TeacherAssignment.class_id == class_id,
+        )
+        teacher_assignments_active = count_subquery(
+            TeacherAssignment,
+            TeacherAssignment.tenant_id == tenant_id,
+            TeacherAssignment.class_id == class_id,
+            TeacherAssignment.is_active.is_(True),
+        )
+        teacher_assignment_audits_total = count_subquery(
+            TeacherAssignmentLifecycleAudit,
+            TeacherAssignmentLifecycleAudit.tenant_id == tenant_id,
+            TeacherAssignmentLifecycleAudit.class_id == class_id,
+        )
+        department_assignments_total = count_subquery(
+            ClassTermDepartmentAssignment,
+            ClassTermDepartmentAssignment.tenant_id == tenant_id,
+            ClassTermDepartmentAssignment.class_id == class_id,
+        )
+        department_assignments_live = (
+            select(func.count())
+            .select_from(ClassTermDepartmentAssignment)
+            .join(AcademicTerm, AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id)
+            .where(
+                ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                ClassTermDepartmentAssignment.class_id == class_id,
+                AcademicTerm.tenant_id == tenant_id,
+                AcademicTerm.status.in_(live_term_statuses),
+            )
+            .scalar_subquery()
+        )
+        results_total = count_subquery(
+            StudentSubjectResult,
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.class_id == class_id,
+        )
+        results_live = (
+            select(func.count())
+            .select_from(StudentSubjectResult)
+            .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
+            .where(
+                StudentSubjectResult.tenant_id == tenant_id,
+                StudentSubjectResult.class_id == class_id,
+                AcademicTerm.tenant_id == tenant_id,
+                AcademicTerm.status.in_(live_term_statuses),
+            )
+            .scalar_subquery()
+        )
+        attendance_sheets_total = count_subquery(
+            StudentAttendanceSheet,
+            StudentAttendanceSheet.tenant_id == tenant_id,
+            StudentAttendanceSheet.class_id == class_id,
+        )
+        attendance_sheets_live = count_subquery(
+            StudentAttendanceSheet,
+            StudentAttendanceSheet.tenant_id == tenant_id,
+            StudentAttendanceSheet.class_id == class_id,
+            StudentAttendanceSheet.status.in_(live_attendance_statuses),
+        )
+        report_cards_total = count_subquery(
+            ReportCard,
+            ReportCard.tenant_id == tenant_id,
+            ReportCard.class_id == class_id,
+        )
+        report_cards_live = (
+            select(func.count())
+            .select_from(ReportCard)
+            .join(AcademicTerm, AcademicTerm.id == ReportCard.academic_term_id)
+            .where(
+                ReportCard.tenant_id == tenant_id,
+                ReportCard.class_id == class_id,
+                AcademicTerm.tenant_id == tenant_id,
+                AcademicTerm.status.in_(live_term_statuses),
+            )
+            .scalar_subquery()
+        )
+        progression_scope = or_(
+            StudentProgressionItem.from_class_id == class_id,
+            StudentProgressionItem.to_class_id == class_id,
+        )
+        progression_items_total = count_subquery(
+            StudentProgressionItem,
+            StudentProgressionItem.tenant_id == tenant_id,
+            progression_scope,
+        )
+        progression_items_live = (
+            select(func.count())
+            .select_from(StudentProgressionItem)
+            .join(
+                StudentProgressionRun,
+                StudentProgressionRun.id == StudentProgressionItem.progression_run_id,
+            )
+            .where(
+                StudentProgressionItem.tenant_id == tenant_id,
+                progression_scope,
+                StudentProgressionRun.tenant_id == tenant_id,
+                StudentProgressionRun.status.in_(live_progression_statuses),
+            )
+            .scalar_subquery()
+        )
+        announcement_audiences_total = count_subquery(
+            AnnouncementAudience,
+            AnnouncementAudience.tenant_id == tenant_id,
+            AnnouncementAudience.class_id == class_id,
+        )
+
+        query = select(
+            students_assigned_total.label("students_assigned_total"),
+            students_assigned_live.label("students_assigned_live"),
+            enrollments_total.label("enrollments_total"),
+            enrollments_current.label("enrollments_current"),
+            teacher_assignments_total.label("teacher_assignments_total"),
+            teacher_assignments_active.label("teacher_assignments_active"),
+            teacher_assignment_audits_total.label("teacher_assignment_audits_total"),
+            department_assignments_total.label("department_assignments_total"),
+            department_assignments_live.label("department_assignments_live"),
+            results_total.label("results_total"),
+            results_live.label("results_live"),
+            attendance_sheets_total.label("attendance_sheets_total"),
+            attendance_sheets_live.label("attendance_sheets_live"),
+            report_cards_total.label("report_cards_total"),
+            report_cards_live.label("report_cards_live"),
+            progression_items_total.label("progression_items_total"),
+            progression_items_live.label("progression_items_live"),
+            announcement_audiences_total.label("announcement_audiences_total"),
+        )
+        row = (await db.execute(query)).one()
+
         return {
-            "students": await ClassRoomRepository.count_current_enrollments(
-                db, tenant_id, class_id
-            ),
-            "teacher_assignments": await ClassRoomRepository.count_active_teacher_assignments(
-                db, tenant_id, class_id
-            ),
+            "students_assigned_total": int(row.students_assigned_total),
+            "students_assigned_live": int(row.students_assigned_live),
+            "enrollments_total": int(row.enrollments_total),
+            "enrollments_current": int(row.enrollments_current),
+            "teacher_assignments_total": int(row.teacher_assignments_total),
+            "teacher_assignments_active": int(row.teacher_assignments_active),
+            "teacher_assignment_audits_total": int(row.teacher_assignment_audits_total),
+            "department_assignments_total": int(row.department_assignments_total),
+            "department_assignments_live": int(row.department_assignments_live),
+            "results_total": int(row.results_total),
+            "results_live": int(row.results_live),
+            "attendance_sheets_total": int(row.attendance_sheets_total),
+            "attendance_sheets_live": int(row.attendance_sheets_live),
+            "report_cards_total": int(row.report_cards_total),
+            "report_cards_live": int(row.report_cards_live),
+            "progression_items_total": int(row.progression_items_total),
+            "progression_items_live": int(row.progression_items_live),
+            "announcement_audiences_total": int(row.announcement_audiences_total),
         }
