@@ -58,6 +58,40 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
                 )
 
     @staticmethod
+    async def suspend(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+        reason: str,
+        promotion_hold: bool = True,
+    ) -> StudentLifecycleTransitionResponse:
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        return await LegacyStudentLifecycleService.suspend(
+            db,
+            actor=actor,
+            student_id=student_id,
+            reason=reason,
+            promotion_hold=promotion_hold,
+        )
+
+    @staticmethod
+    async def reinstate(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+        reason: str,
+    ) -> StudentLifecycleTransitionResponse:
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        return await LegacyStudentLifecycleService.reinstate(
+            db,
+            actor=actor,
+            student_id=student_id,
+            reason=reason,
+        )
+
+    @staticmethod
     async def withdraw(
         db: AsyncSession,
         *,
@@ -225,9 +259,6 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
             reason=reason,
         )
 
-        # The inherited service records this as reclassification because the old
-        # model lacked a reinstatement entry event. Correct the new segment before
-        # returning so history states the actual reason it began.
         current = await StudentEnrollmentRepository.get_current(
             db,
             actor.tenant_id,
