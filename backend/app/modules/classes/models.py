@@ -252,7 +252,11 @@ class ClassRoom(BaseModel):
             name="uq_classes_tenant_level_arm_label",
         ),
         CheckConstraint(
-            "archived_at IS NULL OR is_active = false", name="ck_classes_archived_requires_inactive"
+            """
+            (archived_at IS NULL AND archived_by_admin_id IS NULL)
+            OR (archived_at IS NOT NULL AND is_active = false)
+            """,
+            name="ck_classes_archive_metadata_consistency",
         ),
         Index("ix_classes_tenant_teacher_membership", "tenant_id", "teacher_membership_id"),
         Index("ix_classes_tenant_active", "tenant_id", "is_active"),
