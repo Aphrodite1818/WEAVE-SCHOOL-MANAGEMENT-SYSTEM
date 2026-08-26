@@ -48,11 +48,18 @@ class AcademicCurriculumService:
         tenant_id: uuid.UUID,
         level_id: uuid.UUID,
         *,
-        create: bool = True,
+        require_active_level: bool = False,
     ) -> Curriculum:
+        """Return the permanent curriculum container without creating state on reads."""
+
         level = await AcademicLevelRepository.get_by_id(db, tenant_id, level_id)
         if level is None:
             raise NotFoundException("Academic level not found.")
+        if require_active_level and level.status != AcademicLevelStatus.ACTIVE:
+            raise ConflictException(
+                "Academic level must be active before curriculum is configured."
+            )
+
         row = (
             await db.execute(
                 select(Curriculum).where(
@@ -61,16 +68,10 @@ class AcademicCurriculumService:
                 )
             )
         ).scalar_one_or_none()
-        if row is None and create:
-            if level.status != AcademicLevelStatus.ACTIVE:
-                raise ConflictException(
-                    "Academic level must be active before curriculum is configured."
-                )
-            row = Curriculum(tenant_id=tenant_id, academic_level_id=level_id)
-            db.add(row)
-            await db.flush()
         if row is None:
-            raise NotFoundException("Curriculum not found.")
+            raise NotFoundException(
+                "Curriculum not found. Activate the academic level before configuring curriculum."
+            )
         return row
 
     @staticmethod
@@ -213,7 +214,12 @@ class AcademicCurriculumService:
         level_id: uuid.UUID,
         payload: CurriculumSubjectCreate,
     ) -> CurriculumSubjectResponse:
-        curriculum = await AcademicCurriculumService._curriculum(db, tenant_id, level_id)
+        curriculum = await AcademicCurriculumService._curriculum(
+            db,
+            tenant_id,
+            level_id,
+            require_active_level=True,
+        )
         subject = (
             await db.execute(
                 select(Subject).where(
