@@ -19,6 +19,7 @@ from app.modules.student_academics.models import (
     StudentProgressionItemAction,
     StudentProgressionItemStatus,
     StudentProgressionRunStatus,
+    TeacherAssignmentState,
 )
 
 _PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
@@ -306,15 +307,20 @@ class TeacherAssignmentCreate(InputBase):
 
 class TeacherAssignmentReassign(InputBase):
     teacher_membership_id: uuid.UUID
+    academic_term_id: uuid.UUID
     effective_from: date | None = None
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class TeacherAssignmentEnd(InputBase):
+    academic_term_id: uuid.UUID
     effective_to: date | None = None
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class TeacherAssignmentDelete(InputBase):
     confirmation: Literal["DELETE_TEACHER_ASSIGNMENT"]
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class TeacherAssignmentDependencyPreview(OutputBase):
@@ -362,7 +368,7 @@ class TeacherAssignmentResponse(OutputBase):
     subject_code: str | None = None
     teacher_name: str | None = None
     teacher_staff_id: str | None = None
-    is_active: bool
+    status: TeacherAssignmentState
     effective_from: date
     effective_to: date | None = None
     created_at: datetime
