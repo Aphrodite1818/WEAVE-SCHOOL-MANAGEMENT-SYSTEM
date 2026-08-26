@@ -52,7 +52,7 @@ class CurriculumSubject(BaseModel):
 class ClassTermDepartmentAssignment(BaseModel):
     __tablename__ = "class_term_department_assignments"
     class_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("classes.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("classes.id", ondelete="RESTRICT"), nullable=False
     )
     academic_term_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False
@@ -83,8 +83,6 @@ class CurriculumOffering(BaseModel):
         UUID(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=True
     )
     __table_args__ = (
-        # This constraint enforces one row per concrete department. PostgreSQL
-        # treats NULL as distinct, so General offerings need the partial index below.
         UniqueConstraint(
             "tenant_id",
             "curriculum_subject_id",
