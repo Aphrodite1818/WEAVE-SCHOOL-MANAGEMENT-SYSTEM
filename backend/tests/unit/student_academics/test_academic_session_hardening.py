@@ -6,14 +6,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core.exceptions import ConflictException
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
+    StudentProgressionItem,
+    StudentProgressionItemAction,
+    StudentProgressionItemStatus,
     StudentProgressionRun,
     StudentProgressionRunStatus,
 )
+from app.modules.student_academics.progression_service import AcademicProgressionService
 from app.modules.student_academics.session_closure_service import SessionClosureService
 from app.modules.student_academics.write_guard import ensure_academic_write_window
+from app.modules.students.models import StudentEnrollment
 
 
 def _session(
@@ -232,3 +238,68 @@ async def test_write_guard_acquires_lifecycle_lock_before_reading_session_state(
         await ensure_academic_write_window(db, tenant_id=tenant_id)
 
     assert events == ["lock", "query"]
+
+
+@pytest.mark.asyncio
+async def test_blocked_progression_item_is_reprocessed_on_retry() -> None:
+    tenant_id = uuid.uuid4()
+    student_id = uuid.uuid4()
+    level_id = uuid.uuid4()
+    class_id = uuid.uuid4()
+    current_session_id = uuid.uuid4()
+    run = _run(
+        tenant_id,
+        status=StudentProgressionRunStatus.PROCESSING,
+        started_at=datetime.now(timezone.utc),
+    )
+    enrollment = StudentEnrollment(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        student_id=student_id,
+        academic_level_id=level_id,
+        class_id=class_id,
+        academic_session_id=current_session_id,
+        started_on=date(2026, 9, 1),
+    )
+    blocked = StudentProgressionItem(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        progression_run_id=run.id,
+        student_id=student_id,
+        from_enrollment_id=enrollment.id,
+        from_level_id=level_id,
+        from_class_id=class_id,
+        action=StudentProgressionItemAction.SKIP,
+        status=StudentProgressionItemStatus.BLOCKED,
+        reason="temporary failure",
+    )
+    next_session = _session(
+        tenant_id,
+        name="2027/2028",
+        start_date=date(2027, 9, 1),
+        end_date=date(2028, 7, 31),
+    )
+    actor = MagicMock()
+    actor.id = uuid.uuid4()
+    actor.tenant_id = tenant_id
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.student_academics.progression_service.StudentProgressionRepository.get_item_by_run_and_student",
+            new=AsyncMock(return_value=blocked),
+        ),
+        patch(
+            "app.modules.student_academics.progression_service.StudentRepository.get_by_id",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        with pytest.raises(ConflictException):
+            await AcademicProgressionService._progress_student(
+                db,
+                actor=actor,
+                run=run,
+                enrollment=enrollment,
+                next_session=next_session,
+                effective_date=date(2027, 7, 31),
+            )
