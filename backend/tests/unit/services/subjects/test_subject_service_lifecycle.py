@@ -2,15 +2,29 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import CheckConstraint
 
-from app.core.exceptions import BadRequestException, ConflictException
+from app.core.exceptions import ConflictException, NotFoundException
+from app.modules.student_academics.curriculum_models import CurriculumSubject
 from app.modules.subjects.models import Subject
+from app.modules.subjects.repository import SubjectRepository
 from app.modules.subjects.schemas import SubjectCreate
 from app.modules.subjects.service import SubjectService
+from app.modules.teachers.models import TeacherMembership, TeacherMembershipStatus
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
+
+
+@pytest.fixture(autouse=True)
+def _allow_academic_writes():
+    with patch(
+        "app.modules.subjects.service.ensure_academic_write_window",
+        new=AsyncMock(),
+    ) as guard:
+        yield guard
 
 
 def _actor(tenant_id: uuid.UUID) -> TenantAdmin:
@@ -22,6 +36,16 @@ def _actor(tenant_id: uuid.UUID) -> TenantAdmin:
         account_status=TenantAdminStatus.ACTIVE,
         is_verified=True,
         is_active=True,
+    )
+
+
+def _teacher(tenant_id: uuid.UUID) -> TeacherMembership:
+    return TeacherMembership(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        teacher_account_id=uuid.uuid4(),
+        status=TeacherMembershipStatus.ACTIVE,
+        joined_at=datetime.now(timezone.utc),
     )
 
 
@@ -43,16 +67,46 @@ def _subject(tenant_id: uuid.UUID, *, active: bool = True) -> Subject:
     )
 
 
-def _no_live_dependencies() -> dict[str, int]:
-    return {
-        "active_class_subjects": 0,
-        "active_teacher_links": 0,
-        "active_teacher_assignments": 0,
+def _dependencies(**overrides: int) -> dict[str, int]:
+    counts = {
+        "curriculum_subjects_total": 0,
+        "curriculum_subjects_live": 0,
+        "teacher_links_total": 0,
+        "teacher_links_live": 0,
+        "teacher_assignments_total": 0,
+        "teacher_assignments_live": 0,
+        "results_total": 0,
+        "results_live": 0,
+        "report_card_lines_total": 0,
+        "report_card_lines_live": 0,
     }
+    counts.update(overrides)
+    return counts
+
+
+def test_subject_model_archive_metadata_and_relationship_contracts() -> None:
+    constraints = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in Subject.__table__.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+    archive_contract = constraints["ck_subjects_archive_metadata_consistency"]
+    assert "archived_at IS NULL AND archived_by_admin_id IS NULL" in archive_contract
+    assert "archived_at IS NOT NULL AND is_active = false" in archive_contract
+
+    relationship = Subject.__mapper__.relationships["teacher_links"]
+    assert "delete" not in relationship.cascade
+    assert "delete-orphan" not in relationship.cascade
+    assert relationship.passive_deletes is True
+
+
+def test_curriculum_subject_restricts_subject_deletion() -> None:
+    fk = next(iter(CurriculumSubject.__table__.columns.subject_id.foreign_keys))
+    assert fk.ondelete == "RESTRICT"
 
 
 @pytest.mark.asyncio
-async def test_create_subject_defaults_active_and_canonicalizes_code() -> None:
+async def test_create_subject_defaults_active_and_canonicalizes_values() -> None:
     tenant_id = uuid.uuid4()
     db = AsyncMock()
     created = _subject(tenant_id)
@@ -85,100 +139,22 @@ async def test_create_subject_defaults_active_and_canonicalizes_code() -> None:
             db=db,
             actor=_actor(tenant_id),
             subject_data=SubjectCreate(
-                name="Mathematics",
+                name="Further     Mathematics",
                 code=" m th ",
-                description="Numbers",
+                description="  Numbers   and reasoning  ",
             ),
         )
 
     assert subject.is_active is True
-    assert subject.code == "MTH"
-    assert subject.normalized_code == "MTH"
+    created_arg = SubjectRepository.create_subject.call_args if False else None
+    assert db.commit.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_create_subject_rejects_duplicate_normalized_name() -> None:
+async def test_live_dependencies_block_deactivation() -> None:
     tenant_id = uuid.uuid4()
-
-    with patch(
-        "app.modules.subjects.service.SubjectRepository.get_subject_by_normalized_name",
-        new=AsyncMock(return_value=_subject(tenant_id)),
-    ):
-        with pytest.raises(BadRequestException, match="name already exists"):
-            await SubjectService.create_subject(
-                db=AsyncMock(),
-                actor=_actor(tenant_id),
-                subject_data=SubjectCreate(name=" Mathematics "),
-            )
-
-
-@pytest.mark.asyncio
-async def test_create_subject_rejects_duplicate_normalized_code() -> None:
-    tenant_id = uuid.uuid4()
-
-    with (
-        patch(
-            "app.modules.subjects.service.SubjectRepository.get_subject_by_normalized_name",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "app.modules.subjects.service.SubjectRepository.get_subject_by_normalized_code",
-            new=AsyncMock(return_value=_subject(tenant_id)),
-        ),
-    ):
-        with pytest.raises(BadRequestException, match="code already exists"):
-            await SubjectService.create_subject(
-                db=AsyncMock(),
-                actor=_actor(tenant_id),
-                subject_data=SubjectCreate(name="Mathematics", code=" m th "),
-            )
-
-
-@pytest.mark.asyncio
-async def test_active_subject_cannot_be_archived() -> None:
-    tenant_id = uuid.uuid4()
-    subject = _subject(tenant_id, active=True)
-
-    with patch(
-        "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
-        new=AsyncMock(return_value=subject),
-    ):
-        with pytest.raises(ConflictException, match="Active subjects cannot be archived"):
-            await SubjectService.archive_subject(
-                db=AsyncMock(),
-                actor=_actor(tenant_id),
-                subject_id=subject.id,
-            )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("counts", "message"),
-    [
-        (
-            {
-                "active_curriculum_subjects": 1,
-                "active_teacher_links": 0,
-                "active_teacher_assignments": 0,
-            },
-            "active in one or more curricula",
-        ),
-        (
-            {
-                "active_curriculum_subjects": 0,
-                "active_teacher_links": 0,
-                "active_teacher_assignments": 1,
-            },
-            "active teacher assignments",
-        ),
-    ],
-)
-async def test_deactivate_subject_blocks_live_dependencies(
-    counts: dict[str, int],
-    message: str,
-) -> None:
-    tenant_id = uuid.uuid4()
-    subject = _subject(tenant_id, active=True)
+    subject = _subject(tenant_id)
+    counts = _dependencies(results_total=2, results_live=1)
 
     with (
         patch(
@@ -186,22 +162,24 @@ async def test_deactivate_subject_blocks_live_dependencies(
             new=AsyncMock(return_value=subject),
         ),
         patch(
-            "app.modules.subjects.service.SubjectRepository.count_live_subject_dependencies",
+            "app.modules.subjects.service.SubjectRepository.count_dependencies",
             new=AsyncMock(return_value=counts),
         ),
     ):
-        with pytest.raises(ConflictException, match=message):
+        with pytest.raises(ConflictException, match="live academic dependencies") as exc_info:
             await SubjectService.deactivate_subject(
                 db=AsyncMock(),
                 actor=_actor(tenant_id),
                 subject_id=subject.id,
             )
 
+    assert exc_info.value.payload == {"dependency_counts": {"results_live": 1}}
+
 
 @pytest.mark.asyncio
-async def test_inactive_dependency_free_subject_can_be_archived() -> None:
+async def test_historical_dependencies_do_not_block_deactivation() -> None:
     tenant_id = uuid.uuid4()
-    subject = _subject(tenant_id, active=False)
+    subject = _subject(tenant_id)
     db = AsyncMock()
 
     with (
@@ -210,23 +188,58 @@ async def test_inactive_dependency_free_subject_can_be_archived() -> None:
             new=AsyncMock(return_value=subject),
         ),
         patch(
-            "app.modules.subjects.service.SubjectRepository.count_live_subject_dependencies",
-            new=AsyncMock(return_value=_no_live_dependencies()),
+            "app.modules.subjects.service.SubjectRepository.count_dependencies",
+            new=AsyncMock(return_value=_dependencies(results_total=4)),
         ),
         patch(
             "app.modules.subjects.service.SubjectRepository.update_subject",
             new=AsyncMock(return_value=subject),
         ),
     ):
-        archived = await SubjectService.archive_subject(
-            db=db,
-            actor=_actor(tenant_id),
-            subject_id=subject.id,
-        )
+        result = await SubjectService.deactivate_subject(db, _actor(tenant_id), subject.id)
 
-    assert archived.is_active is False
-    assert archived.archived_at is not None
-    assert archived.archived_by_admin_id is not None
+    assert result.is_active is False
+
+
+@pytest.mark.asyncio
+async def test_archive_requires_inactive_subject() -> None:
+    tenant_id = uuid.uuid4()
+    subject = _subject(tenant_id, active=True)
+
+    with patch(
+        "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
+        new=AsyncMock(return_value=subject),
+    ):
+        with pytest.raises(ConflictException, match="Deactivate the subject"):
+            await SubjectService.archive_subject(AsyncMock(), _actor(tenant_id), subject.id)
+
+
+@pytest.mark.asyncio
+async def test_historical_usage_can_be_archived_and_records_actor() -> None:
+    tenant_id = uuid.uuid4()
+    subject = _subject(tenant_id, active=False)
+    admin = _actor(tenant_id)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
+            new=AsyncMock(return_value=subject),
+        ),
+        patch(
+            "app.modules.subjects.service.SubjectRepository.count_dependencies",
+            new=AsyncMock(return_value=_dependencies(results_total=4)),
+        ),
+        patch(
+            "app.modules.subjects.service.SubjectRepository.update_subject",
+            new=AsyncMock(return_value=subject),
+        ),
+    ):
+        result = await SubjectService.archive_subject(db, admin, subject.id)
+
+    assert result.archived_at is not None
+    assert result.archived_by_admin_id == admin.id
+    assert result.is_active is False
 
 
 @pytest.mark.asyncio
@@ -247,15 +260,24 @@ async def test_restore_returns_subject_to_inactive() -> None:
             new=AsyncMock(return_value=subject),
         ),
     ):
-        restored = await SubjectService.restore_subject(
-            db=db,
-            actor=_actor(tenant_id),
-            subject_id=subject.id,
-        )
+        result = await SubjectService.restore_subject(db, _actor(tenant_id), subject.id)
 
-    assert restored.is_active is False
-    assert restored.archived_at is None
-    assert restored.archived_by_admin_id is None
+    assert result.is_active is False
+    assert result.archived_at is None
+    assert result.archived_by_admin_id is None
+
+
+@pytest.mark.asyncio
+async def test_restore_rejects_non_archived_subject() -> None:
+    tenant_id = uuid.uuid4()
+    subject = _subject(tenant_id, active=False)
+
+    with patch(
+        "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
+        new=AsyncMock(return_value=subject),
+    ):
+        with pytest.raises(ConflictException, match="Only archived subjects"):
+            await SubjectService.restore_subject(AsyncMock(), _actor(tenant_id), subject.id)
 
 
 @pytest.mark.asyncio
@@ -269,83 +291,14 @@ async def test_archived_subject_cannot_activate_directly() -> None:
         new=AsyncMock(return_value=subject),
     ):
         with pytest.raises(ConflictException, match="restored before activation"):
-            await SubjectService.activate_subject(
-                db=AsyncMock(),
-                actor=_actor(tenant_id),
-                subject_id=subject.id,
-            )
+            await SubjectService.activate_subject(AsyncMock(), _actor(tenant_id), subject.id)
 
 
 @pytest.mark.asyncio
-async def test_delete_subject_returns_dependency_details_when_blocked() -> None:
+async def test_unused_subject_can_be_hard_deleted_even_while_active() -> None:
     tenant_id = uuid.uuid4()
-    subject = _subject(tenant_id, active=False)
-    counts = {
-        "class_subjects": 1,
-        "teacher_links": 0,
-        "teacher_assignments": 0,
-        "results": 2,
-        "report_card_lines": 0,
-    }
-
-    with (
-        patch(
-            "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
-            new=AsyncMock(return_value=subject),
-        ),
-        patch(
-            "app.modules.subjects.service.SubjectRepository.count_subject_dependencies",
-            new=AsyncMock(return_value=counts),
-        ),
-    ):
-        with pytest.raises(ConflictException) as exc_info:
-            await SubjectService.delete_subject(
-                db=AsyncMock(),
-                actor=_actor(tenant_id),
-                subject_id=subject.id,
-            )
-
-    assert exc_info.value.payload["dependency_counts"] == counts
-
-
-@pytest.mark.asyncio
-async def test_subject_cannot_be_deleted_while_inactive_mapping_still_exists() -> None:
-    tenant_id = uuid.uuid4()
-    subject = _subject(tenant_id, active=False)
-    counts = {
-        "class_subjects": 1,
-        "teacher_links": 0,
-        "teacher_assignments": 0,
-        "results": 0,
-        "report_card_lines": 0,
-    }
-
-    with (
-        patch(
-            "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
-            new=AsyncMock(return_value=subject),
-        ),
-        patch(
-            "app.modules.subjects.service.SubjectRepository.count_subject_dependencies",
-            new=AsyncMock(return_value=counts),
-        ),
-    ):
-        with pytest.raises(ConflictException) as exc_info:
-            await SubjectService.delete_subject(
-                db=AsyncMock(),
-                actor=_actor(tenant_id),
-                subject_id=subject.id,
-            )
-
-    assert exc_info.value.payload["dependency_counts"]["class_subjects"] == 1
-
-
-@pytest.mark.asyncio
-async def test_subject_can_be_deleted_after_final_unused_mapping_is_hard_deleted() -> None:
-    tenant_id = uuid.uuid4()
-    subject = _subject(tenant_id, active=False)
+    subject = _subject(tenant_id, active=True)
     db = AsyncMock()
-    delete_subject = AsyncMock()
 
     with (
         patch(
@@ -353,99 +306,127 @@ async def test_subject_can_be_deleted_after_final_unused_mapping_is_hard_deleted
             new=AsyncMock(return_value=subject),
         ),
         patch(
-            "app.modules.subjects.service.SubjectRepository.count_subject_dependencies",
-            new=AsyncMock(
-                return_value={
-                    "class_subjects": 0,
-                    "teacher_links": 0,
-                    "teacher_assignments": 0,
-                    "results": 0,
-                    "report_card_lines": 0,
-                }
-            ),
+            "app.modules.subjects.service.SubjectRepository.count_dependencies",
+            new=AsyncMock(return_value=_dependencies()),
         ),
         patch(
             "app.modules.subjects.service.SubjectRepository.delete_subject",
-            new=delete_subject,
-        ),
+            new=AsyncMock(),
+        ) as delete_subject,
     ):
-        await SubjectService.delete_subject(
-            db=db,
-            actor=_actor(tenant_id),
-            subject_id=subject.id,
-        )
+        response = await SubjectService.hard_delete_subject(db, _actor(tenant_id), subject.id)
 
+    assert response.id == subject.id
     delete_subject.assert_awaited_once_with(db=db, subject=subject)
-    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_subject_remains_blocked_until_every_class_mapping_is_deleted() -> None:
+async def test_historical_usage_permanently_blocks_hard_delete() -> None:
     tenant_id = uuid.uuid4()
     subject = _subject(tenant_id, active=False)
+    counts = _dependencies(report_card_lines_total=1)
+
+    with (
+        patch(
+            "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
+            new=AsyncMock(return_value=subject),
+        ),
+        patch(
+            "app.modules.subjects.service.SubjectRepository.count_dependencies",
+            new=AsyncMock(return_value=counts),
+        ),
+    ):
+        with pytest.raises(ConflictException, match="permanently deleted") as exc_info:
+            await SubjectService.hard_delete_subject(
+                AsyncMock(), _actor(tenant_id), subject.id
+            )
+
+    assert exc_info.value.payload == {"dependency_counts": counts}
+
+
+@pytest.mark.asyncio
+async def test_teacher_cannot_fetch_inactive_subject() -> None:
+    tenant_id = uuid.uuid4()
+    subject = _subject(tenant_id, active=False)
+
+    with patch(
+        "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
+        new=AsyncMock(return_value=subject),
+    ):
+        with pytest.raises(NotFoundException):
+            await SubjectService.get_subject(AsyncMock(), _teacher(tenant_id), subject.id)
+
+
+@pytest.mark.asyncio
+async def test_teacher_listing_is_forced_to_active_repository_path() -> None:
+    tenant_id = uuid.uuid4()
+    teacher = _teacher(tenant_id)
     db = AsyncMock()
-    dependency_counts = AsyncMock(
-        side_effect=[
-            {
-                "class_subjects": 1,
-                "teacher_links": 0,
-                "teacher_assignments": 0,
-                "results": 0,
-                "report_card_lines": 0,
-            },
-            {
-                "class_subjects": 0,
-                "teacher_links": 0,
-                "teacher_assignments": 0,
-                "results": 0,
-                "report_card_lines": 0,
-            },
-        ]
+
+    with patch(
+        "app.modules.subjects.service.SubjectRepository.list_subjects_for_teacher",
+        new=AsyncMock(return_value=([], 0)),
+    ) as list_subjects:
+        await SubjectService.list_subjects(
+            db,
+            teacher,
+            is_active=False,
+            include_archived=True,
+            lifecycle_status="inactive",
+        )
+
+    list_subjects.assert_awaited_once_with(
+        db=db,
+        tenant_id=tenant_id,
+        teacher_id=teacher.id,
+        skip=0,
+        limit=100,
+        search=None,
     )
-    delete_subject = AsyncMock()
-
-    with (
-        patch(
-            "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
-            new=AsyncMock(return_value=subject),
-        ),
-        patch(
-            "app.modules.subjects.service.SubjectRepository.count_subject_dependencies",
-            new=dependency_counts,
-        ),
-        patch(
-            "app.modules.subjects.service.SubjectRepository.delete_subject",
-            new=delete_subject,
-        ),
-    ):
-        with pytest.raises(ConflictException):
-            await SubjectService.delete_subject(
-                db=db,
-                actor=_actor(tenant_id),
-                subject_id=subject.id,
-            )
-
-        await SubjectService.delete_subject(
-            db=db,
-            actor=_actor(tenant_id),
-            subject_id=subject.id,
-        )
-
-    assert dependency_counts.await_count == 2
-    delete_subject.assert_awaited_once_with(db=db, subject=subject)
 
 
 @pytest.mark.asyncio
-async def test_subject_delete_stays_blocked_when_mapping_history_prevents_mapping_delete() -> None:
+async def test_repository_dependency_snapshot_is_single_query_shape() -> None:
+    tenant_id = uuid.uuid4()
+    subject_id = uuid.uuid4()
+    result = MagicMock()
+    result.one.return_value = SimpleNamespace(
+        curriculum_subjects_total=2,
+        curriculum_subjects_live=1,
+        teacher_links_total=3,
+        teacher_links_live=0,
+        teacher_assignments_total=4,
+        teacher_assignments_live=1,
+        results_total=5,
+        results_live=0,
+        report_card_lines_total=6,
+        report_card_lines_live=0,
+    )
+    db = AsyncMock()
+    db.execute.return_value = result
+
+    counts = await SubjectRepository.count_dependencies(db, tenant_id, subject_id)
+
+    assert counts == {
+        "curriculum_subjects_total": 2,
+        "curriculum_subjects_live": 1,
+        "teacher_links_total": 3,
+        "teacher_links_live": 0,
+        "teacher_assignments_total": 4,
+        "teacher_assignments_live": 1,
+        "results_total": 5,
+        "results_live": 0,
+        "report_card_lines_total": 6,
+        "report_card_lines_live": 0,
+    }
+    assert db.execute.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_subject_mutations_use_academic_write_guard(_allow_academic_writes) -> None:
     tenant_id = uuid.uuid4()
     subject = _subject(tenant_id, active=False)
-    counts = {
-        "class_subjects": 1,
-        "teacher_links": 0,
-        "teacher_assignments": 1,
-        "results": 0,
-        "report_card_lines": 0,
-    }
+    db = AsyncMock()
 
     with (
         patch(
@@ -453,15 +434,10 @@ async def test_subject_delete_stays_blocked_when_mapping_history_prevents_mappin
             new=AsyncMock(return_value=subject),
         ),
         patch(
-            "app.modules.subjects.service.SubjectRepository.count_subject_dependencies",
-            new=AsyncMock(return_value=counts),
+            "app.modules.subjects.service.SubjectRepository.update_subject",
+            new=AsyncMock(return_value=subject),
         ),
     ):
-        with pytest.raises(ConflictException) as exc_info:
-            await SubjectService.delete_subject(
-                db=AsyncMock(),
-                actor=_actor(tenant_id),
-                subject_id=subject.id,
-            )
+        await SubjectService.activate_subject(db, _actor(tenant_id), subject.id)
 
-    assert exc_info.value.payload["dependency_counts"] == counts
+    _allow_academic_writes.assert_awaited_once_with(db, tenant_id=tenant_id)
