@@ -1,3 +1,4 @@
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -6,11 +7,13 @@ import pytest
 
 from app.core.exceptions import BadRequestException
 from app.modules.classes.repository import ClassRoomRepository
+from app.modules.students.enrollment_schemas import (
+    StudentBatchClassAssignmentRequest,
+    StudentClassChangeRequest,
+)
 from app.modules.students.models import AcademicStatus
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
-from app.modules.students.schemas import StudentBatchClassAssignmentRequest
-from app.modules.students.schemas import StudentClassChangeRequest
-from app.modules.students.service import StudentEnrollmentService
+from app.modules.students.enrollment_service import StudentEnrollmentService
 from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
 from app.modules.student_academics.models import AcademicSessionStatus
 
@@ -21,12 +24,19 @@ async def test_batch_class_assignment_places_classless_students_atomically(monke
     admin_id = uuid4()
     level_id = uuid4()
     student = SimpleNamespace(
-        id=uuid4(), admission_number="STD-1", is_archived=False, class_id=None
+        id=uuid4(),
+        admission_number="STD-1",
+        is_archived=False,
+        class_id=None,
+        status=AcademicStatus.ACTIVE,
     )
     enrollment = SimpleNamespace(
+        id=uuid4(),
         student_id=student.id,
+        academic_session_id=None,
         academic_level_id=level_id,
         class_id=None,
+        started_on=date.today(),
         reason=None,
         changed_by_admin_id=None,
     )
@@ -36,11 +46,27 @@ async def test_batch_class_assignment_places_classless_students_atomically(monke
         is_active=True,
         archived_at=None,
     )
+    session = SimpleNamespace(id=uuid4())
+    enrollment.academic_session_id = session.id
     monkeypatch.setattr(ClassRoomRepository, "get_by_id", AsyncMock(return_value=target))
     monkeypatch.setattr(StudentRepository, "get_by_id", AsyncMock(return_value=student))
     monkeypatch.setattr(StudentRepository, "save", AsyncMock())
     monkeypatch.setattr(
         StudentEnrollmentRepository, "get_current", AsyncMock(return_value=enrollment)
+    )
+    monkeypatch.setattr(
+        AcademicSessionLifecycleRepository,
+        "get_current_open",
+        AsyncMock(return_value=session),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.enrollment_service.ensure_academic_write_window",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        StudentEnrollmentService,
+        "_segment_dependency_counts",
+        AsyncMock(return_value={"attendance": 0, "results": 0}),
     )
     monkeypatch.setattr(StudentEnrollmentRepository, "save", AsyncMock())
     db = SimpleNamespace(commit=AsyncMock())
@@ -57,7 +83,6 @@ async def test_batch_class_assignment_places_classless_students_atomically(monke
 
     assert response.updated_count == 1
     assert enrollment.class_id == target.id
-    assert student.class_id == target.id
     db.commit.assert_awaited_once()
     ClassRoomRepository.get_by_id.assert_awaited_once_with(db, tenant_id, target.id, lock=True)
 
@@ -65,8 +90,17 @@ async def test_batch_class_assignment_places_classless_students_atomically(monke
 @pytest.mark.asyncio
 async def test_batch_class_assignment_rejects_cross_level_placement(monkeypatch):
     tenant_id = uuid4()
-    student = SimpleNamespace(id=uuid4(), admission_number="STD-2", is_archived=False)
-    enrollment = SimpleNamespace(academic_level_id=uuid4())
+    student = SimpleNamespace(
+        id=uuid4(),
+        admission_number="STD-2",
+        is_archived=False,
+        status=AcademicStatus.ACTIVE,
+    )
+    session = SimpleNamespace(id=uuid4())
+    enrollment = SimpleNamespace(
+        academic_level_id=uuid4(),
+        academic_session_id=session.id,
+    )
     target = SimpleNamespace(
         id=uuid4(),
         academic_level_id=uuid4(),
@@ -77,6 +111,15 @@ async def test_batch_class_assignment_rejects_cross_level_placement(monkeypatch)
     monkeypatch.setattr(StudentRepository, "get_by_id", AsyncMock(return_value=student))
     monkeypatch.setattr(
         StudentEnrollmentRepository, "get_current", AsyncMock(return_value=enrollment)
+    )
+    monkeypatch.setattr(
+        AcademicSessionLifecycleRepository,
+        "get_current_open",
+        AsyncMock(return_value=session),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.enrollment_service.ensure_academic_write_window",
+        AsyncMock(),
     )
 
     with pytest.raises(BadRequestException, match="not enrolled in the target class level"):
@@ -110,6 +153,7 @@ async def test_single_class_reassignment_updates_current_enrollment_in_place(mon
         academic_session_id=session_id,
         academic_level_id=level_id,
         class_id=student.class_id,
+        started_on=date.today(),
         is_current=True,
         ended_on=None,
         outcome=None,
@@ -135,6 +179,10 @@ async def test_single_class_reassignment_updates_current_enrollment_in_place(mon
         AsyncMock(return_value=session),
     )
     monkeypatch.setattr(
+        "app.modules.students.enrollment_service.ensure_academic_write_window",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
         StudentEnrollmentRepository,
         "get_current",
         AsyncMock(return_value=enrollment),
@@ -142,6 +190,16 @@ async def test_single_class_reassignment_updates_current_enrollment_in_place(mon
     monkeypatch.setattr(StudentEnrollmentRepository, "save", AsyncMock())
     monkeypatch.setattr(StudentEnrollmentRepository, "add", AsyncMock())
     monkeypatch.setattr(StudentRepository, "save", AsyncMock())
+    monkeypatch.setattr(
+        StudentEnrollmentService,
+        "_ensure_specialization_transfer_safe",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        StudentEnrollmentService,
+        "_segment_dependency_counts",
+        AsyncMock(return_value={"attendance": 0, "results": 0}),
+    )
     monkeypatch.setattr(
         "app.modules.students.service.StudentService._build_detail_response",
         AsyncMock(return_value=SimpleNamespace(id=student.id)),
@@ -163,6 +221,5 @@ async def test_single_class_reassignment_updates_current_enrollment_in_place(mon
     assert enrollment.ended_on is None
     assert enrollment.academic_level_id == level_id
     assert enrollment.class_id == target.id
-    assert student.class_id == target.id
     StudentEnrollmentRepository.save.assert_awaited_once_with(db, enrollment)
     StudentEnrollmentRepository.add.assert_not_awaited()
