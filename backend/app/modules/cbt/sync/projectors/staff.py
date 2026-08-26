@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Any
 
 from sqlalchemy import or_, select
@@ -94,11 +95,12 @@ def project_teacher(
 def project_teacher_assignment(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Project assignment structure while CBT enforces its effective date window.
+    """Project current and scheduled assignment structure for local date evaluation.
 
-    Date-based usability cannot be modeled as Cloud visibility because a date can
-    change without a database mutation. The effective range therefore travels in
-    the durable contract and CBT decides whether the assignment is usable today.
+    A scheduled assignment must reach CBT before its effective date because the date
+    can advance without another Cloud mutation. Ended assignments are omitted from
+    fresh projections; CBT also owns date-based usability for snapshots it already
+    holds.
     """
 
     assignment_row = session.execute(
@@ -117,7 +119,7 @@ def project_teacher_assignment(
         return None
     assignment, membership, account = assignment_row
     if (
-        not assignment.is_active
+        (assignment.effective_to is not None and assignment.effective_to < date.today())
         or membership.status != TeacherMembershipStatus.ACTIVE
         or account.account_status != TeacherAccountStatus.ACTIVE
         or not account.is_active
@@ -191,7 +193,6 @@ def project_teacher_assignment(
         teacher_membership_id=assignment.teacher_membership_id,
         class_id=assignment.class_id,
         curriculum_subject_id=assignment.curriculum_subject_id,
-        is_active=assignment.is_active,
         effective_from=assignment.effective_from,
         effective_to=assignment.effective_to,
     ).model_dump(mode="json")
