@@ -51,7 +51,7 @@ def test_academic_structure_patch_rejects_null_non_clearable_fields() -> None:
     _assert_invalid(AcademicLevelUpdate, category=None)
     _assert_invalid(AcademicLevelUpdate, position=None)
     _assert_invalid(ArmLabelUpdate, label=None)
-    _assert_invalid(ArmLabelUpdate, is_active=None)
+    _assert_invalid(ArmLabelUpdate, is_active=False)
     _assert_invalid(ClassRoomUpdate, academic_level_id=None)
     _assert_invalid(ClassRoomUpdate, arm_label_id=None)
 
