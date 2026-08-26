@@ -38,7 +38,7 @@ def _clean_optional_string(value: str | None) -> str | None:
 
 
 class SubjectCreate(InputBase):
-    """Pydantic schema for the subjects domain."""
+    """Create a tenant-scoped subject catalogue entry."""
 
     name: str = Field(
         ...,
@@ -49,6 +49,7 @@ class SubjectCreate(InputBase):
     )
     code: str | None = Field(
         default=None,
+        min_length=2,
         max_length=30,
         examples=["MATH"],
         description="short code for subject",
@@ -62,25 +63,19 @@ class SubjectCreate(InputBase):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        """Validate name."""
-
         cleaned_value = value.strip()
-
         if not cleaned_value:
             raise ValueError("name cannot be empty")
-
         return cleaned_value
 
     @field_validator("code", "description", mode="before")
     @classmethod
     def clean_optional_text_fields(cls, value: str | None) -> str | None:
-        """Normalize optional text fields."""
-
         return _clean_optional_string(value)
 
 
 class SubjectUpdate(InputBase):
-    """Partial subject update: omitted fields are preserved and nullable fields may be cleared."""
+    """Partial subject update; identity changes are further guarded by the service."""
 
     name: str | None = Field(default=None, min_length=2, max_length=100)
     code: str | None = Field(default=None, min_length=2, max_length=30)
@@ -89,8 +84,6 @@ class SubjectUpdate(InputBase):
     @field_validator("name", mode="before")
     @classmethod
     def clean_name(cls, value: str | None) -> str:
-        """Reject null/blank names while allowing the field to be omitted entirely."""
-
         if value is None:
             raise ValueError(f"name {_PATCH_NULL_ERROR}")
         cleaned_value = value.strip()
@@ -101,8 +94,6 @@ class SubjectUpdate(InputBase):
     @field_validator("code", "description", mode="before")
     @classmethod
     def clean_optional_text_fields(cls, value: str | None) -> str | None:
-        """Normalize clearable optional text fields."""
-
         return _clean_optional_string(value)
 
     @model_validator(mode="after")
@@ -110,12 +101,6 @@ class SubjectUpdate(InputBase):
         if not self.model_fields_set:
             raise ValueError("at least one subject field must be provided")
         return self
-
-
-class SubjectStatusUpdate(InputBase):
-    """Pydantic schema for the subjects domain."""
-
-    is_active: bool
 
 
 class SubjectActivateRequest(InputBase):
@@ -149,7 +134,7 @@ class SubjectTeacherResponse(OutputBase):
 
 
 class SubjectResponse(OutputBase):
-    """Pydantic schema for the subjects domain."""
+    """Subject catalogue response."""
 
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -167,7 +152,5 @@ class SubjectResponse(OutputBase):
 
 
 class SubjectListResponse(OutputBase):
-    """Pydantic schema for the subjects domain."""
-
     items: list[SubjectResponse]
     total: int
