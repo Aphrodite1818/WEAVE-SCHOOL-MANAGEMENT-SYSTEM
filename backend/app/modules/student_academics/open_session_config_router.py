@@ -8,6 +8,7 @@ from typing import Annotated, TypeAlias
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.exc import IntegrityError
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
@@ -19,6 +20,7 @@ from app.modules.student_academics.schemas import (
     AcademicSessionUpdate,
 )
 from app.modules.student_academics.service import StudentAcademicService
+from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(
@@ -39,6 +41,10 @@ async def configure_academic_session(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> AcademicSessionResponse:
+    # This dedicated override is registered separately from the aggregate
+    # academic router, so acquire the canonical tenant lifecycle lock directly.
+    await ensure_academic_write_window(db, tenant_id=current_admin.tenant_id)
+
     session = await StudentAcademicRepository.get_academic_session_by_id(
         db,
         current_admin.tenant_id,
@@ -59,7 +65,34 @@ async def configure_academic_session(
     await StudentAcademicService._validate_session_dates(
         start_date=effective_start_date,
         end_date=effective_end_date,
+        require_complete=session.status == AcademicSessionStatus.OPEN,
     )
+
+    if session.status == AcademicSessionStatus.OPEN:
+        terms, _ = await StudentAcademicRepository.list_terms_by_session(
+            db,
+            current_admin.tenant_id,
+            session.id,
+            limit=500,
+            statuses=set(),
+        )
+        for term in terms:
+            if (
+                effective_start_date is not None
+                and term.start_date is not None
+                and term.start_date < effective_start_date
+            ):
+                raise ConflictException(
+                    "Session start date cannot move after an existing term starts."
+                )
+            if (
+                effective_end_date is not None
+                and term.end_date is not None
+                and term.end_date > effective_end_date
+            ):
+                raise ConflictException(
+                    "Session end date cannot move before an existing term ends."
+                )
 
     if "name" in update_data and update_data["name"] != session.name:
         existing = await StudentAcademicRepository.get_academic_session_by_name(
@@ -82,6 +115,19 @@ async def configure_academic_session(
         start_date=effective_start_date,
         end_date=effective_end_date,
     )
+    if next_session_id is not None:
+        next_session = await StudentAcademicRepository.get_academic_session_by_id(
+            db,
+            current_admin.tenant_id,
+            next_session_id,
+            lock=True,
+        )
+        if next_session is None:
+            raise NotFoundException("Next academic session not found.")
+        if next_session.status != AcademicSessionStatus.DRAFT:
+            raise ConflictException(
+                "The configured next academic session must be in draft status."
+            )
 
     previous_values = {
         "name": session.name,
@@ -94,21 +140,28 @@ async def configure_academic_session(
     for field, value in update_data.items():
         setattr(session, field, value)
 
-    session = await StudentAcademicRepository.save_academic_session(db, session)
-    await StudentAcademicService._record_academic_lifecycle(
-        db,
-        tenant_id=current_admin.tenant_id,
-        entity_type="session",
-        entity_id=session.id,
-        action="configuration_updated",
-        previous_status=session.status.value,
-        new_status=session.status.value,
-        acting_admin_id=current_admin.id,
-        metadata={
-            "previous": previous_values,
-            "updated_fields": sorted(update_data.keys()),
-        },
-    )
-    await db.commit()
+    try:
+        session = await StudentAcademicRepository.save_academic_session(db, session)
+        await StudentAcademicService._record_academic_lifecycle(
+            db,
+            tenant_id=current_admin.tenant_id,
+            entity_type="session",
+            entity_id=session.id,
+            action="configuration_updated",
+            previous_status=session.status.value,
+            new_status=session.status.value,
+            acting_admin_id=current_admin.id,
+            metadata={
+                "previous": previous_values,
+                "updated_fields": sorted(update_data.keys()),
+            },
+        )
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ConflictException(
+            "Academic session configuration conflicts with another session or lifecycle invariant."
+        ) from exc
+
     await db.refresh(session)
     return AcademicSessionResponse.model_validate(session)
