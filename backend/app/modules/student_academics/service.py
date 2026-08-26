@@ -41,6 +41,7 @@ from app.modules.student_academics.models import (
     StudentSubjectResult,
     TeacherAssignment,
     TeacherAssignmentLifecycleAudit,
+    TeacherAssignmentState,
 )
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.schemas import (
@@ -84,6 +85,7 @@ from app.modules.students.repository import (
 )
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.teachers.models import (
+    TeacherAccount,
     TeacherAccountStatus,
     TeacherMembership,
     TeacherMembershipStatus,
@@ -1234,6 +1236,7 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         curriculum_subject_id: uuid.UUID,
         require_active: bool = True,
+        lock: bool = False,
     ) -> tuple[CurriculumSubject, Curriculum]:
         query = (
             select(CurriculumSubject, Curriculum)
@@ -1246,6 +1249,8 @@ class StudentAcademicService:
         )
         if require_active:
             query = query.where(CurriculumSubject.is_active.is_(True))
+        if lock:
+            query = query.with_for_update(of=CurriculumSubject)
         row = (await db.execute(query)).first()
         if row is None:
             raise NotFoundException(
@@ -1256,6 +1261,24 @@ class StudentAcademicService:
         return row[0], row[1]
 
     @staticmethod
+    async def _teacher_assignment_term_context(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> AcademicTerm:
+        term = await StudentAcademicRepository.get_term_by_id(
+            db, tenant_id, academic_term_id, lock=True
+        )
+        if term is None:
+            raise NotFoundException("Academic term not found.")
+        if term.status not in {AcademicTermStatus.DRAFT, AcademicTermStatus.OPEN}:
+            raise ConflictException(
+                "Teacher assignments can only be changed using a draft or open academic term."
+            )
+        return term
+
+    @staticmethod
     async def _ensure_curriculum_subject_offered_to_class(
         db: AsyncSession,
         *,
@@ -1264,20 +1287,24 @@ class StudentAcademicService:
         curriculum_subject: CurriculumSubject,
         curriculum: Curriculum,
         academic_term_id: uuid.UUID,
-    ) -> None:
-        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id)
+    ) -> AcademicTerm:
+        term = await StudentAcademicService._teacher_assignment_term_context(
+            db,
+            tenant_id=tenant_id,
+            academic_term_id=academic_term_id,
+        )
+        classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id, lock=True)
         if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise ConflictException("Classroom must be active before assigning a teacher.")
-        level = await AcademicLevelRepository.get_by_id(db, tenant_id, classroom.academic_level_id)
+        level = await AcademicLevelRepository.get_by_id(
+            db, tenant_id, classroom.academic_level_id, lock=True
+        )
         if level is None or level.status != AcademicLevelStatus.ACTIVE:
             raise ConflictException("Academic level must be active before assigning a teacher.")
         if classroom.academic_level_id != curriculum.academic_level_id:
             raise ConflictException(
                 "The selected curriculum subject does not belong to the class academic level."
             )
-        term = await StudentAcademicRepository.get_term_by_id(db, tenant_id, academic_term_id)
-        if term is None:
-            raise NotFoundException("Academic term not found.")
         class_department = (
             await db.execute(
                 select(ClassTermDepartmentAssignment).where(
@@ -1300,6 +1327,7 @@ class StudentAcademicService:
             raise ConflictException(
                 "This curriculum subject is not offered to the class for the selected term."
             )
+        return term
 
     @staticmethod
     async def _validate_teacher_capability(
@@ -1316,6 +1344,19 @@ class StudentAcademicService:
         )
         if membership is None:
             raise NotFoundException("Teacher membership not found.")
+        await db.execute(
+            select(TeacherMembership.id)
+            .where(
+                TeacherMembership.tenant_id == tenant_id,
+                TeacherMembership.id == teacher_membership_id,
+            )
+            .with_for_update()
+        )
+        await db.execute(
+            select(TeacherAccount.id)
+            .where(TeacherAccount.id == membership.teacher_account_id)
+            .with_for_update()
+        )
         if membership.status != TeacherMembershipStatus.ACTIVE:
             raise BadRequestException("Teacher membership is not active.")
         if (
@@ -1373,7 +1414,7 @@ class StudentAcademicService:
             subject_code=subject.code if subject else None,
             teacher_name=teacher_name,
             teacher_staff_id=teacher.staff_id if teacher else None,
-            is_active=assignment.is_active,
+            status=assignment.state,
             effective_from=assignment.effective_from,
             effective_to=assignment.effective_to,
             created_at=assignment.created_at,
@@ -1398,7 +1439,7 @@ class StudentAcademicService:
             subject_code=record.get("subject_code"),
             teacher_name=record.get("teacher_name"),
             teacher_staff_id=record.get("teacher_staff_id"),
-            is_active=assignment.is_active,
+            status=assignment.state,
             effective_from=assignment.effective_from,
             effective_to=assignment.effective_to,
             created_at=assignment.created_at,
@@ -1425,8 +1466,7 @@ class StudentAcademicService:
         acting_admin_id: uuid.UUID | None = None,
         reason: str | None = None,
     ) -> None:
-        await StudentAcademicRepository.create_teacher_assignment_lifecycle_audit(
-            db,
+        db.add(
             TeacherAssignmentLifecycleAudit(
                 tenant_id=tenant_id,
                 assignment_id=assignment_id,
@@ -1443,8 +1483,29 @@ class StudentAcademicService:
                 new_effective_to=new_effective_to,
                 acting_admin_id=acting_admin_id,
                 reason=reason,
-            ),
+            )
         )
+        await db.flush()
+
+    @staticmethod
+    async def _ensure_backdated_assignment_change_safe(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        assignment: TeacherAssignment,
+        effective_date: date,
+    ) -> None:
+        if effective_date >= date.today():
+            return
+        dependencies = await StudentAcademicRepository.count_teacher_assignment_dependencies(
+            db, tenant_id, assignment.id
+        )
+        blockers = {key: value for key, value in dependencies.items() if value > 0}
+        if blockers:
+            raise ConflictException(
+                "A backdated teacher-assignment correction would contradict preserved academic history.",
+                payload={"dependency_counts": blockers},
+            )
 
     @staticmethod
     async def create_teacher_assignment(
@@ -1454,15 +1515,15 @@ class StudentAcademicService:
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
-        (
-            curriculum_subject,
-            curriculum,
-        ) = await StudentAcademicService._load_curriculum_subject_context(
-            db,
-            tenant_id=tenant_id,
-            curriculum_subject_id=payload.curriculum_subject_id,
+        curriculum_subject, curriculum = (
+            await StudentAcademicService._load_curriculum_subject_context(
+                db,
+                tenant_id=tenant_id,
+                curriculum_subject_id=payload.curriculum_subject_id,
+                lock=True,
+            )
         )
-        await StudentAcademicService._ensure_curriculum_subject_offered_to_class(
+        term = await StudentAcademicService._ensure_curriculum_subject_offered_to_class(
             db,
             tenant_id=tenant_id,
             class_id=payload.class_id,
@@ -1471,7 +1532,7 @@ class StudentAcademicService:
             academic_term_id=payload.academic_term_id,
         )
         subject = await SubjectRepository.get_subject_by_id(
-            db, tenant_id, curriculum_subject.subject_id
+            db, tenant_id, curriculum_subject.subject_id, lock=True
         )
         if subject is None or not subject.is_active or subject.archived_at is not None:
             raise ConflictException("Subject must be active before assigning a teacher.")
@@ -1480,19 +1541,9 @@ class StudentAcademicService:
             tenant_id=tenant_id,
             teacher_membership_id=payload.teacher_membership_id,
         )
-        active = (
-            await StudentAcademicRepository.get_active_teacher_assignment_for_curriculum_subject(
-                db,
-                tenant_id,
-                curriculum_subject.id,
-                payload.class_id,
-            )
-        )
-        if active is not None:
-            raise ConflictException(
-                "An active teacher assignment already exists for this curriculum subject."
-            )
         effective_from = payload.effective_from or date.today()
+        if term.end_date is not None and effective_from > term.end_date:
+            raise ConflictException("Teacher assignment starts after the selected term ends.")
         history = await StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject(
             db,
             tenant_id,
@@ -1512,7 +1563,6 @@ class StudentAcademicService:
                     class_id=payload.class_id,
                     curriculum_subject_id=curriculum_subject.id,
                     teacher_membership_id=payload.teacher_membership_id,
-                    is_active=True,
                     effective_from=effective_from,
                     effective_to=None,
                 ),
@@ -1520,7 +1570,7 @@ class StudentAcademicService:
         except IntegrityError as exc:
             await db.rollback()
             raise ConflictException(
-                "An active teacher assignment already exists for this curriculum subject."
+                "Teacher assignment effective range overlaps existing assignment history."
             ) from exc
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
@@ -1531,7 +1581,7 @@ class StudentAcademicService:
             action="assignment_created",
             new_teacher_membership_id=assignment.teacher_membership_id,
             previous_state=None,
-            new_state="active",
+            new_state=assignment.state.value,
             new_effective_from=assignment.effective_from,
             acting_admin_id=acting_admin_id,
         )
@@ -1553,17 +1603,27 @@ class StudentAcademicService:
             db, tenant_id, assignment_id
         )
         has_dependencies = any(counts.values())
-        blockers = (
-            ["Historical results or report-card lines reference this assignment."]
-            if has_dependencies
-            else []
-        )
+        blockers: list[str] = []
+        if has_dependencies:
+            blockers.append("Historical results or report-card lines reference this assignment.")
+        if assignment.state != TeacherAssignmentState.SCHEDULED:
+            blockers.append(
+                "Only a never-effective scheduled teacher assignment can be permanently deleted."
+            )
         return TeacherAssignmentDependencyPreview(
             assignment_id=assignment.id,
             dependency_counts=counts,
-            can_end=assignment.is_active,
-            can_reassign=assignment.is_active and assignment.effective_to is None,
-            can_delete=(not assignment.is_active and not has_dependencies),
+            can_end=(
+                assignment.state == TeacherAssignmentState.CURRENT
+                and assignment.effective_to is None
+            ),
+            can_reassign=(
+                assignment.state == TeacherAssignmentState.CURRENT
+                and assignment.effective_to is None
+            ),
+            can_delete=(
+                assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
+            ),
             blocker_messages=blockers,
         )
 
@@ -1576,24 +1636,42 @@ class StudentAcademicService:
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
+        await StudentAcademicService._teacher_assignment_term_context(
+            db,
+            tenant_id=tenant_id,
+            academic_term_id=payload.academic_term_id,
+        )
         assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db, tenant_id, assignment_id, lock=True
         )
         if assignment is None:
             raise NotFoundException("Teacher assignment not found.")
-        if not assignment.is_active:
-            if assignment.effective_to is None:
-                raise ConflictException("Historical assignment is missing an effective end date.")
+        if assignment.state == TeacherAssignmentState.SCHEDULED:
+            raise ConflictException(
+                "Scheduled assignments have not started; cancel the scheduled assignment instead."
+            )
+        if assignment.state == TeacherAssignmentState.ENDED:
             if payload.effective_to is not None and payload.effective_to != assignment.effective_to:
                 raise ConflictException(
                     "Teacher assignment is already ended with a different effective date."
                 )
             return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
+        if assignment.effective_to is not None:
+            if payload.effective_to is None or payload.effective_to == assignment.effective_to:
+                return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
+            raise ConflictException(
+                "Teacher assignment already has a scheduled end date."
+            )
         effective_to = payload.effective_to or date.today()
         if effective_to < assignment.effective_from:
             raise ConflictException("Assignment end date cannot be before its start date.")
-        previous_teacher = assignment.teacher_membership_id
-        assignment.is_active = False
+        await StudentAcademicService._ensure_backdated_assignment_change_safe(
+            db,
+            tenant_id=tenant_id,
+            assignment=assignment,
+            effective_date=effective_to,
+        )
+        previous_state = assignment.state.value
         assignment.effective_to = effective_to
         assignment = await StudentAcademicRepository.save_teacher_assignment(db, assignment)
         await StudentAcademicService._record_teacher_assignment_audit(
@@ -1602,15 +1680,17 @@ class StudentAcademicService:
             assignment_id=assignment.id,
             class_id=assignment.class_id,
             curriculum_subject_id=assignment.curriculum_subject_id,
-            action="assignment_ended",
-            previous_teacher_membership_id=previous_teacher,
-            new_teacher_membership_id=previous_teacher,
-            previous_state="active",
-            new_state="ended",
+            action="assignment_end_set",
+            previous_teacher_membership_id=assignment.teacher_membership_id,
+            new_teacher_membership_id=assignment.teacher_membership_id,
+            previous_state=previous_state,
+            new_state=assignment.state.value,
             previous_effective_from=assignment.effective_from,
+            previous_effective_to=None,
             new_effective_from=assignment.effective_from,
             new_effective_to=assignment.effective_to,
             acting_admin_id=acting_admin_id,
+            reason=payload.reason,
         )
         await db.commit()
         return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
@@ -1629,44 +1709,31 @@ class StudentAcademicService:
         )
         if current is None:
             raise NotFoundException("Teacher assignment not found.")
-        if not current.is_active or current.effective_to is not None:
-            raise ConflictException("Only the current active teacher assignment can be reassigned.")
-        (
-            curriculum_subject,
-            curriculum,
-        ) = await StudentAcademicService._load_curriculum_subject_context(
-            db,
-            tenant_id=tenant_id,
-            curriculum_subject_id=current.curriculum_subject_id,
-        )
-        current_term = await StudentAcademicRepository.get_current_term(db, tenant_id)
-        if current_term is not None:
-            await StudentAcademicService._ensure_curriculum_subject_offered_to_class(
+        if current.state != TeacherAssignmentState.CURRENT or current.effective_to is not None:
+            raise ConflictException(
+                "Only the current assignment without a scheduled end can be reassigned."
+            )
+        curriculum_subject, curriculum = (
+            await StudentAcademicService._load_curriculum_subject_context(
                 db,
                 tenant_id=tenant_id,
-                class_id=current.class_id,
-                curriculum_subject=curriculum_subject,
-                curriculum=curriculum,
-                academic_term_id=current_term.id,
+                curriculum_subject_id=current.curriculum_subject_id,
+                lock=True,
             )
+        )
+        term = await StudentAcademicService._ensure_curriculum_subject_offered_to_class(
+            db,
+            tenant_id=tenant_id,
+            class_id=current.class_id,
+            curriculum_subject=curriculum_subject,
+            curriculum=curriculum,
+            academic_term_id=payload.academic_term_id,
+        )
         await StudentAcademicService._validate_teacher_capability(
             db,
             tenant_id=tenant_id,
             teacher_membership_id=payload.teacher_membership_id,
         )
-        active = (
-            await StudentAcademicRepository.get_active_teacher_assignment_for_curriculum_subject(
-                db,
-                tenant_id,
-                current.curriculum_subject_id,
-                current.class_id,
-                lock=True,
-            )
-        )
-        if active is None or active.id != current.id:
-            raise ConflictException(
-                "The selected assignment is no longer the active teacher assignment."
-            )
         if current.teacher_membership_id == payload.teacher_membership_id:
             raise ConflictException("This teacher is already assigned.")
         effective_from = payload.effective_from or date.today()
@@ -1674,6 +1741,14 @@ class StudentAcademicService:
             raise ConflictException(
                 "Replacement effective date must be after the current assignment start date."
             )
+        if term.end_date is not None and effective_from > term.end_date:
+            raise ConflictException("Replacement starts after the selected term ends.")
+        await StudentAcademicService._ensure_backdated_assignment_change_safe(
+            db,
+            tenant_id=tenant_id,
+            assignment=current,
+            effective_date=effective_from,
+        )
         later = await StudentAcademicRepository.get_later_teacher_assignments(
             db,
             tenant_id,
@@ -1685,10 +1760,10 @@ class StudentAcademicService:
         )
         if later:
             raise ConflictException(
-                "Cannot reassign because later assignment history already exists."
+                "Cannot reassign because a later assignment is already scheduled or preserved."
             )
         previous_teacher = current.teacher_membership_id
-        current.is_active = False
+        previous_state = current.state.value
         current.effective_to = effective_from - timedelta(days=1)
         if current.effective_to < current.effective_from:
             raise ConflictException(
@@ -1703,7 +1778,6 @@ class StudentAcademicService:
                     class_id=current.class_id,
                     curriculum_subject_id=current.curriculum_subject_id,
                     teacher_membership_id=payload.teacher_membership_id,
-                    is_active=True,
                     effective_from=effective_from,
                     effective_to=None,
                 ),
@@ -1711,7 +1785,7 @@ class StudentAcademicService:
         except IntegrityError as exc:
             await db.rollback()
             raise ConflictException(
-                "An active teacher assignment already exists for this curriculum subject."
+                "Replacement teacher assignment overlaps existing assignment history."
             ) from exc
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
@@ -1722,12 +1796,13 @@ class StudentAcademicService:
             action="teacher_reassigned",
             previous_teacher_membership_id=previous_teacher,
             new_teacher_membership_id=replacement.teacher_membership_id,
-            previous_state="active",
-            new_state="active",
+            previous_state=previous_state,
+            new_state=replacement.state.value,
             previous_effective_from=current.effective_from,
             previous_effective_to=current.effective_to,
             new_effective_from=replacement.effective_from,
             acting_admin_id=acting_admin_id,
+            reason=payload.reason,
         )
         await db.commit()
         return await StudentAcademicService._build_teacher_assignment_response(db, replacement)
@@ -1741,34 +1816,65 @@ class StudentAcademicService:
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
         _ = payload.confirmation
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
         assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db, tenant_id, assignment_id, lock=True
         )
         if assignment is None:
             raise NotFoundException("Teacher assignment not found.")
-        if assignment.is_active:
-            raise ConflictException("End the teacher assignment before deleting it.")
         preview = await StudentAcademicService.teacher_assignment_dependency_preview(
             db, tenant_id, assignment.id
         )
         if not preview.can_delete:
             StudentAcademicService._raise_dependency_conflict(
-                "This teacher assignment has dependencies and cannot be deleted.", preview
+                "Only a never-effective scheduled teacher assignment can be deleted.", preview
             )
         response = await StudentAcademicService._build_teacher_assignment_response(db, assignment)
+
+        replacement_audit = (
+            await db.execute(
+                select(TeacherAssignmentLifecycleAudit).where(
+                    TeacherAssignmentLifecycleAudit.tenant_id == tenant_id,
+                    TeacherAssignmentLifecycleAudit.assignment_id == assignment.id,
+                    TeacherAssignmentLifecycleAudit.action == "teacher_reassigned",
+                )
+            )
+        ).scalar_one_or_none()
+        if replacement_audit is not None:
+            predecessor = (
+                await db.execute(
+                    select(TeacherAssignment)
+                    .where(
+                        TeacherAssignment.tenant_id == tenant_id,
+                        TeacherAssignment.class_id == assignment.class_id,
+                        TeacherAssignment.curriculum_subject_id
+                        == assignment.curriculum_subject_id,
+                        TeacherAssignment.teacher_membership_id
+                        == replacement_audit.previous_teacher_membership_id,
+                        TeacherAssignment.effective_to
+                        == assignment.effective_from - timedelta(days=1),
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if predecessor is not None and predecessor.effective_to >= date.today():
+                predecessor.effective_to = None
+                await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
+
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
             tenant_id=tenant_id,
             assignment_id=assignment.id,
             class_id=assignment.class_id,
             curriculum_subject_id=assignment.curriculum_subject_id,
-            action="assignment_deleted",
+            action="scheduled_assignment_deleted",
             previous_teacher_membership_id=assignment.teacher_membership_id,
-            previous_state="ended",
+            previous_state=assignment.state.value,
             new_state="deleted",
             previous_effective_from=assignment.effective_from,
             previous_effective_to=assignment.effective_to,
             acting_admin_id=acting_admin_id,
+            reason=payload.reason,
         )
         await StudentAcademicRepository.delete_teacher_assignment(db, assignment)
         await db.commit()
