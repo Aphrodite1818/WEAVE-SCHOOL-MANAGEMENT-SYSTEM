@@ -117,6 +117,7 @@ async def test_create_subject_defaults_active_and_canonicalizes_values() -> None
         subject.updated_at = created.updated_at
         return subject
 
+    create_mock = AsyncMock(side_effect=create_subject)
     with (
         patch(
             "app.modules.subjects.service.SubjectRepository.get_subject_by_normalized_name",
@@ -128,14 +129,14 @@ async def test_create_subject_defaults_active_and_canonicalizes_values() -> None
         ),
         patch(
             "app.modules.subjects.service.SubjectRepository.create_subject",
-            new=AsyncMock(side_effect=create_subject),
+            new=create_mock,
         ),
         patch(
             "app.modules.subjects.service.SubjectRepository.get_subject_by_id",
             new=AsyncMock(return_value=created),
         ),
     ):
-        subject = await SubjectService.create_subject(
+        await SubjectService.create_subject(
             db=db,
             actor=_actor(tenant_id),
             subject_data=SubjectCreate(
@@ -145,9 +146,13 @@ async def test_create_subject_defaults_active_and_canonicalizes_values() -> None
             ),
         )
 
-    assert subject.is_active is True
-    created_arg = SubjectRepository.create_subject.call_args if False else None
-    assert db.commit.await_count == 1
+    created_subject = create_mock.await_args.kwargs["subject"]
+    assert created_subject.is_active is True
+    assert created_subject.name == "Further Mathematics"
+    assert created_subject.normalized_name == "further mathematics"
+    assert created_subject.code == "MTH"
+    assert created_subject.normalized_code == "MTH"
+    assert created_subject.description == "Numbers and reasoning"
 
 
 @pytest.mark.asyncio
