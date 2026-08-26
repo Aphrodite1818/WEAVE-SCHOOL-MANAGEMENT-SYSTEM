@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
@@ -25,7 +25,6 @@ from app.modules.student_academics.models import (
     StudentProgressionRun,
     StudentSubjectResult,
     TeacherAssignment,
-    TeacherAssignmentLifecycleAudit,
 )
 from app.modules.students.models import Student, StudentEnrollment
 from app.modules.subjects.models import Subject
@@ -856,17 +855,20 @@ class StudentAcademicRepository:
         exclude_id: uuid.UUID | None = None,
         lock: bool = False,
     ) -> TeacherAssignment | None:
+        """Return the teacher assignment effective today for one class-subject scope."""
+
         filters = [
             TeacherAssignment.tenant_id == tenant_id,
             TeacherAssignment.curriculum_subject_id == curriculum_subject_id,
             TeacherAssignment.class_id == class_id,
             TeacherAssignment.is_active.is_(True),
-            TeacherAssignment.effective_to.is_(None),
         ]
         if exclude_id is not None:
             filters.append(TeacherAssignment.id != exclude_id)
         query = (
-            select(TeacherAssignment).where(*filters).order_by(TeacherAssignment.created_at.desc())
+            select(TeacherAssignment)
+            .where(*filters)
+            .order_by(TeacherAssignment.effective_from.desc())
         )
         if lock:
             query = query.with_for_update()
@@ -953,18 +955,16 @@ class StudentAcademicRepository:
             filters.append(TeacherAssignment.class_id == class_id)
         if subject_id is not None:
             filters.append(CurriculumSubject.subject_id == subject_id)
-        if status == "active":
-            filters.extend(
-                [
-                    TeacherAssignment.is_active.is_(True),
-                    TeacherAssignment.effective_to.is_(None),
-                ]
-            )
+        today = func.current_date()
+        if status == "scheduled":
+            filters.append(TeacherAssignment.effective_from > today)
+        elif status == "current":
+            filters.append(TeacherAssignment.is_active.is_(True))
         elif status == "ended":
             filters.append(
-                or_(
-                    TeacherAssignment.is_active.is_(False),
+                and_(
                     TeacherAssignment.effective_to.is_not(None),
+                    TeacherAssignment.effective_to < today,
                 )
             )
         if effective_from_from is not None:
@@ -1020,6 +1020,11 @@ class StudentAcademicRepository:
         total = (
             await db.execute(select(func.count()).select_from(_base_query().subquery()))
         ).scalar_one()
+        lifecycle_order = case(
+            (TeacherAssignment.is_active.is_(True), 0),
+            (TeacherAssignment.effective_from > today, 1),
+            else_=2,
+        )
         rows = (
             await db.execute(
                 select(
@@ -1058,7 +1063,8 @@ class StudentAcademicRepository:
                 )
                 .where(*filters)
                 .order_by(
-                    TeacherAssignment.is_active.desc(),
+                    lifecycle_order.asc(),
+                    TeacherAssignment.effective_from.desc(),
                     TeacherAssignment.created_at.desc(),
                 )
                 .offset(skip)
@@ -1138,18 +1144,6 @@ class StudentAcademicRepository:
     async def delete_teacher_assignment(db: AsyncSession, assignment: TeacherAssignment) -> None:
         await db.delete(assignment)
         await db.flush()
-
-    @staticmethod
-    async def create_teacher_assignment_lifecycle_audit(
-        db: AsyncSession,
-        audit: TeacherAssignmentLifecycleAudit,
-    ) -> TeacherAssignmentLifecycleAudit:
-        audit_table = (
-            await db.execute(select(func.to_regclass("public.teacher_assignment_lifecycle_audits")))
-        ).scalar_one()
-        if audit_table is None:
-            return audit
-        return await StudentAcademicRepository._save(db, audit)
 
     @staticmethod
     async def count_scores_for_teacher_assignment(
