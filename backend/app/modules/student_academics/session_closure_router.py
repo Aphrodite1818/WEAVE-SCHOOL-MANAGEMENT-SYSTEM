@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
+from app.modules.student_academics.session_closure_enrollment_guard import SessionClosureService
 from app.modules.student_academics.session_closure_schemas import (
     SessionClosureAuditResponse,
     SessionClosureFinalizeRequest,
@@ -16,7 +17,6 @@ from app.modules.student_academics.session_closure_schemas import (
     SessionClosureStatusResponse,
     SessionProgressionRetryRequest,
 )
-from app.modules.student_academics.session_closure_service import SessionClosureService
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(
