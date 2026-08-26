@@ -1191,7 +1191,7 @@ class StudentAcademicService:
         current = Decimal("0.00")
         for scale in sorted_scales:
             if scale.min_score > current:
-                missing.append(f"{current}-{scale.min_score - Decimal('0.01')}" )
+                missing.append(f"{current}-{scale.min_score - Decimal('0.01')}")
             elif scale.min_score < current:
                 overlaps.append(f"{scale.min_score}-{current}")
             current = max(current, scale.max_score + Decimal("0.01"))
