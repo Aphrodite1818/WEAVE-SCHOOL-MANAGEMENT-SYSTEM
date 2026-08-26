@@ -228,8 +228,10 @@ class AcademicProgressionService:
         next_session: AcademicSession,
         created_by_admin_id: uuid.UUID | None,
     ) -> StudentProgressionItem:
-        if next_session.status not in {AcademicSessionStatus.DRAFT, AcademicSessionStatus.OPEN}:
-            raise ConflictException("The target academic session is not available.")
+        if next_session.status != AcademicSessionStatus.DRAFT:
+            raise ConflictException("The target academic session must remain draft during progression.")
+        if next_session.start_date is None:
+            raise ConflictException("The target academic session is missing its start date.")
         current = await StudentEnrollmentRepository.get_current(
             db, tenant_id, student.id, lock=True
         )
@@ -254,7 +256,7 @@ class AcademicProgressionService:
                 academic_level_id=target_level.id,
                 class_id=None,
                 academic_session_id=next_session.id,
-                started_on=next_session.start_date or date.today(),
+                started_on=next_session.start_date,
                 entry_outcome=StudentEnrollmentOutcome.PROMOTED,
                 entry_reason="Automatic level progression",
                 created_by_admin_id=created_by_admin_id,
@@ -282,7 +284,7 @@ class AcademicProgressionService:
         existing = await StudentProgressionRepository.get_item_by_run_and_student(
             db, run.id, enrollment.student_id, lock=True
         )
-        if existing is not None:
+        if existing is not None and existing.status != StudentProgressionItemStatus.BLOCKED:
             return existing
 
         student = await StudentRepository.get_by_id(
