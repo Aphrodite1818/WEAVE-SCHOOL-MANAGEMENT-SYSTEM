@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -174,18 +174,18 @@ async def test_restore_archived_student_enforces_student_quota(monkeypatch) -> N
 
     assert result is restored
     StudentRepository.get_by_id.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         tenant_id,
         student_id,
         include_archived=True,
     )
     quota_lock.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         tenant_id=tenant_id,
         resource=ResourceLimitCode.STUDENTS,
     )
     ensure_limit.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         tenant_id,
         ResourceLimitCode.STUDENTS,
     )
