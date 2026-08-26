@@ -49,7 +49,6 @@ class SubjectCreate(InputBase):
     )
     code: str | None = Field(
         default=None,
-        min_length=2,
         max_length=30,
         examples=["MATH"],
         description="short code for subject",
@@ -78,7 +77,7 @@ class SubjectUpdate(InputBase):
     """Partial subject update; identity changes are further guarded by the service."""
 
     name: str | None = Field(default=None, min_length=2, max_length=100)
-    code: str | None = Field(default=None, min_length=2, max_length=30)
+    code: str | None = Field(default=None, max_length=30)
     description: str | None = Field(default=None, max_length=500)
 
     @field_validator("name", mode="before")
