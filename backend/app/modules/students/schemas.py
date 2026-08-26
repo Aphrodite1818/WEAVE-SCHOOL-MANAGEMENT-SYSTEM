@@ -397,49 +397,8 @@ class StudentHardDeleteRequest(InputBase):
 
 
 # ---------------------------------------------------------------------------
-# Student enrolment and class changes
+# Student enrolment responses
 # ---------------------------------------------------------------------------
-
-
-class StudentClassChangeRequest(InputBase):
-    """Dedicated class-change request."""
-
-    target_class_id: uuid.UUID
-    academic_session_id: uuid.UUID
-    effective_date: date = Field(default_factory=date.today)
-    outcome: Literal["reclassified", "repeated"] = "reclassified"
-    reason: str = Field(min_length=3, max_length=500)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Class changes cannot be future-dated in this phase."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
-    @field_validator("reason", mode="before")
-    @classmethod
-    def clean_reason(cls, value: str) -> str:
-        """Clean class-change reason."""
-
-        return clean_required_string(value)
-
-
-class StudentBatchClassAssignmentRequest(InputBase):
-    """Assign multiple current enrollments to one class in their existing level."""
-
-    student_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
-    target_class_id: uuid.UUID
-    reason: str = Field(min_length=3, max_length=500)
-
-    @field_validator("student_ids")
-    @classmethod
-    def unique_students(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
-        if len(value) != len(set(value)):
-            raise ValueError("student_ids must not contain duplicates")
-        return value
 
 
 class StudentBatchClassAssignmentResponse(OutputBase):
@@ -449,7 +408,7 @@ class StudentBatchClassAssignmentResponse(OutputBase):
 
 
 class StudentEnrollmentResponse(OutputBase):
-    """Student class-placement history response."""
+    """Immutable student class-placement segment."""
 
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -459,24 +418,27 @@ class StudentEnrollmentResponse(OutputBase):
     academic_session_id: uuid.UUID
     started_on: date
     ended_on: date | None = None
-    is_current: bool
-    outcome: StudentEnrollmentOutcome
-    reason: str | None = None
-    changed_by_admin_id: uuid.UUID | None = None
+    entry_outcome: StudentEnrollmentOutcome
+    exit_outcome: StudentEnrollmentOutcome | None = None
+    entry_reason: str | None = None
+    exit_reason: str | None = None
+    created_by_admin_id: uuid.UUID | None = None
+    ended_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class StudentEnrollmentDetailResponse(StudentEnrollmentResponse):
-    """Enrolment response with display labels."""
+    """Enrollment segment with display labels."""
 
     class_name: str | None = None
     class_arm: str | None = None
+    academic_level_name: str | None = None
     academic_session_name: str | None = None
 
 
 class StudentEnrollmentListResponse(OutputBase):
-    """Student enrolment history list."""
+    """Student enrollment history list."""
 
     items: list[StudentEnrollmentDetailResponse]
     total: int = Field(ge=0)
