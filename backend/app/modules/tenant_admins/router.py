@@ -11,6 +11,7 @@ from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.modules.students.admin_contracts import StudentAdminContractService
 from app.modules.students.creation_service import StudentCreationService
+from app.modules.students.enrollment_service import StudentEnrollmentService
 from app.modules.students.models import (
     AcademicStatus,
     StudentAccessCodePurpose,
@@ -45,7 +46,6 @@ from app.modules.students.schemas import (
 )
 from app.modules.students.service import (
     StudentAccessCodeService,
-    StudentEnrollmentService,
     StudentLifecycleService,
     StudentParentLinkRequestService,
     StudentParentLinkService,
@@ -77,7 +77,7 @@ async def get_tenant_admin_onboarding_status(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TenantOnboardingStatusResponse:
-    return await TenantService.get_tenant_onboarding_status(
+    return await TenantService.get_tenant_admin_onboarding_status(
         db,
         current_admin.tenant_id,
     )
@@ -97,7 +97,7 @@ async def complete_tenant_admin_onboarding(
         current_admin.tenant_id,
         payload,
     )
-    return await TenantService.get_tenant_onboarding_status(
+    return await TenantService.get_tenant_admin_onboarding_status(
         db,
         current_admin.tenant_id,
     )
