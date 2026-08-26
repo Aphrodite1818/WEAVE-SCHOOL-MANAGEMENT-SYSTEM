@@ -226,7 +226,7 @@ class AcademicProgressionService:
         item: StudentProgressionItem,
         target_level: AcademicLevel,
         next_session: AcademicSession,
-        changed_by_admin_id: uuid.UUID | None,
+        created_by_admin_id: uuid.UUID | None,
     ) -> StudentProgressionItem:
         if next_session.status not in {AcademicSessionStatus.DRAFT, AcademicSessionStatus.OPEN}:
             raise ConflictException("The target academic session is not available.")
@@ -255,14 +255,11 @@ class AcademicProgressionService:
                 class_id=None,
                 academic_session_id=next_session.id,
                 started_on=next_session.start_date or date.today(),
-                is_current=True,
-                outcome=StudentEnrollmentOutcome.PROMOTED,
-                reason="Automatic level progression",
-                changed_by_admin_id=changed_by_admin_id,
+                entry_outcome=StudentEnrollmentOutcome.PROMOTED,
+                entry_reason="Automatic level progression",
+                created_by_admin_id=created_by_admin_id,
             ),
         )
-        student.class_id = None
-        await StudentRepository.save(db, student)
         item.to_enrollment_id = next_enrollment.id
         item.to_level_id = target_level.id
         item.to_class_id = None
@@ -324,17 +321,15 @@ class AcademicProgressionService:
                 "Terminal academic completion requires explicit administrator confirmation."
             )
 
-        enrollment.is_current = False
         enrollment.ended_on = effective_date
-        enrollment.changed_by_admin_id = actor.id
+        enrollment.ended_by_admin_id = actor.id
 
         if target_level is None:
-            enrollment.outcome = StudentEnrollmentOutcome.GRADUATED
-            enrollment.reason = "Final configured academic level completed"
+            enrollment.exit_outcome = StudentEnrollmentOutcome.GRADUATED
+            enrollment.exit_reason = "Final configured academic level completed"
             await StudentEnrollmentRepository.save(db, enrollment)
             student.status = AcademicStatus.GRADUATED
             student.graduation_date = effective_date
-            student.class_id = None
             student.promotion_hold = True
             student.is_active = False
             student.account_status = StudentAccountStatus.INACTIVE
@@ -362,8 +357,8 @@ class AcademicProgressionService:
                 ),
             )
 
-        enrollment.outcome = StudentEnrollmentOutcome.PROMOTED
-        enrollment.reason = "Academic session completed"
+        enrollment.exit_outcome = StudentEnrollmentOutcome.PROMOTED
+        enrollment.exit_reason = "Academic session completed"
         await StudentEnrollmentRepository.save(db, enrollment)
         item = await StudentProgressionRepository.add_item(
             db,
@@ -387,5 +382,5 @@ class AcademicProgressionService:
             item=item,
             target_level=target_level,
             next_session=next_session,
-            changed_by_admin_id=actor.id,
+            created_by_admin_id=actor.id,
         )
