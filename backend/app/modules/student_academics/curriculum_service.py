@@ -9,6 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
+from app.modules.classes.models import AcademicLevel, AcademicLevelStatus
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
@@ -22,6 +23,7 @@ from app.modules.student_academics.models import (
 )
 from app.modules.students.models import StudentEnrollment
 from app.modules.students.repository import StudentEnrollmentRepository
+from app.modules.subjects.models import Subject
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +57,8 @@ class CurriculumResolutionService:
                 CurriculumSubject.id == CurriculumOffering.curriculum_subject_id,
             )
             .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+            .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
+            .join(Subject, Subject.id == CurriculumSubject.subject_id)
             .where(
                 CurriculumOffering.tenant_id == tenant_id,
                 CurriculumOffering.academic_term_id == academic_term_id,
@@ -62,6 +66,11 @@ class CurriculumResolutionService:
                 CurriculumSubject.is_active.is_(True),
                 Curriculum.tenant_id == tenant_id,
                 Curriculum.academic_level_id == academic_level_id,
+                AcademicLevel.tenant_id == tenant_id,
+                AcademicLevel.status == AcademicLevelStatus.ACTIVE,
+                Subject.tenant_id == tenant_id,
+                Subject.is_active.is_(True),
+                Subject.archived_at.is_(None),
                 or_(
                     CurriculumOffering.department_id.is_(None),
                     CurriculumOffering.department_id == department_id,
