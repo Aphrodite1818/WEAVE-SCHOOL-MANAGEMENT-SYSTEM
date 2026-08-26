@@ -439,6 +439,12 @@ class SubjectService:
             )
 
         response = SubjectResponse.model_validate(subject)
-        await SubjectRepository.delete_subject(db=db, subject=subject)
-        await db.commit()
+        try:
+            await SubjectRepository.delete_subject(db=db, subject=subject)
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                detail="This subject became referenced and can no longer be permanently deleted."
+            ) from exc
         return response
