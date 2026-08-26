@@ -6,14 +6,16 @@ from datetime import date, timedelta
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, NotFoundException
+from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.modules.classes.models import ClassRoom
 from app.modules.student_academics.models import TeacherAssignment
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.student_academics.service import StudentAcademicService
+from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.teachers.models import TeacherMembershipStatus
 from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.teachers.schemas import (
@@ -74,6 +76,7 @@ class TeacherOffboardingService:
             ).scalar_one()
             or 0
         )
+        today = date.today()
         assignment_count = int(
             (
                 await db.execute(
@@ -82,7 +85,10 @@ class TeacherOffboardingService:
                     .where(
                         TeacherAssignment.tenant_id == tenant_id,
                         TeacherAssignment.teacher_membership_id == membership_id,
-                        TeacherAssignment.is_active.is_(True),
+                        or_(
+                            TeacherAssignment.effective_to.is_(None),
+                            TeacherAssignment.effective_to >= today,
+                        ),
                     )
                 )
             ).scalar_one()
@@ -95,6 +101,34 @@ class TeacherOffboardingService:
         )
 
     @staticmethod
+    async def _create_replacement_assignment(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        source: TeacherAssignment,
+        replacement_teacher_membership_id: UUID,
+        effective_from: date,
+        effective_to: date | None,
+    ) -> TeacherAssignment:
+        try:
+            return await StudentAcademicRepository.create_teacher_assignment(
+                db,
+                TeacherAssignment(
+                    tenant_id=tenant_id,
+                    class_id=source.class_id,
+                    curriculum_subject_id=source.curriculum_subject_id,
+                    teacher_membership_id=replacement_teacher_membership_id,
+                    effective_from=effective_from,
+                    effective_to=effective_to,
+                ),
+            )
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                "Replacement teacher assignment overlaps existing assignment history."
+            ) from exc
+
+    @staticmethod
     async def end_membership_and_release_responsibilities(
         db: AsyncSession,
         *,
@@ -102,7 +136,15 @@ class TeacherOffboardingService:
         membership_id: UUID,
         payload: TeacherOffboardingRequest,
     ) -> TeacherMembershipResponse:
-        """End a membership and preserve curriculum-subject assignment history."""
+        """End a membership while preserving date-effective teaching history.
+
+        Current subject assignments remain historical through the offboarding date.
+        Future scheduled assignments have never taken effect, so they are cancelled
+        or transferred to the replacement teacher instead of being rewritten as
+        ended history.
+        """
+
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
 
         membership = await TeacherMembershipRepository.get_by_id(
             db,
@@ -136,25 +178,26 @@ class TeacherOffboardingService:
                 teacher_membership_id=replacement_id,
             )
 
-        active_assignments = list(
+        today = date.today()
+        live_assignments = list(
             (
                 await db.execute(
                     select(TeacherAssignment)
                     .where(
                         TeacherAssignment.tenant_id == actor.tenant_id,
                         TeacherAssignment.teacher_membership_id == membership_id,
-                        TeacherAssignment.is_active.is_(True),
-                        TeacherAssignment.effective_to.is_(None),
+                        or_(
+                            TeacherAssignment.effective_to.is_(None),
+                            TeacherAssignment.effective_to >= today,
+                        ),
                     )
+                    .order_by(TeacherAssignment.effective_from.asc())
                     .with_for_update()
                 )
             )
             .scalars()
             .all()
         )
-
-        today = date.today()
-        replacement_effective_from = today + timedelta(days=1)
 
         # Class-teacher ownership is a current pointer rather than temporal subject
         # assignment history, so it may be moved directly after validation.
@@ -167,14 +210,70 @@ class TeacherOffboardingService:
             .values(teacher_membership_id=replacement_id)
         )
 
-        for assignment in active_assignments:
-            if today < assignment.effective_from:
-                raise BadRequestException(
-                    "Teacher offboarding date cannot be before an assignment start date."
-                )
-
+        for assignment in live_assignments:
+            previous_state = assignment.state.value
             original_effective_to = assignment.effective_to
-            assignment.is_active = False
+
+            if assignment.effective_from > today:
+                # A scheduled assignment has never been effective. Remove the stale
+                # future responsibility before creating an equivalent replacement so
+                # the exclusion constraint cannot see overlapping ranges.
+                await StudentAcademicRepository.delete_teacher_assignment(db, assignment)
+
+                if replacement_id is None:
+                    await StudentAcademicService._record_teacher_assignment_audit(
+                        db,
+                        tenant_id=actor.tenant_id,
+                        assignment_id=None,
+                        class_id=assignment.class_id,
+                        curriculum_subject_id=assignment.curriculum_subject_id,
+                        action="scheduled_assignment_cancelled_for_offboarding",
+                        previous_teacher_membership_id=membership_id,
+                        new_teacher_membership_id=None,
+                        previous_state=previous_state,
+                        new_state="deleted",
+                        previous_effective_from=assignment.effective_from,
+                        previous_effective_to=original_effective_to,
+                        acting_admin_id=actor.id,
+                        reason=payload.reason,
+                    )
+                    continue
+
+                replacement_assignment = (
+                    await TeacherOffboardingService._create_replacement_assignment(
+                        db,
+                        tenant_id=actor.tenant_id,
+                        source=assignment,
+                        replacement_teacher_membership_id=replacement_id,
+                        effective_from=assignment.effective_from,
+                        effective_to=original_effective_to,
+                    )
+                )
+                await StudentAcademicService._record_teacher_assignment_audit(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    assignment_id=replacement_assignment.id,
+                    class_id=replacement_assignment.class_id,
+                    curriculum_subject_id=replacement_assignment.curriculum_subject_id,
+                    action="scheduled_teacher_reassigned_for_offboarding",
+                    previous_teacher_membership_id=membership_id,
+                    new_teacher_membership_id=replacement_id,
+                    previous_state=previous_state,
+                    new_state=replacement_assignment.state.value,
+                    previous_effective_from=assignment.effective_from,
+                    previous_effective_to=original_effective_to,
+                    new_effective_from=replacement_assignment.effective_from,
+                    new_effective_to=replacement_assignment.effective_to,
+                    acting_admin_id=actor.id,
+                    reason=payload.reason,
+                )
+                continue
+
+            # The outgoing teacher is historically responsible through today. An
+            # assignment already ending today needs no range rewrite or successor.
+            if original_effective_to is not None and original_effective_to <= today:
+                continue
+
             assignment.effective_to = today
             await StudentAcademicRepository.save_teacher_assignment(db, assignment)
 
@@ -185,31 +284,29 @@ class TeacherOffboardingService:
                     assignment_id=assignment.id,
                     class_id=assignment.class_id,
                     curriculum_subject_id=assignment.curriculum_subject_id,
-                    action="assignment_ended_for_offboarding",
+                    action="assignment_end_set_for_offboarding",
                     previous_teacher_membership_id=membership_id,
                     new_teacher_membership_id=None,
-                    previous_state="active",
-                    new_state="ended",
+                    previous_state=previous_state,
+                    new_state=assignment.state.value,
                     previous_effective_from=assignment.effective_from,
                     previous_effective_to=original_effective_to,
                     new_effective_from=assignment.effective_from,
-                    new_effective_to=today,
+                    new_effective_to=assignment.effective_to,
                     acting_admin_id=actor.id,
                     reason=payload.reason,
                 )
                 continue
 
-            replacement_assignment = await StudentAcademicRepository.create_teacher_assignment(
-                db,
-                TeacherAssignment(
+            replacement_assignment = (
+                await TeacherOffboardingService._create_replacement_assignment(
+                    db,
                     tenant_id=actor.tenant_id,
-                    class_id=assignment.class_id,
-                    curriculum_subject_id=assignment.curriculum_subject_id,
-                    teacher_membership_id=replacement_id,
-                    is_active=True,
-                    effective_from=replacement_effective_from,
-                    effective_to=None,
-                ),
+                    source=assignment,
+                    replacement_teacher_membership_id=replacement_id,
+                    effective_from=today + timedelta(days=1),
+                    effective_to=original_effective_to,
+                )
             )
             await StudentAcademicService._record_teacher_assignment_audit(
                 db,
@@ -220,12 +317,12 @@ class TeacherOffboardingService:
                 action="teacher_reassigned_for_offboarding",
                 previous_teacher_membership_id=membership_id,
                 new_teacher_membership_id=replacement_id,
-                previous_state="active",
-                new_state="active",
+                previous_state=previous_state,
+                new_state=replacement_assignment.state.value,
                 previous_effective_from=assignment.effective_from,
-                previous_effective_to=today,
-                new_effective_from=replacement_effective_from,
-                new_effective_to=None,
+                previous_effective_to=assignment.effective_to,
+                new_effective_from=replacement_assignment.effective_from,
+                new_effective_to=replacement_assignment.effective_to,
                 acting_admin_id=actor.id,
                 reason=payload.reason,
             )
