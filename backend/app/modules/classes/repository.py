@@ -120,16 +120,6 @@ class AcademicLevelRepository:
         tenant_id: uuid.UUID,
         level_id: uuid.UUID,
     ) -> dict[str, int]:
-        """
-        Return all AcademicLevel dependency counts needed by lifecycle rules.
-
-        Total counts tell us whether the level has ever been structurally used.
-        Active/current counts tell us whether the level is still in live use.
-
-        An empty Curriculum container is intentionally not treated as real usage.
-        Actual curriculum usage begins when CurriculumSubject rows exist.
-        """
-
         def count_subquery(model, *conditions):
             return select(func.count()).select_from(model).where(*conditions).scalar_subquery()
 
@@ -186,9 +176,7 @@ class AcademicLevelRepository:
                 StudentEnrollment.is_current.is_(True),
             ).label("enrollments_current"),
         )
-
         row = (await db.execute(query)).one()
-
         return {
             "classes_total": int(row.classes_total),
             "classes_active": int(row.classes_active),
@@ -252,7 +240,6 @@ class DepartmentRepository:
             Department.tenant_id == tenant_id,
             Department.academic_level_id == academic_level_id,
         )
-
         if active_only:
             query = query.where(
                 Department.is_active.is_(True),
@@ -260,7 +247,6 @@ class DepartmentRepository:
             )
         elif not include_archived:
             query = query.where(Department.archived_at.is_(None))
-
         query = query.order_by(Department.name)
         return list((await db.execute(query)).scalars().all())
 
@@ -286,7 +272,6 @@ class DepartmentRepository:
             AcademicTermStatus.OPEN,
             AcademicTermStatus.CLOSING,
         )
-
         class_assignments_total = (
             select(func.count())
             .select_from(ClassTermDepartmentAssignment)
@@ -329,7 +314,6 @@ class DepartmentRepository:
             )
             .scalar_subquery()
         )
-
         query = select(
             class_assignments_total.label("class_assignments_total"),
             class_assignments_live.label("class_assignments_live"),
@@ -676,11 +660,20 @@ class ClassRoomRepository:
             StudentAttendanceSheet.tenant_id == tenant_id,
             StudentAttendanceSheet.class_id == class_id,
         )
-        attendance_sheets_live = count_subquery(
-            StudentAttendanceSheet,
-            StudentAttendanceSheet.tenant_id == tenant_id,
-            StudentAttendanceSheet.class_id == class_id,
-            StudentAttendanceSheet.status.in_(live_attendance_statuses),
+        attendance_sheets_live = (
+            select(func.count())
+            .select_from(StudentAttendanceSheet)
+            .outerjoin(AcademicTerm, AcademicTerm.id == StudentAttendanceSheet.academic_term_id)
+            .where(
+                StudentAttendanceSheet.tenant_id == tenant_id,
+                StudentAttendanceSheet.class_id == class_id,
+                StudentAttendanceSheet.status.in_(live_attendance_statuses),
+                or_(
+                    StudentAttendanceSheet.academic_term_id.is_(None),
+                    AcademicTerm.status.in_(live_term_statuses),
+                ),
+            )
+            .scalar_subquery()
         )
         report_cards_total = count_subquery(
             ReportCard,
@@ -750,7 +743,6 @@ class ClassRoomRepository:
             announcement_audiences_total.label("announcement_audiences_total"),
         )
         row = (await db.execute(query)).one()
-
         return {
             "students_assigned_total": int(row.students_assigned_total),
             "students_assigned_live": int(row.students_assigned_live),
