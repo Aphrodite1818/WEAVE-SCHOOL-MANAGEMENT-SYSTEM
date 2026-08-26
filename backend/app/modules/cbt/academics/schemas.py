@@ -145,7 +145,6 @@ class CBTTeacherAssignmentSnapshot(SnapshotBase):
     teacher_membership_id: uuid.UUID
     class_id: uuid.UUID
     curriculum_subject_id: uuid.UUID
-    is_active: bool
     effective_from: date
     effective_to: date | None = None
 
