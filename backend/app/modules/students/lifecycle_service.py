@@ -14,8 +14,15 @@ from app.modules.student_academics.write_guard import ensure_academic_write_wind
 from app.modules.students.enrollment_service import StudentEnrollmentService
 from app.modules.students.models import AcademicStatus
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
-from app.modules.students.schemas import StudentLifecycleTransitionResponse, StudentResponse
+from app.modules.students.schemas import (
+    StudentHardDeleteEligibilityResponse,
+    StudentLifecycleTransitionResponse,
+    StudentResponse,
+)
 from app.modules.students.service import StudentLifecycleService as LegacyStudentLifecycleService
+from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
+from app.modules.subscriptions.service import SubscriptionFeatureService
+from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.tenant_admins.models import TenantAdmin
 
 
@@ -191,6 +198,40 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         )
 
     @staticmethod
+    async def restore(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+        reason: str,
+    ) -> StudentResponse:
+        student = await StudentRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            student_id,
+            include_archived=True,
+        )
+        if student is None:
+            raise NotFoundException("Student not found.")
+        if student.is_archived:
+            await acquire_resource_quota_lock(
+                db,
+                tenant_id=actor.tenant_id,
+                resource=ResourceLimitCode.STUDENTS,
+            )
+            await SubscriptionFeatureService.ensure_resource_limit_available(
+                db,
+                actor.tenant_id,
+                ResourceLimitCode.STUDENTS,
+            )
+        return await LegacyStudentLifecycleService.restore(
+            db,
+            actor=actor,
+            student_id=student_id,
+            reason=reason,
+        )
+
+    @staticmethod
     async def reinstate_expelled(
         db: AsyncSession,
         *,
@@ -258,6 +299,39 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         )
 
     @staticmethod
+    async def hard_delete_eligibility(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        student_id: UUID,
+    ) -> StudentHardDeleteEligibilityResponse:
+        base = await LegacyStudentLifecycleService.hard_delete_eligibility(
+            db,
+            tenant_id=tenant_id,
+            student_id=student_id,
+        )
+        student = await StudentRepository.get_by_id(
+            db,
+            tenant_id,
+            student_id,
+            include_archived=True,
+        )
+        if student is None:
+            raise NotFoundException("Student not found.")
+
+        blockers = list(base.blocking_dependencies)
+        if student.last_login_at is not None and "login_history" not in blockers:
+            blockers.append("login_history")
+        eligible = not blockers
+        return base.model_copy(
+            update={
+                "eligible": eligible,
+                "blocking_dependencies": blockers,
+                "recommendation": "hard_delete" if eligible else "archive",
+            }
+        )
+
+    @staticmethod
     async def hard_delete(
         db: AsyncSession,
         *,
@@ -265,6 +339,17 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         student_id: UUID,
     ) -> None:
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        student = await StudentRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            student_id,
+            lock=True,
+            include_archived=True,
+        )
+        if student is None:
+            raise NotFoundException("Student not found.")
+        if student.last_login_at is not None:
+            raise ConflictException("Student has login history and must be archived.")
         await LegacyStudentLifecycleService.hard_delete(
             db,
             actor=actor,
