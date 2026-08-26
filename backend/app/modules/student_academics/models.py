@@ -348,7 +348,7 @@ class TeacherAssignment(BaseModel):
     )
     curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
-        ForeignKey("curriculum_subjects.id", ondelete="CASCADE"),
+        ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -400,7 +400,7 @@ class TeacherAssignmentLifecycleAudit(BaseModel):
     )
     curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID,
-        ForeignKey("curriculum_subjects.id", ondelete="CASCADE"),
+        ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
