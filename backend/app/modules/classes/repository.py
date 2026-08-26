@@ -347,6 +347,10 @@ class ArmLabelRepository:
         return arm_label
 
     @staticmethod
+    async def delete(db: AsyncSession, arm_label: ArmLabel) -> None:
+        await db.delete(arm_label)
+
+    @staticmethod
     async def get_by_id(
         db: AsyncSession, tenant_id: uuid.UUID, arm_label_id: uuid.UUID, *, lock: bool = False
     ):
@@ -383,18 +387,36 @@ class ArmLabelRepository:
         return list((await db.execute(query.order_by(ArmLabel.label))).scalars().all())
 
     @staticmethod
-    async def count_class_dependencies(
-        db: AsyncSession, tenant_id: uuid.UUID, arm_label_id: uuid.UUID
-    ) -> int:
-        return int(
-            (
-                await db.execute(
-                    select(func.count())
-                    .select_from(ClassRoom)
-                    .where(ClassRoom.tenant_id == tenant_id, ClassRoom.arm_label_id == arm_label_id)
-                )
-            ).scalar_one()
+    async def count_dependencies(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        arm_label_id: uuid.UUID,
+    ) -> dict[str, int]:
+        query = select(
+            select(func.count())
+            .select_from(ClassRoom)
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.arm_label_id == arm_label_id,
+            )
+            .scalar_subquery()
+            .label("classes_total"),
+            select(func.count())
+            .select_from(ClassRoom)
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.arm_label_id == arm_label_id,
+                ClassRoom.is_active.is_(True),
+                ClassRoom.archived_at.is_(None),
+            )
+            .scalar_subquery()
+            .label("classes_live"),
         )
+        row = (await db.execute(query)).one()
+        return {
+            "classes_total": int(row.classes_total),
+            "classes_live": int(row.classes_live),
+        }
 
 
 class ClassRoomRepository:
