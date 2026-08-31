@@ -1,6 +1,6 @@
 # People directory design QA
 
-- Source visual truth: conversation attachment supplied by the user (1536 x 1024 px; no local filesystem path available).
+- Source visual truth: conversation attachments supplied by the user: the people-directory reference (1536 x 1024 px) plus the CBT KPI-card and green action-button references (no local filesystem paths available).
 - Implementation screenshot: unavailable because this session does not expose a browser or screenshot surface.
 - Intended desktop viewport: 1536 x 1024 CSS px at device scale factor 1.
 - Intended mobile viewport: 390 x 844 CSS px at device scale factor 1.
@@ -19,7 +19,7 @@
 
 - Fonts and typography: code uses Weave's existing Inter/system font stack and established text tokens; browser rendering not verified.
 - Spacing and layout rhythm: shared summary strips, desktop tables, and compact mobile cards are implemented; visual comparison is blocked.
-- Colors and visual tokens: implementation uses existing Weave semantic tokens only; rendered contrast and balance are not verified.
+- Colors and visual tokens: implementation reuses the CBT server KPI palette (violet, emerald, amber, and semantic fallbacks) plus Weave's green success action; rendered contrast and balance are not verified.
 - Image quality and asset fidelity: no new raster imagery or custom image assets are required by these directory views; existing Lucide iconography is reused consistently with the application.
 - Copy and content: labels describe student, class, employment, lifecycle, profile, and access states without copying the reference product's wording.
 
