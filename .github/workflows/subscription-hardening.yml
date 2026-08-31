@@ -152,6 +152,7 @@ jobs:
         run: |
           uv run pytest \
             tests/unit/subscriptions/test_term_entitlements.py \
+            tests/unit/subscriptions/test_late_payment_reconciliation.py \
             tests/unit/subscriptions/test_term_subscription_precedence.py \
             tests/unit/subscriptions/test_public_catalogue.py \
             tests/unit/subscriptions/test_production_hardening.py \
