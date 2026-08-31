@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import Annotated, TypeAlias
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
+from sqlalchemy import select
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import (
@@ -18,48 +20,50 @@ from app.modules.subscriptions.catalogue import (
     PublicSubscriptionCatalogue,
     PublicSubscriptionCatalogueService,
 )
-from app.modules.subscriptions.payment_integrity import (
-    process_paystack_webhook_secure,
-)
+from app.modules.subscriptions.models import TermPlanEntitlement
+from app.modules.subscriptions.payment_integrity import process_paystack_webhook_secure
+from app.modules.subscriptions.providers.paystack import PaystackClient
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
-    PaymentTransactionListResponse,
-    PaymentTransactionResponse,
     FreeTermActivationRequest,
     PaidTermCheckoutCreate,
-    TermEntitlementResponse,
+    PaymentTransactionListResponse,
+    PaymentTransactionResponse,
     SubscriptionCheckoutResponse,
-    SubscriptionStatusResponse,
     TenantEntitlementsResponse,
     TenantSubscriptionResponse,
+    TermEntitlementResponse,
+    TermPlanChangeRequest,
+    TermPlanOptionsResponse,
     WebhookProcessingResponse,
 )
 from app.modules.subscriptions.service import (
     SubscriptionFeatureService,
     SubscriptionLifecycleService,
 )
-from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
-from app.modules.subscriptions.providers.paystack import PaystackClient
-from app.modules.subscriptions.models import TermPlanEntitlement
-from sqlalchemy import select
 from app.modules.subscriptions.subscription_enums import PaymentStatus
+from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
 from app.modules.superadmin.models import SuperAdmin
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin,
-    Depends(get_current_tenant_admin),
-]
-CurrentSuperadmin: TypeAlias = Annotated[
-    SuperAdmin,
-    Depends(get_current_superadmin),
-]
-CurrentSubscriptionActor: TypeAlias = Annotated[
-    CurrentActor,
-    Depends(get_current_actor),
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+CurrentSuperadmin: TypeAlias = Annotated[SuperAdmin, Depends(get_current_superadmin)]
+CurrentSubscriptionActor: TypeAlias = Annotated[CurrentActor, Depends(get_current_actor)]
+
+
+@router.get("/terms/{term_id}/plan-options", response_model=TermPlanOptionsResponse)
+async def get_term_plan_options(
+    term_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TermPlanOptionsResponse:
+    return await TermPlanEntitlementService.get_plan_options(
+        db,
+        current_admin.tenant_id,
+        term_id,
+    )
 
 
 @router.post(
@@ -75,7 +79,28 @@ async def activate_free_term_plan(
     _ = payload.confirmation
     return TermEntitlementResponse.model_validate(
         await TermPlanEntitlementService.activate_free(
-            db, current_admin.tenant_id, payload.academic_term_id, current_admin.id
+            db,
+            current_admin.tenant_id,
+            payload.academic_term_id,
+            current_admin.id,
+        )
+    )
+
+
+@router.post("/terms/change-plan", response_model=TermEntitlementResponse)
+async def change_term_plan(
+    payload: TermPlanChangeRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TermEntitlementResponse:
+    _ = payload.confirmation
+    return TermEntitlementResponse.model_validate(
+        await TermPlanEntitlementService.change_plan(
+            db,
+            current_admin.tenant_id,
+            payload.academic_term_id,
+            payload.target_plan,
+            current_admin.id,
         )
     )
 
@@ -245,8 +270,7 @@ async def sync_expired_subscriptions(
     current_superadmin: CurrentSuperadmin,
 ) -> dict[str, int]:
     _ = current_superadmin
-    lifecycle = await SubscriptionLifecycleService.sync_expired_subscriptions(db=db)
-    return lifecycle
+    return await SubscriptionLifecycleService.sync_expired_subscriptions(db=db)
 
 
 router.include_router(simulation_router)
