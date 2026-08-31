@@ -189,7 +189,7 @@ class TenantCreate(TenantBase):
         pattern=PHONE_PATTERN,
         description="The WhatsApp number the school bot listens on",
     )
-    plan: SubscriptionPlan = SubscriptionPlan.FREE_TRIAL
+    plan: SubscriptionPlan = SubscriptionPlan.FREE
     max_students: int = Field(default=500, ge=1, le=100_000)
     max_teachers: int = Field(default=50, ge=1, le=100_000)
 
