@@ -48,6 +48,12 @@ const statusVariant = (value) => {
   return "default";
 };
 
+const paymentNeedsReconciliation = (payment) =>
+  payment?.status === "success" &&
+  /manual reconciliation|requires reconciliation/i.test(
+    String(payment?.failure_reason || ""),
+  );
+
 const termDisplayName = (term) =>
   String(term?.display_name || term?.name || "Academic term")
     .replaceAll("_", " ")
@@ -115,6 +121,7 @@ function BillingPage() {
         .filter(
           (payment) =>
             payment.status === "success" &&
+            !paymentNeedsReconciliation(payment) &&
             String(payment.academic_term_id) === String(currentTerm.id),
         )
         .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
@@ -335,7 +342,8 @@ function BillingPage() {
               </h2>
               <p className="mt-1 text-sm text-text-muted">
                 Initial paid activations and upgrade differences processed by
-                Paystack.
+                Paystack. A late payment that needs reconciliation is recorded
+                here but does not count toward the term plan automatically.
               </p>
 
               {payments.length ? (
@@ -353,6 +361,8 @@ function BillingPage() {
                     <tbody className="divide-y divide-border">
                       {payments.map((payment) => {
                         const term = termById.get(payment.academic_term_id);
+                        const needsReconciliation =
+                          paymentNeedsReconciliation(payment);
                         return (
                           <tr key={payment.id}>
                             <td className="px-4 py-3 font-medium text-text">
@@ -365,9 +375,25 @@ function BillingPage() {
                               {money(payment.amount, payment.currency)}
                             </td>
                             <td className="px-4 py-3">
-                              <Badge variant={statusVariant(payment.status)}>
-                                {payment.status}
-                              </Badge>
+                              <div className="flex flex-col items-start gap-1">
+                                <Badge
+                                  variant={
+                                    needsReconciliation
+                                      ? "warning"
+                                      : statusVariant(payment.status)
+                                  }
+                                >
+                                  {needsReconciliation
+                                    ? "Needs review"
+                                    : payment.status}
+                                </Badge>
+                                {needsReconciliation ? (
+                                  <span className="max-w-xs text-xs leading-4 text-text-muted">
+                                    Paid after checkout expiry. Do not retry this
+                                    payment; contact support for reconciliation.
+                                  </span>
+                                ) : null}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-text-muted">
                               {formatDateTime(
