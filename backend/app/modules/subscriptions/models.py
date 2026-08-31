@@ -173,6 +173,12 @@ class PaymentTransaction(BaseModel):
         ),
     )
 
+    @property
+    def reconciliation_required(self) -> bool:
+        """Return whether a collected payment is quarantined from plan application."""
+
+        return bool((self.raw_payload or {}).get("reconciliation_required"))
+
 
 class TermPlanEntitlement(BaseModel):
     """One tenant's effective plan purchase or activation for one academic term."""
