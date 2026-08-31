@@ -92,6 +92,21 @@ function SubscriptionVerifyPage() {
           error,
           "We could not verify this payment. Please try again or contact support.",
         );
+        if (apiError.data?.code === "PAYMENT_RECONCILIATION_REQUIRED") {
+          const paymentIntent = subscriptionService.consumeTermPaymentIntent({
+            academicTermId: apiError.data?.academic_term_id,
+            reference,
+          });
+          const returnPath = subscriptionService.safeReturnPath(
+            paymentIntent?.returnPath,
+            "/admin/billing",
+          );
+          clearSelectedSubscriptionPlan();
+          setSuccessRoute(returnPath);
+          setStatus("review");
+          setMessage(apiError.message);
+          return;
+        }
         setStatus("error");
         setMessage(apiError.message);
       }
@@ -104,6 +119,9 @@ function SubscriptionVerifyPage() {
       if (redirectTimer) window.clearTimeout(redirectTimer);
     };
   }, [navigate, reference, refreshSubscriptionState]);
+
+  const isSuccess = status === "success";
+  const needsReview = status === "review";
 
   return (
     <DashboardLayout
@@ -123,12 +141,14 @@ function SubscriptionVerifyPage() {
           <div className="text-center">
             <span
               className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ${
-                status === "success"
+                isSuccess
                   ? "bg-success-soft text-success"
-                  : "bg-error-soft text-error"
+                  : needsReview
+                    ? "bg-warning-soft text-amber-700"
+                    : "bg-error-soft text-error"
               }`}
             >
-              {status === "success" ? (
+              {isSuccess ? (
                 <CheckCircle2 className="h-6 w-6" />
               ) : (
                 <TriangleAlert className="h-6 w-6" />
@@ -136,23 +156,28 @@ function SubscriptionVerifyPage() {
             </span>
 
             <h2 className="mt-4 text-xl font-semibold text-text">
-              {status === "success"
+              {isSuccess
                 ? "Payment verified"
-                : "Verification failed"}
+                : needsReview
+                  ? "Payment received — review required"
+                  : "Verification failed"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">{message}</p>
 
             <div className="mt-6">
               <Button
-                variant={status === "success" ? "primary" : "outline"}
+                variant={isSuccess || needsReview ? "primary" : "outline"}
                 onClick={() =>
-                  navigate(
-                    status === "success" ? successRoute : "/admin/billing",
-                    { replace: true },
-                  )
+                  navigate(isSuccess || needsReview ? successRoute : "/admin/billing", {
+                    replace: true,
+                  })
                 }
               >
-                {status === "success" ? "Continue" : "Back to billing"}
+                {isSuccess
+                  ? "Continue"
+                  : needsReview
+                    ? "Open billing"
+                    : "Back to billing"}
               </Button>
             </div>
           </div>
