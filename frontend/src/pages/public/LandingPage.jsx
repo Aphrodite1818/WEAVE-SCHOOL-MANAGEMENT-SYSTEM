@@ -1,5 +1,5 @@
-import { Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
@@ -10,17 +10,18 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+
+import previewImage from "../../assets/images/academic-workspace-preview.png";
+import WeaveIcon from "../../components/brand/WeaveIcon";
+import Navbar from "../../components/layout/Navbar";
+import Badge from "../../components/ui/Badge";
+import Button from "../../components/ui/Button";
 import {
   LANDING_PRICING_PLANS,
   buildRegistrationHref,
   formatLimitValue,
   saveSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
-import WeaveIcon from "../../components/brand/WeaveIcon";
-import Navbar from "../../components/layout/Navbar";
-import Button from "../../components/ui/Button";
-import Badge from "../../components/ui/Badge";
-import previewImage from "../../assets/images/academic-workspace-preview.png";
 
 const features = [
   {
@@ -50,7 +51,7 @@ const features = [
   {
     title: "Operational Insights",
     description:
-      "See enrollment, academic, usage, and subscription information from focused dashboards built for everyday decisions.",
+      "See enrollment, academic, usage, and plan information from focused dashboards built for everyday decisions.",
     icon: BarChart3,
   },
   {
@@ -71,7 +72,7 @@ const operationalNotes = [
   {
     title: "Administrators stay in control",
     description:
-      "Set up academic structures, manage learners and staff, publish announcements, track subscriptions, and review school activity from one central workspace.",
+      "Set up academic structures, manage learners and staff, publish announcements, manage term plans, and review school activity from one central workspace.",
   },
   {
     title: "Teachers stay focused",
@@ -85,6 +86,88 @@ const operationalNotes = [
   },
 ];
 
+function formatLandingPrice(plan) {
+  if (plan.planCode === "free") return "₦0 · permanent";
+  if (plan.pricePerTerm === null || plan.pricePerTerm === undefined) {
+    return plan.priceLabel || "Pricing unavailable";
+  }
+  return `₦${Number(plan.pricePerTerm).toLocaleString()} / term`;
+}
+
+function LandingPricingCard({ plan, activePlanCode, onSelect }) {
+  const selected = plan.planCode === activePlanCode;
+
+  return (
+    <article
+      id={`landing-plan-${plan.planCode}`}
+      className={`flex min-h-[31rem] scroll-mt-28 flex-col rounded-[1.5rem] border bg-surface p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
+        selected
+          ? "border-primary/60 ring-4 ring-primary/10"
+          : "border-border/70"
+      }`}
+    >
+      <div className="flex min-h-7 flex-wrap items-center gap-2">
+        {plan.planCode === "free" ? (
+          <Badge variant="success">Permanent Free</Badge>
+        ) : null}
+        {plan.highlighted ? <Badge variant="primary">Popular</Badge> : null}
+      </div>
+
+      <div className="mt-4 flex justify-center">
+        <WeaveIcon className="h-14 w-14" decorative />
+      </div>
+      <h3 className="mt-3 text-center text-2xl font-semibold text-text">
+        {plan.name}
+      </h3>
+      <p className="mt-2 text-center text-sm font-semibold text-primary">
+        {plan.bestFor}
+      </p>
+      <p className="mt-4 text-sm leading-6 text-text-muted">
+        {plan.description}
+      </p>
+
+      <div className="mt-5 rounded-xl border border-border/70 bg-surface-muted/25 px-4 py-3">
+        <p className="text-xl font-bold text-text">{formatLandingPrice(plan)}</p>
+        <p className="mt-1 text-xs text-text-muted">
+          {plan.planCode === "free"
+            ? "No expiry and no card required"
+            : "Payment happens inside Weave when a term needs this plan"}
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-2 text-sm">
+        <PlanLimit label="Students" value={formatLimitValue(plan.limits.students)} />
+        <PlanLimit label="Teachers" value={formatLimitValue(plan.limits.teachers)} />
+        <PlanLimit label="Parents" value={formatLimitValue(plan.limits.parents)} />
+      </div>
+
+      {(plan.features || []).length ? (
+        <ul className="mt-5 space-y-2 text-sm text-text-soft">
+          {plan.features.slice(0, 5).map((feature) => (
+            <li key={feature} className="flex gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+              <span>{feature}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <Link
+        to={buildRegistrationHref(plan.planCode)}
+        onClick={() => onSelect(plan.planCode)}
+        className="mt-auto pt-6"
+      >
+        <Button
+          className="w-full"
+          variant={plan.planCode === "free" ? "outline" : "primary"}
+        >
+          Get started
+        </Button>
+      </Link>
+    </article>
+  );
+}
+
 function PlanLimit({ label, value }) {
   return (
     <div className="flex items-center justify-between gap-3">
@@ -94,127 +177,18 @@ function PlanLimit({ label, value }) {
   );
 }
 
-function formatLandingPrice(plan) {
-  if (plan.planCode === "enterprise")
-    return "From \u20a680,000 per academic term";
-  if (!plan.pricePerTerm) return "\u20a60";
-  return `\u20a6${Number(plan.pricePerTerm).toLocaleString()} per academic term`;
-}
-
-function LandingPricingCard({ plan, activePlanCode, onSelect }) {
-  const isFree = plan.planCode === "free_trial";
-  const isSelected = plan.planCode === activePlanCode;
-  const isCurrent = plan.planCode === "professional";
-
-  return (
-    <article
-      id={`landing-plan-${plan.planCode}`}
-      className={`flex min-h-[34rem] scroll-mt-28 flex-col rounded-[1.6rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
-        isSelected
-          ? "border-primary/60 ring-4 ring-primary/10"
-          : plan.highlighted
-            ? "border-border/80"
-            : "border-border/70"
-      }`}
-    >
-      <div className="flex min-h-8 flex-wrap items-center gap-2">
-        {isFree ? <Badge variant="success">Free</Badge> : null}
-        {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
-        {isCurrent ? <Badge variant="success">Current plan</Badge> : null}
-      </div>
-
-      <div className="mt-4 flex justify-center">
-        <WeaveIcon className="h-16 w-16" decorative />
-      </div>
-      <h3 className="mt-3 text-center text-2xl font-semibold text-text">
-        {plan.name}
-      </h3>
-      <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
-      <p className="mt-4 min-h-[4.5rem] text-sm leading-6 text-text-muted">
-        {plan.description}
-      </p>
-
-      <div className="mt-5">
-        <p className="text-2xl font-bold text-text">
-          {formatLandingPrice(plan)}
-        </p>
-        <p className="mt-1 text-xs font-medium text-text-muted">
-          Per academic term
-        </p>
-      </div>
-
-      <ul className="mt-5 space-y-3 text-sm text-text-soft">
-        {plan.features.map((feature) => (
-          <li key={feature} className="flex gap-3">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-            <span>{feature}</span>
-          </li>
-        ))}
-      </ul>
-
-      <div className="mt-5 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm">
-        <PlanLimit
-          label="Students"
-          value={formatLimitValue(plan.limits.students)}
-        />
-        <PlanLimit
-          label="Teachers"
-          value={formatLimitValue(plan.limits.teachers)}
-        />
-        <PlanLimit
-          label="Classes"
-          value={formatLimitValue(plan.limits.classes)}
-        />
-      </div>
-
-      <div className="flex flex-1 items-center justify-center pt-6">
-        <div className="w-full max-w-[19rem] text-center">
-          <Link
-            to={buildRegistrationHref(plan.planCode)}
-            onClick={() => onSelect(plan.planCode)}
-          >
-            <Button className="w-full">Get started</Button>
-          </Link>
-          <div className="mt-3 flex justify-center">
-            <span
-              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                isSelected
-                  ? "bg-primary/10 text-primary"
-                  : "bg-surface-muted text-text-muted"
-              }`}
-            >
-              {isSelected ? "Selected" : `Choose ${plan.name}`}
-            </span>
-          </div>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 function LandingPage() {
   const location = useLocation();
-  const [activePricingPlan, setActivePricingPlan] = useState("plus");
+  const [activePricingPlan, setActivePricingPlan] = useState("professional");
 
-  const handlePlanSelection = (planCode, billingInterval = "term") => {
-    saveSelectedSubscriptionPlan({ planCode, billingInterval });
+  const handlePlanSelection = (planCode) => {
+    saveSelectedSubscriptionPlan({ planCode, billingInterval: "term" });
   };
-  const handlePricingTabClick = (planCode) => {
-    setActivePricingPlan(planCode);
-  };
-  const freePlan = LANDING_PRICING_PLANS.find(
-    (plan) => plan.planCode === "free_trial",
-  );
-  const paidLandingPlans = LANDING_PRICING_PLANS.filter(
-    (plan) => plan.planCode !== "free_trial",
-  );
 
   useEffect(() => {
     if (!location.hash) return;
-
     const target = document.getElementById(location.hash.slice(1));
     if (!target) return;
-
     window.requestAnimationFrame(() => {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -223,7 +197,6 @@ function LandingPage() {
   return (
     <div className="public-page-shell min-h-[100dvh] overflow-x-hidden bg-background text-text">
       <Navbar />
-
       <main>
         <section
           id="home"
@@ -239,34 +212,17 @@ function LandingPage() {
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
               <div className="max-w-3xl">
                 <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl">
-                  <span className="landing-headline-line">
-                    <span className="landing-headline-word">
-                      Run your school
-                    </span>
-                  </span>
-                  <span className="landing-headline-line">
-                    <span className="landing-headline-word">with clarity,</span>{" "}
-                    <span className="landing-headline-word">control,</span>
-                  </span>
-                  <span className="landing-headline-line">
-                    <span className="landing-headline-word">
-                      and every role
-                    </span>
-                  </span>
-                  <span className="landing-headline-line">
-                    <span className="landing-headline-word">connected.</span>
-                  </span>
+                  Run your school with clarity, control, and every role connected.
                 </h1>
                 <p className="mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8">
-                  Weave brings student records, staff management, academic
-                  setup, results, report cards, parent and student access,
-                  announcements, branding, and subscription control into one
-                  structured school workspace.
+                  Weave brings student records, staff management, academic setup,
+                  results, report cards, family access, announcements, and school
+                  operations into one structured workspace.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <Link to={buildRegistrationHref("free_trial")}>
+                  <Link to={buildRegistrationHref("free")}>
                     <Button size="large" className="w-full sm:w-auto">
-                      Start Free Trial
+                      Get started free
                     </Button>
                   </Link>
                   <Link to="/pricing" className="w-full sm:w-auto">
@@ -275,61 +231,28 @@ function LandingPage() {
                       size="large"
                       className="w-full border-white/20 bg-white/10 text-white hover:bg-white/15"
                     >
-                      View Pricing
+                      View pricing
                     </Button>
                   </Link>
                 </div>
-                <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                  {[
-                    [
-                      "Role-focused",
-                      "Purpose-built admin, teacher, student, and parent workspaces",
-                    ],
-                    [
-                      "School-secure",
-                      "Tenant-aware boundaries and controlled account access",
-                    ],
-                    [
-                      "Academically structured",
-                      "Sessions, terms, classes, subjects, results, and progression",
-                    ],
-                    [
-                      "Term-plan ready",
-                      "Choose a preferred first-term plan without paying during signup",
-                    ],
-                    [
-                      "School-branded",
-                      "Your colours and logo across eligible workspaces",
-                    ],
-                  ].map(([title, copy]) => (
-                    <div
-                      key={title}
-                      className="rounded-2xl border border-white/10 bg-white/10 px-4 py-4 backdrop-blur-xl"
-                    >
-                      <p className="text-sm font-semibold text-white">
-                        {title}
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-slate-300">
-                        {copy}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                <p className="mt-4 text-sm text-slate-300">
+                  Free is permanent. Registration never starts a payment.
+                </p>
               </div>
 
               <div className="rounded-[1.75rem] border border-white/10 bg-white/10 p-4 backdrop-blur-xl sm:p-5">
                 <div className="rounded-[1.45rem] border border-white/10 bg-slate-950/35 p-4">
                   <p className="text-sm font-semibold text-white">
-                    A stronger foundation for daily school operations
+                    Start free, then choose per term
                   </p>
                   <p className="mt-2 text-sm leading-6 text-slate-300">
-                    Set up your school, create role-based accounts, organise
-                    classes and subjects, manage academic records, and keep
-                    families connected.
+                    Configure and use Weave Free within its limits. When an
+                    academic term is ready to open, continue with Free or choose
+                    a paid plan for that term.
                   </p>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {LANDING_PRICING_PLANS.slice(0, 4).map((plan) => (
+                  {LANDING_PRICING_PLANS.map((plan) => (
                     <Link
                       key={plan.planCode}
                       to="/pricing"
@@ -351,7 +274,7 @@ function LandingPage() {
                         ) : null}
                       </div>
                       <p className="mt-1 text-xs uppercase tracking-wide text-slate-300">
-                        {plan.priceLabel}
+                        {formatLandingPrice(plan)}
                       </p>
                     </Link>
                   ))}
@@ -385,9 +308,7 @@ function LandingPage() {
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                     <Icon className="h-5 w-5" />
                   </span>
-                  <h3 className="mt-5 text-lg font-semibold">
-                    {feature.title}
-                  </h3>
+                  <h3 className="mt-5 text-lg font-semibold">{feature.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-text-muted">
                     {feature.description}
                   </p>
@@ -458,11 +379,11 @@ function LandingPage() {
             <div className="mx-auto max-w-3xl text-center">
               <Badge variant="primary">Pricing</Badge>
               <h2 className="mt-5 text-4xl font-semibold tracking-tight text-text sm:text-5xl">
-                Choose the plan that fits your school today.
+                Free forever, with paid capacity when you need it.
               </h2>
               <p className="mt-4 text-base leading-7 text-text-muted">
-                Start with Weave, then move between Plus, Professional, and
-                Enterprise as your school’s capacity and operational needs grow.
+                Paid plans are selected inside Weave for the academic term being
+                operated. There is no future-term prepayment.
               </p>
             </div>
 
@@ -472,7 +393,7 @@ function LandingPage() {
                   <a
                     key={`landing-plan-tab-${plan.planCode}`}
                     href={`#landing-plan-${plan.planCode}`}
-                    onClick={() => handlePricingTabClick(plan.planCode)}
+                    onClick={() => setActivePricingPlan(plan.planCode)}
                     aria-current={
                       activePricingPlan === plan.planCode ? "true" : undefined
                     }
@@ -482,60 +403,21 @@ function LandingPage() {
                         : "text-text-muted hover:text-text"
                     }`}
                   >
-                    {plan.planCode === "free_trial" ? "Free" : plan.name}
+                    {plan.name}
                   </a>
                 ))}
               </div>
             </div>
 
-            <div className="mt-10">
-              {freePlan ? (
-                <div
-                  id="landing-plan-free_trial"
-                  className={`mb-5 flex scroll-mt-28 flex-col gap-4 rounded-[1.5rem] border px-5 py-5 shadow-soft-card sm:flex-row sm:items-center sm:justify-between ${
-                    activePricingPlan === "free_trial"
-                      ? "border-primary/60 bg-surface ring-4 ring-primary/10"
-                      : "border-primary/25 bg-primary/5"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="success">Free</Badge>
-                      <span className="text-xs font-bold uppercase tracking-wide text-primary">
-                        Start here
-                      </span>
-                    </div>
-                    <h3 className="mt-3 text-xl font-semibold text-text">
-                      {freePlan.name}
-                    </h3>
-                    <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">
-                      {freePlan.description}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col gap-2 sm:min-w-56">
-                    <p className="text-2xl font-bold text-text">
-                      {formatLandingPrice(freePlan)}
-                    </p>
-                    <Link
-                      to={buildRegistrationHref(freePlan.planCode)}
-                      onClick={() => handlePlanSelection(freePlan.planCode)}
-                    >
-                      <Button className="w-full">Get started</Button>
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="grid items-stretch gap-5 lg:grid-cols-3">
-                {paidLandingPlans.map((plan) => (
-                  <LandingPricingCard
-                    key={plan.planCode}
-                    plan={plan}
-                    activePlanCode={activePricingPlan}
-                    onSelect={handlePlanSelection}
-                  />
-                ))}
-              </div>
+            <div className="mt-10 grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-4">
+              {LANDING_PRICING_PLANS.map((plan) => (
+                <LandingPricingCard
+                  key={plan.planCode}
+                  plan={plan}
+                  activePlanCode={activePricingPlan}
+                  onSelect={handlePlanSelection}
+                />
+              ))}
             </div>
 
             <div className="mt-8 flex flex-col items-center justify-between gap-4 rounded-[1.5rem] border border-border/70 bg-surface px-5 py-5 text-center shadow-soft-card sm:flex-row sm:text-left">
@@ -547,8 +429,7 @@ function LandingPage() {
                   </p>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-text-muted">
-                  Open the dedicated pricing page for the complete plan
-                  comparison and common questions.
+                  See exact limits, term billing rules, upgrades, and downgrades.
                 </p>
               </div>
               <Link to="/pricing" className="w-full sm:w-auto">
@@ -568,14 +449,10 @@ function LandingPage() {
               Give your school a more organised way to operate.
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-300">
-              Create your school workspace, bring each role into the right
-              experience, and start managing academic operations with greater
-              confidence.
+              Create your school workspace on Free. Move to a paid plan only
+              when an academic term needs greater capacity or premium features.
             </p>
-            <Link
-              to={buildRegistrationHref("free_trial")}
-              className="mt-8 inline-flex"
-            >
+            <Link to={buildRegistrationHref("free")} className="mt-8 inline-flex">
               <Button size="large">Create workspace</Button>
             </Link>
           </div>
