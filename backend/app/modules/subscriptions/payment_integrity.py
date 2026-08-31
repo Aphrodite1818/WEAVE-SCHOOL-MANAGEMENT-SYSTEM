@@ -13,11 +13,11 @@ from app.core.cache.events import flush_cache_invalidation_events
 from app.core.exceptions import BadRequestException
 from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache
 from app.modules.subscriptions.models import PaymentTransaction, PaymentWebhookEvent
+from app.modules.subscriptions.payment_settlement import settle_verified_term_payment
 from app.modules.subscriptions.providers.paystack import PaystackClient
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import WebhookProcessingResponse
 from app.modules.subscriptions.subscription_enums import PaymentProvider
-from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
 
 
 def _data(payload: dict[str, Any]) -> dict[str, Any]:
@@ -102,6 +102,7 @@ async def process_paystack_webhook_secure(
         webhook_event.payload = payload
 
     transaction: PaymentTransaction | None = None
+    reconciliation_required = False
     try:
         if event_type == "charge.success":
             payment_data = _data(payload)
@@ -109,9 +110,13 @@ async def process_paystack_webhook_secure(
             transaction = await _transaction_for_update(db, reference) if reference else None
             if transaction is None or transaction.academic_term_id is None:
                 raise BadRequestException("Unknown term payment reference.")
-            await TermPlanEntitlementService.activate_verified_transaction(
-                db, transaction, payload, commit=False
+            entitlement = await settle_verified_term_payment(
+                db,
+                transaction,
+                payload,
+                commit=False,
             )
+            reconciliation_required = entitlement is None
 
         await SubscriptionRepository.mark_webhook_processed(
             db=db,
@@ -129,7 +134,9 @@ async def process_paystack_webhook_secure(
             event_key=event_key,
             duplicate=False,
             message=(
-                "Term payment webhook processed successfully."
+                "Late term payment recorded for manual reconciliation."
+                if reconciliation_required
+                else "Term payment webhook processed successfully."
                 if transaction is not None
                 else "Webhook event recorded; no recurring subscription action was required."
             ),
