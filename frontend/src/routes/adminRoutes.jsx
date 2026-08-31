@@ -71,10 +71,6 @@ const protectedWorkflow = (element) => (
 export const adminRoutes = (
   <Route element={<RoleGuard allowedRoles={["ADMIN"]} />}>
     <Route
-      path="/admin/billing/plans"
-      element={<ResponsiveSubscriptionOptionsPage />}
-    />
-    <Route
       path="/billing/subscription/verify"
       element={<SubscriptionVerifyPage />}
     />
@@ -158,6 +154,10 @@ export const adminRoutes = (
         element={protectedWorkflow(<AcademicWorkflowPage />)}
       />
       <Route path="/admin/billing" element={<BillingPage />} />
+      <Route
+        path="/admin/billing/plans"
+        element={<ResponsiveSubscriptionOptionsPage />}
+      />
       <Route
         path="/admin/cbt"
         element={protectedWorkflow(<CBTServersPage />)}
