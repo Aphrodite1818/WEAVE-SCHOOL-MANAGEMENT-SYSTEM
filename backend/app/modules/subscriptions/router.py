@@ -14,7 +14,7 @@ from app.core.dependencies.route_guards import (
     get_current_superadmin,
     get_current_tenant_admin,
 )
-from app.core.exceptions import ForbiddenException
+from app.core.exceptions import ConflictException, ForbiddenException
 from app.modules.simulation.router import router as simulation_router
 from app.modules.subscriptions.catalogue import (
     PublicSubscriptionCatalogue,
@@ -25,6 +25,7 @@ from app.modules.subscriptions.payment_integrity import (
     _transaction_for_update as lock_payment_transaction,
 )
 from app.modules.subscriptions.payment_integrity import process_paystack_webhook_secure
+from app.modules.subscriptions.payment_settlement import settle_verified_term_payment
 from app.modules.subscriptions.providers.paystack import PaystackClient
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
@@ -141,9 +142,22 @@ async def verify_term_plan_checkout(
     if transaction.tenant_id != current_admin.tenant_id:
         raise ForbiddenException("You do not have access to this term payment.")
     provider_response = await PaystackClient().verify_transaction(reference=reference)
-    entitlement = await TermPlanEntitlementService.activate_verified_transaction(
-        db, transaction, provider_response
+    entitlement = await settle_verified_term_payment(
+        db,
+        transaction,
+        provider_response,
     )
+    if entitlement is None:
+        raise ConflictException(
+            "Payment was received after this checkout expired. The money is recorded, "
+            "but no term plan was changed automatically. Do not retry payment; contact "
+            "support so the transaction can be reconciled safely.",
+            payload={
+                "code": "PAYMENT_RECONCILIATION_REQUIRED",
+                "reference": transaction.reference,
+                "academic_term_id": str(transaction.academic_term_id),
+            },
+        )
     return TermEntitlementResponse.model_validate(entitlement)
 
 
