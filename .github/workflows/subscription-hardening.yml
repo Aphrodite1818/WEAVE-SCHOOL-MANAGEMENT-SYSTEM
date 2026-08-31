@@ -132,7 +132,9 @@ jobs:
           expected = {
               "/api/v1/subscriptions/actor-entitlements",
               "/api/v1/subscriptions/payments",
+              "/api/v1/subscriptions/terms/{term_id}/plan-options",
               "/api/v1/subscriptions/terms/activate-free",
+              "/api/v1/subscriptions/terms/change-plan",
               "/api/v1/subscriptions/terms/checkout",
               "/api/v1/subscriptions/terms/verify/{reference}",
               "/api/v1/subscriptions/terms/history",
@@ -150,7 +152,9 @@ jobs:
         run: |
           uv run pytest \
             tests/unit/subscriptions/test_term_entitlements.py \
+            tests/unit/subscriptions/test_term_subscription_precedence.py \
             tests/unit/subscriptions/test_public_catalogue.py \
+            tests/unit/subscriptions/test_production_hardening.py \
             tests/unit/report_cards/test_report_card_print_security.py \
             tests/unit/test_worker_settings.py \
             -q
