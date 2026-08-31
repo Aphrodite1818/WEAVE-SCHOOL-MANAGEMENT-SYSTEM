@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, CheckSquare, ClipboardList, Users } from "lucide-react";
+import {
+  BookOpen,
+  CheckSquare,
+  ClipboardList,
+  Search,
+  UserCheck,
+  UserRound,
+  Users,
+} from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import {
+  DirectorySummary,
+  DirectoryTable,
+  MobilePersonCard,
+  PersonIdentity,
+} from "../../components/people/PeopleDirectory";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
+import Input from "../../components/ui/Input";
 import LoadingState from "../../components/shared/LoadingState";
 import EmptyState from "../../components/shared/EmptyState";
 import { SelectField } from "../../components/academic/AcademicSelectors";
@@ -339,43 +354,167 @@ function StudentsPage() {
 }
 
 function RosterList({ title, students, empty, isLoading = false }) {
+  const [search, setSearch] = useState("");
+  const visibleStudents = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return students;
+    return students.filter((student) =>
+      [
+        studentName(student),
+        student.admission_number,
+        student.class_name,
+        student.class_arm,
+      ].some((value) => String(value || "").toLowerCase().includes(term)),
+    );
+  }, [search, students]);
+  const activeCount = visibleStudents.filter(
+    (student) => String(student.status).toLowerCase() === "active",
+  ).length;
+  const maleCount = visibleStudents.filter(
+    (student) => String(student.gender).toLowerCase() === "male",
+  ).length;
+  const femaleCount = visibleStudents.filter(
+    (student) => String(student.gender).toLowerCase() === "female",
+  ).length;
+
   return (
-    <div className="mt-4 rounded-2xl border border-border bg-surface-muted/20 p-3 sm:p-4">
-      <div className="flex items-center justify-between gap-3 px-1 py-1">
-        <p className="min-w-0 truncate text-sm font-semibold text-text">
-          {title}
-        </p>
-        <Badge variant="default">{students.length} students</Badge>
+    <div className="mt-5 space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-text">{title}</p>
+          <p className="mt-1 text-xs text-text-muted">
+            Search and scan the students available in this roster.
+          </p>
+        </div>
+        <div className="relative w-full lg:max-w-sm">
+          <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search name or admission number"
+            className="pl-11"
+            aria-label="Search roster"
+          />
+        </div>
       </div>
       {isLoading ? <LoadingState label="Loading students..." /> : null}
       {!isLoading && students.length === 0 ? (
-        <p className="px-1 py-4 text-sm text-text-muted">{empty}</p>
+        <div className="rounded-xl border border-border bg-surface-muted/20 px-4 py-5 text-sm text-text-muted">
+          {empty}
+        </div>
       ) : null}
       {!isLoading && students.length > 0 ? (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {students.map((student) => (
-            <div
-              key={student.id}
-              className="rounded-xl border border-border bg-surface px-3 py-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-text">
-                    {studentName(student)}
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {student.admission_number || "No admission number"}
-                  </p>
-                </div>
-                <Badge
-                  variant={student.status === "active" ? "success" : "warning"}
-                >
-                  {student.status || "student"}
-                </Badge>
-              </div>
+        <>
+          <DirectorySummary
+            items={[
+              {
+                label: "Visible students",
+                value: visibleStudents.length,
+                detail: search ? `of ${students.length}` : "in roster",
+                icon: Users,
+                tone: "primary",
+              },
+              {
+                label: "Active",
+                value: activeCount,
+                detail: "visible",
+                icon: UserCheck,
+                tone: "success",
+              },
+              {
+                label: "Male",
+                value: maleCount,
+                detail: "visible",
+                icon: UserRound,
+              },
+              {
+                label: "Female",
+                value: femaleCount,
+                detail: "visible",
+                icon: UserRound,
+              },
+            ]}
+          />
+
+          {visibleStudents.length === 0 ? (
+            <div className="rounded-xl border border-border bg-surface-muted/20 px-4 py-5 text-sm text-text-muted">
+              No students match your search.
             </div>
-          ))}
-        </div>
+          ) : (
+            <>
+              <DirectoryTable
+                label={`${title} students`}
+                columns={[
+                  { key: "student", label: "Student" },
+                  { key: "class", label: "Class" },
+                  { key: "gender", label: "Gender" },
+                  { key: "status", label: "Status" },
+                ]}
+              >
+                {visibleStudents.map((student) => (
+                  <tr
+                    key={student.id}
+                    className="transition hover:bg-surface-muted/25"
+                  >
+                    <td className="px-4 py-3.5 align-middle">
+                      <PersonIdentity
+                        name={studentName(student)}
+                        meta={student.admission_number || "No admission number"}
+                      />
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-text-soft">
+                      {[student.class_name, student.class_arm]
+                        .filter(Boolean)
+                        .join(" ") || "Current roster"}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm capitalize text-text-soft">
+                      {student.gender || "Not set"}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge
+                        variant={
+                          student.status === "active" ? "success" : "warning"
+                        }
+                      >
+                        {student.status || "Student"}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </DirectoryTable>
+
+              <div className="mobile-scroll-list grid gap-3 md:hidden">
+                {visibleStudents.map((student) => (
+                  <MobilePersonCard key={student.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <PersonIdentity
+                        name={studentName(student)}
+                        meta={student.admission_number || "No admission number"}
+                      />
+                      <Badge
+                        variant={
+                          student.status === "active" ? "success" : "warning"
+                        }
+                      >
+                        {student.status || "Student"}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between rounded-xl bg-surface-muted/35 px-3 py-2 text-xs text-text-muted">
+                      <span>
+                        {[student.class_name, student.class_arm]
+                          .filter(Boolean)
+                          .join(" ") || "Current roster"}
+                      </span>
+                      <span className="capitalize">
+                        {student.gender || "Gender not set"}
+                      </span>
+                    </div>
+                  </MobilePersonCard>
+                ))}
+              </div>
+            </>
+          )}
+        </>
       ) : null}
     </div>
   );

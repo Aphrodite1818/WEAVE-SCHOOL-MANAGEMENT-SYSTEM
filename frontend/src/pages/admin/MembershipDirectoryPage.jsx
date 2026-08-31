@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BriefcaseBusiness,
   BookOpenCheck,
   Check,
   ChevronLeft,
   ChevronRight,
   MailPlus,
+  MoreHorizontal,
   Pencil,
   Search,
   ShieldCheck,
@@ -15,11 +17,18 @@ import {
 import { Link } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import {
+  DirectorySummary,
+  DirectoryTable,
+  MobilePersonCard,
+  PersonIdentity,
+} from "../../components/people/PeopleDirectory";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import Dropdown from "../../components/ui/Dropdown";
 import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
@@ -89,6 +98,208 @@ const badgeVariant = (status) => {
     return "error";
   return "default";
 };
+
+function TeacherMembershipActions({
+  membership,
+  status,
+  busy,
+  onEdit,
+  onCapabilities,
+  onLifecycle,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const runAction = (action) => {
+    setMenuOpen(false);
+    onLifecycle(membership, action);
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <Button
+        type="button"
+        size="small"
+        variant="outline"
+        disabled={busy}
+        onClick={() => onEdit(membership)}
+      >
+        <Pencil className="h-3.5 w-3.5" />
+        Edit
+      </Button>
+      <Dropdown
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        align="right"
+        strategy="fixed"
+        className="w-56"
+        trigger={
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            disabled={busy}
+            className="h-9 w-9 min-h-9 rounded-lg"
+            aria-label="More teacher actions"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        }
+      >
+        <div className="grid gap-1">
+          <button
+            type="button"
+            className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted"
+            onClick={() => {
+              setMenuOpen(false);
+              onCapabilities(membership);
+            }}
+          >
+            <BookOpenCheck className="h-4 w-4" />
+            Approved subjects
+          </button>
+          {status === "active" ? (
+            <button
+              type="button"
+              className="min-h-10 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted"
+              onClick={() => runAction("suspend")}
+            >
+              Suspend membership
+            </button>
+          ) : null}
+          {["inactive", "suspended"].includes(status) ? (
+            <button
+              type="button"
+              className="min-h-10 rounded-xl px-3 py-2 text-left text-sm font-semibold text-success transition hover:bg-success-soft"
+              onClick={() => runAction("reactivate")}
+            >
+              Reactivate membership
+            </button>
+          ) : null}
+          {["active", "suspended"].includes(status) ? (
+            <button
+              type="button"
+              className="min-h-10 rounded-xl px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-error-soft"
+              onClick={() => runAction("end")}
+            >
+              End membership
+            </button>
+          ) : null}
+        </div>
+      </Dropdown>
+    </div>
+  );
+}
+
+function TeacherMembershipList({
+  items,
+  actionId,
+  onEdit,
+  onCapabilities,
+  onLifecycle,
+}) {
+  return (
+    <>
+      <DirectoryTable
+        label="Teacher directory"
+        columns={[
+          { key: "teacher", label: "Teacher" },
+          { key: "staff", label: "Employment" },
+          { key: "department", label: "Department" },
+          { key: "status", label: "Status" },
+          { key: "actions", label: "Actions", className: "text-right" },
+        ]}
+      >
+        {items.map((membership) => {
+          const account = membership.teacher_account || {};
+          const status = String(membership.status || "unknown").toLowerCase();
+          const busy = actionId === membership.id;
+          return (
+            <tr key={membership.id} className="transition hover:bg-surface-muted/25">
+              <td className="px-4 py-3.5 align-middle">
+                <PersonIdentity
+                  name={displayName(account)}
+                  meta={account.email || "No email"}
+                />
+              </td>
+              <td className="px-4 py-3.5 align-middle">
+                <p className="text-sm font-medium text-text-soft">
+                  {membership.job_title || "Role not provided"}
+                </p>
+                <p className="mt-0.5 text-xs text-text-muted">
+                  {membership.staff_id || "No staff ID"}
+                </p>
+              </td>
+              <td className="px-4 py-3.5 align-middle text-sm text-text-soft">
+                {membership.department || "Not provided"}
+              </td>
+              <td className="px-4 py-3.5 align-middle">
+                <Badge variant={badgeVariant(status)}>{titleCase(status)}</Badge>
+              </td>
+              <td className="px-4 py-3.5 align-middle">
+                <TeacherMembershipActions
+                  membership={membership}
+                  status={status}
+                  busy={busy}
+                  onEdit={onEdit}
+                  onCapabilities={onCapabilities}
+                  onLifecycle={onLifecycle}
+                />
+              </td>
+            </tr>
+          );
+        })}
+      </DirectoryTable>
+
+      <section className="mobile-scroll-list grid gap-3 md:hidden">
+        {items.map((membership) => {
+          const account = membership.teacher_account || {};
+          const status = String(membership.status || "unknown").toLowerCase();
+          return (
+            <MobilePersonCard key={membership.id}>
+              <div className="flex items-start justify-between gap-3">
+                <PersonIdentity
+                  name={displayName(account)}
+                  meta={account.email || "No email"}
+                />
+                <Badge variant={badgeVariant(status)}>{titleCase(status)}</Badge>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-surface-muted/35 px-3 py-3 text-sm">
+                <div>
+                  <dt className="text-xs font-semibold uppercase text-text-muted">Role</dt>
+                  <dd className="mt-1 text-text-soft">
+                    {membership.job_title || "Not provided"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase text-text-muted">Staff ID</dt>
+                  <dd className="mt-1 text-text-soft">
+                    {membership.staff_id || "Not assigned"}
+                  </dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-xs font-semibold uppercase text-text-muted">Department</dt>
+                  <dd className="mt-1 text-text-soft">
+                    {membership.department || "Not provided"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-4 border-t border-border/70 pt-3">
+                <TeacherMembershipActions
+                  membership={membership}
+                  status={status}
+                  busy={actionId === membership.id}
+                  onEdit={onEdit}
+                  onCapabilities={onCapabilities}
+                  onLifecycle={onLifecycle}
+                />
+              </div>
+            </MobilePersonCard>
+          );
+        })}
+      </section>
+    </>
+  );
+}
 
 function MembershipDirectoryPage({ role }) {
   const config = ROLE_CONFIG[role] || ROLE_CONFIG.teacher;
@@ -532,7 +743,42 @@ function MembershipDirectoryPage({ role }) {
         ) : null}
       </Card>
 
-      <div className="flex items-center justify-between gap-3 text-sm text-text-muted">
+      {role === "teacher" && activeTab === "memberships" ? (
+        <DirectorySummary
+          items={[
+            {
+              label: "Matching teachers",
+              value: total,
+              detail: "all pages",
+              icon: Users,
+              tone: "primary",
+            },
+            {
+              label: "Active",
+              value: items.filter((item) => item.status === "active").length,
+              detail: "this page",
+              icon: ShieldCheck,
+              tone: "success",
+            },
+            {
+              label: "With staff ID",
+              value: items.filter((item) => item.staff_id).length,
+              detail: "this page",
+              icon: BriefcaseBusiness,
+            },
+            {
+              label: "Profile ready",
+              value: items.filter((item) => item.job_title && item.department)
+                .length,
+              detail: "role and department",
+              icon: UserRound,
+              tone: "warning",
+            },
+          ]}
+        />
+      ) : null}
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-surface/60 px-4 py-2.5 text-sm text-text-muted">
         <span>
           {total} record{total === 1 ? "" : "s"}
         </span>
@@ -551,6 +797,14 @@ function MembershipDirectoryPage({ role }) {
             description="Adjust the filters or create an invitation."
           />
         </Card>
+      ) : activeTab === "memberships" && role === "teacher" ? (
+        <TeacherMembershipList
+          items={items}
+          actionId={actionId}
+          onEdit={openTeacherEdit}
+          onCapabilities={openCapabilities}
+          onLifecycle={openLifecycle}
+        />
       ) : activeTab === "memberships" ? (
         <section className="directory-card-grid mobile-scroll-list grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {items.map((membership) => {

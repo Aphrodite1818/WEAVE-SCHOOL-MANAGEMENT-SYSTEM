@@ -7,19 +7,27 @@ import {
   ChevronLeft,
   ChevronRight,
   GraduationCap,
+  KeyRound,
   MoreHorizontal,
-  PlusCircle,
   RotateCcw,
+  School,
   ShieldOff,
   Trash2,
   Undo2,
   UserCheck,
   UserMinus,
   UserRound,
+  Users,
 } from "lucide-react";
 
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
+import {
+  DirectorySummary,
+  DirectoryTable,
+  MobilePersonCard,
+  PersonIdentity,
+} from "../../components/people/PeopleDirectory";
 import StudentAccessCodeSlipModal from "../../components/students/StudentAccessCodeSlipModal";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -214,7 +222,7 @@ function buildAccessNotice(result) {
   };
 }
 
-function StudentCard({
+function StudentActions({
   student,
   busy,
   onEdit,
@@ -227,7 +235,98 @@ function StudentCard({
   const actions = actionsForStudent(student);
 
   return (
-    <Card className="flex min-h-[20rem] flex-col p-5">
+    <div className="flex items-center justify-end gap-2">
+      <Button
+        type="button"
+        size="small"
+        variant="outline"
+        onClick={() => onEdit(student)}
+        disabled={busy}
+      >
+        Edit
+      </Button>
+      <Dropdown
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        align="right"
+        strategy="fixed"
+        className="w-64"
+        trigger={
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            disabled={busy}
+            className="h-9 w-9 min-h-9 rounded-lg"
+            aria-label={`More actions for ${displayName(student)}`}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        }
+      >
+        <div className="grid gap-1">
+          <button
+            type="button"
+            className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted"
+            onClick={() => {
+              setMenuOpen(false);
+              onHistory(student);
+            }}
+          >
+            <BookOpen className="h-4 w-4" />
+            Class history
+          </button>
+          <button
+            type="button"
+            disabled={student.is_archived}
+            className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted disabled:opacity-50"
+            onClick={() => {
+              setMenuOpen(false);
+              onReset(student);
+            }}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Reset access code
+          </button>
+          <div className="my-1 border-t border-border/70" />
+          {actions.map((key) => {
+            const item = lifecycleConfig[key];
+            const Icon = item.icon;
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition hover:bg-surface-muted ${["archive", "expel"].includes(key) ? "text-error" : "text-text-soft"}`}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onLifecycle(student, key);
+                }}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-error-soft"
+            onClick={() => {
+              setMenuOpen(false);
+              onHardDelete(student);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            Hard-delete check
+          </button>
+        </div>
+      </Dropdown>
+    </div>
+  );
+}
+
+function StudentCard({ student, selected, onSelectedChange, ...actions }) {
+  return (
+    <MobilePersonCard>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
@@ -250,7 +349,7 @@ function StudentCard({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 rounded-2xl bg-surface-muted/30 px-4 py-3 text-sm">
+      <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-surface-muted/35 px-3 py-3 text-sm">
         <div>
           <p className="text-xs font-semibold uppercase text-text-muted">
             Class
@@ -283,89 +382,18 @@ function StudentCard({
         </div>
       </div>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-        <Button
-          type="button"
-          size="small"
-          variant="outline"
-          onClick={() => onEdit(student)}
-          disabled={busy}
-        >
-          Edit profile
-        </Button>
-        <Button
-          type="button"
-          size="small"
-          variant="outline"
-          onClick={() => onHistory(student)}
-          disabled={busy}
-        >
-          <BookOpen className="h-4 w-4" />
-          Class history
-        </Button>
-        <Button
-          type="button"
-          size="small"
-          variant="outline"
-          onClick={() => onReset(student)}
-          disabled={busy || student.is_archived}
-        >
-          <RotateCcw className="h-4 w-4" />
-          Reset code
-        </Button>
-        <Dropdown
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          align="right"
-          strategy="fixed"
-          className="w-64"
-          trigger={
-            <Button
-              type="button"
-              size="small"
-              variant="outline"
-              disabled={busy}
-              className="w-full justify-between"
-            >
-              Lifecycle
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          }
-        >
-          <div className="grid gap-1">
-            {actions.map((key) => {
-              const item = lifecycleConfig[key];
-              const Icon = item.icon;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className={`flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition hover:bg-surface-muted ${["archive", "expel"].includes(key) ? "text-error" : "text-text-soft"}`}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onLifecycle(student, key);
-                  }}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-error-soft"
-              onClick={() => {
-                setMenuOpen(false);
-                onHardDelete(student);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              Hard-delete check
-            </button>
-          </div>
-        </Dropdown>
+      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/70 pt-3">
+        <label className="flex items-center gap-2 text-xs font-semibold text-text-muted">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(event) => onSelectedChange(event.target.checked)}
+          />
+          Select
+        </label>
+        <StudentActions student={student} {...actions} />
       </div>
-    </Card>
+    </MobilePersonCard>
   );
 }
 
@@ -780,9 +808,28 @@ function StudentDirectoryPage() {
     setPage(1);
   };
 
+  const setStudentSelected = (studentId, selected) => {
+    setSelectedStudentIds((current) =>
+      selected
+        ? [...new Set([...current, studentId])]
+        : current.filter((id) => id !== studentId),
+    );
+  };
+
   if (loading && students.length === 0 && !error) {
     return <LoadingState label="Loading students..." />;
   }
+
+  const placedCount = students.filter((student) => student.class_id).length;
+  const activeCount = students.filter(
+    (student) => String(student.status).toLowerCase() === "active",
+  ).length;
+  const credentialsReadyCount = students.filter(
+    (student) => !student.password_reset_required,
+  ).length;
+  const allPageSelected =
+    students.length > 0 &&
+    students.every((student) => selectedStudentIds.includes(student.id));
 
   return (
     <div className="space-y-5">
@@ -800,21 +847,38 @@ function StudentDirectoryPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="section-title">Students</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            Create and manage student records.
-          </p>
-        </div>
-        <Button
-          type="button"
-          onClick={() => navigate("/admin/students/create")}
-        >
-          <PlusCircle className="h-4 w-4" />
-          Create student
-        </Button>
-      </div>
+      <DirectorySummary
+        items={[
+          {
+            label: "Matching records",
+            value: total,
+            detail: "all pages",
+            icon: Users,
+            tone: "primary",
+          },
+          {
+            label: "Active",
+            value: activeCount,
+            detail: "this page",
+            icon: UserCheck,
+            tone: "success",
+          },
+          {
+            label: "Class placed",
+            value: placedCount,
+            detail: `${students.length - placedCount} unassigned`,
+            icon: School,
+          },
+          {
+            label: "Access ready",
+            value: credentialsReadyCount,
+            detail: `${students.length - credentialsReadyCount} need setup`,
+            icon: KeyRound,
+            tone:
+              credentialsReadyCount === students.length ? "success" : "warning",
+          },
+        ]}
+      />
 
       <Card className="p-4 sm:p-5">
         <form
@@ -912,9 +976,10 @@ function StudentDirectoryPage() {
         </form>
       </Card>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-surface/60 px-4 py-2.5">
         <p className="text-sm text-text-muted">
-          {total} student record{total === 1 ? "" : "s"}
+          Showing <span className="font-semibold text-text">{students.length}</span> of{" "}
+          <span className="font-semibold text-text">{total}</span> students
         </p>
         <p className="text-sm text-text-muted">
           Page {page} of {pageCount}
@@ -954,25 +1019,109 @@ function StudentDirectoryPage() {
           />
         </Card>
       ) : (
-        <section className="directory-card-grid mobile-scroll-list grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-          {students.map((student) => (
-            <div key={student.id} className="space-y-2">
-              <label className="flex items-center gap-2 px-1 text-xs font-semibold text-text-muted">
-                <input
-                  type="checkbox"
-                  checked={selectedStudentIds.includes(student.id)}
-                  onChange={(event) =>
-                    setSelectedStudentIds((current) =>
-                      event.target.checked
-                        ? [...current, student.id]
-                        : current.filter((id) => id !== student.id),
-                    )
-                  }
-                />
-                Select for batch class placement
-              </label>
+        <>
+          <DirectoryTable
+            label="Student directory"
+            columns={[
+              {
+                key: "select",
+                label: (
+                  <input
+                    type="checkbox"
+                    aria-label="Select all students on this page"
+                    checked={allPageSelected}
+                    onChange={(event) =>
+                      setSelectedStudentIds(
+                        event.target.checked
+                          ? students.map((student) => student.id)
+                          : [],
+                      )
+                    }
+                  />
+                ),
+                className: "w-12",
+              },
+              { key: "student", label: "Student" },
+              { key: "class", label: "Class placement" },
+              { key: "status", label: "Status" },
+              { key: "profile", label: "Profile & access" },
+              { key: "actions", label: "Actions", className: "text-right" },
+            ]}
+          >
+            {students.map((student) => (
+              <tr key={student.id} className="transition hover:bg-surface-muted/25">
+                <td className="px-4 py-3.5 align-middle">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${displayName(student)} for batch class placement`}
+                    checked={selectedStudentIds.includes(student.id)}
+                    onChange={(event) =>
+                      setStudentSelected(student.id, event.target.checked)
+                    }
+                  />
+                </td>
+                <td className="px-4 py-3.5 align-middle">
+                  <PersonIdentity
+                    name={displayName(student)}
+                    meta={student.admission_number || "No admission number"}
+                  />
+                </td>
+                <td className="px-4 py-3.5 align-middle">
+                  <p className="text-sm font-medium text-text-soft">
+                    {studentClassLabel(student)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-text-muted">
+                    Admitted {formatDate(student.admission_date)}
+                  </p>
+                </td>
+                <td className="px-4 py-3.5 align-middle">
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge
+                      variant={student.status === "active" ? "success" : "default"}
+                    >
+                      {titleCase(student.status)}
+                    </Badge>
+                    {student.is_archived ? (
+                      <Badge variant="error">Archived</Badge>
+                    ) : null}
+                  </div>
+                </td>
+                <td className="px-4 py-3.5 align-middle">
+                  <p className="text-sm font-medium text-text-soft">
+                    {titleCase(student.profile_status) || "Not set"}
+                  </p>
+                  <p
+                    className={`mt-0.5 text-xs ${student.password_reset_required ? "text-warning" : "text-success"}`}
+                  >
+                    {student.password_reset_required
+                      ? "Access setup required"
+                      : "Access configured"}
+                  </p>
+                </td>
+                <td className="px-4 py-3.5 align-middle">
+                  <StudentActions
+                    student={student}
+                    busy={busyId === student.id}
+                    onEdit={openEdit}
+                    onReset={setAccessCodeConfirmation}
+                    onHistory={openHistory}
+                    onLifecycle={openLifecycle}
+                    onHardDelete={inspectHardDelete}
+                  />
+                </td>
+              </tr>
+            ))}
+          </DirectoryTable>
+
+          <section className="mobile-scroll-list grid gap-3 md:hidden">
+            {students.map((student) => (
               <StudentCard
+                key={student.id}
                 student={student}
+                selected={selectedStudentIds.includes(student.id)}
+                onSelectedChange={(selected) =>
+                  setStudentSelected(student.id, selected)
+                }
                 busy={busyId === student.id}
                 onEdit={openEdit}
                 onReset={setAccessCodeConfirmation}
@@ -980,9 +1129,9 @@ function StudentDirectoryPage() {
                 onLifecycle={openLifecycle}
                 onHardDelete={inspectHardDelete}
               />
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
+        </>
       )}
 
       <div className="mobile-list-pagination flex items-center justify-between gap-2">
