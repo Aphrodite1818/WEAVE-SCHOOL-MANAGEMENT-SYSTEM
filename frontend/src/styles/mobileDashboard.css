@@ -66,15 +66,11 @@
 }
 
 #dashboard-content .mobile-list-pagination {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
+  position: static;
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid rgb(var(--color-border) / 0.7);
-  background: rgb(var(--color-background) / 0.94);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  background: transparent;
 }
 
 .dashboard-topbar {
@@ -390,8 +386,14 @@
   }
 
   #dashboard-content .mobile-list-pagination {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
     margin-inline: -0.25rem;
     padding: 0.65rem 0.25rem 0;
+    background: rgb(var(--color-background) / 0.94);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
   }
 
   #dashboard-content .stat-grid + .dashboard-grid,

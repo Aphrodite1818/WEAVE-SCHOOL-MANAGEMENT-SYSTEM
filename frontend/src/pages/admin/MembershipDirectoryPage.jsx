@@ -301,6 +301,147 @@ function TeacherMembershipList({
   );
 }
 
+const parentAccessLabel = (status) => {
+  if (status === "active") return "Active child links";
+  if (status === "read_only") return "Historical records only";
+  return "No active access";
+};
+
+function ParentMembershipActions({ membership, status, busy, onLifecycle }) {
+  if (status === "inactive") {
+    return (
+      <Button
+        type="button"
+        size="small"
+        variant="success"
+        disabled={busy}
+        onClick={() => onLifecycle(membership, "reactivate")}
+      >
+        Reactivate
+      </Button>
+    );
+  }
+
+  if (["active", "read_only"].includes(status)) {
+    return (
+      <Button
+        type="button"
+        size="small"
+        variant="outline"
+        disabled={busy}
+        onClick={() => onLifecycle(membership, "end")}
+        className="text-error hover:bg-error-soft hover:text-error"
+      >
+        End access
+      </Button>
+    );
+  }
+
+  return null;
+}
+
+function ParentMembershipList({ items, actionId, onLifecycle }) {
+  return (
+    <>
+      <DirectoryTable
+        label="Parent directory"
+        columns={[
+          { key: "parent", label: "Parent" },
+          { key: "access", label: "School access" },
+          { key: "joined", label: "Joined" },
+          { key: "status", label: "Status" },
+          { key: "actions", label: "Actions", className: "text-right" },
+        ]}
+      >
+        {items.map((membership) => {
+          const account = membership.parent_account || {};
+          const status = String(membership.status || "unknown").toLowerCase();
+          return (
+            <tr key={membership.id} className="transition hover:bg-surface-muted/25">
+              <td className="px-4 py-3.5 align-middle">
+                <PersonIdentity
+                  name={displayName(account)}
+                  meta={account.email || "No email"}
+                />
+              </td>
+              <td className="px-4 py-3.5 align-middle">
+                <p className="text-sm font-medium text-text-soft">
+                  {parentAccessLabel(status)}
+                </p>
+                <p className="mt-0.5 text-xs text-text-muted">
+                  Membership is scoped to this school
+                </p>
+              </td>
+              <td className="px-4 py-3.5 text-sm text-text-soft">
+                {membership.joined_at
+                  ? new Date(membership.joined_at).toLocaleDateString()
+                  : "Unknown"}
+              </td>
+              <td className="px-4 py-3.5">
+                <Badge variant={badgeVariant(status)}>{titleCase(status)}</Badge>
+              </td>
+              <td className="px-4 py-3.5 text-right">
+                <ParentMembershipActions
+                  membership={membership}
+                  status={status}
+                  busy={actionId === membership.id}
+                  onLifecycle={onLifecycle}
+                />
+              </td>
+            </tr>
+          );
+        })}
+      </DirectoryTable>
+
+      <section className="mobile-scroll-list grid gap-3 md:hidden">
+        {items.map((membership) => {
+          const account = membership.parent_account || {};
+          const status = String(membership.status || "unknown").toLowerCase();
+          return (
+            <MobilePersonCard key={membership.id}>
+              <div className="flex items-start justify-between gap-3">
+                <PersonIdentity
+                  name={displayName(account)}
+                  meta={account.email || "No email"}
+                />
+                <Badge variant={badgeVariant(status)}>{titleCase(status)}</Badge>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-surface-muted/35 px-3 py-3 text-sm">
+                <div>
+                  <dt className="text-xs font-semibold uppercase text-text-muted">
+                    Access
+                  </dt>
+                  <dd className="mt-1 text-text-soft">
+                    {parentAccessLabel(status)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-semibold uppercase text-text-muted">
+                    Joined
+                  </dt>
+                  <dd className="mt-1 text-text-soft">
+                    {membership.joined_at
+                      ? new Date(membership.joined_at).toLocaleDateString()
+                      : "Unknown"}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-4 flex justify-end border-t border-border/70 pt-3">
+                <ParentMembershipActions
+                  membership={membership}
+                  status={status}
+                  busy={actionId === membership.id}
+                  onLifecycle={onLifecycle}
+                />
+              </div>
+            </MobilePersonCard>
+          );
+        })}
+      </section>
+    </>
+  );
+}
+
 function MembershipDirectoryPage({ role }) {
   const config = ROLE_CONFIG[role] || ROLE_CONFIG.teacher;
   const availableTabs = useMemo(
@@ -778,6 +919,43 @@ function MembershipDirectoryPage({ role }) {
         />
       ) : null}
 
+      {role === "parent" && activeTab === "memberships" ? (
+        <DirectorySummary
+          items={[
+            {
+              label: "Matching parents",
+              value: total,
+              detail: "all pages",
+              icon: Users,
+              tone: "primary",
+            },
+            {
+              label: "Active",
+              value: items.filter((item) => item.status === "active").length,
+              detail: "this page",
+              icon: ShieldCheck,
+              tone: "success",
+            },
+            {
+              label: "Read only",
+              value: items.filter((item) => item.status === "read_only").length,
+              detail: "historical access",
+              icon: BookOpenCheck,
+              tone: "warning",
+            },
+            {
+              label: "Profile ready",
+              value: items.filter((item) => {
+                const account = item.parent_account || {};
+                return account.first_name && account.last_name && account.email;
+              }).length,
+              detail: "name and email",
+              icon: UserRound,
+            },
+          ]}
+        />
+      ) : null}
+
       <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-surface/60 px-4 py-2.5 text-sm text-text-muted">
         <span>
           {total} record{total === 1 ? "" : "s"}
@@ -803,6 +981,12 @@ function MembershipDirectoryPage({ role }) {
           actionId={actionId}
           onEdit={openTeacherEdit}
           onCapabilities={openCapabilities}
+          onLifecycle={openLifecycle}
+        />
+      ) : activeTab === "memberships" && role === "parent" ? (
+        <ParentMembershipList
+          items={items}
+          actionId={actionId}
           onLifecycle={openLifecycle}
         />
       ) : activeTab === "memberships" ? (
