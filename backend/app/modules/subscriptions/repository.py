@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.cbt.models import CBTServer
 from app.modules.parents.models import ParentMembership, ParentMembershipStatus
-from app.modules.students.models import Student
+from app.modules.students.models import AcademicStatus, Student, StudentEnrollment
 from app.modules.subscriptions.models import (
     PaymentTransaction,
     PaymentWebhookEvent,
@@ -58,9 +58,6 @@ class SubscriptionRepository:
         tenant.trial_ends_at = trial_ends_at
         tenant.subscription_ends_at = current_period_end
         if tenant.verification_status == TenantVerificationStatus.ACTIVE:
-            # Tenant account activity and subscription activity are separate.
-            # Expired billing must keep Billing and historical records accessible;
-            # subscription guards decide which writes remain available.
             tenant.status = (
                 TenantStatus.TRIAL
                 if subscription_status == SubscriptionStatus.TRIALING
@@ -207,6 +204,24 @@ class SubscriptionRepository:
         return list(rows), total
 
     @staticmethod
+    async def sum_successful_term_payments(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> int:
+        value = (
+            await db.execute(
+                select(func.coalesce(func.sum(PaymentTransaction.amount_kobo), 0)).where(
+                    PaymentTransaction.tenant_id == tenant_id,
+                    PaymentTransaction.academic_term_id == academic_term_id,
+                    PaymentTransaction.status == PaymentStatus.SUCCESS,
+                )
+            )
+        ).scalar_one()
+        return int(value or 0)
+
+    @staticmethod
     async def mark_transaction_success(
         db: AsyncSession,
         *,
@@ -238,6 +253,7 @@ class SubscriptionRepository:
         transaction.provider_transaction_id = provider_transaction_id
         return await SubscriptionRepository.save_payment_transaction(db, transaction)
 
+    @staticmethod
     async def create_webhook_event(
         db: AsyncSession,
         webhook_event: PaymentWebhookEvent,
@@ -310,10 +326,34 @@ class SubscriptionRepository:
         )
         return list(result.scalars().all())
 
-    async def count_students(db: AsyncSession, tenant_id: uuid.UUID) -> int:
+    @staticmethod
+    async def count_students(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        academic_session_id: uuid.UUID | None = None,
+    ) -> int:
+        if academic_session_id is not None:
+            result = await db.execute(
+                select(func.count(func.distinct(StudentEnrollment.student_id)))
+                .select_from(StudentEnrollment)
+                .join(Student, Student.id == StudentEnrollment.student_id)
+                .where(
+                    StudentEnrollment.tenant_id == tenant_id,
+                    StudentEnrollment.academic_session_id == academic_session_id,
+                    StudentEnrollment.is_current.is_(True),
+                    StudentEnrollment.ended_on.is_(None),
+                    Student.tenant_id == tenant_id,
+                    Student.status == AcademicStatus.ACTIVE,
+                    Student.is_archived.is_(False),
+                )
+            )
+            return int(result.scalar_one() or 0)
+
         result = await db.execute(
             select(func.count(Student.id)).where(
                 Student.tenant_id == tenant_id,
+                Student.status == AcademicStatus.ACTIVE,
                 Student.is_archived.is_(False),
             )
         )
@@ -354,9 +394,16 @@ class SubscriptionRepository:
         db: AsyncSession,
         tenant_id: uuid.UUID,
         resource: ResourceLimitCode,
+        *,
+        academic_session_id: uuid.UUID | None = None,
     ) -> int:
+        if resource == ResourceLimitCode.STUDENTS:
+            return await SubscriptionRepository.count_students(
+                db,
+                tenant_id,
+                academic_session_id=academic_session_id,
+            )
         counter_map = {
-            ResourceLimitCode.STUDENTS: SubscriptionRepository.count_students,
             ResourceLimitCode.TEACHERS: SubscriptionRepository.count_teachers,
             ResourceLimitCode.PARENTS: SubscriptionRepository.count_parents,
             ResourceLimitCode.CBT_SERVERS: SubscriptionRepository.count_cbt_servers,
@@ -367,11 +414,21 @@ class SubscriptionRepository:
     async def get_all_resource_usage(
         db: AsyncSession,
         tenant_id: uuid.UUID,
+        *,
+        academic_session_id: uuid.UUID | None = None,
     ) -> dict[ResourceLimitCode, int]:
         return {
-            ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(db, tenant_id),
-            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(db, tenant_id),
-            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(db, tenant_id),
+            ResourceLimitCode.STUDENTS: await SubscriptionRepository.count_students(
+                db,
+                tenant_id,
+                academic_session_id=academic_session_id,
+            ),
+            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(
+                db, tenant_id
+            ),
+            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(
+                db, tenant_id
+            ),
             ResourceLimitCode.CBT_SERVERS: await SubscriptionRepository.count_cbt_servers(
                 db, tenant_id
             ),
