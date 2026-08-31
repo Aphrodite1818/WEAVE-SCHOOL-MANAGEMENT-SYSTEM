@@ -56,10 +56,15 @@ class ResolvedSubscriptionState:
     trial_ends_at: datetime | None = None
     subscription: TenantSubscription | None = None
     effective_entitlement_id: uuid.UUID | None = None
+    academic_session_id: uuid.UUID | None = None
 
 
 class SubscriptionLifecycleService:
-    """Time-based reconciliation retained only for onboarding trials."""
+    """Legacy cleanup for historical trial rows.
+
+    Free Trial is no longer part of runtime plan resolution. This cleanup is
+    retained so existing deployments can safely age out legacy rows.
+    """
 
     @staticmethod
     async def sync_expired_subscriptions(
@@ -82,7 +87,7 @@ class SubscriptionLifecycleService:
             tenant = await SubscriptionRepository.get_tenant(db, subscription.tenant_id)
             if tenant is not None:
                 tenant.plan = SubscriptionPlan.FREE
-                tenant.trial_ends_at = subscription.trial_ends_at
+                tenant.trial_ends_at = None
                 tenant.subscription_ends_at = None
             await SubscriptionFeatureService.invalidate_tenant_subscription_state(
                 subscription.tenant_id, db=db
@@ -90,11 +95,11 @@ class SubscriptionLifecycleService:
             expired += 1
         await db.commit()
         await flush_cache_invalidation_events(db)
-        return {"trials_expired": expired}
+        return {"legacy_trials_expired": expired}
 
 
 class SubscriptionFeatureService:
-    """Central source of truth for trial, current-term, and permanent Free access."""
+    """Central source of truth for current-term access and permanent Free."""
 
     @staticmethod
     def _get_cache_ttl() -> int:
@@ -108,7 +113,9 @@ class SubscriptionFeatureService:
 
         from app.modules.student_academics.models import AcademicTermStatus
         from app.modules.student_academics.repository import StudentAcademicRepository
-        from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
+        from app.modules.subscriptions.term_entitlement_service import (
+            TermPlanEntitlementService,
+        )
 
         current_terms, _ = await StudentAcademicRepository.list_terms(
             db,
@@ -119,44 +126,48 @@ class SubscriptionFeatureService:
         )
         active_term = current_terms[0] if current_terms else None
         if active_term is not None:
-            entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, active_term.id)
+            entitlement = await TermPlanEntitlementService.get_active(
+                db, tenant_id, active_term.id
+            )
             if entitlement is not None and (
-                entitlement.safety_expires_at is None or entitlement.safety_expires_at > now
+                entitlement.safety_expires_at is None
+                or entitlement.safety_expires_at > now
             ):
                 return ResolvedSubscriptionState(
                     tenant_id=tenant_id,
-                    plan_code=entitlement.plan_code.value,
+                    plan_code=normalize_plan_code(entitlement.plan_code),
                     status=SubscriptionStatus.ACTIVE,
                     billing_interval=BillingInterval.TERM,
                     provider=entitlement.provider,
                     effective_entitlement_id=entitlement.id,
+                    academic_session_id=active_term.academic_session_id,
                 )
 
-        current = await SubscriptionRepository.get_current_subscription(db, tenant_id)
-        if (
-            current is not None
-            and current.plan_code == SubscriptionPlan.FREE_TRIAL
-            and current.status == SubscriptionStatus.TRIALING
-            and current.trial_ends_at is not None
-            and current.trial_ends_at > now
-        ):
+            if await SubscriptionRepository.get_tenant(db, tenant_id) is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Tenant not found.",
+                )
             return ResolvedSubscriptionState(
                 tenant_id=tenant_id,
-                plan_code=SubscriptionPlan.FREE_TRIAL.value,
-                status=SubscriptionStatus.TRIALING,
-                billing_interval=current.billing_interval,
-                provider=current.provider,
-                trial_ends_at=current.trial_ends_at,
-                subscription=current,
+                plan_code=SubscriptionPlan.FREE.value,
+                status=SubscriptionStatus.ACTIVE,
+                billing_interval=BillingInterval.TERM,
+                provider=PaymentProvider.MANUAL,
+                academic_session_id=active_term.academic_session_id,
             )
 
         if await SubscriptionRepository.get_tenant(db, tenant_id) is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found.",
+            )
         return ResolvedSubscriptionState(
             tenant_id=tenant_id,
             plan_code=SubscriptionPlan.FREE.value,
             status=SubscriptionStatus.ACTIVE,
             billing_interval=BillingInterval.TERM,
+            provider=PaymentProvider.MANUAL,
         )
 
     @staticmethod
@@ -182,7 +193,7 @@ class SubscriptionFeatureService:
                 "plan_code": plan_code,
                 "status": state.status,
                 "billing_interval": state.billing_interval,
-                "trial_ends_at": state.trial_ends_at,
+                "trial_ends_at": None,
                 "provider": state.provider or PaymentProvider.MANUAL,
             }
         )
@@ -206,7 +217,7 @@ class SubscriptionFeatureService:
             plan_code=state.plan_code,
             status=state.status,
             is_write_access_allowed=True,
-            trial_ends_at=state.trial_ends_at,
+            trial_ends_at=None,
             provider=state.provider,
             subscription=SubscriptionFeatureService._state_to_subscription_response(state),
         )
@@ -224,14 +235,21 @@ class SubscriptionFeatureService:
         tenant_id: uuid.UUID,
         resource: ResourceLimitCode,
         *,
+        academic_session_id: uuid.UUID | None = None,
         use_cache: bool = True,
     ) -> int:
-        if use_cache:
+        cacheable = use_cache and academic_session_id is None
+        if cacheable:
             cached = await get_cached_resource_usage(tenant_id=tenant_id, resource=resource)
             if cached is not None:
                 return cached
-        value = await SubscriptionRepository.get_resource_usage(db, tenant_id, resource)
-        if use_cache:
+        value = await SubscriptionRepository.get_resource_usage(
+            db,
+            tenant_id,
+            resource,
+            academic_session_id=academic_session_id,
+        )
+        if cacheable:
             await set_cached_resource_usage(
                 tenant_id=tenant_id,
                 resource=resource,
@@ -242,12 +260,21 @@ class SubscriptionFeatureService:
 
     @staticmethod
     async def get_all_resource_usage(
-        db: AsyncSession, tenant_id: uuid.UUID, *, use_cache: bool = True
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        *,
+        academic_session_id: uuid.UUID | None = None,
+        use_cache: bool = True,
     ) -> dict[ResourceLimitCode, int]:
-        if use_cache and (cached := await get_cached_all_resource_usage(tenant_id)) is not None:
+        cacheable = use_cache and academic_session_id is None
+        if cacheable and (cached := await get_cached_all_resource_usage(tenant_id)) is not None:
             return {ResourceLimitCode(str(key)): int(value) for key, value in cached.items()}
-        usage = await SubscriptionRepository.get_all_resource_usage(db, tenant_id)
-        if use_cache:
+        usage = await SubscriptionRepository.get_all_resource_usage(
+            db,
+            tenant_id,
+            academic_session_id=academic_session_id,
+        )
+        if cacheable:
             await set_cached_all_resource_usage(
                 tenant_id=tenant_id,
                 value=usage,
@@ -264,7 +291,10 @@ class SubscriptionFeatureService:
         state = await SubscriptionFeatureService._resolve_subscription_state(db, tenant_id)
         entitlements = get_plan_entitlements(state.plan_code)
         counts = await SubscriptionFeatureService.get_all_resource_usage(
-            db, tenant_id, use_cache=use_cache
+            db,
+            tenant_id,
+            academic_session_id=state.academic_session_id,
+            use_cache=use_cache,
         )
         usage = {
             resource: SubscriptionFeatureService._build_resource_usage_response(
@@ -279,7 +309,7 @@ class SubscriptionFeatureService:
             features=entitlements.features,
             limits=entitlements.limits,
             usage=usage,
-            trial_ends_at=state.trial_ends_at,
+            trial_ends_at=None,
         )
         if use_cache:
             await set_cached_entitlements(
@@ -352,7 +382,11 @@ class SubscriptionFeatureService:
         state = await SubscriptionFeatureService._resolve_subscription_state(db, tenant_id)
         limit = get_plan_entitlements(state.plan_code).limits.get(resource)
         used = await SubscriptionFeatureService.get_resource_usage(
-            db, tenant_id, resource, use_cache=use_cache
+            db,
+            tenant_id,
+            resource,
+            academic_session_id=state.academic_session_id,
+            use_cache=use_cache,
         )
         remaining = None if limit is None else max(limit - used, 0)
         allowed = limit is None or used + increment <= limit
@@ -384,6 +418,7 @@ class SubscriptionFeatureService:
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "message": f"Your current plan has reached its {resource.value} limit.",
+                "code": "PLAN_RESOURCE_LIMIT_REACHED",
                 "resource": resource.value,
                 "plan": check.plan,
                 "status": check.status.value,
