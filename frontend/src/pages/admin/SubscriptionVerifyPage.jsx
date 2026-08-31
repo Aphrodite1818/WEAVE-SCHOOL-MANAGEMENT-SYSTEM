@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
 import { CheckCircle2, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import Card from "../../components/ui/Card";
-import Button from "../../components/ui/Button";
 import LoadingState from "../../components/shared/LoadingState";
+import Button from "../../components/ui/Button";
+import Card from "../../components/ui/Card";
+import { clearSelectedSubscriptionPlan } from "../../features/subscriptions/subscriptionConfig";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { academicService } from "../../services/academicService";
 import { parseApiError } from "../../services/api";
 import { subscriptionService } from "../../services/subscriptionService";
-import { clearSelectedSubscriptionPlan } from "../../features/subscriptions/subscriptionConfig";
-import { academicService } from "../../services/academicService";
-import { useSubscription } from "../../features/subscriptions/useSubscription";
 
 function SubscriptionVerifyPage() {
   const [searchParams] = useSearchParams();
@@ -17,7 +18,7 @@ function SubscriptionVerifyPage() {
   const { refreshSubscriptionState } = useSubscription();
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Verifying your payment...");
-  const [successRoute, setSuccessRoute] = useState("/admin/academic/terms");
+  const [successRoute, setSuccessRoute] = useState("/admin/billing");
   const reference = searchParams.get("reference") || searchParams.get("trxref");
 
   useEffect(() => {
@@ -36,11 +37,16 @@ function SubscriptionVerifyPage() {
       try {
         const entitlement =
           await subscriptionService.verifyTermPayment(reference);
-        const openIntent = subscriptionService.consumeTermPaymentOpenIntent({
+        const paymentIntent = subscriptionService.consumeTermPaymentIntent({
           academicTermId: entitlement?.academic_term_id,
           reference,
         });
-        const shouldOpenTerm = Boolean(openIntent);
+        const returnPath = subscriptionService.safeReturnPath(
+          paymentIntent?.returnPath,
+          "/admin/billing",
+        );
+        const shouldOpenTerm =
+          paymentIntent?.postPaymentAction === "open_term";
         let openedTerm = false;
         let openTermError = "";
 
@@ -51,7 +57,7 @@ function SubscriptionVerifyPage() {
           } catch (error) {
             openTermError = parseApiError(
               error,
-              "Payment verified, but we could not open the academic term automatically.",
+              "Payment verified, but the academic term still has setup blockers.",
             ).message;
           }
         }
@@ -59,27 +65,25 @@ function SubscriptionVerifyPage() {
         try {
           await refreshSubscriptionState({ silent: true });
         } catch {
-          // Verification already succeeded. A refresh failure should not hide that success state.
+          // Verification already succeeded. A background state refresh must not
+          // hide the successful financial result.
         }
 
         if (!mounted) return;
 
         clearSelectedSubscriptionPlan();
-        const nextSuccessRoute = openedTerm
-          ? "/admin/dashboard"
-          : shouldOpenTerm
-            ? "/admin/academic/terms"
-            : "/admin/academic/terms";
-        setSuccessRoute(nextSuccessRoute);
+        setSuccessRoute(returnPath);
         setStatus("success");
         setMessage(
-          openedTerm
-            ? "Payment verified. Your academic term is now open."
-            : openTermError ||
-                "Payment verified. The plan is funded for this academic term. If the term is still a draft, open it from Academic Terms when setup is ready.",
+          shouldOpenTerm
+            ? openedTerm
+              ? "Payment verified and the academic term is now open."
+              : `${openTermError} Return to the term workflow to resolve it; your payment is already recorded.`
+            : "Payment verified and the plan change is active for the current academic term.",
         );
+
         redirectTimer = window.setTimeout(() => {
-          navigate(nextSuccessRoute, { replace: true });
+          navigate(returnPath, { replace: true });
         }, 1800);
       } catch (error) {
         if (!mounted) return;
@@ -105,7 +109,7 @@ function SubscriptionVerifyPage() {
     <DashboardLayout
       role="admin"
       title="Term Plan Verification"
-      description="We are confirming your Paystack payment and attaching the plan to its academic term."
+      description="Confirming the Paystack payment and applying it to the selected academic term."
     >
       <Card className="mx-auto max-w-2xl p-6 sm:p-8">
         {status === "loading" ? (
@@ -143,16 +147,12 @@ function SubscriptionVerifyPage() {
                 variant={status === "success" ? "primary" : "outline"}
                 onClick={() =>
                   navigate(
-                    status === "success" ? successRoute : "/admin/dashboard",
+                    status === "success" ? successRoute : "/admin/billing",
                     { replace: true },
                   )
                 }
               >
-                {status === "success"
-                  ? successRoute === "/admin/dashboard"
-                    ? "Go to dashboard"
-                    : "Go to academic terms"
-                  : "Back to dashboard"}
+                {status === "success" ? "Continue" : "Back to billing"}
               </Button>
             </div>
           </div>
