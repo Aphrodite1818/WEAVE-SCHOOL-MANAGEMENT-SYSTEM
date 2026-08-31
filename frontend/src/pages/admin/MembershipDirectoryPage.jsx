@@ -824,53 +824,58 @@ function MembershipDirectoryPage({ role }) {
         </div>
       ) : null}
 
-      <Card className="p-4 sm:p-5">
-        <div
-          className={`grid gap-2 ${availableTabs.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
-        >
-          {availableTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => selectTab(tab.id)}
-              className={`min-h-11 rounded-xl px-3 py-2 text-sm font-semibold transition ${activeTab === tab.id ? "bg-primary text-primary-foreground" : "bg-surface-muted/40 text-text-muted hover:text-text"}`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab !== "requests" ? (
-          <form
-            onSubmit={(event) => event.preventDefault()}
-            className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto]"
+      <Card className="rounded-xl p-2.5 sm:p-3">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <div
+            role="tablist"
+            aria-label={`${titleCase(role)} directory views`}
+            className="flex shrink-0 gap-1 overflow-x-auto rounded-lg bg-surface-muted/55 p-1"
           >
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-              <Input
-                value={draftSearch}
-                onChange={(event) => setDraftSearch(event.target.value)}
-                placeholder={
-                  activeTab === "memberships"
-                    ? `Search ${role} email or name`
-                    : "Search invited email"
-                }
-                className="pl-11"
-              />
-            </div>
-            <select
-              className="input-base"
-              value={draftStatus}
-              onChange={(event) => setDraftStatus(event.target.value)}
+            {availableTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => selectTab(tab.id)}
+                className={`min-h-9 shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition sm:text-sm ${activeTab === tab.id ? "bg-primary text-primary-foreground shadow-sm" : "text-text-muted hover:bg-surface/70 hover:text-text"}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab !== "requests" ? (
+            <form
+              onSubmit={(event) => event.preventDefault()}
+              className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
             >
-              <option value="">All statuses</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {titleCase(status)}
-                </option>
-              ))}
-            </select>
-            <div className="grid gap-2">
+              <div className="relative col-span-2 sm:col-span-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                <Input
+                  value={draftSearch}
+                  onChange={(event) => setDraftSearch(event.target.value)}
+                  placeholder={
+                    activeTab === "memberships"
+                      ? `Search ${role} email or name`
+                      : "Search invited email"
+                  }
+                  className="!min-h-9 !rounded-lg !py-1.5 pl-9"
+                />
+              </div>
+              <select
+                aria-label="Filter by status"
+                className="input-base !min-h-9 !rounded-lg !py-1.5"
+                value={draftStatus}
+                onChange={(event) => setDraftStatus(event.target.value)}
+              >
+                <option value="">All statuses</option>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {titleCase(status)}
+                  </option>
+                ))}
+              </select>
               <Button
                 type="button"
                 variant="outline"
@@ -879,9 +884,9 @@ function MembershipDirectoryPage({ role }) {
               >
                 Clear
               </Button>
-            </div>
-          </form>
-        ) : null}
+            </form>
+          ) : null}
+        </div>
       </Card>
 
       {role === "teacher" && activeTab === "memberships" ? (

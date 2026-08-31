@@ -18,7 +18,7 @@
 **Required fidelity surfaces**
 
 - Fonts and typography: code uses Weave's existing Inter/system font stack and established text tokens; browser rendering not verified.
-- Spacing and layout rhythm: compact shared KPI cards, desktop tables, compact mobile cards, and desktop non-sticky pagination are implemented; visual comparison is blocked.
+- Spacing and layout rhythm: compact shared KPI cards, a single-row desktop directory toolbar, desktop tables, compact mobile cards, and desktop non-sticky pagination are implemented; visual comparison is blocked.
 - Colors and visual tokens: implementation reuses the CBT server KPI palette (violet, emerald, amber, and semantic fallbacks) plus Weave's green success action; rendered contrast and balance are not verified.
 - Image quality and asset fidelity: no new raster imagery or custom image assets are required by these directory views; existing Lucide iconography is reused consistently with the application.
 - Copy and content: labels describe student, class, employment, lifecycle, profile, and access states without copying the reference product's wording.
