@@ -15,9 +15,15 @@ test("billing quarantines late successful payments from effective term credit", 
 });
 
 test("payment verification tells admins not to retry a reconciled late payment", async () => {
-  const source = await read("../backend/app/modules/subscriptions/router.py");
+  const [router, verifyPage] = await Promise.all([
+    read("../backend/app/modules/subscriptions/router.py"),
+    read("src/pages/admin/SubscriptionVerifyPage.jsx"),
+  ]);
 
-  assert.match(source, /PAYMENT_RECONCILIATION_REQUIRED/);
-  assert.match(source, /Do not retry payment/);
-  assert.match(source, /settle_verified_term_payment/);
+  assert.match(router, /PAYMENT_RECONCILIATION_REQUIRED/);
+  assert.match(router, /Do not retry payment/);
+  assert.match(router, /settle_verified_term_payment/);
+  assert.match(verifyPage, /PAYMENT_RECONCILIATION_REQUIRED/);
+  assert.match(verifyPage, /Payment received — review required/);
+  assert.match(verifyPage, /Open billing/);
 });
