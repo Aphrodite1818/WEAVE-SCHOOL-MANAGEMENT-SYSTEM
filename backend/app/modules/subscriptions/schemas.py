@@ -174,7 +174,6 @@ class TermEntitlementResponse(BaseModel):
 
 
 class TermPlanBlocker(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
     resource: ResourceLimitCode
     used: int
     limit: int
@@ -182,7 +181,6 @@ class TermPlanBlocker(BaseModel):
 
 
 class TermPlanOptionResponse(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
     plan_code: SubscriptionPlan
     transition: Literal["select", "current", "upgrade", "downgrade"]
     eligible: bool
@@ -194,7 +192,6 @@ class TermPlanOptionResponse(BaseModel):
 
 
 class TermPlanOptionsResponse(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
     term_id: uuid.UUID
     academic_session_id: uuid.UUID
     term_status: str
