@@ -211,8 +211,8 @@ function BillingPage() {
                   Manage term billing
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-text-muted">
-                  Choose a plan for a draft or current term, review capacity, or
-                  refresh payment state after checkout.
+                  Choose a plan for a draft or current term and review current
+                  capacity.
                 </p>
                 <div className="mt-6 grid gap-3">
                   <Link to="/admin/billing/plans">
@@ -223,17 +223,6 @@ function BillingPage() {
                       View usage
                     </Button>
                   </Link>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={refresh}
-                    disabled={refreshing}
-                  >
-                    <RefreshCw
-                      className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
-                    />
-                    Refresh billing
-                  </Button>
                 </div>
               </Card>
             </section>

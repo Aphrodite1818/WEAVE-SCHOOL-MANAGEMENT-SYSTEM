@@ -9,6 +9,7 @@ import {
   GraduationCap,
   KeyRound,
   MoreHorizontal,
+  Plus,
   RotateCcw,
   School,
   ShieldOff,
@@ -846,6 +847,25 @@ function StudentDirectoryPage() {
           {error}
         </div>
       ) : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-[1.65rem] font-semibold tracking-tight text-text">
+            Student Directory
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Search, filter, create, and maintain student records across classes.
+          </p>
+        </div>
+        <Button
+          type="button"
+          className="min-w-[210px] justify-center rounded-lg"
+          onClick={() => navigate("/admin/students/create")}
+        >
+          <Plus className="h-4 w-4" />
+          Add student
+        </Button>
+      </div>
 
       <DirectorySummary
         items={[
