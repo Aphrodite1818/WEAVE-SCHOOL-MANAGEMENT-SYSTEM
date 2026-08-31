@@ -93,16 +93,12 @@ function SubscriptionVerifyPage() {
           "We could not verify this payment. Please try again or contact support.",
         );
         if (apiError.data?.code === "PAYMENT_RECONCILIATION_REQUIRED") {
-          const paymentIntent = subscriptionService.consumeTermPaymentIntent({
+          subscriptionService.consumeTermPaymentIntent({
             academicTermId: apiError.data?.academic_term_id,
             reference,
           });
-          const returnPath = subscriptionService.safeReturnPath(
-            paymentIntent?.returnPath,
-            "/admin/billing",
-          );
           clearSelectedSubscriptionPlan();
-          setSuccessRoute(returnPath);
+          setSuccessRoute("/admin/billing");
           setStatus("review");
           setMessage(apiError.message);
           return;
