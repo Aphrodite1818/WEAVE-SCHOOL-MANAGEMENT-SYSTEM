@@ -38,7 +38,7 @@ class TenantSubscriptionResponse(BaseModel):
     plan_code: str
     status: SubscriptionStatus
     billing_interval: BillingInterval
-    trial_ends_at: datetime | None
+    trial_ends_at: datetime | None = None
     provider: PaymentProvider
 
 
@@ -149,6 +149,13 @@ class PaidTermCheckoutCreate(BaseModel):
         return value
 
 
+class TermPlanChangeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    academic_term_id: uuid.UUID
+    target_plan: SubscriptionPlan
+    confirmation: Literal["CHANGE_TERM_PLAN"]
+
+
 class TermEntitlementResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
     id: uuid.UUID
@@ -164,6 +171,36 @@ class TermEntitlementResponse(BaseModel):
     closed_at: datetime | None
     expired_at: datetime | None
     safety_expires_at: datetime | None
+
+
+class TermPlanBlocker(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+    resource: ResourceLimitCode
+    used: int
+    limit: int
+    over_by: int
+
+
+class TermPlanOptionResponse(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+    plan_code: SubscriptionPlan
+    transition: Literal["select", "current", "upgrade", "downgrade"]
+    eligible: bool
+    requires_payment: bool
+    list_price_kobo: int
+    paid_to_date_kobo: int
+    amount_due_kobo: int
+    blockers: list[TermPlanBlocker] = Field(default_factory=list)
+
+
+class TermPlanOptionsResponse(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+    term_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    term_status: str
+    current_plan: SubscriptionPlan | None
+    paid_to_date_kobo: int
+    options: list[TermPlanOptionResponse]
 
 
 class TermPlanActivationContext(BaseModel):
