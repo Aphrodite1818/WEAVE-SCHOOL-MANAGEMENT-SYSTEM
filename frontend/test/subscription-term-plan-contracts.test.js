@@ -16,6 +16,8 @@ test("public pricing exposes permanent Free and no Free Trial plan card", async 
     /PLAN_ORDER\s*=\s*\["free",\s*"plus",\s*"professional",\s*"enterprise"\]/,
   );
   assert.match(config, /normalized === "free_trial"\) return "free"/);
+  assert.match(config, /if \(value === null\) return "Unlimited"/);
+  assert.match(config, /if \(value === undefined\) return "—"/);
   assert.match(
     landing,
     /Free is permanent\. Registration never starts a payment\./,
