@@ -1,53 +1,56 @@
-# People directory design QA
+# Mobile people directory design QA
 
-- Source visual truth: conversation attachments supplied by the user: the people-directory reference (1536 x 1024 px) plus the CBT KPI-card and green action-button references (no local filesystem paths available).
-- Implementation screenshot: unavailable because this session does not expose a browser or screenshot surface.
-- Intended desktop viewport: 1536 x 1024 CSS px at device scale factor 1.
-- Intended mobile viewport: 390 x 844 CSS px at device scale factor 1.
-- State: populated admin student, teacher, and parent directories plus a populated teacher student roster.
-- Density normalization: not performed; the implementation could not be captured.
+- Source visual truth: `C:\Users\taiwo\.codex\generated_images\01a058be-98d9-7630-95c3-fdc819c74f79\exec-cb3a25f1-bffc-456a-917f-6fa993516aae.png` (selected mobile Parent Directory direction, 852 x 1844 px).
+- Implementation screenshot: unavailable because this session does not expose the required in-app browser or browser screenshot surface.
+- Intended viewport: 390 x 844 CSS px at device scale factor 1.
+- Source density: taller concept board used as structural direction rather than a 1:1 viewport capture.
+- Implementation density normalization: not performed because no implementation screenshot could be captured.
+- State: populated admin student, teacher, and parent directories; rows initially collapsed; user-opened row expanded; student filter sheet closed and open states required.
 
 **Findings**
 
 - [P1] Browser-rendered comparison is unavailable.
-  Location: `/admin/students`, `/admin/teachers`, `/admin/parents`, and `/teacher/students`.
-  Evidence: the reference image is visible in the conversation, but no browser-rendered implementation screenshot can be produced in this session.
-  Impact: typography, responsive wrapping, dropdown placement, and final spacing cannot be approved from source and build output alone.
-  Fix: open the three authenticated routes in the supported browser, capture desktop and mobile views, and compare each capture with the supplied reference.
+  Location: `/admin/students`, `/admin/teachers`, and `/admin/parents` at the mobile breakpoint.
+  Evidence: the selected visual source was opened and inspected, but no browser-rendered implementation capture can be produced in this session.
+  Impact: final line wrapping, safe-area clearance, PWA dock separation, filter-sheet height, and dark-theme row contrast cannot be approved from source and build output alone.
+  Fix: capture the three authenticated routes at 390 x 844 in the supported in-app browser, including the expanded-row and open-filter states, then compare them with the selected visual.
 
 **Required fidelity surfaces**
 
-- Fonts and typography: code uses Weave's existing Inter/system font stack and established text tokens; browser rendering not verified.
-- Spacing and layout rhythm: compact shared KPI cards, an in-page Student Directory header with its Add student action, a single-row desktop directory toolbar, desktop tables, compact mobile cards, and desktop non-sticky pagination are implemented; visual comparison is blocked.
-- Colors and visual tokens: implementation reuses the CBT server KPI palette (violet, emerald, amber, and semantic fallbacks) plus Weave's established primary action; rendered contrast and balance are not verified.
-- Image quality and asset fidelity: no new raster imagery or custom image assets are required by these directory views; existing Lucide iconography is reused consistently with the application.
-- Copy and content: labels describe student, class, employment, lifecycle, profile, and access states without copying the reference product's wording.
+- Fonts and typography: implementation retains Weave's existing font stack, weights, and text tokens; browser rendering is not verified.
+- Spacing and layout rhythm: mobile KPIs use a flatter 2 x 2 grid, filters move to a bottom sheet, people records use one grouped surface with progressive disclosure, and pagination follows the final row in normal document flow. Rendered rhythm is not verified.
+- Colors and visual tokens: implementation uses existing Weave surface, primary, border, success, warning, and error tokens. Expanded rows use a solid low-opacity theme tint and slim status rail with no gradient, glow, glass, or added shadow.
+- Image quality and asset fidelity: the selected direction contains no required raster imagery. Existing Lucide icons and text initials are used as interface content; no placeholder artwork or custom SVG assets were introduced.
+- Copy and content: current student, teacher, parent, invitation, and request contracts and labels are retained rather than copying mock data from the visual direction.
 
 **Interaction verification**
 
-- Source-level wiring retained for search, filters, pagination, selection, batch class placement, profile editing, access reset, history, teacher subject capabilities, and lifecycle actions.
+- Source-level wiring retained for live search, filters, pagination, student selection, invitation revocation, request approval/rejection, and membership lifecycle actions.
+- Mobile row disclosure is accordion-style, initially collapsed, and resets when the list or page changes.
+- Student secondary filters open in a bottom sheet and do not change page height.
 - Production build: passed.
+- Focused ESLint: passed.
 - Primary interactions in a browser: not tested.
 - Browser console errors: not checked.
 
 **Full-view comparison evidence**
 
-- Blocked: no implementation screenshot is available.
+- Blocked: no implementation screenshot is available for a normalized side-by-side comparison.
 
 **Focused region comparison evidence**
 
-- Blocked: table rows, mobile cards, filter controls, and action menus could not be captured.
+- Blocked: KPI grid, filter sheet, grouped roster, expanded row, dark theme, pagination end state, and PWA safe-area behavior could not be captured.
 
 **Comparison history**
 
-- Initial pass: blocked before visual comparison because no browser-rendered evidence could be created.
+- Initial pass: selected source opened successfully; implementation comparison blocked by the unavailable browser surface.
 
 **Implementation checklist**
 
-- Capture all four authenticated routes at desktop width.
-- Capture student and teacher lists at mobile width.
-- Exercise search, filters, row selection, pagination, and overflow action menus.
-- Check browser console output.
-- Fix any P0/P1/P2 visual differences and repeat the comparison.
+- Capture all three authenticated directories at 390 x 844 in light and dark themes.
+- Open and close the student filter sheet; change a select and checkbox.
+- Expand a second record and confirm the first collapses.
+- Scroll to the final row and confirm pagination appears above, not behind, the PWA dock.
+- Check console output and repeat visual comparison after any P0/P1/P2 fixes.
 
 final result: blocked

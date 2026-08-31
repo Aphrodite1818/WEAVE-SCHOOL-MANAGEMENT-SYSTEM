@@ -20,6 +20,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   DirectorySummary,
   DirectoryTable,
+  MobileDirectoryList,
   MobilePersonCard,
   PersonIdentity,
 } from "../../components/people/PeopleDirectory";
@@ -250,12 +251,21 @@ function TeacherMembershipList({
         })}
       </DirectoryTable>
 
-      <section className="mobile-scroll-list grid gap-3 md:hidden">
+      <MobileDirectoryList label="Teacher directory">
         {items.map((membership) => {
           const account = membership.teacher_account || {};
           const status = String(membership.status || "unknown").toLowerCase();
           return (
-            <MobilePersonCard key={membership.id}>
+            <MobilePersonCard
+              key={membership.id}
+              tone={
+                status === "active"
+                  ? "success"
+                  : status === "suspended"
+                    ? "warning"
+                    : "error"
+              }
+            >
               <div className="flex items-start justify-between gap-3">
                 <PersonIdentity
                   name={displayName(account)}
@@ -296,7 +306,7 @@ function TeacherMembershipList({
             </MobilePersonCard>
           );
         })}
-      </section>
+      </MobileDirectoryList>
     </>
   );
 }
@@ -393,12 +403,21 @@ function ParentMembershipList({ items, actionId, onLifecycle }) {
         })}
       </DirectoryTable>
 
-      <section className="mobile-scroll-list grid gap-3 md:hidden">
+      <MobileDirectoryList label="Parent directory">
         {items.map((membership) => {
           const account = membership.parent_account || {};
           const status = String(membership.status || "unknown").toLowerCase();
           return (
-            <MobilePersonCard key={membership.id}>
+            <MobilePersonCard
+              key={membership.id}
+              tone={
+                status === "active"
+                  ? "success"
+                  : status === "read_only"
+                    ? "warning"
+                    : "error"
+              }
+            >
               <div className="flex items-start justify-between gap-3">
                 <PersonIdentity
                   name={displayName(account)}
@@ -437,7 +456,237 @@ function ParentMembershipList({ items, actionId, onLifecycle }) {
             </MobilePersonCard>
           );
         })}
-      </section>
+      </MobileDirectoryList>
+    </>
+  );
+}
+
+function InvitationList({ items, actionId, onRevoke, role }) {
+  return (
+    <>
+      <DirectoryTable
+        label={`${titleCase(role)} invitations`}
+        columns={[
+          { key: "recipient", label: "Recipient" },
+          { key: "details", label: "Invitation details" },
+          { key: "expires", label: "Expires" },
+          { key: "status", label: "Status" },
+          { key: "actions", label: "Actions", className: "text-right" },
+        ]}
+      >
+        {items.map((item) => {
+          const status = String(item.status || "unknown").toLowerCase();
+          return (
+            <tr key={item.id} className="transition hover:bg-surface-muted/25">
+              <td className="px-4 py-3.5 align-middle">
+                <PersonIdentity
+                  name={item.invited_email || "Parent invitation"}
+                  meta={`Invited ${role} account`}
+                />
+              </td>
+              <td className="px-4 py-3.5 text-sm text-text-soft">
+                {role === "teacher"
+                  ? item.job_title || item.department || "Teacher invitation"
+                  : titleCase(item.relationship_type || "guardian")}
+              </td>
+              <td className="px-4 py-3.5 text-sm text-text-soft">
+                {item.expires_at
+                  ? new Date(item.expires_at).toLocaleDateString()
+                  : "Not provided"}
+              </td>
+              <td className="px-4 py-3.5">
+                <Badge variant={badgeVariant(status)}>{titleCase(status)}</Badge>
+              </td>
+              <td className="px-4 py-3.5 text-right">
+                {status === "pending" ? (
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    className="text-error hover:bg-error-soft hover:text-error"
+                    disabled={actionId === item.id}
+                    onClick={() => onRevoke(item)}
+                  >
+                    {actionId === item.id ? "Revoking..." : "Revoke"}
+                  </Button>
+                ) : (
+                  <span className="text-xs text-text-muted">No actions</span>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </DirectoryTable>
+
+      <MobileDirectoryList label={`${titleCase(role)} invitations`}>
+        {items.map((item) => {
+          const status = String(item.status || "unknown").toLowerCase();
+          return (
+            <MobilePersonCard
+              key={item.id}
+              tone={
+                status === "accepted"
+                  ? "success"
+                  : status === "pending"
+                    ? "warning"
+                    : "error"
+              }
+            >
+              <div className="flex items-start justify-between gap-3">
+                <PersonIdentity
+                  name={item.invited_email || "Parent invitation"}
+                  meta={
+                    role === "teacher"
+                      ? item.job_title || item.department || "Teacher invitation"
+                      : titleCase(item.relationship_type || "guardian")
+                  }
+                />
+                <Badge variant={badgeVariant(status)}>{titleCase(status)}</Badge>
+              </div>
+              <dl className="mt-4 rounded-xl bg-surface-muted/35 px-3 py-3 text-sm">
+                <dt className="text-xs font-semibold uppercase text-text-muted">
+                  Expires
+                </dt>
+                <dd className="mt-1 text-text-soft">
+                  {item.expires_at
+                    ? new Date(item.expires_at).toLocaleDateString()
+                    : "Not provided"}
+                </dd>
+              </dl>
+              {status === "pending" ? (
+                <div className="mt-4 flex justify-end border-t border-border/70 pt-3">
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    className="text-error hover:bg-error-soft hover:text-error"
+                    disabled={actionId === item.id}
+                    onClick={() => onRevoke(item)}
+                  >
+                    {actionId === item.id ? "Revoking..." : "Revoke"}
+                  </Button>
+                </div>
+              ) : null}
+            </MobilePersonCard>
+          );
+        })}
+      </MobileDirectoryList>
+    </>
+  );
+}
+
+function ParentLinkRequestList({ items, actionId, onApprove, onReject }) {
+  return (
+    <>
+      <DirectoryTable
+        label="Pending parent link requests"
+        columns={[
+          { key: "student", label: "Student" },
+          { key: "parent", label: "Parent" },
+          { key: "relationship", label: "Relationship" },
+          { key: "status", label: "Status" },
+          { key: "actions", label: "Actions", className: "text-right" },
+        ]}
+      >
+        {items.map((request) => (
+          <tr key={request.id} className="transition hover:bg-surface-muted/25">
+            <td className="px-4 py-3.5 align-middle">
+              <PersonIdentity
+                name={request.student_name || "Student"}
+                meta={request.admission_number_snapshot || "No admission number"}
+              />
+            </td>
+            <td className="px-4 py-3.5 text-sm text-text-soft">
+              {request.parent_email || "Parent account"}
+            </td>
+            <td className="px-4 py-3.5 text-sm text-text-soft">
+              {titleCase(request.relationship_type || "guardian")}
+            </td>
+            <td className="px-4 py-3.5">
+              <Badge variant="warning">Pending</Badge>
+            </td>
+            <td className="px-4 py-3.5">
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="small"
+                  disabled={actionId === request.id}
+                  onClick={() => onApprove(request)}
+                >
+                  <Check className="h-4 w-4" />
+                  Approve
+                </Button>
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outline"
+                  disabled={actionId === request.id}
+                  onClick={() => onReject(request)}
+                >
+                  <X className="h-4 w-4" />
+                  Reject
+                </Button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DirectoryTable>
+
+      <MobileDirectoryList label="Pending parent link requests">
+        {items.map((request) => (
+          <MobilePersonCard
+            key={request.id}
+            tone="warning"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <PersonIdentity
+                name={request.student_name || "Student"}
+                meta={request.admission_number_snapshot || "No admission number"}
+              />
+              <Badge variant="warning">Pending</Badge>
+            </div>
+            <dl className="mt-4 grid gap-3 rounded-xl bg-surface-muted/35 px-3 py-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-semibold uppercase text-text-muted">
+                  Parent
+                </dt>
+                <dd className="mt-1 break-words text-text-soft">
+                  {request.parent_email || "Parent account"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-text-muted">
+                  Relationship
+                </dt>
+                <dd className="mt-1 text-text-soft">
+                  {titleCase(request.relationship_type || "guardian")}
+                </dd>
+              </div>
+            </dl>
+            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border/70 pt-3">
+              <Button
+                type="button"
+                size="small"
+                disabled={actionId === request.id}
+                onClick={() => onApprove(request)}
+              >
+                <Check className="h-4 w-4" />
+                Approve
+              </Button>
+              <Button
+                type="button"
+                size="small"
+                variant="outline"
+                disabled={actionId === request.id}
+                onClick={() => onReject(request)}
+              >
+                <X className="h-4 w-4" />
+                Reject
+              </Button>
+            </div>
+          </MobilePersonCard>
+        ))}
+      </MobileDirectoryList>
     </>
   );
 }
@@ -824,12 +1073,15 @@ function MembershipDirectoryPage({ role }) {
         </div>
       ) : null}
 
-      <Card className="rounded-xl p-2.5 sm:p-3">
+      <Card className="people-directory-toolbar rounded-xl p-2.5 sm:p-3">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
           <div
             role="tablist"
             aria-label={`${titleCase(role)} directory views`}
-            className="flex shrink-0 gap-1 overflow-x-auto rounded-lg bg-surface-muted/55 p-1"
+            className="people-directory-tabs flex shrink-0 gap-1 overflow-x-auto rounded-lg bg-surface-muted/55 p-1"
+            style={{
+              gridTemplateColumns: `repeat(${availableTabs.length}, minmax(0, 1fr))`,
+            }}
           >
             {availableTabs.map((tab) => (
               <button
@@ -1115,95 +1367,19 @@ function MembershipDirectoryPage({ role }) {
           })}
         </section>
       ) : activeTab === "invitations" ? (
-        <section className="directory-card-grid mobile-scroll-list grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          {items.map((item) => {
-            const status = String(item.status || "unknown").toLowerCase();
-            return (
-              <Card key={item.id} className="flex min-h-[13rem] flex-col p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold text-text">
-                      {item.invited_email}
-                    </p>
-                    <p className="mt-1 text-xs text-text-muted">
-                      Expires{" "}
-                      {item.expires_at
-                        ? new Date(item.expires_at).toLocaleDateString()
-                        : "–"}
-                    </p>
-                  </div>
-                  <Badge variant={badgeVariant(status)}>
-                    {titleCase(status)}
-                  </Badge>
-                </div>
-                <div className="mt-4 flex gap-2 rounded-2xl bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  {role === "teacher"
-                    ? item.job_title || item.department || "Teacher invitation"
-                    : `${titleCase(item.relationship_type || "guardian")} invitation`}
-                </div>
-                {status === "pending" ? (
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="danger"
-                    className="mt-auto self-start"
-                    disabled={actionId === item.id}
-                    onClick={() => revokeInvitation(item)}
-                  >
-                    {actionId === item.id ? "Revoking..." : "Revoke"}
-                  </Button>
-                ) : null}
-              </Card>
-            );
-          })}
-        </section>
+        <InvitationList
+          items={items}
+          actionId={actionId}
+          onRevoke={revokeInvitation}
+          role={role}
+        />
       ) : (
-        <section className="directory-card-grid mobile-scroll-list grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-          {items.map((request) => (
-            <Card key={request.id} className="flex min-h-[15rem] flex-col p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-text">
-                    {request.student_name ||
-                      request.admission_number_snapshot ||
-                      "Student"}
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {request.parent_email || "Parent account"} ·{" "}
-                    {titleCase(request.relationship_type)}
-                  </p>
-                </div>
-                <Badge variant="warning">Pending</Badge>
-              </div>
-              <p className="mt-4 rounded-2xl bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
-                Review the invited parent and student before approving tenant
-                access.
-              </p>
-              <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
-                <Button
-                  type="button"
-                  size="small"
-                  disabled={actionId === request.id}
-                  onClick={() => decideRequest(request, "approve")}
-                >
-                  <Check className="h-4 w-4" />
-                  Approve
-                </Button>
-                <Button
-                  type="button"
-                  size="small"
-                  variant="outline"
-                  disabled={actionId === request.id}
-                  onClick={() => setRequestDecision({ request, reason: "" })}
-                >
-                  <X className="h-4 w-4" />
-                  Reject
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </section>
+        <ParentLinkRequestList
+          items={items}
+          actionId={actionId}
+          onApprove={(request) => decideRequest(request, "approve")}
+          onReject={(request) => setRequestDecision({ request, reason: "" })}
+        />
       )}
 
       <div className="mobile-list-pagination flex items-center justify-between gap-2">

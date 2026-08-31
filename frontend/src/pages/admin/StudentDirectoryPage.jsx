@@ -13,11 +13,11 @@ import {
   RotateCcw,
   School,
   ShieldOff,
+  SlidersHorizontal,
   Trash2,
   Undo2,
   UserCheck,
   UserMinus,
-  UserRound,
   Users,
 } from "lucide-react";
 
@@ -26,6 +26,7 @@ import LoadingState from "../../components/shared/LoadingState";
 import {
   DirectorySummary,
   DirectoryTable,
+  MobileDirectoryList,
   MobilePersonCard,
   PersonIdentity,
 } from "../../components/people/PeopleDirectory";
@@ -208,6 +209,85 @@ function SelectField({
   );
 }
 
+function StudentFilterFields({
+  filters,
+  setFilters,
+  levelOptions,
+  classOptions,
+}) {
+  return (
+    <>
+      <SelectField
+        label="Academic level"
+        value={filters.academicLevelId}
+        onChange={(event) =>
+          setFilters((current) => ({
+            ...current,
+            academicLevelId: event.target.value,
+            classId: "",
+          }))
+        }
+        options={levelOptions}
+        placeholder="All levels"
+      />
+      <SelectField
+        label="Class"
+        value={filters.classId}
+        onChange={(event) =>
+          setFilters((current) => ({
+            ...current,
+            classId: event.target.value,
+          }))
+        }
+        options={classOptions}
+        placeholder="All classes"
+      />
+      <SelectField
+        label="Status"
+        value={filters.status}
+        onChange={(event) =>
+          setFilters((current) => ({
+            ...current,
+            status: event.target.value,
+          }))
+        }
+        options={STUDENT_STATUSES.map((value) => ({
+          value,
+          label: titleCase(value),
+        }))}
+        placeholder="All statuses"
+      />
+      <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-border px-3 text-xs font-semibold text-text-soft sm:text-sm">
+        <input
+          type="checkbox"
+          checked={filters.includeArchived}
+          onChange={(event) =>
+            setFilters((current) => ({
+              ...current,
+              includeArchived: event.target.checked,
+            }))
+          }
+        />
+        Include archived
+      </label>
+      <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-border px-3 text-xs font-semibold text-text-soft sm:text-sm">
+        <input
+          type="checkbox"
+          checked={filters.unassignedClass}
+          onChange={(event) =>
+            setFilters((current) => ({
+              ...current,
+              unassignedClass: event.target.checked,
+              classId: "",
+            }))
+          }
+        />
+        Unassigned only
+      </label>
+    </>
+  );
+}
+
 function buildAccessNotice(result) {
   if (!result?.access_code) return null;
   return {
@@ -325,23 +405,25 @@ function StudentActions({
   );
 }
 
-function StudentCard({ student, selected, onSelectedChange, ...actions }) {
+function StudentCard({
+  student,
+  selected,
+  onSelectedChange,
+  ...actions
+}) {
+  const tone = student.is_archived
+    ? "error"
+    : student.status === "active"
+      ? "success"
+      : "warning";
+
   return (
-    <MobilePersonCard>
+    <MobilePersonCard tone={tone}>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-            <UserRound className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <h3 className="break-words font-semibold text-text">
-              {displayName(student)}
-            </h3>
-            <p className="mt-1 text-xs text-text-muted">
-              {student.admission_number}
-            </p>
-          </div>
-        </div>
+        <PersonIdentity
+          name={displayName(student)}
+          meta={`${student.admission_number || "No admission number"} · ${studentClassLabel(student)}`}
+        />
         <div className="flex flex-col items-end gap-2">
           <Badge variant={student.status === "active" ? "success" : "default"}>
             {titleCase(student.status)}
@@ -409,6 +491,7 @@ function StudentDirectoryPage() {
   const [page, setPage] = useState(1);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -828,6 +911,13 @@ function StudentDirectoryPage() {
   const credentialsReadyCount = students.filter(
     (student) => !student.password_reset_required,
   ).length;
+  const activeFilterCount = [
+    draftFilters.academicLevelId,
+    draftFilters.classId,
+    draftFilters.status !== EMPTY_FILTERS.status,
+    draftFilters.includeArchived,
+    draftFilters.unassignedClass,
+  ].filter(Boolean).length;
   const allPageSelected =
     students.length > 0 &&
     students.every((student) => selectedStudentIds.includes(student.id));
@@ -848,18 +938,19 @@ function StudentDirectoryPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-[1.65rem] font-semibold tracking-tight text-text">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-text sm:text-[1.65rem]">
             Student Directory
           </h1>
-          <p className="mt-1 text-sm text-text-muted">
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted sm:text-sm">
             Search, filter, create, and maintain student records across classes.
           </p>
         </div>
         <Button
           type="button"
-          className="min-w-[210px] justify-center rounded-lg"
+          size="small"
+          className="min-h-10 shrink-0 justify-center rounded-lg px-3 sm:min-w-[210px] sm:px-4"
           onClick={() => navigate("/admin/students/create")}
         >
           <Plus className="h-4 w-4" />
@@ -900,101 +991,88 @@ function StudentDirectoryPage() {
         ]}
       />
 
-      <Card className="p-4 sm:p-5">
+      <Card className="people-filter-panel p-3 sm:p-5">
         <form
           onSubmit={(event) => event.preventDefault()}
-          className="grid gap-3 md:grid-cols-4 xl:grid-cols-6"
+          className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 md:grid-cols-4 md:gap-3 xl:grid-cols-7"
         >
-          <Input
-            label="Search"
-            value={draftFilters.search}
-            placeholder="Name or admission number"
-            onChange={(event) =>
-              setDraftFilters((current) => ({
-                ...current,
-                search: event.target.value,
-              }))
-            }
-          />
-          <SelectField
-            label="Academic level"
-            value={draftFilters.academicLevelId}
-            onChange={(event) =>
-              setDraftFilters((current) => ({
-                ...current,
-                academicLevelId: event.target.value,
-                classId: "",
-              }))
-            }
-            options={levelOptions}
-            placeholder="All levels"
-          />
-          <SelectField
-            label="Class"
-            value={draftFilters.classId}
-            onChange={(event) =>
-              setDraftFilters((current) => ({
-                ...current,
-                classId: event.target.value,
-              }))
-            }
-            options={classOptions}
-            placeholder="All classes"
-          />
-          <SelectField
-            label="Status"
-            value={draftFilters.status}
-            onChange={(event) =>
-              setDraftFilters((current) => ({
-                ...current,
-                status: event.target.value,
-              }))
-            }
-            options={STUDENT_STATUSES.map((value) => ({
-              value,
-              label: titleCase(value),
-            }))}
-            placeholder="All statuses"
-          />
-          <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-border px-3 text-sm font-semibold text-text-soft">
-            <input
-              type="checkbox"
-              checked={draftFilters.includeArchived}
+          <div className="people-filter-search">
+            <Input
+              label="Search"
+              value={draftFilters.search}
+              placeholder="Name or admission number"
               onChange={(event) =>
                 setDraftFilters((current) => ({
                   ...current,
-                  includeArchived: event.target.checked,
+                  search: event.target.value,
                 }))
               }
             />
-            Include archived
-          </label>
-          <label className="flex min-h-11 items-center gap-2 self-end rounded-xl border border-border px-3 text-sm font-semibold text-text-soft">
-            <input
-              type="checkbox"
-              checked={draftFilters.unassignedClass}
-              onChange={(event) =>
-                setDraftFilters((current) => ({
-                  ...current,
-                  unassignedClass: event.target.checked,
-                  classId: "",
-                }))
-              }
+          </div>
+          <Button
+            type="button"
+            size="small"
+            variant="outline"
+            className="min-h-11 self-end md:hidden"
+            aria-expanded={mobileFiltersOpen}
+            onClick={() => setMobileFiltersOpen(true)}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Filters
+            {activeFilterCount ? (
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[0.65rem] text-primary-foreground">
+                {activeFilterCount}
+              </span>
+            ) : null}
+          </Button>
+          <div className="hidden md:contents">
+            <StudentFilterFields
+              filters={draftFilters}
+              setFilters={setDraftFilters}
+              levelOptions={levelOptions}
+              classOptions={classOptions}
             />
-            Unassigned only
-          </label>
-          <div className="grid gap-2 self-end">
-            <Button
-              type="button"
-              size="small"
-              variant="outline"
-              onClick={clearFilters}
-            >
-              Clear
-            </Button>
+            <div className="grid gap-2 self-end">
+              <Button
+                type="button"
+                size="small"
+                variant="outline"
+                onClick={clearFilters}
+              >
+                Clear
+              </Button>
+            </div>
           </div>
         </form>
       </Card>
+
+      <Modal
+        open={mobileFiltersOpen}
+        title="Filter students"
+        description="Narrow the directory without losing your place in the list."
+        placement="bottom"
+        className="mobile-filter-sheet md:hidden"
+        onClose={() => setMobileFiltersOpen(false)}
+        footer={
+          <div className="grid grid-cols-2 gap-2">
+            <Button type="button" variant="outline" onClick={clearFilters}>
+              Clear filters
+            </Button>
+            <Button type="button" onClick={() => setMobileFiltersOpen(false)}>
+              View results
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-4">
+          <StudentFilterFields
+            filters={draftFilters}
+            setFilters={setDraftFilters}
+            levelOptions={levelOptions}
+            classOptions={classOptions}
+          />
+        </div>
+      </Modal>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-surface/60 px-4 py-2.5">
         <p className="text-sm text-text-muted">
@@ -1133,7 +1211,7 @@ function StudentDirectoryPage() {
             ))}
           </DirectoryTable>
 
-          <section className="mobile-scroll-list grid gap-3 md:hidden">
+          <MobileDirectoryList label="Student directory">
             {students.map((student) => (
               <StudentCard
                 key={student.id}
@@ -1150,7 +1228,7 @@ function StudentDirectoryPage() {
                 onHardDelete={inspectHardDelete}
               />
             ))}
-          </section>
+          </MobileDirectoryList>
         </>
       )}
 
