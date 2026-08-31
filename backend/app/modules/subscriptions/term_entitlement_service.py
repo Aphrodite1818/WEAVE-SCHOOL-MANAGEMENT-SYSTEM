@@ -9,13 +9,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.settings import settings
 from app.core.exceptions import ConflictException, NotFoundException
-from app.modules.student_academics.models import AcademicTerm, AcademicTermStatus
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicSessionStatus,
+    AcademicTerm,
+    AcademicTermName,
+    AcademicTermStatus,
+)
 from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache
 from app.modules.subscriptions.models import PaymentTransaction, TermPlanEntitlement
-from app.modules.subscriptions.plans import get_plan_entitlements
+from app.modules.subscriptions.plans import coerce_subscription_plan, get_plan_entitlements
 from app.modules.subscriptions.providers.paystack import PaystackClient
 from app.modules.subscriptions.repository import SubscriptionRepository
-from app.modules.subscriptions.schemas import SubscriptionCheckoutResponse
+from app.modules.subscriptions.schemas import (
+    SubscriptionCheckoutResponse,
+    TermPlanBlocker,
+    TermPlanOptionResponse,
+    TermPlanOptionsResponse,
+)
 from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
     PaymentProvider,
@@ -37,12 +48,21 @@ PLAN_RANK = {
     SubscriptionPlan.PROFESSIONAL: 2,
     SubscriptionPlan.ENTERPRISE: 3,
 }
+TERM_ORDER = {
+    AcademicTermName.FIRST_TERM: 1,
+    AcademicTermName.SECOND_TERM: 2,
+    AcademicTermName.THIRD_TERM: 3,
+}
 
 
 class TermPlanEntitlementService:
     @staticmethod
     async def _term(
-        db: AsyncSession, tenant_id: uuid.UUID, term_id: uuid.UUID, *, lock: bool = False
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> AcademicTerm:
         query = select(AcademicTerm).where(
             AcademicTerm.id == term_id,
@@ -56,8 +76,31 @@ class TermPlanEntitlementService:
         return term
 
     @staticmethod
+    async def _session(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        session_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> AcademicSession:
+        query = select(AcademicSession).where(
+            AcademicSession.id == session_id,
+            AcademicSession.tenant_id == tenant_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        session = (await db.execute(query)).scalar_one_or_none()
+        if session is None:
+            raise NotFoundException("Academic session not found.")
+        return session
+
+    @staticmethod
     async def get_active(
-        db: AsyncSession, tenant_id: uuid.UUID, term_id: uuid.UUID, *, lock: bool = False
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> TermPlanEntitlement | None:
         query = (
             select(TermPlanEntitlement)
@@ -153,21 +196,30 @@ class TermPlanEntitlementService:
 
     @staticmethod
     def amount_kobo(plan: SubscriptionPlan) -> int:
+        canonical = coerce_subscription_plan(plan)
         fields = {
             SubscriptionPlan.PLUS: "PAYSTACK_PLUS_TERM_AMOUNT_KOBO",
             SubscriptionPlan.PROFESSIONAL: "PAYSTACK_PROFESSIONAL_TERM_AMOUNT_KOBO",
             SubscriptionPlan.ENTERPRISE: "PAYSTACK_ENTERPRISE_TERM_AMOUNT_KOBO",
         }
-        if plan not in fields:
+        if canonical not in fields:
             return 0
-        return int(getattr(settings, fields[plan]))
+        return int(getattr(settings, fields[canonical]))
 
     @staticmethod
-    def _ensure_paid_checkout_term_state(term: AcademicTerm) -> None:
-        if term.status not in {AcademicTermStatus.DRAFT, AcademicTermStatus.OPEN}:
-            raise ConflictException(
-                "Only a draft or open academic term can start a paid-plan checkout."
-            )
+    def _transition(
+        existing: TermPlanEntitlement | None,
+        target_plan: SubscriptionPlan,
+    ) -> str:
+        target = coerce_subscription_plan(target_plan)
+        if existing is None:
+            return "select"
+        current = coerce_subscription_plan(existing.plan_code)
+        if current == target:
+            return "current"
+        if PLAN_RANK[target] > PLAN_RANK[current]:
+            return "upgrade"
+        return "downgrade"
 
     @staticmethod
     def _ensure_paid_settlement_term_state(term: AcademicTerm) -> None:
@@ -181,19 +233,171 @@ class TermPlanEntitlementService:
             )
 
     @staticmethod
-    def _ensure_paid_transition(
-        existing: TermPlanEntitlement | None,
-        target_plan: SubscriptionPlan,
+    async def _ensure_draft_selection_allowed(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term: AcademicTerm,
     ) -> None:
-        if existing is None or existing.plan_code == SubscriptionPlan.FREE:
+        if term.status != AcademicTermStatus.DRAFT:
             return
-        if existing.plan_code not in PAID_TERM_PLANS:
-            raise ConflictException("The current term plan cannot be replaced by this checkout.")
-        if PLAN_RANK[target_plan] <= PLAN_RANK[existing.plan_code]:
+
+        session = await TermPlanEntitlementService._session(
+            db,
+            tenant_id,
+            term.academic_session_id,
+            lock=True,
+        )
+        if session.status != AcademicSessionStatus.OPEN or not session.is_current:
             raise ConflictException(
-                "An active term can only move to a higher paid plan. "
-                "Choose a lower plan when activating the next academic term."
+                "Plans can only be selected for the next term of the current open session.",
+                payload={
+                    "code": "TERM_PLAN_SELECTION_NOT_READY",
+                    "term_id": str(term.id),
+                },
             )
+
+        siblings = list(
+            (
+                await db.execute(
+                    select(AcademicTerm).where(
+                        AcademicTerm.tenant_id == tenant_id,
+                        AcademicTerm.academic_session_id == term.academic_session_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        current_position = TERM_ORDER[term.name]
+        earlier_not_closed = [
+            row
+            for row in siblings
+            if TERM_ORDER[row.name] < current_position
+            and row.status != AcademicTermStatus.CLOSED
+        ]
+        active_other = [
+            row
+            for row in siblings
+            if row.id != term.id
+            and row.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}
+        ]
+        if earlier_not_closed or active_other:
+            raise ConflictException(
+                "This term is not ready for plan selection yet. Finish the current or earlier term first.",
+                payload={
+                    "code": "TERM_PLAN_SELECTION_NOT_READY",
+                    "term_id": str(term.id),
+                },
+            )
+
+    @staticmethod
+    async def _usage_and_blockers(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term: AcademicTerm,
+        plan: SubscriptionPlan,
+    ) -> tuple[dict, list[TermPlanBlocker]]:
+        canonical = coerce_subscription_plan(plan)
+        usage = await SubscriptionRepository.get_all_resource_usage(
+            db,
+            tenant_id,
+            academic_session_id=term.academic_session_id,
+        )
+        limits = get_plan_entitlements(canonical).limits
+        blockers = [
+            TermPlanBlocker(
+                resource=resource,
+                used=used,
+                limit=int(limits[resource]),
+                over_by=used - int(limits[resource]),
+            )
+            for resource, used in usage.items()
+            if limits.get(resource) is not None and used > int(limits[resource])
+        ]
+        return usage, blockers
+
+    @staticmethod
+    async def _paid_to_date(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+    ) -> int:
+        return await SubscriptionRepository.sum_successful_term_payments(
+            db,
+            tenant_id=tenant_id,
+            academic_term_id=term_id,
+        )
+
+    @staticmethod
+    def _amount_due(
+        *,
+        transition: str,
+        target_plan: SubscriptionPlan,
+        paid_to_date_kobo: int,
+    ) -> int:
+        if transition in {"current", "downgrade"}:
+            return 0
+        target_price = TermPlanEntitlementService.amount_kobo(target_plan)
+        return max(target_price - paid_to_date_kobo, 0)
+
+    @staticmethod
+    async def get_plan_options(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+    ) -> TermPlanOptionsResponse:
+        term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=False)
+        if term.status in {AcademicTermStatus.CLOSING, AcademicTermStatus.CLOSED}:
+            raise ConflictException(
+                "Plan changes are not available while a term is closing or closed.",
+                payload={
+                    "code": "TERM_PLAN_CHANGES_CLOSED",
+                    "term_id": str(term.id),
+                },
+            )
+        await TermPlanEntitlementService._ensure_draft_selection_allowed(db, tenant_id, term)
+        existing = await TermPlanEntitlementService.get_active(db, tenant_id, term_id)
+        paid_to_date = await TermPlanEntitlementService._paid_to_date(db, tenant_id, term_id)
+
+        options: list[TermPlanOptionResponse] = []
+        for target in (
+            SubscriptionPlan.FREE,
+            SubscriptionPlan.PLUS,
+            SubscriptionPlan.PROFESSIONAL,
+            SubscriptionPlan.ENTERPRISE,
+        ):
+            transition = TermPlanEntitlementService._transition(existing, target)
+            _, blockers = await TermPlanEntitlementService._usage_and_blockers(
+                db, tenant_id, term, target
+            )
+            amount_due = TermPlanEntitlementService._amount_due(
+                transition=transition,
+                target_plan=target,
+                paid_to_date_kobo=paid_to_date,
+            )
+            options.append(
+                TermPlanOptionResponse(
+                    plan_code=target,
+                    transition=transition,
+                    eligible=not blockers,
+                    requires_payment=amount_due > 0,
+                    list_price_kobo=TermPlanEntitlementService.amount_kobo(target),
+                    paid_to_date_kobo=paid_to_date,
+                    amount_due_kobo=amount_due,
+                    blockers=blockers,
+                )
+            )
+
+        return TermPlanOptionsResponse(
+            term_id=term.id,
+            academic_session_id=term.academic_session_id,
+            term_status=term.status.value,
+            current_plan=(
+                coerce_subscription_plan(existing.plan_code) if existing is not None else None
+            ),
+            paid_to_date_kobo=paid_to_date,
+            options=options,
+        )
 
     @staticmethod
     def _checkout_response(transaction: PaymentTransaction) -> SubscriptionCheckoutResponse:
@@ -210,25 +414,47 @@ class TermPlanEntitlementService:
 
     @staticmethod
     async def ensure_open_eligible(
-        db: AsyncSession, tenant_id: uuid.UUID, term_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
     ) -> TermPlanEntitlement:
-        entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
+        term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
+        entitlement = await TermPlanEntitlementService.get_active(
+            db, tenant_id, term_id, lock=True
+        )
         now = datetime.now(timezone.utc)
         if entitlement is None or (
             entitlement.safety_expires_at and entitlement.safety_expires_at <= now
         ):
             tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
-            suggested = getattr(tenant, "initial_plan_intent", None)
+            suggested = coerce_subscription_plan(
+                getattr(tenant, "initial_plan_intent", None)
+            )
             raise ConflictException(
-                "Activate a plan for this academic term before opening it.",
+                "Choose a plan for this academic term before opening it.",
                 payload={
-                    "code": "TERM_PLAN_ACTIVATION_REQUIRED",
+                    "code": "TERM_PLAN_SELECTION_REQUIRED",
                     "term_id": str(term_id),
-                    "suggested_plan": suggested.value if suggested else None,
+                    "suggested_plan": suggested.value,
                     "payment_required": suggested in PAID_TERM_PLANS,
-                    "amount_kobo": (
-                        TermPlanEntitlementService.amount_kobo(suggested) if suggested else 0
-                    ),
+                    "amount_kobo": TermPlanEntitlementService.amount_kobo(suggested),
+                },
+            )
+
+        _, blockers = await TermPlanEntitlementService._usage_and_blockers(
+            db,
+            tenant_id,
+            term,
+            coerce_subscription_plan(entitlement.plan_code),
+        )
+        if blockers:
+            raise ConflictException(
+                "Current school usage exceeds the selected term plan.",
+                payload={
+                    "code": "TERM_PLAN_INELIGIBLE",
+                    "term_id": str(term_id),
+                    "current_plan": coerce_subscription_plan(entitlement.plan_code).value,
+                    "blockers": [blocker.model_dump(mode="json") for blocker in blockers],
                 },
             )
         return entitlement
@@ -243,25 +469,27 @@ class TermPlanEntitlementService:
         term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
         if term.status != AcademicTermStatus.DRAFT:
             raise ConflictException(
-                "The Free plan can only be activated while the academic term is still a draft."
+                "Free can only be selected while the academic term is still a draft."
             )
-        existing = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
+        await TermPlanEntitlementService._ensure_draft_selection_allowed(db, tenant_id, term)
+        existing = await TermPlanEntitlementService.get_active(
+            db, tenant_id, term_id, lock=True
+        )
         if existing:
-            if existing.plan_code == SubscriptionPlan.FREE:
+            if coerce_subscription_plan(existing.plan_code) == SubscriptionPlan.FREE:
                 return existing
             raise ConflictException("This term already has an active paid entitlement.")
 
-        usage = await SubscriptionRepository.get_all_resource_usage(db, tenant_id)
-        limits = get_plan_entitlements(SubscriptionPlan.FREE).limits
-        blockers = [
-            {"resource": resource.value, "used": used, "limit": limits[resource]}
-            for resource, used in usage.items()
-            if limits[resource] is not None and used > limits[resource]
-        ]
+        _, blockers = await TermPlanEntitlementService._usage_and_blockers(
+            db, tenant_id, term, SubscriptionPlan.FREE
+        )
         if blockers:
             raise ConflictException(
                 "Current school usage exceeds Free plan limits.",
-                payload={"code": "FREE_PLAN_LIMITS_EXCEEDED", "blockers": blockers},
+                payload={
+                    "code": "FREE_PLAN_LIMITS_EXCEEDED",
+                    "blockers": [blocker.model_dump(mode="json") for blocker in blockers],
+                },
             )
 
         now = datetime.now(timezone.utc)
@@ -282,6 +510,7 @@ class TermPlanEntitlementService:
         if tenant:
             tenant.initial_plan_intent = None
             tenant.plan = SubscriptionPlan.FREE
+            tenant.trial_ends_at = None
         await db.flush()
         await db.commit()
         await invalidate_tenant_subscription_cache(tenant_id)
@@ -295,16 +524,62 @@ class TermPlanEntitlementService:
         plan: SubscriptionPlan,
         email: str,
     ) -> SubscriptionCheckoutResponse:
-        if plan not in PAID_TERM_PLANS:
-            raise ConflictException("Select Plus, Professional, or Enterprise for paid activation.")
+        target = coerce_subscription_plan(plan)
+        if target not in PAID_TERM_PLANS:
+            raise ConflictException(
+                "Select Plus, Professional, or Enterprise for paid activation."
+            )
 
         term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
-        TermPlanEntitlementService._ensure_paid_checkout_term_state(term)
+        if term.status not in {AcademicTermStatus.DRAFT, AcademicTermStatus.OPEN}:
+            raise ConflictException(
+                "Only the term being opened or the current open term can start a paid-plan checkout."
+            )
+        await TermPlanEntitlementService._ensure_draft_selection_allowed(db, tenant_id, term)
 
-        existing_entitlement = await TermPlanEntitlementService.get_active(
+        existing = await TermPlanEntitlementService.get_active(
             db, tenant_id, term_id, lock=True
         )
-        TermPlanEntitlementService._ensure_paid_transition(existing_entitlement, plan)
+        transition = TermPlanEntitlementService._transition(existing, target)
+        if transition in {"current", "downgrade"}:
+            raise ConflictException(
+                "This plan change does not require Paystack checkout.",
+                payload={
+                    "code": "NO_PAYMENT_REQUIRED",
+                    "term_id": str(term_id),
+                    "target_plan": target.value,
+                },
+            )
+
+        _, blockers = await TermPlanEntitlementService._usage_and_blockers(
+            db, tenant_id, term, target
+        )
+        if blockers:
+            raise ConflictException(
+                "Current school usage exceeds the selected plan limits.",
+                payload={
+                    "code": "TARGET_PLAN_INELIGIBLE",
+                    "term_id": str(term_id),
+                    "target_plan": target.value,
+                    "blockers": [blocker.model_dump(mode="json") for blocker in blockers],
+                },
+            )
+
+        paid_to_date = await TermPlanEntitlementService._paid_to_date(db, tenant_id, term_id)
+        amount_kobo = TermPlanEntitlementService._amount_due(
+            transition=transition,
+            target_plan=target,
+            paid_to_date_kobo=paid_to_date,
+        )
+        if amount_kobo <= 0:
+            raise ConflictException(
+                "This plan change is already covered by payments made for this term.",
+                payload={
+                    "code": "NO_PAYMENT_REQUIRED",
+                    "term_id": str(term_id),
+                    "target_plan": target.value,
+                },
+            )
 
         pending = await TermPlanEntitlementService._get_pending_checkout(
             db, tenant_id, term_id, lock=True
@@ -312,28 +587,24 @@ class TermPlanEntitlementService:
         if pending is not None:
             now = datetime.now(timezone.utc)
             reusable = bool(pending.authorization_url) and (
-                pending.created_at is None or pending.created_at >= now - PENDING_CHECKOUT_TTL
+                pending.created_at is None
+                or pending.created_at >= now - PENDING_CHECKOUT_TTL
             )
             if reusable:
-                if pending.plan_code != plan:
+                if pending.plan_code != target:
                     raise ConflictException(
                         "A different term-plan checkout is already in progress. "
                         "Finish or wait for that checkout to expire before choosing another plan."
                     )
                 return TermPlanEntitlementService._checkout_response(pending)
-
             pending.status = PaymentStatus.ABANDONED
             pending.failure_reason = "Pending checkout expired before payment completion."
 
-        amount_kobo = TermPlanEntitlementService.amount_kobo(plan)
-        if amount_kobo <= 0:
-            raise ConflictException(
-                "Paid term pricing is not configured correctly for the selected plan."
-            )
-
         callback_url = str(settings.PAYSTACK_CALLBACK_URL or "").strip()
         if settings.is_production_like and not callback_url:
-            raise ConflictException("Paystack callback URL is not configured for this environment.")
+            raise ConflictException(
+                "Paystack callback URL is not configured for this environment."
+            )
 
         reference = f"term-{term_id.hex[:12]}-{uuid.uuid4().hex[:16]}"
         transaction = PaymentTransaction(
@@ -342,11 +613,19 @@ class TermPlanEntitlementService:
             provider=PaymentProvider.PAYSTACK,
             status=PaymentStatus.PENDING,
             reference=reference,
-            plan_code=plan,
+            plan_code=target,
             billing_interval=BillingInterval.TERM,
             amount=Decimal(amount_kobo) / 100,
             amount_kobo=amount_kobo,
             currency="NGN",
+            raw_payload={
+                "quote": {
+                    "target_plan_price_kobo": TermPlanEntitlementService.amount_kobo(target),
+                    "paid_to_date_kobo": paid_to_date,
+                    "amount_due_kobo": amount_kobo,
+                    "transition": transition,
+                }
+            },
         )
         db.add(transaction)
         await db.flush()
@@ -359,8 +638,11 @@ class TermPlanEntitlementService:
             metadata={
                 "tenant_id": str(tenant_id),
                 "academic_term_id": str(term_id),
-                "plan_code": plan.value,
+                "plan_code": target.value,
                 "amount_kobo": amount_kobo,
+                "target_plan_price_kobo": TermPlanEntitlementService.amount_kobo(target),
+                "paid_to_date_kobo": paid_to_date,
+                "transition": transition,
             },
         )
         data = response.get("data") or {}
@@ -371,6 +653,106 @@ class TermPlanEntitlementService:
 
         await db.commit()
         return TermPlanEntitlementService._checkout_response(transaction)
+
+    @staticmethod
+    async def change_plan(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+        target_plan: SubscriptionPlan,
+        admin_id: uuid.UUID | None,
+    ) -> TermPlanEntitlement:
+        target = coerce_subscription_plan(target_plan)
+        term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
+        if term.status != AcademicTermStatus.OPEN:
+            raise ConflictException(
+                "Zero-cost plan changes are only available during the current open term."
+            )
+
+        await TermPlanEntitlementService.expire_stale_pending_checkouts(
+            db,
+            tenant_id=tenant_id,
+            term_id=term_id,
+        )
+        pending = await TermPlanEntitlementService._get_pending_checkout(
+            db, tenant_id, term_id, lock=True
+        )
+        if pending is not None:
+            raise ConflictException(
+                "Complete or wait for the current Paystack checkout to expire before changing plans."
+            )
+
+        existing = await TermPlanEntitlementService.get_active(
+            db, tenant_id, term_id, lock=True
+        )
+        if existing is None:
+            raise ConflictException(
+                "The current term does not have a plan entitlement to change."
+            )
+
+        transition = TermPlanEntitlementService._transition(existing, target)
+        if transition == "current":
+            return existing
+
+        _, blockers = await TermPlanEntitlementService._usage_and_blockers(
+            db, tenant_id, term, target
+        )
+        if blockers:
+            raise ConflictException(
+                "Current school usage exceeds the selected plan limits.",
+                payload={
+                    "code": "TARGET_PLAN_INELIGIBLE",
+                    "term_id": str(term_id),
+                    "target_plan": target.value,
+                    "blockers": [blocker.model_dump(mode="json") for blocker in blockers],
+                },
+            )
+
+        paid_to_date = await TermPlanEntitlementService._paid_to_date(db, tenant_id, term_id)
+        amount_due = TermPlanEntitlementService._amount_due(
+            transition=transition,
+            target_plan=target,
+            paid_to_date_kobo=paid_to_date,
+        )
+        if amount_due > 0:
+            raise ConflictException(
+                "This plan change requires payment.",
+                payload={
+                    "code": "PAYMENT_REQUIRED",
+                    "term_id": str(term_id),
+                    "target_plan": target.value,
+                    "amount_kobo": amount_due,
+                },
+            )
+
+        now = datetime.now(timezone.utc)
+        existing.status = TermEntitlementStatus.CLOSED
+        existing.closed_at = now
+        existing.closed_reason = (
+            "mid_term_downgrade" if transition == "downgrade" else "zero_cost_reupgrade"
+        )
+        entitlement = TermPlanEntitlement(
+            tenant_id=tenant_id,
+            academic_term_id=term_id,
+            plan_code=target,
+            status=TermEntitlementStatus.ACTIVE,
+            payment_transaction_id=None,
+            amount=Decimal("0"),
+            currency="NGN",
+            provider=PaymentProvider.MANUAL,
+            activated_at=now,
+            safety_expires_at=now + timedelta(days=TERM_SAFETY_LIFETIME_DAYS),
+            activated_by_admin_id=admin_id,
+        )
+        db.add(entitlement)
+        tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
+        if tenant:
+            tenant.plan = target
+            tenant.initial_plan_intent = None
+        await db.flush()
+        await db.commit()
+        await invalidate_tenant_subscription_cache(tenant_id)
+        return entitlement
 
     @staticmethod
     async def activate_verified_transaction(
@@ -423,7 +805,12 @@ class TermPlanEntitlementService:
             transaction.academic_term_id,
             lock=True,
         )
-        TermPlanEntitlementService._ensure_paid_transition(existing, transaction.plan_code)
+        if existing is not None:
+            transition = TermPlanEntitlementService._transition(existing, transaction.plan_code)
+            if transition != "upgrade":
+                raise ConflictException(
+                    "The term plan changed while this payment was in progress. Contact support before retrying."
+                )
 
         now = datetime.now(timezone.utc)
         if existing:
@@ -431,6 +818,7 @@ class TermPlanEntitlementService:
             existing.closed_at = now
             existing.closed_reason = "mid_term_upgrade"
 
+        quote_snapshot = dict((transaction.raw_payload or {}).get("quote") or {})
         transaction.status = PaymentStatus.SUCCESS
         transaction.paid_at = now
         transaction.provider_transaction_id = (
@@ -438,7 +826,7 @@ class TermPlanEntitlementService:
             if data.get("id") is not None
             else transaction.provider_transaction_id
         )
-        transaction.raw_payload = data
+        transaction.raw_payload = {**data, "weave_quote": quote_snapshot}
 
         entitlement = TermPlanEntitlement(
             tenant_id=transaction.tenant_id,
@@ -456,8 +844,10 @@ class TermPlanEntitlementService:
 
         tenant = await SubscriptionRepository.get_tenant(db, transaction.tenant_id)
         if tenant:
-            tenant.plan = transaction.plan_code
             tenant.initial_plan_intent = None
+            tenant.trial_ends_at = None
+            if term.status == AcademicTermStatus.OPEN and term.is_current:
+                tenant.plan = coerce_subscription_plan(transaction.plan_code)
 
         await db.flush()
         if commit:
@@ -487,20 +877,27 @@ class TermPlanEntitlementService:
                 "Complete the payment or wait for the checkout to expire before finalizing closure."
             )
 
-        entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
+        entitlement = await TermPlanEntitlementService.get_active(
+            db, tenant_id, term_id, lock=True
+        )
         if entitlement:
             entitlement.status = TermEntitlementStatus.CLOSED
             entitlement.closed_at = datetime.now(timezone.utc)
             entitlement.closed_reason = reason
 
+        tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
+        if tenant is not None:
+            tenant.plan = SubscriptionPlan.FREE
+
     @staticmethod
-    async def reconcile(db: AsyncSession, *, as_of: datetime | None = None) -> dict[str, int]:
+    async def reconcile(
+        db: AsyncSession,
+        *,
+        as_of: datetime | None = None,
+    ) -> dict[str, int]:
         """Safety repair only; normal entitlement closure is synchronous with term closure."""
         now = as_of or datetime.now(timezone.utc)
-        await TermPlanEntitlementService.expire_stale_pending_checkouts(
-            db,
-            as_of=now,
-        )
+        await TermPlanEntitlementService.expire_stale_pending_checkouts(db, as_of=now)
         result = await db.execute(
             select(TermPlanEntitlement, AcademicTerm.status)
             .join(AcademicTerm, AcademicTerm.id == TermPlanEntitlement.academic_term_id)
