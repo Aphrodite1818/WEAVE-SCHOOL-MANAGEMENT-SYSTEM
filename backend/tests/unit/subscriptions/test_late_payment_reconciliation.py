@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -15,6 +16,7 @@ from app.modules.subscriptions.payment_settlement import (
     settle_verified_term_payment,
 )
 from app.modules.subscriptions.repository import SubscriptionRepository
+from app.modules.subscriptions.schemas import PaymentTransactionResponse
 from app.modules.subscriptions.subscription_enums import (
     BillingInterval,
     PaymentProvider,
@@ -111,6 +113,7 @@ async def test_late_abandoned_payment_is_recorded_but_does_not_create_entitlemen
     assert transaction.provider_transaction_id == "901122"
     assert transaction.failure_reason == LATE_PAYMENT_RECONCILIATION_REASON
     assert payment_requires_reconciliation(transaction) is True
+    assert transaction.reconciliation_required is True
     assert transaction.raw_payload["weave_quote"]["amount_due_kobo"] == 7_500_000
     assert replacement.status == PaymentStatus.ABANDONED
     assert transaction.reference == replacement.raw_payload[
@@ -140,6 +143,18 @@ async def test_reconciliation_payment_is_idempotently_kept_out_of_entitlement_pa
 
     assert entitlement is None
     activate.assert_not_awaited()
+
+
+def test_payment_history_response_exposes_reconciliation_flag() -> None:
+    transaction = _transaction(status=PaymentStatus.SUCCESS)
+    transaction.raw_payload = {"reconciliation_required": True}
+    now = datetime.now(timezone.utc)
+    transaction.created_at = now
+    transaction.updated_at = now
+
+    response = PaymentTransactionResponse.model_validate(transaction)
+
+    assert response.reconciliation_required is True
 
 
 @pytest.mark.asyncio
