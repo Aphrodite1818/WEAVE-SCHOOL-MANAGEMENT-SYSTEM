@@ -18,8 +18,7 @@ LATE_PAYMENT_RECONCILIATION_REASON = (
 
 
 def payment_requires_reconciliation(transaction: PaymentTransaction) -> bool:
-    payload = transaction.raw_payload or {}
-    return bool(payload.get(RECONCILIATION_REQUIRED_KEY))
+    return transaction.reconciliation_required
 
 
 def _validate_verified_payment(
