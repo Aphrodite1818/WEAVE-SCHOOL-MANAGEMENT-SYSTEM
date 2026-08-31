@@ -83,25 +83,21 @@ def _limits(
     }
 
 
+_FREE_ENTITLEMENTS = PlanEntitlements(
+    features=_features(
+        advanced_analytics=False,
+        ai_assistant=False,
+        bulk_import=False,
+        bulk_academic_operations=False,
+    ),
+    limits=_limits(students=50, teachers=10, parents=50, cbt_servers=0),
+)
+
 PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
-    SubscriptionPlan.FREE.value: PlanEntitlements(
-        features=_features(
-            advanced_analytics=False,
-            ai_assistant=False,
-            bulk_import=False,
-            bulk_academic_operations=False,
-        ),
-        limits=_limits(students=50, teachers=10, parents=50, cbt_servers=0),
-    ),
-    SubscriptionPlan.FREE_TRIAL.value: PlanEntitlements(
-        features=_features(),
-        limits=_limits(
-            students=50,
-            teachers=10,
-            parents=50,
-            cbt_servers=0,
-        ),
-    ),
+    SubscriptionPlan.FREE.value: _FREE_ENTITLEMENTS,
+    # Legacy rows can still contain ``free_trial``. Runtime semantics collapse
+    # them to the permanent Free tier rather than exposing a second free state.
+    SubscriptionPlan.FREE_TRIAL.value: _FREE_ENTITLEMENTS,
     SubscriptionPlan.PLUS.value: PlanEntitlements(
         features=_paid_features(),
         limits=_limits(
@@ -136,15 +132,16 @@ def coerce_subscription_plan(plan: Any) -> SubscriptionPlan:
     """Convert enum/string inputs into the canonical tenant plan enum."""
 
     if isinstance(plan, SubscriptionPlan):
-        return plan
+        return SubscriptionPlan.FREE if plan == SubscriptionPlan.FREE_TRIAL else plan
 
     raw_value = getattr(plan, "value", plan)
     normalized = str(raw_value or "").strip().lower()
 
-    if not normalized:
+    if not normalized or normalized == SubscriptionPlan.FREE_TRIAL.value:
         return SubscriptionPlan.FREE
 
-    return PLAN_ALIASES.get(normalized, SubscriptionPlan.FREE)
+    resolved = PLAN_ALIASES.get(normalized, SubscriptionPlan.FREE)
+    return SubscriptionPlan.FREE if resolved == SubscriptionPlan.FREE_TRIAL else resolved
 
 
 def normalize_plan_code(plan: Any) -> str:
