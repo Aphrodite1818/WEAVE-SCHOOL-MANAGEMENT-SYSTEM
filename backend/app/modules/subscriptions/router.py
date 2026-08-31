@@ -21,6 +21,9 @@ from app.modules.subscriptions.catalogue import (
     PublicSubscriptionCatalogueService,
 )
 from app.modules.subscriptions.models import TermPlanEntitlement
+from app.modules.subscriptions.payment_integrity import (
+    _transaction_for_update as lock_payment_transaction,
+)
 from app.modules.subscriptions.payment_integrity import process_paystack_webhook_secure
 from app.modules.subscriptions.providers.paystack import PaystackClient
 from app.modules.subscriptions.repository import SubscriptionRepository
@@ -130,9 +133,7 @@ async def verify_term_plan_checkout(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TermEntitlementResponse:
-    transaction = await SubscriptionRepository.get_transaction_by_reference(
-        db=db, reference=reference
-    )
+    transaction = await lock_payment_transaction(db, reference)
     if transaction is None:
         from app.core.exceptions import NotFoundException
 
