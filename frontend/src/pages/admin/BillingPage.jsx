@@ -49,10 +49,7 @@ const statusVariant = (value) => {
 };
 
 const paymentNeedsReconciliation = (payment) =>
-  payment?.status === "success" &&
-  /manual reconciliation|requires reconciliation/i.test(
-    String(payment?.failure_reason || ""),
-  );
+  payment?.status === "success" && payment?.reconciliation_required === true;
 
 const termDisplayName = (term) =>
   String(term?.display_name || term?.name || "Academic term")
