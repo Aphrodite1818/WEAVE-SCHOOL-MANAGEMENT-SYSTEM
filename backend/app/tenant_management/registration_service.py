@@ -14,6 +14,7 @@ from app.modules.auth.models import AuthPurpose
 from app.modules.auth.schemas import RequestOTP
 from app.modules.auth.service import OTPService
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.subscriptions.plans import coerce_subscription_plan
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.modules.tenant_admins.schemas import TenantAdminCreate
@@ -147,9 +148,12 @@ class TenantRegistrationService:
 
         school_name = _normalize_school_name(payload.school_name)
         normalized_email = _normalize_email(str(payload.email))
-        selected_plan_code = (
-            payload.initial_plan_intent.value if payload.initial_plan_intent else None
+        selected_plan = (
+            coerce_subscription_plan(payload.initial_plan_intent)
+            if payload.initial_plan_intent is not None
+            else None
         )
+        selected_plan_code = selected_plan.value if selected_plan is not None else None
         billing_interval = "term"
         tenant: Tenant | None = None
         reused_pending_account = False
@@ -235,7 +239,7 @@ class TenantRegistrationService:
                     admission_number_prefix=None,
                     onboarding_completed=False,
                     verification_status=(TenantVerificationStatus.PENDING_VERIFICATION),
-                    initial_plan_intent=payload.initial_plan_intent,
+                    initial_plan_intent=selected_plan,
                     feature_flags=(
                         {
                             "initial_plan_intent": selected_plan_code,
