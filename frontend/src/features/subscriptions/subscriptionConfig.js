@@ -1,6 +1,6 @@
 export const PLAN_DISPLAY_NAMES = {
   free: "Free",
-  free_trial: "Free Trial",
+  free_trial: "Free",
   plus: "Plus",
   professional: "Professional",
   enterprise: "Enterprise",
@@ -35,9 +35,9 @@ export const RESOURCE_CODES = {
 
 export const SUBSCRIPTION_STATUS_META = {
   trialing: {
-    label: "Trial Active",
-    message: "Your 30-day free trial is active.",
-    badgeVariant: "info",
+    label: "Free",
+    message: "Your school is using the permanent Free plan.",
+    badgeVariant: "default",
   },
   active: {
     label: "Active",
@@ -45,10 +45,9 @@ export const SUBSCRIPTION_STATUS_META = {
     badgeVariant: "success",
   },
   expired: {
-    label: "Read-only",
-    message:
-      "Your subscription has expired. Billing remains available, but write actions are restricted.",
-    badgeVariant: "error",
+    label: "Free",
+    message: "Your school can continue on the permanent Free plan.",
+    badgeVariant: "default",
   },
 };
 
@@ -62,39 +61,39 @@ export const LANDING_PRICING_PLANS = [
     name: "Free",
     bestFor: "Best for smaller school operations",
     description:
-      "Use Weave term after term within the permanent Free plan limits.",
+      "Use Weave permanently with core school workflows and deliberately limited capacity.",
     pricePerTerm: 0,
-    priceLabel: "₦0 per academic term",
+    priceLabel: "₦0",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Choose Free",
+    ctaLabel: "Get started",
   },
   {
     planCode: "plus",
     name: "Plus",
     bestFor: "Best for smaller schools",
     description:
-      "A complete starting point for schools ready to organise students, staff, academic records, portals, and everyday administration in one place.",
+      "More capacity and operational tools for schools ready to run broader day-to-day workflows in Weave.",
     pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Choose Plus",
+    ctaLabel: "Get started",
   },
   {
     planCode: "professional",
     name: "Professional",
     bestFor: "Best for growing schools",
     description:
-      "Greater capacity for established schools managing more students, teachers, classes, records, and operational complexity.",
+      "Greater capacity plus premium operational capabilities for established schools.",
     pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Choose Professional",
+    ctaLabel: "Get started",
     highlighted: true,
   },
   {
@@ -102,39 +101,40 @@ export const LANDING_PRICING_PLANS = [
     name: "Enterprise",
     bestFor: "Best for larger schools",
     description:
-      "Designed for large school operations that need maximum capacity, flexible resource limits, and priority support readiness.",
+      "Maximum capacity and premium capabilities for large school operations.",
     pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Choose Enterprise",
+    ctaLabel: "Get started",
   },
 ];
 
 const SUBSCRIPTION_SELECTION_STORAGE_KEY = "weave_subscription_selection";
 
-const ATTENTION_STATUSES = new Set(["expired"]);
+const ATTENTION_STATUSES = new Set();
 
 const canonicalPlanCode = (value) => {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
-  return PLAN_DISPLAY_NAMES[normalized] ? normalized : "free_trial";
+  if (normalized === "free_trial") return "free";
+  return PLAN_ORDER.includes(normalized) ? normalized : "free";
 };
 
 const canonicalBillingInterval = () => "term";
 
 export const formatPlanName = (planCode) =>
-  PLAN_DISPLAY_NAMES[canonicalPlanCode(planCode)] || "Free Trial";
+  PLAN_DISPLAY_NAMES[canonicalPlanCode(planCode)] || "Free";
 
 export const formatBillingInterval = () =>
   BILLING_INTERVAL_LABELS.term || "Per academic term";
 
 export const getSubscriptionStatusMeta = (status) =>
   SUBSCRIPTION_STATUS_META[String(status || "").toLowerCase()] || {
-    label: "Unknown",
-    message: "We could not determine your current subscription state.",
+    label: "Active",
+    message: "Your school can use Weave within its current plan limits.",
     badgeVariant: "default",
   };
 
@@ -166,12 +166,10 @@ export const formatUsageValue = (usage) => {
 
 export const buildRegistrationHref = (planCode) => {
   const nextPlanCode = canonicalPlanCode(planCode);
-  const params = new URLSearchParams({ plan: nextPlanCode });
-
-  if (nextPlanCode !== "free_trial") {
-    params.set("billing", "term");
-  }
-
+  const params = new URLSearchParams({
+    plan: nextPlanCode,
+    billing: "term",
+  });
   return `/register?${params.toString()}`;
 };
 
@@ -199,11 +197,9 @@ export const getSelectedSubscriptionPlan = () => {
     const rawValue = window.sessionStorage.getItem(
       SUBSCRIPTION_SELECTION_STORAGE_KEY,
     );
-
     if (!rawValue) return null;
 
     const parsed = JSON.parse(rawValue);
-
     return {
       planCode: canonicalPlanCode(parsed?.planCode),
       billingInterval: "term",
