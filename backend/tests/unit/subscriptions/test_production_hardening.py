@@ -12,6 +12,7 @@ from app.modules.classes.router import activate_classroom
 from app.modules.subjects.router import activate_subject
 from app.modules.subscriptions.payment_integrity import process_paystack_webhook_secure
 from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
+from app.modules.subscriptions.router import verify_term_plan_checkout
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 from app.modules.superadmin.router import update_tenant_status
 
@@ -50,7 +51,10 @@ async def test_resource_quota_lock_uses_stable_transaction_advisory_key() -> Non
 
 @pytest.mark.asyncio
 async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> None:
-    payload = {"event": "charge.success", "data": {"id": 123, "reference": "unknown"}}
+    payload = {
+        "event": "charge.success",
+        "data": {"id": 123, "reference": "unknown"},
+    }
     provider = SimpleNamespace(
         verify_webhook_signature=lambda **_: True,
         parse_webhook_body=lambda _body: payload,
@@ -111,6 +115,47 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
 
 
 @pytest.mark.asyncio
+async def test_browser_payment_verification_locks_transaction_before_settlement() -> None:
+    tenant_id = uuid.uuid4()
+    transaction = SimpleNamespace(
+        tenant_id=tenant_id,
+        reference="term-ref",
+    )
+    entitlement = SimpleNamespace()
+    admin = SimpleNamespace(tenant_id=tenant_id)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.subscriptions.router.lock_payment_transaction",
+            new=AsyncMock(return_value=transaction),
+        ) as lock_transaction,
+        patch(
+            "app.modules.subscriptions.router.PaystackClient.verify_transaction",
+            new=AsyncMock(return_value={"data": {"status": "success"}}),
+        ) as verify_provider,
+        patch(
+            "app.modules.subscriptions.router.TermPlanEntitlementService.activate_verified_transaction",
+            new=AsyncMock(return_value=entitlement),
+        ) as activate,
+        patch(
+            "app.modules.subscriptions.router.TermEntitlementResponse.model_validate",
+            return_value=entitlement,
+        ),
+    ):
+        result = await verify_term_plan_checkout(
+            reference="term-ref",
+            db=db,
+            current_admin=admin,
+        )
+
+    assert result is entitlement
+    lock_transaction.assert_awaited_once_with(db, "term-ref")
+    verify_provider.assert_awaited_once_with(reference="term-ref")
+    activate.assert_awaited_once_with(db, transaction, ANY)
+
+
+@pytest.mark.asyncio
 async def test_tenant_status_change_invalidates_active_tenant_authorization_cache() -> None:
     tenant_id = uuid.uuid4()
     tenant = SimpleNamespace(id=tenant_id)
@@ -147,12 +192,10 @@ async def test_class_reactivation_has_no_commercial_quota() -> None:
     payload = SimpleNamespace(confirmation=True)
     activated = SimpleNamespace(id=class_id, is_active=True)
 
-    with (
-        patch(
-            "app.modules.classes.router.ClassRoomService.activate_classroom",
-            new=AsyncMock(return_value=activated),
-        ) as activate,
-    ):
+    with patch(
+        "app.modules.classes.router.ClassRoomService.activate_classroom",
+        new=AsyncMock(return_value=activated),
+    ) as activate:
         result = await activate_classroom(
             class_id=class_id,
             payload=payload,
@@ -171,12 +214,10 @@ async def test_subject_reactivation_has_no_commercial_quota() -> None:
     actor = SimpleNamespace(tenant_id=tenant_id)
     payload = SimpleNamespace(confirmation=True)
 
-    with (
-        patch(
-            "app.modules.subjects.router.SubjectService.activate_subject",
-            new=AsyncMock(return_value=SimpleNamespace(id=subject_id)),
-        ) as activate,
-    ):
+    with patch(
+        "app.modules.subjects.router.SubjectService.activate_subject",
+        new=AsyncMock(return_value=SimpleNamespace(id=subject_id)),
+    ) as activate:
         await activate_subject(
             subject_id=subject_id,
             payload=payload,
