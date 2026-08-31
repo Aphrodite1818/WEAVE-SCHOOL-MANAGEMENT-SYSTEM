@@ -216,6 +216,9 @@ class SubscriptionRepository:
                     PaymentTransaction.tenant_id == tenant_id,
                     PaymentTransaction.academic_term_id == academic_term_id,
                     PaymentTransaction.status == PaymentStatus.SUCCESS,
+                    PaymentTransaction.raw_payload[
+                        "reconciliation_required"
+                    ].as_boolean().is_not(True),
                 )
             )
         ).scalar_one()
