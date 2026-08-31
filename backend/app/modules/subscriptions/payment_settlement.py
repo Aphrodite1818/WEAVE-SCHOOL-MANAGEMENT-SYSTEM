@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ConflictException
 from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache
 from app.modules.subscriptions.models import PaymentTransaction, TermPlanEntitlement
 from app.modules.subscriptions.subscription_enums import PaymentStatus
@@ -31,8 +32,6 @@ def _validate_verified_payment(
         or int(data.get("amount") or -1) != transaction.amount_kobo
         or data.get("currency") != transaction.currency
     ):
-        from app.core.exceptions import ConflictException
-
         raise ConflictException(
             "Paystack verification did not match the expected term payment."
         )
@@ -43,8 +42,6 @@ def _validate_verified_payment(
         or str(metadata.get("academic_term_id")) != str(transaction.academic_term_id)
         or str(metadata.get("plan_code")) != transaction.plan_code.value
     ):
-        from app.core.exceptions import ConflictException
-
         raise ConflictException(
             "Paystack term payment metadata did not match the expected purchase."
         )
@@ -79,8 +76,6 @@ async def settle_verified_term_payment(
         )
 
     if transaction.academic_term_id is None:
-        from app.core.exceptions import ConflictException
-
         raise ConflictException("Payment is not attached to an academic term.")
 
     data = _validate_verified_payment(transaction, provider_data)
