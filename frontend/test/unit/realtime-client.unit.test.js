@@ -59,7 +59,7 @@ const importRealtimeClient = async () => {
         "const authSession = { getToken: () => null, subscribeToken: () => () => {} };",
     )
     .replace(
-      'import { markConnectionReady, resetAuthenticationLifecycle } from "./realtimeClientState";',
+      /import\s*\{\s*markConnectionReady,\s*resetAuthenticationLifecycle,\s*\}\s*from\s*"\.\/realtimeClientState";/,
       "const resetAuthenticationLifecycle = (client) => { client.authenticatedOnce = false; client.reconnectAttempt = 0; client.lastAuthenticatedToken = null; };\n" +
         "const markConnectionReady = (client) => { const status = client.authenticatedOnce ? 'reconnected' : 'ready'; client.authenticatedOnce = true; return status; };",
     );

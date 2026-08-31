@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, CreditCard } from "lucide-react";
+import { CheckCircle2, CreditCard } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -7,6 +7,7 @@ import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import Modal from "../../components/ui/Modal";
 import {
   LANDING_PRICING_PLANS,
   formatPlanName,
@@ -62,6 +63,7 @@ function SubscriptionOptionsPage() {
   const [loading, setLoading] = useState(true);
   const [busyPlan, setBusyPlan] = useState("");
   const [error, setError] = useState("");
+  const [eligibilityWarning, setEligibilityWarning] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,9 +112,22 @@ function SubscriptionOptionsPage() {
     () => new Map(LANDING_PRICING_PLANS.map((plan) => [plan.planCode, plan])),
     [],
   );
+  const paidOptions = (planOptions?.options || []).filter(
+    (option) => option.plan_code !== "free",
+  );
+  const freeOption = (planOptions?.options || []).find(
+    (option) => option.plan_code === "free",
+  );
 
   const handlePlan = async (option) => {
-    if (!term || !option?.eligible || option.transition === "current") return;
+    if (!term || !option || option.transition === "current") return;
+    if (!option.eligible) {
+      setEligibilityWarning({
+        planName: formatPlanName(option.plan_code),
+        blockers: option.blockers || [],
+      });
+      return;
+    }
     setBusyPlan(option.plan_code);
     setError("");
 
@@ -166,31 +181,47 @@ function SubscriptionOptionsPage() {
       title="Term Plan"
       description="Choose or change the plan for one operational academic term."
     >
-      <div className="mx-auto w-full max-w-6xl space-y-5">
-        <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-              Academic term
+      <div className="mx-auto w-full max-w-6xl space-y-4">
+        <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-text">
+                {term ? termLabel(term) : "Term plan"}
+              </h2>
+              {planOptions?.current_plan ? (
+                <Badge variant="success">
+                  {formatPlanName(planOptions.current_plan)} active
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-1 text-sm capitalize text-text-muted">
+              {String(planOptions?.term_status || "").replaceAll("_", " ")}
             </p>
-            <h2 className="mt-1 text-xl font-semibold text-text">
-              {term ? termLabel(term) : "Term plan"}
-            </h2>
-            {planOptions ? (
-              <p className="mt-1 text-sm text-text-muted">
-                {String(planOptions.term_status || "").replaceAll("_", " ")} ·{" "}
-                {planOptions.current_plan
-                  ? `${formatPlanName(planOptions.current_plan)} currently active`
-                  : "No plan selected yet"}
-              </p>
-            ) : null}
           </div>
-          <Link to={returnPath}>
-            <Button variant="outline">Back</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {freeOption?.eligible && freeOption.transition !== "current" ? (
+              <Button
+                size="small"
+                variant="ghost"
+                disabled={busyPlan === "free"}
+                onClick={() => handlePlan(freeOption)}
+              >
+                {busyPlan === "free" ? "Working..." : "Continue with Free"}
+              </Button>
+            ) : null}
+            <Link to={returnPath}>
+              <Button size="small" variant="outline">
+                Back
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {error ? (
-          <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
+          <div
+            role="alert"
+            className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error"
+          >
             {error}
           </div>
         ) : null}
@@ -199,36 +230,12 @@ function SubscriptionOptionsPage() {
 
         {!loading && planOptions ? (
           <>
-            <Card className="p-5 sm:p-6">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Summary
-                  label="Current plan"
-                  value={
-                    planOptions.current_plan
-                      ? formatPlanName(planOptions.current_plan)
-                      : "Not selected"
-                  }
-                />
-                <Summary
-                  label="Paid this term"
-                  value={moneyFromKobo(planOptions.paid_to_date_kobo)}
-                />
-                <Summary
-                  label="Plan changes"
-                  value={
-                    planOptions.term_status === "draft"
-                      ? "Select for opening"
-                      : "Current term only"
-                  }
-                />
-              </div>
-            </Card>
-
-            <section className="grid gap-4 lg:grid-cols-2">
-              {(planOptions.options || []).map((option) => {
+            <section className="grid items-stretch gap-6 xl:grid-cols-3">
+              {paidOptions.map((option) => {
                 const plan = catalogueByCode.get(option.plan_code) || {
                   planCode: option.plan_code,
                   name: formatPlanName(option.plan_code),
+                  bestFor: "",
                   description: "",
                   features: [],
                 };
@@ -240,20 +247,31 @@ function SubscriptionOptionsPage() {
                   option,
                   planOptions.term_status,
                 );
+                const displayAmount =
+                  option.transition === "select"
+                    ? option.list_price_kobo
+                    : option.amount_due_kobo;
 
                 return (
                   <Card
                     key={option.plan_code}
-                    className={`flex min-h-[25rem] flex-col p-5 sm:p-6 ${
-                      selectedAtRegistration ? "ring-2 ring-primary/20" : ""
+                    className={`flex flex-col border-border/70 p-0 shadow-soft-card ${
+                      selectedAtRegistration || isCurrent
+                        ? "ring-2 ring-primary/15"
+                        : ""
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-xl font-semibold text-text">
+                    <div className="flex flex-1 flex-col p-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <h3 className="text-2xl font-semibold tracking-tight text-text">
                             {plan.name}
                           </h3>
+                          <p className="mt-2 text-sm text-text-muted">
+                            {plan.bestFor}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-2">
                           {isCurrent ? (
                             <Badge variant="success">Current</Badge>
                           ) : null}
@@ -261,93 +279,71 @@ function SubscriptionOptionsPage() {
                             <Badge variant="info">Signup preference</Badge>
                           ) : null}
                         </div>
-                        <p className="mt-2 text-sm leading-6 text-text-muted">
-                          {plan.description}
-                        </p>
                       </div>
-                    </div>
 
-                    <div className="mt-5 rounded-xl border border-border/70 bg-surface-muted/25 px-4 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-text-muted">
+                      <p className="mt-6 min-h-[5.25rem] text-sm leading-7 text-text-muted">
+                        {plan.description}
+                      </p>
+
+                      <div className="mt-7">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
                           {option.transition === "upgrade"
                             ? "Additional amount due"
                             : option.transition === "downgrade"
                               ? "Additional payment"
                               : "Term price"}
-                        </span>
-                        <strong className="text-lg text-text">
-                          {option.transition === "select"
-                            ? moneyFromKobo(option.list_price_kobo)
-                            : moneyFromKobo(option.amount_due_kobo)}
+                        </p>
+                        <strong className="mt-2 block text-4xl font-semibold tracking-tight text-text">
+                          {moneyFromKobo(displayAmount)}
                         </strong>
+                        <p className="mt-2 text-xs leading-5 text-text-muted">
+                          {option.transition === "upgrade" ? (
+                            <>
+                              {moneyFromKobo(option.paid_to_date_kobo)} already
+                              paid toward this term.
+                            </>
+                          ) : option.transition === "downgrade" ? (
+                            "No automatic refund. Existing payments remain as term credit."
+                          ) : (
+                            "One activation for the selected academic term."
+                          )}
+                        </p>
                       </div>
-                      {option.transition === "upgrade" ? (
-                        <p className="mt-1 text-xs text-text-muted">
-                          {moneyFromKobo(option.paid_to_date_kobo)} already paid
-                          toward this term.
+
+
+                      <Button
+                        className="mt-7 min-h-12 w-full rounded-xl"
+                        disabled={isCurrent || isBusy}
+                        onClick={() => handlePlan(option)}
+                      >
+                        {Number(option.amount_due_kobo || 0) > 0 ? (
+                          <CreditCard className="h-4 w-4" />
+                        ) : null}
+                        {isBusy ? "Working..." : actionLabel}
+                      </Button>
+
+                      <div className="mt-8 border-t border-border/70 pt-7">
+                        <p className="text-sm font-semibold text-text">
+                          What's included
                         </p>
-                      ) : option.transition === "downgrade" ? (
-                        <p className="mt-1 text-xs text-text-muted">
-                          No automatic refund. Existing term payments remain as
-                          credit.
+                      </div>
+
+                      {(plan.features || []).length ? (
+                        <ul className="mt-5 grid gap-y-4 text-sm text-text-soft">
+                          {plan.features.slice(0, 6).map((feature) => (
+                            <li key={feature} className="flex gap-2">
+                              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                              <span className="leading-5">{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-5 text-sm leading-6 text-text-muted">
+                          Feature details will appear when the live catalogue is
+                          available.
                         </p>
-                      ) : null}
+                      )}
                     </div>
-
-                    {option.blockers?.length ? (
-                      <div className="mt-5 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3">
-                        <div className="flex gap-2">
-                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                          <div>
-                            <p className="text-sm font-semibold">
-                              This school does not currently fit {plan.name}.
-                            </p>
-                            <ul className="mt-2 space-y-1 text-xs">
-                              {option.blockers.map((blocker) => (
-                                <li key={blocker.resource}>
-                                  {resourceLabel(blocker.resource)}:{" "}
-                                  {Number(blocker.used).toLocaleString()} active ·
-                                  limit {Number(blocker.limit).toLocaleString()}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-5 flex items-start gap-2 text-sm text-text-soft">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                        Current operational usage fits this plan.
-                      </div>
-                    )}
-
-                    {(plan.features || []).length ? (
-                      <ul className="mt-5 space-y-2 text-sm text-text-soft">
-                        {plan.features.slice(0, 5).map((feature) => (
-                          <li key={feature} className="flex gap-2">
-                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                            {feature}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-
-                    <Button
-                      className="mt-auto"
-                      variant={
-                        option.plan_code === "free" && !isCurrent
-                          ? "outline"
-                          : "primary"
-                      }
-                      disabled={!option.eligible || isCurrent || isBusy}
-                      onClick={() => handlePlan(option)}
-                    >
-                      {Number(option.amount_due_kobo || 0) > 0 ? (
-                        <CreditCard className="h-4 w-4" />
-                      ) : null}
-                      {isBusy ? "Working..." : actionLabel}
-                    </Button>
                   </Card>
                 );
               })}
@@ -355,24 +351,48 @@ function SubscriptionOptionsPage() {
           </>
         ) : null}
       </div>
+      <Modal
+        open={Boolean(eligibilityWarning)}
+        title={`${eligibilityWarning?.planName || "This plan"} is not available yet`}
+        description="Current school usage exceeds this plan's capacity."
+        onClose={() => setEligibilityWarning(null)}
+        footer={
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => setEligibilityWarning(null)}
+          >
+            Got it
+          </Button>
+        }
+      >
+        <p className="text-sm leading-6 text-text-muted">
+          Reduce the following active usage before choosing this plan. Checkout
+          has not started.
+        </p>
+        <dl className="mt-5 divide-y divide-border/70 rounded-xl border border-border/70 px-4">
+          {(eligibilityWarning?.blockers || []).map((blocker) => (
+            <div
+              key={blocker.resource}
+              className="flex items-center justify-between gap-4 py-3 text-sm"
+            >
+              <dt className="text-text-muted">
+                {resourceLabel(blocker.resource)}
+              </dt>
+              <dd className="font-semibold text-text">
+                {Number(blocker.used).toLocaleString()} active · limit{" "}
+                {Number(blocker.limit).toLocaleString()}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Modal>
     </DashboardLayout>
-  );
-}
-
-function Summary({ label, value }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-surface-muted/20 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-        {label}
-      </p>
-      <p className="mt-1 text-sm font-semibold text-text">{value}</p>
-    </div>
   );
 }
 
 function getActionLabel(option, termStatus) {
   const planName = formatPlanName(option.plan_code);
-  if (!option.eligible) return "Unavailable";
+  if (!option.eligible) return `Choose ${planName}`;
   if (option.transition === "current") return "Current term plan";
   if (termStatus === "draft" && option.plan_code === "free") {
     return "Continue with Free";

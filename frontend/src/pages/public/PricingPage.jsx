@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import WeaveIcon from "../../components/brand/WeaveIcon";
 import Navbar from "../../components/layout/Navbar";
+import PublicPricingCard from "../../components/subscriptions/PublicPricingCard";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -62,6 +63,9 @@ const faqs = [
 ];
 
 function PricingPage() {
+  const paidPlans = LANDING_PRICING_PLANS.filter(
+    (plan) => plan.planCode !== "free",
+  );
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
@@ -154,55 +158,20 @@ function PricingPage() {
               </p>
             </div>
 
-            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {LANDING_PRICING_PLANS.map((plan) => (
-                <Card
+            <div className="mx-auto mt-12 grid max-w-6xl items-stretch gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {paidPlans.map((plan) => (
+                <PublicPricingCard
                   key={plan.planCode}
-                  className={`flex flex-col p-5 ${
-                    plan.highlighted ? "ring-2 ring-primary/20" : ""
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-xl font-semibold text-text">
-                        {plan.name}
-                      </h3>
-                      {plan.highlighted ? (
-                        <Badge variant="primary">Popular</Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-2 text-sm text-text-muted">{plan.bestFor}</p>
-                    <p className="mt-5 text-2xl font-bold text-text">
-                      {plan.priceLabel}
-                    </p>
-                    <p className="mt-1 text-xs text-text-muted">
-                      {plan.planCode === "free"
-                        ? "Permanent"
-                        : "Per academic term"}
-                    </p>
-                    <p className="mt-4 text-sm leading-6 text-text-muted">
-                      {plan.description}
-                    </p>
-                  </div>
-                  <Link
-                    to={buildRegistrationHref(plan.planCode)}
-                    className="mt-6"
-                  >
-                    <Button
-                      className="w-full"
-                      variant={plan.planCode === "free" ? "outline" : "primary"}
-                    >
-                      Get started
-                    </Button>
-                  </Link>
-                </Card>
+                  plan={plan}
+                  selected={plan.highlighted}
+                />
               ))}
             </div>
 
             <div className="mt-10 overflow-hidden rounded-[1.75rem] border border-border bg-background shadow-soft-card">
-              <div className="hidden min-w-[760px] grid-cols-[1.2fr_repeat(4,1fr)] border-b border-border bg-surface-muted/30 px-5 py-4 text-sm font-semibold md:grid">
+              <div className="hidden min-w-[760px] grid-cols-[1.2fr_repeat(3,1fr)] border-b border-border bg-surface-muted/30 px-5 py-4 text-sm font-semibold md:grid">
                 <span>Feature</span>
-                {LANDING_PRICING_PLANS.map((plan) => (
+                {paidPlans.map((plan) => (
                   <span key={plan.planCode}>{plan.name}</span>
                 ))}
               </div>
@@ -210,10 +179,10 @@ function PricingPage() {
                 {comparisonRows.map(([label, resolver]) => (
                   <div
                     key={label}
-                    className="grid gap-3 px-5 py-4 md:min-w-[760px] md:grid-cols-[1.2fr_repeat(4,1fr)] md:items-center"
+                    className="grid gap-3 px-5 py-4 md:min-w-[760px] md:grid-cols-[1.2fr_repeat(3,1fr)] md:items-center"
                   >
                     <p className="text-sm font-semibold text-text">{label}</p>
-                    {LANDING_PRICING_PLANS.map((plan) => (
+                    {paidPlans.map((plan) => (
                       <div
                         key={`${label}-${plan.planCode}`}
                         className="flex items-center justify-between rounded-xl bg-surface-muted/30 px-3 py-2 text-sm md:block md:bg-transparent md:px-0 md:py-0"

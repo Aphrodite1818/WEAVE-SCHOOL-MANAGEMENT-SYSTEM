@@ -15,6 +15,7 @@ const ParentResultsPage = lazy(() => import("../pages/parent/ParentResultsPage")
 const ParentStudentLinkingPage = lazy(() => import("../pages/parent/ParentStudentLinkingPage"));
 const CommunicationInboxPage = lazy(() => import("../pages/shared/CommunicationInboxPage"));
 const MessagesPage = lazy(() => import("../pages/shared/MessagesPage"));
+const RoleAnalyticsPage = lazy(() => import("../pages/shared/RoleAnalyticsPage"));
 const RoleGettingStartedPage = lazy(() => import("../pages/shared/RoleGettingStartedPage"));
 const RoleSettingsPage = lazy(() => import("../pages/shared/RoleSettingsPage"));
 const SchoolCalendarPage = lazy(() => import("../pages/shared/SchoolCalendarPage"));
@@ -28,6 +29,7 @@ export const parentRoutes = (
     <Route element={<MembershipScopeGuard role="parent" />}>
       <Route element={<DashboardShell role="parent" />}>
         <Route path="/parent/dashboard" element={<ParentDashboardPage />} />
+        <Route path="/parent/analytics" element={<RoleAnalyticsPage role="parent" />} />
         <Route path="/parent/getting-started" element={<RoleGettingStartedPage role="parent" />} />
         <Route path="/parent/student-linking" element={<ParentStudentLinkingPage />} />
         <Route path="/parent/report-cards" element={<ParentReportCardsPage />} />

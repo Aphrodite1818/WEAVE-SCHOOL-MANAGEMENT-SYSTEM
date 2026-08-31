@@ -373,7 +373,7 @@ function StudentDashboardPage() {
             ]}
           />
 
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Current average"
               value={
@@ -433,7 +433,7 @@ function StudentDashboardPage() {
                 icon: FileText,
               }}
             >
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <InfoTile
                   label="Best subject"
                   value={

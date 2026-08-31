@@ -22,8 +22,8 @@ test("student dashboard keeps Promise.all responses aligned", async () => {
 test("term checkout resolves only an unambiguous eligible term", async () => {
   const source = await read("src/services/subscriptionService.js");
   assert.doesNotMatch(source, /TERM_ORDER/);
-  assert.match(source, /draftTerms\.length === 1/);
-  assert.match(source, /Select the academic term you want to purchase/);
+  assert.match(source, /currentTerms\.length === 1/);
+  assert.match(source, /There is no open academic term to manage/);
   assert.match(source, /item\.is_current && item\.status === "open"/);
   assert.doesNotMatch(source, /\["open", "closing"\]/);
 });
@@ -44,7 +44,7 @@ test("normal and guided level creation share the institution-scoped levels works
   const guideWorkspace = await read("src/features/guides/AdminGuideTaskWorkspace.jsx");
   const levelsWorkspace = await read("src/features/academic-admin/AcademicLevelsWorkspace.jsx");
 
-  assert.match(workflowPage, /workflow==="levels".*<AcademicLevelsWorkspace/s);
+  assert.match(workflowPage, /workflow === "levels"[\s\S]*<AcademicLevelsWorkspace/);
   assert.match(guideWorkspace, /kind === "levels".*<AcademicLevelsWorkspace/s);
   assert.match(levelsWorkspace, /academicLevelService\.getCategories\(\)/);
 });

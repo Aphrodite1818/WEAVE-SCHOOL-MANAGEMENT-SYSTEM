@@ -1,4 +1,17 @@
-import { BarChart3, LineChart, LockKeyhole, PieChart } from "lucide-react";
+import {
+  BarChart3,
+  Bell,
+  BookOpen,
+  CheckCircle2,
+  FileText,
+  GraduationCap,
+  LineChart,
+  LockKeyhole,
+  PieChart,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
@@ -13,116 +26,167 @@ import LoadingState from "../../components/shared/LoadingState";
 import Card from "../../components/ui/Card";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { academicService } from "../../services/academicService";
 import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
+import { formatChartLabel } from "../../utils/academicDashboard";
 
 const roleCopy = {
   admin: {
     title: "Advanced Analytics",
-    description: "Deeper school performance and operational analytics.",
+    description: "School performance, result completion, and publishing progress.",
     load: dashboardService.getTenantAdminAnalytics,
+    insightLabel: "School performance",
+    trendKey: "performance_trend",
     metricCards: [
-      { key: "result_completion_percent", label: "Result completion", suffix: "%" },
-      { key: "report_cards_published", label: "Published reports" },
-      { key: "student_profiles_incomplete", label: "Incomplete profiles" },
+      { key: "result_completion_percent", label: "Result completion", suffix: "%", icon: CheckCircle2, tone: "success", description: "Submitted result rows" },
+      { key: "result_rows_submitted", label: "Submitted results", icon: FileText, tone: "primary", description: "Rows submitted by staff" },
+      { key: "report_cards_published", label: "Published reports", icon: BookOpen, tone: "accent", description: "Report cards released" },
+      { key: "student_profiles_incomplete", label: "Incomplete profiles", icon: Users, tone: "warning", description: "Student records needing review" },
     ],
     charts: [
-      { kind: "line", key: "performance_trend", title: "Performance Trend", description: "Average tenant performance by academic term." },
-      { kind: "donut", key: "report_card_status", title: "Report Card Status", description: "Generated report-card publishing progress." },
-      { kind: "bar", key: "class_population", title: "Class Population", description: "Number of enrolled students in each class." },
-      { kind: "bar", key: "subject_performance", title: "Subject Performance", description: "Average score by subject." },
-      { kind: "donut", key: "grade_distribution", title: "Grade Distribution", description: "Academic grade distribution." },
+      { kind: "line", key: "performance_trend", title: "Performance trend", description: "Average school performance by academic term.", featured: true },
+      { kind: "donut", key: "report_card_status", title: "Report card status", description: "Generated report-card publishing progress." },
+      { kind: "bar", key: "class_population", title: "Class population", description: "Enrolled students in each class." },
+      { kind: "bar", key: "subject_performance", title: "Subject performance", description: "Average score by subject." },
+      { kind: "donut", key: "grade_distribution", title: "Grade distribution", description: "Grades from submitted results." },
     ],
   },
   teacher: {
     title: "Teaching Analytics",
-    description: "Teaching performance, class size, and submission signals.",
+    description: "Your assigned classes, submitted scores, and result progress.",
     load: dashboardService.getTeacherAnalytics,
+    insightLabel: "Submitted score average",
+    trendKey: "performance_trend",
     metricCards: [
-      { key: "result_completion_percent", label: "Score completion", suffix: "%" },
-      { key: "pending_score_rows", label: "Pending scores" },
-      { key: "result_rows_submitted", label: "Submitted scores" },
+      { key: "result_completion_percent", label: "Score completion", suffix: "%", icon: CheckCircle2, tone: "success", description: "Submitted result rows" },
+      { key: "pending_score_rows", label: "Pending scores", icon: FileText, tone: "warning", description: "Rows still awaiting submission" },
+      { key: "result_rows_submitted", label: "Submitted scores", icon: BarChart3, tone: "primary", description: "Completed result rows" },
+      { key: "assigned_subjects", label: "Assignments", icon: BookOpen, tone: "accent", description: "Active teaching assignments" },
     ],
     charts: [
-      { kind: "line", key: "performance_trend", title: "Submitted Score Trend", description: "Average submitted score by academic term." },
-      { kind: "bar", key: "class_sizes", title: "Subject Class Sizes", description: "Students in assigned subject classes." },
-      { kind: "donut", key: "result_status_distribution", title: "Score Status Breakdown", description: "Draft versus submitted scores." },
-      { kind: "donut", key: "grade_distribution", title: "Grade Distribution", description: "Grades from submitted results." },
+      { kind: "line", key: "performance_trend", title: "Submitted score trend", description: "Average submitted score by academic term.", featured: true },
+      { kind: "bar", key: "class_sizes", title: "Subject class sizes", description: "Students in assigned subject classes." },
+      { kind: "donut", key: "result_status_distribution", title: "Score status", description: "Draft and submitted score rows." },
+      { kind: "donut", key: "grade_distribution", title: "Grade distribution", description: "Grades from submitted results." },
     ],
   },
   student: {
     title: "My Performance",
-    description: "Academic performance from finalized results.",
+    description: "Your finalized results and subject performance over time.",
     load: dashboardService.getStudentAnalytics,
+    insightLabel: "Your average score",
+    trendKey: "performance_trend",
     metricCards: [
-      { key: "current_average", label: "Current average", suffix: "%" },
-      { key: "published_results", label: "Finalized results" },
-      { key: "pending_results", label: "Pending results" },
+      { key: "current_average", label: "Current average", suffix: "%", icon: TrendingUp, tone: "success", description: "Finalized result average" },
+      { key: "published_results", label: "Finalized results", icon: CheckCircle2, tone: "primary", description: "Results available to you" },
+      { key: "pending_results", label: "Pending results", icon: FileText, tone: "warning", description: "Results not finalized yet" },
+      { key: "result_completion_percent", label: "Result availability", suffix: "%", icon: PieChart, tone: "accent", description: "Finalized result rows" },
     ],
     charts: [
-      { kind: "line", key: "performance_trend", title: "Performance Trend", description: "Average score by academic term." },
-      { kind: "bar", key: "subject_comparison", title: "Subject Comparison", description: "Finalized scores by subject." },
-      { kind: "donut", key: "grade_distribution", title: "Grade Distribution", description: "Finalized grade spread." },
+      { kind: "line", key: "performance_trend", title: "Performance trend", description: "Average finalized score by academic term.", featured: true },
+      { kind: "bar", key: "subject_comparison", title: "Subject comparison", description: "Average finalized score by subject." },
+      { kind: "donut", key: "grade_distribution", title: "Grade distribution", description: "Your finalized grade spread." },
+    ],
+  },
+  parent: {
+    title: "Family Insights",
+    description: "Linked-student access and school communication activity.",
+    load: dashboardService.getParentAnalytics,
+    insightLabel: "Family account overview",
+    metricCards: [
+      { key: "linked_students", label: "Linked students", icon: GraduationCap, tone: "primary", description: "Students available in this school" },
+      { key: "primary_contacts", label: "Primary contacts", icon: Users, tone: "success", description: "Primary-contact relationships" },
+      { key: "unread_count", label: "Unread updates", icon: Bell, tone: "warning", description: "School notifications to review" },
+      { key: "feed_total", label: "All updates", icon: FileText, tone: "accent", description: "Notifications in your feed" },
+    ],
+    charts: [
+      { kind: "donut", key: "announcement_read_vs_unread", title: "Notification status", description: "Read and unread school updates.", featured: true },
+      { kind: "bar", key: "announcement_category_breakdown", title: "Update categories", description: "School updates grouped by category." },
     ],
   },
 };
 
 const chartData = (charts, key) => (Array.isArray(charts?.[key]) ? charts[key] : []);
+
 const formatMetric = (value, suffix = "") =>
   value === null || value === undefined || value === "" ? "-" : `${value}${suffix}`;
 
-const periodLabel = (result) =>
-  `${result.academic_session_name || "Session"} / ${String(result.academic_term_name || "Term").replaceAll("_", " ")}`;
+const getTrendInsight = (data, label) => {
+  if (!Array.isArray(data) || data.length === 0) {
+    return { title: `${label} is awaiting data`, detail: "Analytics will appear after finalized records are available.", tone: "neutral", icon: LineChart };
+  }
 
-const buildStudentAnalytics = (items = []) => {
-  const finalized = items.filter((item) => item.status === "locked");
-  const pending = items.filter((item) => item.status !== "locked");
-  const average = finalized.length
-    ? finalized.reduce((sum, item) => sum + Number(item.total_score || 0), 0) / finalized.length
-    : 0;
-  const byPeriod = new Map();
-  const bySubject = new Map();
-  const grades = new Map();
+  const latest = data.at(-1);
+  const previous = data.at(-2);
+  const latestValue = Number(latest?.value);
+  const previousValue = Number(previous?.value);
 
-  finalized.forEach((item) => {
-    const period = periodLabel(item);
-    const subject = item.subject_name || item.subject_code || "Subject";
-    byPeriod.set(period, [...(byPeriod.get(period) || []), Number(item.total_score || 0)]);
-    bySubject.set(subject, [...(bySubject.get(subject) || []), Number(item.total_score || 0)]);
-    const grade = item.grade || "Ungraded";
-    grades.set(grade, (grades.get(grade) || 0) + 1);
-  });
+  if (!Number.isFinite(latestValue) || !Number.isFinite(previousValue)) {
+    return { title: `${label}: ${formatMetric(latest?.value)}`, detail: `Latest available period: ${formatChartLabel(latest?.label, "Current period")}.`, tone: "neutral", icon: LineChart };
+  }
 
-  const averages = (source) =>
-    [...source.entries()].map(([label, values]) => ({
-      label,
-      value: Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100,
-    }));
-
+  const difference = Math.round((latestValue - previousValue) * 100) / 100;
+  const improved = difference >= 0;
   return {
-    stats: {
-      current_average: Math.round(average * 100) / 100,
-      published_results: finalized.length,
-      pending_results: pending.length,
-    },
-    charts: {
-      performance_trend: averages(byPeriod),
-      subject_comparison: averages(bySubject),
-      grade_distribution: [...grades.entries()].map(([label, value]) => ({ label, value })),
-    },
+    title: difference === 0 ? `${label} held steady` : `${label} ${improved ? "improved" : "declined"}`,
+    detail: `${improved ? "Up" : "Down"} ${Math.abs(difference)} points from ${formatChartLabel(previous?.label, "the previous period")} to ${formatMetric(latestValue)} in ${formatChartLabel(latest?.label, "the latest period")}.`,
+    tone: difference === 0 ? "neutral" : improved ? "success" : "warning",
+    icon: difference === 0 ? LineChart : improved ? TrendingUp : TrendingDown,
+  };
+};
+
+const getSnapshotInsight = (role, stats) => {
+  if (role !== "parent") return null;
+
+  const linkedStudents = Number(stats.linked_students) || 0;
+  const unreadUpdates = Number(stats.unread_count) || 0;
+  return {
+    title: `${linkedStudents} linked student${linkedStudents === 1 ? "" : "s"} in this school`,
+    detail: unreadUpdates > 0
+      ? `${unreadUpdates} school update${unreadUpdates === 1 ? "" : "s"} still need${unreadUpdates === 1 ? "s" : ""} your attention.`
+      : "There are no unread school updates waiting for you.",
+    tone: unreadUpdates > 0 ? "warning" : "success",
+    icon: unreadUpdates > 0 ? Bell : CheckCircle2,
   };
 };
 
 function renderChart(chart, charts) {
   const data = chartData(charts, chart.key);
-  if (chart.kind === "donut") {
-    return <AnalyticsDonutChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No finalized result data is available for this chart yet." />;
-  }
-  if (chart.kind === "line") {
-    return <AnalyticsLineChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No finalized result trend is available yet." />;
-  }
-  return <AnalyticsBarChart key={chart.key} title={chart.title} description={chart.description} data={data} emptyMessage="No finalized result data is available for this chart yet." />;
+  const commonProps = {
+    key: chart.key,
+    title: chart.title,
+    description: chart.description,
+    data,
+    emptyMessage: "No finalized data is available for this chart yet.",
+  };
+
+  if (chart.kind === "donut") return <AnalyticsDonutChart {...commonProps} />;
+  if (chart.kind === "line") return <AnalyticsLineChart {...commonProps} />;
+  return <AnalyticsBarChart {...commonProps} />;
+}
+
+function AnalyticsInsight({ insight }) {
+  const Icon = insight.icon;
+  const toneClasses = {
+    success: "border-success/20 bg-success-soft text-success",
+    warning: "border-warning/30 bg-warning-soft text-amber-950",
+    neutral: "border-primary/20 bg-primary-subtle text-primary",
+  };
+
+  return (
+    <section className="analytics-insight-card rounded-[1.5rem] border border-border bg-surface px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+      <div className="flex items-start gap-4 sm:items-center">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border sm:h-14 sm:w-14 ${toneClasses[insight.tone] || toneClasses.neutral}`}>
+          <Icon className="h-6 w-6" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-muted">Latest signal</p>
+          <h2 className="mt-1 text-xl font-semibold leading-tight text-text sm:text-2xl">{insight.title}</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">{insight.detail}</p>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function RoleAnalyticsPage({ role = "admin" }) {
@@ -140,12 +204,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
     async function loadAnalytics() {
       setError(null);
       try {
-        const data = role === "student"
-          ? buildStudentAnalytics(
-              (await academicService.listMyResults({ signal: controller.signal }))?.items || [],
-            )
-          : await copy.load({ signal: controller.signal });
-
+        const data = await copy.load({ signal: controller.signal });
         if (!mounted || controller.signal.aborted) return;
         setAnalytics(data);
       } catch (err) {
@@ -159,11 +218,15 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
       mounted = false;
       controller.abort();
     };
-  }, [copy, role, shouldGateAdmin]);
+  }, [copy, shouldGateAdmin]);
 
   const stats = analytics?.stats || {};
   const charts = analytics?.charts || {};
   const visibleCharts = useMemo(() => copy.charts, [copy.charts]);
+  const featuredChart = visibleCharts.find((chart) => chart.featured);
+  const supportingCharts = visibleCharts.filter((chart) => !chart.featured);
+  const insight = getSnapshotInsight(role, stats)
+    || getTrendInsight(chartData(charts, copy.trendKey), copy.insightLabel);
 
   if (shouldGateAdmin) {
     return (
@@ -182,24 +245,42 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
     return <DashboardLayout role={role} title={copy.title} description={copy.description}><LoadingState label="Loading analytics..." /></DashboardLayout>;
   }
 
-  const trendCharts = visibleCharts.filter((chart) => chart.kind === "line");
-  const distributionCharts = visibleCharts.filter((chart) => chart.kind === "donut");
-  const comparisonCharts = visibleCharts.filter((chart) => chart.kind === "bar");
-
   return (
     <DashboardLayout role={role} title={copy.title} description={copy.description}>
       {error ? <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">{error}</div> : null}
       {!error ? (
-        <>
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
-            {copy.metricCards.map((metric, index) => (
-              <DashboardMetricCard key={metric.key} label={metric.label} value={formatMetric(stats[metric.key], metric.suffix)} description="Academic metric" icon={index === 0 ? BarChart3 : index === 1 ? LineChart : PieChart} tone={index === 0 ? "primary" : index === 1 ? "success" : "warning"} />
+        <div className="analytics-page space-y-6 lg:space-y-8">
+          <AnalyticsInsight insight={insight} />
+
+          <section className="analytics-metric-grid grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+            {copy.metricCards.map((metric) => (
+              <DashboardMetricCard
+                key={metric.key}
+                label={metric.label}
+                value={formatMetric(stats[metric.key], metric.suffix)}
+                description={metric.description}
+                icon={metric.icon}
+                tone={metric.tone}
+              />
             ))}
           </section>
-          {trendCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Trend signals" description="Performance movement across academic periods." /><div className="grid grid-cols-1 gap-5 lg:grid-cols-2">{trendCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
-          {distributionCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Breakdowns" description="Grade and status distribution." /><div className="grid grid-cols-1 gap-5 lg:grid-cols-2">{distributionCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
-          {comparisonCharts.length ? <section className="space-y-4"><DashboardSectionHeader title="Comparisons" description="Subject and class comparisons." /><div className="grid grid-cols-1 gap-5 lg:grid-cols-2">{comparisonCharts.map((chart) => renderChart(chart, charts))}</div></section> : null}
-        </>
+
+          {featuredChart ? (
+            <section className="space-y-4">
+              <DashboardSectionHeader title="Primary trend" description="The strongest current signal from available records." showDescription />
+              {renderChart(featuredChart, charts)}
+            </section>
+          ) : null}
+
+          {supportingCharts.length ? (
+            <section className="space-y-4">
+              <DashboardSectionHeader title="Detailed breakdowns" description="Role-specific comparisons from existing backend metrics." showDescription />
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                {supportingCharts.map((chart) => renderChart(chart, charts))}
+              </div>
+            </section>
+          ) : null}
+        </div>
       ) : null}
     </DashboardLayout>
   );

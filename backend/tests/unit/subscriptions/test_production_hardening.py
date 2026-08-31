@@ -13,7 +13,7 @@ from app.modules.subjects.router import activate_subject
 from app.modules.subscriptions.payment_integrity import process_paystack_webhook_secure
 from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
 from app.modules.subscriptions.router import verify_term_plan_checkout
-from app.modules.subscriptions.subscription_enums import ResourceLimitCode
+from app.modules.subscriptions.subscription_enums import PaymentStatus, ResourceLimitCode
 from app.modules.superadmin.router import update_tenant_status
 
 
@@ -120,6 +120,8 @@ async def test_browser_payment_verification_locks_transaction_before_settlement(
     transaction = SimpleNamespace(
         tenant_id=tenant_id,
         reference="term-ref",
+        reconciliation_required=False,
+        status=PaymentStatus.PENDING,
     )
     entitlement = SimpleNamespace()
     admin = SimpleNamespace(tenant_id=tenant_id)
@@ -152,7 +154,7 @@ async def test_browser_payment_verification_locks_transaction_before_settlement(
     assert result is entitlement
     lock_transaction.assert_awaited_once_with(db, "term-ref")
     verify_provider.assert_awaited_once_with(reference="term-ref")
-    activate.assert_awaited_once_with(db, transaction, ANY)
+    activate.assert_awaited_once_with(db, transaction, ANY, commit=True)
 
 
 @pytest.mark.asyncio

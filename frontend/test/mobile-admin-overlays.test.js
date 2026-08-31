@@ -24,7 +24,9 @@ test("the shared modal stays centered inside the live visual viewport", async ()
   assert.match(source, /addEventListener\("resize", syncVisualViewport\)/);
   assert.match(source, /addEventListener\("scroll", syncVisualViewport\)/);
   assert.match(source, /data-modal-visual-viewport="true"/);
-  assert.match(source, /items-center justify-center/);
+  assert.match(source, /justify-center/);
+  assert.match(source, /placement === "bottom"/);
+  assert.match(source, /items-end/);
   assert.match(source, /max-h-full/);
   assert.match(source, /data-modal-scroll-container="true"/);
   assert.match(source, /data-modal-footer="true"/);

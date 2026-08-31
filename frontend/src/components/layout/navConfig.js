@@ -208,6 +208,7 @@ export const navGroups = {
       label: "Family",
       items: [
         { label: "Dashboard", to: "/parent/dashboard", icon: Home },
+        { label: "Family Insights", to: "/parent/analytics", icon: BarChart3 },
         {
           label: "Student Linking",
           to: "/parent/student-linking",

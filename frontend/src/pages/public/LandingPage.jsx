@@ -12,14 +12,13 @@ import {
 } from "lucide-react";
 
 import previewImage from "../../assets/images/academic-workspace-preview.png";
-import WeaveIcon from "../../components/brand/WeaveIcon";
 import Navbar from "../../components/layout/Navbar";
+import PublicPricingCard from "../../components/subscriptions/PublicPricingCard";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import {
   LANDING_PRICING_PLANS,
   buildRegistrationHref,
-  formatLimitValue,
   saveSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
 
@@ -94,92 +93,12 @@ function formatLandingPrice(plan) {
   return `₦${Number(plan.pricePerTerm).toLocaleString()} / term`;
 }
 
-function LandingPricingCard({ plan, activePlanCode, onSelect }) {
-  const selected = plan.planCode === activePlanCode;
-
-  return (
-    <article
-      id={`landing-plan-${plan.planCode}`}
-      className={`flex min-h-[31rem] scroll-mt-28 flex-col rounded-[1.5rem] border bg-surface p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
-        selected
-          ? "border-primary/60 ring-4 ring-primary/10"
-          : "border-border/70"
-      }`}
-    >
-      <div className="flex min-h-7 flex-wrap items-center gap-2">
-        {plan.planCode === "free" ? (
-          <Badge variant="success">Permanent Free</Badge>
-        ) : null}
-        {plan.highlighted ? <Badge variant="primary">Popular</Badge> : null}
-      </div>
-
-      <div className="mt-4 flex justify-center">
-        <WeaveIcon className="h-14 w-14" decorative />
-      </div>
-      <h3 className="mt-3 text-center text-2xl font-semibold text-text">
-        {plan.name}
-      </h3>
-      <p className="mt-2 text-center text-sm font-semibold text-primary">
-        {plan.bestFor}
-      </p>
-      <p className="mt-4 text-sm leading-6 text-text-muted">
-        {plan.description}
-      </p>
-
-      <div className="mt-5 rounded-xl border border-border/70 bg-surface-muted/25 px-4 py-3">
-        <p className="text-xl font-bold text-text">{formatLandingPrice(plan)}</p>
-        <p className="mt-1 text-xs text-text-muted">
-          {plan.planCode === "free"
-            ? "No expiry and no card required"
-            : "Payment happens inside Weave when a term needs this plan"}
-        </p>
-      </div>
-
-      <div className="mt-5 grid gap-2 text-sm">
-        <PlanLimit label="Students" value={formatLimitValue(plan.limits.students)} />
-        <PlanLimit label="Teachers" value={formatLimitValue(plan.limits.teachers)} />
-        <PlanLimit label="Parents" value={formatLimitValue(plan.limits.parents)} />
-      </div>
-
-      {(plan.features || []).length ? (
-        <ul className="mt-5 space-y-2 text-sm text-text-soft">
-          {plan.features.slice(0, 5).map((feature) => (
-            <li key={feature} className="flex gap-2">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-              <span>{feature}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <Link
-        to={buildRegistrationHref(plan.planCode)}
-        onClick={() => onSelect(plan.planCode)}
-        className="mt-auto pt-6"
-      >
-        <Button
-          className="w-full"
-          variant={plan.planCode === "free" ? "outline" : "primary"}
-        >
-          Get started
-        </Button>
-      </Link>
-    </article>
-  );
-}
-
-function PlanLimit({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-text-muted">{label}</span>
-      <span className="font-semibold text-text">{value}</span>
-    </div>
-  );
-}
-
 function LandingPage() {
   const location = useLocation();
   const [activePricingPlan, setActivePricingPlan] = useState("professional");
+  const paidPlans = LANDING_PRICING_PLANS.filter(
+    (plan) => plan.planCode !== "free",
+  );
 
   const handlePlanSelection = (planCode) => {
     saveSelectedSubscriptionPlan({ planCode, billingInterval: "term" });
@@ -252,7 +171,7 @@ function LandingPage() {
                   </p>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {LANDING_PRICING_PLANS.map((plan) => (
+                  {paidPlans.map((plan) => (
                     <Link
                       key={plan.planCode}
                       to="/pricing"
@@ -388,8 +307,8 @@ function LandingPage() {
             </div>
 
             <div className="mx-auto mt-8 flex max-w-full justify-center overflow-x-auto px-1 pb-1">
-              <div className="inline-grid min-w-[34rem] grid-cols-4 gap-1 rounded-full border border-border/70 bg-surface-muted/60 p-1 shadow-soft-card sm:min-w-[42rem]">
-                {LANDING_PRICING_PLANS.map((plan) => (
+              <div className="inline-grid min-w-[30rem] grid-cols-3 gap-1 rounded-full border border-border/70 bg-surface-muted/60 p-1 shadow-soft-card sm:min-w-[36rem]">
+                {paidPlans.map((plan) => (
                   <a
                     key={`landing-plan-tab-${plan.planCode}`}
                     href={`#landing-plan-${plan.planCode}`}
@@ -409,12 +328,13 @@ function LandingPage() {
               </div>
             </div>
 
-            <div className="mt-10 grid items-stretch gap-5 md:grid-cols-2 xl:grid-cols-4">
-              {LANDING_PRICING_PLANS.map((plan) => (
-                <LandingPricingCard
+            <div className="mx-auto mt-12 grid max-w-6xl items-stretch gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {paidPlans.map((plan) => (
+                <PublicPricingCard
                   key={plan.planCode}
                   plan={plan}
-                  activePlanCode={activePricingPlan}
+                  id={`landing-plan-${plan.planCode}`}
+                  selected={activePricingPlan === plan.planCode}
                   onSelect={handlePlanSelection}
                 />
               ))}

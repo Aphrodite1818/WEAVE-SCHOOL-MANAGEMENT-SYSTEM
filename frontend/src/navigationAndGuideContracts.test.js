@@ -75,8 +75,8 @@ test("assisted term opening honors registration plan intent", () => {
   assert.match(academicSetup, /window\.location\.assign\(subscriptionService\.checkoutRedirectUrl\(checkout\)\)/);
   assert.match(academicSetup, /billing\/plans\?term=/);
   assert.match(registerPage, /selectedPlan\?\.planCode/);
-  assert.match(plansPage, /plan\.planCode === "free"/);
-  assert.match(plansPage, /activateFreeTerm\(checkoutTermId\)/);
+  assert.match(plansPage, /option\.plan_code === "free"/);
+  assert.match(plansPage, /activateFreeTerm\(term\.id\)/);
 });
 
 test("internal billing keeps staging visuals with term-based behavior", () => {
@@ -87,14 +87,16 @@ test("internal billing keeps staging visuals with term-based behavior", () => {
   );
   const billingPage = readSource("pages", "admin", "BillingPage.jsx");
 
-  assert.match(mobilePlans, /WeaveIcon/);
+  assert.match(mobilePlans, /import SubscriptionOptionsPage/);
+  assert.match(mobilePlans, /MobileSubscriptionOptionsPage/);
   assert.match(mobilePlans, /data-mobile-billing-page="true"/);
-  assert.match(mobilePlans, /rounded-full text-base/);
-  assert.match(mobilePlans, /initializePaidCurrentTermCheckout/);
-  assert.match(mobilePlans, /activateFreeTerm/);
+  assert.match(mobilePlans, /getTermPlanOptions/);
+  assert.match(mobilePlans, /amount_due_kobo/);
+  assert.match(mobilePlans, /saveTermPaymentIntent/);
+  assert.match(billingPage, /Term plan/);
   assert.match(billingPage, /dashboard-welcome-blue/);
-  assert.match(billingPage, /Entitlement details/);
-  assert.match(billingPage, /Plan history/);
+  assert.match(billingPage, /Plan record/);
+  assert.match(billingPage, /Term history/);
   assert.match(billingPage, /Payment history/);
   assert.doesNotMatch(billingPage, /automatic renewal/i);
 });
@@ -142,12 +144,12 @@ test("tenant admin guide exits always leave the full-screen setup shell", () => 
   assert.match(setupRoute, /label === "finish later"/);
   assert.match(setupRoute, /label === "complete setup"/);
   assert.match(setupRoute, /label === "back to dashboard"/);
-  assert.match(setupRoute, /await guide\.finish\(\)/);
+  assert.match(setupRoute, /await finish\(\)/);
   assert.match(setupRoute, /leaveAdminSetup\("\/admin\/dashboard"\)/);
   assert.match(roleGuide, /!hasGuideExitSuppression\(role\)/);
   assert.match(
     adminRoutes,
-    /path="\/admin\/getting-started" element=\{<AdminGettingStartedRoute \/>\}/,
+    /path="\/admin\/getting-started"[\s\S]*element=\{<AdminGettingStartedRoute \/>\}/,
   );
 });
 
@@ -168,7 +170,7 @@ test("terminal guide completion must be confirmed before leaving setup", () => {
   assert.doesNotMatch(setupRoute, /finally\s*\{\s*leaveAdminSetup/);
   assert.match(
     setupRoute,
-    /await guide\.finish\(\);\s*leaveAdminSetup\("\/admin\/dashboard"\)/,
+    /await finish\(\);\s*leaveAdminSetup\("\/admin\/dashboard"\)/,
   );
 });
 

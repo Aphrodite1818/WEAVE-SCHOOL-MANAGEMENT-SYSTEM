@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("public pricing exposes permanent Free and no Free Trial plan card", async () => {
+test("public pricing explains permanent Free without rendering a Free pricing card", async () => {
   const [config, landing, pricing] = await Promise.all([
     read("src/features/subscriptions/subscriptionConfig.js"),
     read("src/pages/public/LandingPage.jsx"),
@@ -22,7 +22,8 @@ test("public pricing exposes permanent Free and no Free Trial plan card", async 
     landing,
     /Free is permanent\. Registration never starts a payment\./,
   );
-  assert.match(landing, /Permanent Free/);
+  assert.match(landing, /plan\.planCode !== "free"/);
+  assert.match(pricing, /plan\.planCode !== "free"/);
   assert.doesNotMatch(landing, /Current plan/);
   assert.doesNotMatch(landing, /From ₦80,000/);
   assert.match(pricing, /Free is a permanent Weave plan|Permanent Free/);
@@ -60,11 +61,17 @@ test("internal plan management uses one backend-driven responsive page", async (
     read("src/routes/adminRoutes.jsx"),
   ]);
 
-  assert.match(responsive, /export default SubscriptionOptionsPage/);
-  assert.doesNotMatch(responsive, /matchMedia/);
-  assert.doesNotMatch(responsive, /PublicLayout/);
+  assert.match(responsive, /export default ResponsiveSubscriptionOptionsPage/);
+  assert.match(responsive, /matchMedia/);
+  assert.match(responsive, /MobileSubscriptionOptionsPage/);
+  assert.match(responsive, /grid grid-cols-2 gap-3/);
+  assert.doesNotMatch(responsive, /col-span-2/);
   assert.match(plans, /getTermPlanOptions/);
   assert.match(plans, /option\.blockers/);
+  assert.match(plans, /<Modal/);
+  assert.match(plans, /Checkout\s+has not started/);
+  assert.doesNotMatch(plans, /term-plan-feedback/);
+  assert.doesNotMatch(plans, /This school does not currently fit/);
   assert.match(plans, /amount_due_kobo/);
   assert.doesNotMatch(plans, /PLAN_RANK/);
 
