@@ -2,10 +2,19 @@ import { API_BASE_URL, api } from "./api";
 
 const PUBLIC_CATALOGUE_ETAG_KEY = "weave:public-pricing-etag";
 const PUBLIC_CATALOGUE_VALUE_KEY = "weave:public-pricing-catalogue";
-const TERM_PAYMENT_OPEN_INTENT_KEY = "weave:term-payment-open-intent";
+const TERM_PAYMENT_INTENT_KEY = "weave:term-payment-intent";
 const backgroundAuthOptions = {
   clearAuthOnUnauthorized: false,
 };
+
+const SAFE_RETURN_PREFIXES = [
+  "/admin/getting-started",
+  "/admin/academic/terms",
+  "/admin/billing",
+  "/admin/students",
+  "/admin/teachers",
+  "/admin/parents",
+];
 
 const queryString = (params = {}) => {
   const query = new URLSearchParams();
@@ -65,64 +74,68 @@ const getPublicPlans = async ({ force = false } = {}) => {
   return data;
 };
 
-const resolveCheckoutTermId = async (explicitTermId) => {
+const resolveCurrentOpenTermId = async (explicitTermId) => {
   if (explicitTermId) return explicitTermId;
 
-  const [termsResponse, sessionsResponse] = await Promise.all([
-    api.get("/tenant-admin/academics/terms?limit=100"),
-    api.get(
-      "/tenant-admin/academics/sessions?limit=100&status=open&is_current=true",
-    ),
-  ]);
+  const termsResponse = await api.get("/tenant-admin/academics/terms?limit=100");
   const terms = termsResponse?.items || termsResponse || [];
-  const sessions = sessionsResponse?.items || sessionsResponse || [];
   const currentTerms = terms.filter(
     (item) => item.is_current && item.status === "open",
   );
+
   if (currentTerms.length === 1 && currentTerms[0]?.id) {
     return currentTerms[0].id;
   }
   if (currentTerms.length > 1) {
     throw new Error(
-      "Academic term state is inconsistent. Resolve the current term before purchasing a plan.",
+      "Academic term state is inconsistent. Resolve the current term before managing a plan.",
     );
   }
-
-  const currentSession = sessions.find(
-    (item) => item.is_current && item.status === "open",
-  );
-  const draftTerms = terms.filter(
-    (item) =>
-      item.status === "draft" &&
-      currentSession?.id &&
-      item.academic_session_id === currentSession.id,
-  );
-  if (draftTerms.length === 1 && draftTerms[0]?.id) {
-    return draftTerms[0].id;
-  }
   throw new Error(
-    "Select the academic term you want to purchase before starting checkout.",
+    "There is no open academic term to manage. Choose a plan when opening the next term.",
   );
 };
 
-const saveTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
+const safeReturnPath = (value, fallback = "/admin/billing") => {
+  const path = String(value || "").trim();
+  if (!path.startsWith("/")) return fallback;
+  return SAFE_RETURN_PREFIXES.some(
+    (prefix) =>
+      path === prefix ||
+      path.startsWith(`${prefix}/`) ||
+      path.startsWith(`${prefix}?`),
+  )
+    ? path
+    : fallback;
+};
+
+const saveTermPaymentIntent = ({
+  academicTermId,
+  reference,
+  origin = "billing",
+  returnPath = "/admin/billing",
+  postPaymentAction = "none",
+} = {}) => {
   if (typeof window === "undefined" || !academicTermId || !reference) return;
+
   window.sessionStorage.setItem(
-    TERM_PAYMENT_OPEN_INTENT_KEY,
+    TERM_PAYMENT_INTENT_KEY,
     JSON.stringify({
       academicTermId: String(academicTermId),
       reference: String(reference),
+      origin: String(origin || "billing"),
+      returnPath: safeReturnPath(returnPath),
+      postPaymentAction:
+        postPaymentAction === "open_term" ? "open_term" : "none",
     }),
   );
 };
 
-const consumeTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
+const consumeTermPaymentIntent = ({ academicTermId, reference } = {}) => {
   if (typeof window === "undefined") return null;
 
   try {
-    const rawValue = window.sessionStorage.getItem(
-      TERM_PAYMENT_OPEN_INTENT_KEY,
-    );
+    const rawValue = window.sessionStorage.getItem(TERM_PAYMENT_INTENT_KEY);
     if (!rawValue) return null;
 
     const intent = JSON.parse(rawValue);
@@ -132,10 +145,15 @@ const consumeTermPaymentOpenIntent = ({ academicTermId, reference } = {}) => {
       String(intent?.reference || "") === String(reference || "");
     if (!sameTerm || !sameReference) return null;
 
-    window.sessionStorage.removeItem(TERM_PAYMENT_OPEN_INTENT_KEY);
-    return intent;
+    window.sessionStorage.removeItem(TERM_PAYMENT_INTENT_KEY);
+    return {
+      ...intent,
+      returnPath: safeReturnPath(intent?.returnPath),
+      postPaymentAction:
+        intent?.postPaymentAction === "open_term" ? "open_term" : "none",
+    };
   } catch {
-    window.sessionStorage.removeItem(TERM_PAYMENT_OPEN_INTENT_KEY);
+    window.sessionStorage.removeItem(TERM_PAYMENT_INTENT_KEY);
     return null;
   }
 };
@@ -171,19 +189,35 @@ export const subscriptionService = {
   getTermPlanHistory: () =>
     api.get("/subscriptions/terms/history", backgroundAuthOptions),
 
+  getTermPlanOptions: (academicTermId) =>
+    api.get(
+      `/subscriptions/terms/${encodeURIComponent(academicTermId)}/plan-options`,
+      backgroundAuthOptions,
+    ),
+
   activateFreeTerm: (academicTermId) =>
     api.post("/subscriptions/terms/activate-free", {
       academic_term_id: academicTermId,
       confirmation: "ACTIVATE_FREE_TERM",
     }),
 
+  changeTermPlan: ({ academicTermId, targetPlan }) =>
+    api.post("/subscriptions/terms/change-plan", {
+      academic_term_id: academicTermId,
+      target_plan: targetPlan,
+      confirmation: "CHANGE_TERM_PLAN",
+    }),
+
   initializeTermCheckout: async (payload) => {
     await getPublicPlans({ force: true });
+    if (!payload?.academic_term_id) {
+      throw new Error("Academic term is required before starting checkout.");
+    }
     return api.post("/subscriptions/terms/checkout", payload);
   },
 
   initializePaidCurrentTermCheckout: async (payload) => {
-    const academicTermId = await resolveCheckoutTermId(
+    const academicTermId = await resolveCurrentOpenTermId(
       payload.academic_term_id || payload.academicTermId,
     );
     return subscriptionService.initializeTermCheckout({
@@ -196,10 +230,23 @@ export const subscriptionService = {
     api.get(`/subscriptions/terms/verify/${encodeURIComponent(reference)}`),
 
   checkoutRedirectUrl,
+  safeReturnPath,
+  saveTermPaymentIntent,
+  consumeTermPaymentIntent,
 
-  saveTermPaymentOpenIntent,
+  saveTermPaymentOpenIntent: ({ academicTermId, reference } = {}) =>
+    saveTermPaymentIntent({
+      academicTermId,
+      reference,
+      origin: "academic-terms",
+      returnPath: "/admin/academic/terms",
+      postPaymentAction: "open_term",
+    }),
 
-  consumeTermPaymentOpenIntent,
+  consumeTermPaymentOpenIntent: ({ academicTermId, reference } = {}) => {
+    const intent = consumeTermPaymentIntent({ academicTermId, reference });
+    return intent?.postPaymentAction === "open_term" ? intent : null;
+  },
 };
 
 export default subscriptionService;
