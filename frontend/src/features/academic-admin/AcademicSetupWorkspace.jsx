@@ -506,12 +506,17 @@ function AcademicSetupWorkspace({
         err,
         "Could not update academic term lifecycle.",
       );
-      const activation =
-        parsed.data?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
-          ? parsed.data
-          : parsed.data?.detail?.code === "TERM_PLAN_ACTIVATION_REQUIRED"
-            ? parsed.data.detail
-            : null;
+      const directCode = parsed.data?.code;
+      const nestedCode = parsed.data?.detail?.code;
+      const selectionRequired = new Set([
+        "TERM_PLAN_SELECTION_REQUIRED",
+        "TERM_PLAN_ACTIVATION_REQUIRED",
+      ]);
+      const activation = selectionRequired.has(directCode)
+        ? parsed.data
+        : selectionRequired.has(nestedCode)
+          ? parsed.data.detail
+          : null;
       if (transition === "open" && activation) {
         setTermPlanPrompt({ ...activation, term: item });
       } else {
@@ -530,11 +535,11 @@ function AcademicSetupWorkspace({
     try {
       await subscriptionService.activateFreeTerm(termPlanPrompt.term.id);
       await academicService.openTerm(termPlanPrompt.term.id);
-      showSuccess("Free plan activated and academic term opened.");
+      showSuccess("Free plan selected and academic term opened.");
       setTermPlanPrompt(null);
       await loadWorkspace();
     } catch (error) {
-      showError(getErrorMessage(error, "Could not activate the Free plan."));
+      showError(getErrorMessage(error, "Could not select the Free plan."));
     } finally {
       setSaving("");
     }
@@ -1286,31 +1291,34 @@ function AcademicSetupWorkspace({
       <Modal
         open={Boolean(termPlanPrompt)}
         onClose={() => setTermPlanPrompt(null)}
-        title="Pay for term"
-        description="This term needs a plan entitlement before it can open. After the payment is verified, Weave will open the term automatically."
+        title={`Choose a plan for ${termLabel(termPlanPrompt?.term?.name || "this term")}`}
+        description="A term plan must be active before this term can open. Free opens immediately; paid plans continue through Paystack and the term opens after verification."
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
-            <p className="text-sm text-text-muted">Selected plan</p>
-            <p className="mt-1 text-lg font-semibold capitalize text-text">
-              {String(termPlanPrompt?.suggested_plan || "free").replaceAll(
-                "_",
-                " ",
-              )}
+            <p className="text-sm text-text-muted">Suggested plan</p>
+            <p className="mt-1 text-lg font-semibold text-text">
+              {termLabel(termPlanPrompt?.suggested_plan || "free")}
             </p>
             <p className="mt-1 text-sm text-text-muted">
               {termPlanPrompt?.payment_required
-                ? `₦${Number(termPlanPrompt?.amount_kobo || 0) / 100} for this academic term`
+                ? `₦${(Number(termPlanPrompt?.amount_kobo || 0) / 100).toLocaleString()} for this academic term`
                 : "₦0 for this academic term"}
             </p>
+            <p className="mt-2 text-xs leading-5 text-text-muted">
+              This is only a suggestion. You can use Free or compare every
+              available plan before opening the term.
+            </p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             {termPlanPrompt?.payment_required ? (
               <Button
                 onClick={payForSelectedPlan}
                 disabled={saving === termPlanPrompt?.term?.id}
               >
-                Pay for term
+                Pay ₦
+                {(Number(termPlanPrompt?.amount_kobo || 0) / 100).toLocaleString()} for{" "}
+                {termLabel(termPlanPrompt?.suggested_plan)}
               </Button>
             ) : null}
             <Button
@@ -1318,19 +1326,17 @@ function AcademicSetupWorkspace({
               onClick={activateFreeAndOpen}
               disabled={saving === termPlanPrompt?.term?.id}
             >
-              {termPlanPrompt?.payment_required
-                ? "Continue with Free"
-                : "Activate Free & open term"}
+              Use Free for this term
             </Button>
             <Button
               variant="ghost"
               onClick={() => {
                 window.location.assign(
-                  `/admin/billing/plans?term=${encodeURIComponent(termPlanPrompt?.term?.id || "")}&intent=open-term`,
+                  `/admin/billing/plans?term=${encodeURIComponent(termPlanPrompt?.term?.id || "")}&intent=open-term&origin=academic-terms`,
                 );
               }}
             >
-              View paid plans
+              Compare all plans
             </Button>
           </div>
         </div>
