@@ -27,14 +27,14 @@ class TenantStatus(str, PyEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
-    TRIAL = "trial"  # schools evaluating the product
-    EXPIRED = "expired"  # subscription lapsed
+    TRIAL = "trial"  # legacy tenant lifecycle value retained for existing rows
+    EXPIRED = "expired"  # legacy subscription lifecycle value
 
 
 class SubscriptionPlan(str, PyEnum):
     """Represents the subscription plan options for a tenant (school)."""
 
-    FREE_TRIAL = "free_trial"
+    FREE_TRIAL = "free_trial"  # legacy persisted value; runtime normalizes to Free
     FREE = "free"
     PLUS = "plus"
     PROFESSIONAL = "professional"
@@ -103,7 +103,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
             schema=PUBLIC_SCHEMA,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
-        default=TenantStatus.TRIAL,  # new schools start on trial
+        default=TenantStatus.TRIAL,
         nullable=False,
     )
     plan: Mapped[SubscriptionPlan] = mapped_column(
@@ -113,7 +113,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
             schema=PUBLIC_SCHEMA,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
-        default=SubscriptionPlan.FREE_TRIAL,
+        default=SubscriptionPlan.FREE,
         nullable=False,
     )
     initial_plan_intent: Mapped[SubscriptionPlan | None] = mapped_column(
