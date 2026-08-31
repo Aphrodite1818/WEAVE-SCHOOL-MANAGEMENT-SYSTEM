@@ -155,8 +155,11 @@ export const formatDateTime = (value, options = {}) => {
   });
 };
 
-export const formatLimitValue = (value) =>
-  value === null || value === undefined ? "Unlimited" : String(value);
+export const formatLimitValue = (value) => {
+  if (value === null) return "Unlimited";
+  if (value === undefined) return "—";
+  return String(value);
+};
 
 export const formatUsageValue = (usage) => {
   if (!usage) return "--";
