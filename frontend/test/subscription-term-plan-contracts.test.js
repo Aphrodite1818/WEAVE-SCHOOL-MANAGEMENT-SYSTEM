@@ -11,13 +11,19 @@ test("public pricing exposes permanent Free and no Free Trial plan card", async 
     read("src/pages/public/PricingPage.jsx"),
   ]);
 
-  assert.match(config, /PLAN_ORDER\s*=\s*\["free",\s*"plus",\s*"professional",\s*"enterprise"\]/);
+  assert.match(
+    config,
+    /PLAN_ORDER\s*=\s*\["free",\s*"plus",\s*"professional",\s*"enterprise"\]/,
+  );
   assert.match(config, /normalized === "free_trial"\) return "free"/);
-  assert.match(landing, /Free is permanent\. Registration never starts a payment\./);
+  assert.match(
+    landing,
+    /Free is permanent\. Registration never starts a payment\./,
+  );
   assert.match(landing, /Permanent Free/);
   assert.doesNotMatch(landing, /Current plan/);
   assert.doesNotMatch(landing, /From ₦80,000/);
-  assert.match(pricing, /Free is permanent/);
+  assert.match(pricing, /Free is a permanent Weave plan|Permanent Free/);
   assert.doesNotMatch(pricing, /30-day free trial/i);
 });
 
@@ -60,10 +66,14 @@ test("internal plan management uses one backend-driven responsive page", async (
   assert.match(plans, /amount_due_kobo/);
   assert.doesNotMatch(plans, /PLAN_RANK/);
 
-  const shellIndex = routes.indexOf('<Route element={<DashboardShell role="admin" />}>');
+  const shellIndex = routes.indexOf(
+    '<Route element={<DashboardShell role="admin" />}>',
+  );
   const planRouteIndex = routes.indexOf('path="/admin/billing/plans"');
+  const shellCloseIndex = routes.lastIndexOf("</Route>");
   assert.ok(shellIndex >= 0);
   assert.ok(planRouteIndex > shellIndex);
+  assert.ok(planRouteIndex < shellCloseIndex);
 });
 
 test("payment verification preserves the originating workflow", async () => {
@@ -85,7 +95,7 @@ test("billing derives the current operational term instead of any active history
   const source = await read("src/pages/admin/BillingPage.jsx");
 
   assert.match(source, /is_current/);
-  assert.match(source, /status === "open"|\["open", "closing"\]/);
+  assert.match(source, /\["open", "closing"\]/);
   assert.doesNotMatch(
     source,
     /history\.find\(\(item\)\s*=>\s*item\.status\s*===\s*"active"\)/,
