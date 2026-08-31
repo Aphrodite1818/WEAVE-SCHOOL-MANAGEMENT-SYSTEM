@@ -119,6 +119,7 @@ class PaymentTransactionResponse(BaseModel):
     currency: str
     paid_at: datetime | None
     failure_reason: str | None
+    reconciliation_required: bool = False
     created_at: datetime
     updated_at: datetime
 
