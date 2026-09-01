@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { displayClass } from "../../components/academic/academicDisplay";
 import Button from "../../components/ui/Button";
@@ -38,6 +39,7 @@ const teacherLabel = (item) => {
 
 function ClassesWorkspace({ activeTab = "overview" }) {
   const { showError, showSuccess } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [levels, setLevels] = useState([]);
   const [classes, setClasses] = useState([]);
   const [armLabels, setArmLabels] = useState([]);
@@ -48,13 +50,12 @@ function ClassesWorkspace({ activeTab = "overview" }) {
 
   const load = useCallback(async () => {
     try {
-      const [levelRows, classRows, armLabelRows, teacherRows] =
-        await Promise.all([
-          academicLevelService.getLevels({ activeOnly: true }),
-          classService.getClasses({ includeArchived: true }),
-          armLabelService.getArmLabels({ includeArchived: true }),
-          teacherService.getTeachers({ limit: 100 }),
-        ]);
+      const [levelRows, classRows, armLabelRows, teacherRows] = await Promise.all([
+        academicLevelService.getLevels({ activeOnly: true }),
+        classService.getClasses({ includeArchived: true }),
+        armLabelService.getArmLabels({ includeArchived: true }),
+        teacherService.getTeachers({ limit: 100 }),
+      ]);
       setLevels(asItems(levelRows));
       setClasses(asItems(classRows));
       setArmLabels(asItems(armLabelRows));
@@ -73,8 +74,7 @@ function ClassesWorkspace({ activeTab = "overview" }) {
     [levels],
   );
   const teacherOptions = useMemo(
-    () =>
-      teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })),
+    () => teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })),
     [teachers],
   );
   const armLabelOptions = useMemo(
@@ -84,6 +84,19 @@ function ClassesWorkspace({ activeTab = "overview" }) {
         .map((item) => ({ value: item.id, label: item.label })),
     [armLabels],
   );
+
+  const selectView = (view) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("view", view);
+    next.delete("tab");
+    setSearchParams(next, { replace: true });
+  };
+
+  const closeEditor = () => {
+    setEditingClassId("");
+    setClassForm(emptyClassForm);
+    selectView("overview");
+  };
 
   const saveClass = async (event) => {
     event.preventDefault();
@@ -99,17 +112,14 @@ function ClassesWorkspace({ activeTab = "overview" }) {
       } else {
         await classService.createClass(payload);
       }
-      setClassForm(emptyClassForm);
-      setEditingClassId("");
       showSuccess(wasEditing ? "Class arm updated." : "Class arm created.");
+      closeEditor();
       await load();
     } catch (error) {
       showError(
         getErrorMessage(
           error,
-          wasEditing
-            ? "Could not update class arm."
-            : "Could not create class arm.",
+          wasEditing ? "Could not update class arm." : "Could not create class arm.",
         ),
       );
     } finally {
@@ -139,15 +149,14 @@ function ClassesWorkspace({ activeTab = "overview" }) {
     if (activeTab === "archived") return Boolean(item.archived_at);
     return true;
   });
-  const showEditor =
-    ["overview", "create"].includes(activeTab) || Boolean(editingClassId);
+  const showEditor = activeTab === "create" || Boolean(editingClassId);
 
   return (
     <WorkspaceGrid
       editor={
         showEditor ? (
           <WorkspacePanel
-            title={editingClassId ? "Edit class arm" : "Create class arm"}
+            title={editingClassId ? "Edit class" : "Create class"}
             description="Choose the authoritative level and reusable arm label for this class group."
           >
             <form className="space-y-3" onSubmit={saveClass}>
@@ -191,11 +200,8 @@ function ClassesWorkspace({ activeTab = "overview" }) {
               <FormActions
                 submitting={saving === true}
                 submitLabel={editingClassId ? "Save class" : "Create class"}
-                editing={Boolean(editingClassId)}
-                onCancel={() => {
-                  setEditingClassId("");
-                  setClassForm(emptyClassForm);
-                }}
+                editing
+                onCancel={closeEditor}
               />
             </form>
           </WorkspacePanel>
@@ -204,15 +210,29 @@ function ClassesWorkspace({ activeTab = "overview" }) {
       content={
         activeTab === "create" && !editingClassId ? null : (
           <RecordList
-            title="Classes and arms"
-            description="Each class is a concrete student grouping within one level."
+            title="Classes"
+            description="Concrete student groups within academic levels. Select a row to inspect it; lifecycle actions remain available directly from the directory."
+            actions={
+              !showEditor ? (
+                <Button type="button" onClick={() => selectView("create")}>
+                  Create class
+                </Button>
+              ) : null
+            }
             items={filteredClasses}
             emptyTitle="No classes"
             emptyDescription="No classes match this lifecycle view."
             renderTitle={displayClass}
             renderMeta={(item) => item.academic_level_name || "Academic level"}
-            renderDescription={(item) => item.teacher_membership_id ? "Class teacher assigned" : "No class teacher assigned"}
-            renderStatus={(item) => item.archived_at ? "archived" : item.is_active ? "active" : "inactive"}
+            renderDescription={(item) =>
+              item.teacher_membership_id
+                ? "Class teacher assigned"
+                : "No class teacher assigned"
+            }
+            renderStatus={(item) =>
+              item.archived_at ? "archived" : item.is_active ? "active" : "inactive"
+            }
+            showInspector={!showEditor}
             onEdit={(item) => {
               setEditingClassId(item.id);
               setClassForm({
@@ -224,46 +244,46 @@ function ClassesWorkspace({ activeTab = "overview" }) {
             canEdit={(item) => !item.archived_at}
             renderActions={(item) => (
               <>
-                      {!item.archived_at && item.is_active ? (
-                        <Button
-                          size="small"
-                          variant="outline"
-                          disabled={saving === item.id}
-                          onClick={() => updateLifecycle(item, "deactivate")}
-                        >
-                          Deactivate
-                        </Button>
-                      ) : null}
-                      {!item.archived_at && !item.is_active ? (
-                        <>
-                          <Button
-                            size="small"
-                            variant="outline"
-                            disabled={saving === item.id}
-                            onClick={() => updateLifecycle(item, "activate")}
-                          >
-                            Activate
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="outline"
-                            disabled={saving === item.id}
-                            onClick={() => updateLifecycle(item, "archive")}
-                          >
-                            Archive
-                          </Button>
-                        </>
-                      ) : null}
-                      {item.archived_at ? (
-                        <Button
-                          size="small"
-                          variant="outline"
-                          disabled={saving === item.id}
-                          onClick={() => updateLifecycle(item, "restore")}
-                        >
-                          Restore
-                        </Button>
-                      ) : null}
+                {!item.archived_at && item.is_active ? (
+                  <Button
+                    size="small"
+                    variant="outline"
+                    disabled={saving === item.id}
+                    onClick={() => updateLifecycle(item, "deactivate")}
+                  >
+                    Deactivate
+                  </Button>
+                ) : null}
+                {!item.archived_at && !item.is_active ? (
+                  <>
+                    <Button
+                      size="small"
+                      variant="outline"
+                      disabled={saving === item.id}
+                      onClick={() => updateLifecycle(item, "activate")}
+                    >
+                      Activate
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outline"
+                      disabled={saving === item.id}
+                      onClick={() => updateLifecycle(item, "archive")}
+                    >
+                      Archive
+                    </Button>
+                  </>
+                ) : null}
+                {item.archived_at ? (
+                  <Button
+                    size="small"
+                    variant="outline"
+                    disabled={saving === item.id}
+                    onClick={() => updateLifecycle(item, "restore")}
+                  >
+                    Restore
+                  </Button>
+                ) : null}
               </>
             )}
           />
