@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
@@ -33,7 +34,6 @@ from app.modules.bulk_imports.validators import BulkImportValidator
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.models import TenantAdmin
-from fastapi import UploadFile
 
 
 class OptimizedBulkImportService:
@@ -216,7 +216,10 @@ class OptimizedBulkImportService:
     ) -> ImportJobDetailResponse:
         if not dry_run:
             raise BadRequestException(
-                detail="Direct bulk imports are disabled. Run dry_run=true first, then confirm the import job."
+                detail=(
+                    "Direct bulk imports are disabled. Run dry_run=true first, "
+                    "then confirm the import job."
+                )
             )
         return await OptimizedBulkImportService.create_dry_run_from_upload(
             db,
