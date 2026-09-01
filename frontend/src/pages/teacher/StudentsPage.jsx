@@ -13,6 +13,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import {
   DirectorySummary,
   DirectoryTable,
+  MobileDirectoryList,
   MobilePersonCard,
   PersonIdentity,
 } from "../../components/people/PeopleDirectory";
@@ -483,7 +484,7 @@ function RosterList({ title, students, empty, isLoading = false }) {
                 ))}
               </DirectoryTable>
 
-              <div className="mobile-scroll-list grid gap-3 md:hidden">
+              <MobileDirectoryList label={`${title} students`}>
                 {visibleStudents.map((student) => (
                   <MobilePersonCard key={student.id}>
                     <div className="flex items-start justify-between gap-3">
@@ -511,7 +512,7 @@ function RosterList({ title, students, empty, isLoading = false }) {
                     </div>
                   </MobilePersonCard>
                 ))}
-              </div>
+              </MobileDirectoryList>
             </>
           )}
         </>
