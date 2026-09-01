@@ -40,7 +40,19 @@ CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_student)]
 @router.get("", response_model=AssessmentSchemeListResponse)
 async def list_schemes(db: DbSession, current_admin: CurrentTenantAdmin):
     rows = await AssessmentRepository.list_schemes(db, current_admin.tenant_id)
-    items = [await AssessmentService.response(db, row) for row in rows]
+    components_by_scheme = await AssessmentRepository.list_components_for_schemes(
+        db,
+        current_admin.tenant_id,
+        {row.id for row in rows},
+    )
+    items = [
+        await AssessmentService.response(
+            db,
+            row,
+            components=components_by_scheme.get(row.id, []),
+        )
+        for row in rows
+    ]
     return AssessmentSchemeListResponse(items=items, total=len(items))
 
 
