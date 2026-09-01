@@ -29,7 +29,7 @@ jobs:
           from pathlib import Path
           path = Path('frontend/src/features/academic-admin/DepartmentsWorkspace.jsx')
           source = path.read_text()
-          source = source.replace('import { Building2, School } from "lucide-react";', 'import { Building2 } from "lucide-react";')
+          source = source.replace('import { Building2, Link2, School } from "lucide-react";', 'import { Building2, Link2 } from "lucide-react";')
           path.write_text(source)
           PY
 
