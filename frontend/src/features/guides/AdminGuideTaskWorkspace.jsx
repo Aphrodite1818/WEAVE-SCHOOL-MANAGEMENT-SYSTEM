@@ -15,7 +15,7 @@ const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
   levels: { kind: "levels", activeTab: "create" },
   arms: { kind: "arm-labels", activeTab: "create" },
   classes: { kind: "classes", activeTab: "create" },
-  departments: { kind: "departments" },
+  departments: { kind: "departments", activeTab: "create" },
   subjects: { kind: "academic", domain: "subjects", activeTab: "create" },
   curriculum: { kind: "curriculum" },
   session: { kind: "academic", domain: "sessions", activeTab: "create" },
@@ -36,7 +36,8 @@ function AdminGuideTaskWorkspace({ stepId }) {
     return <ArmLabelsWorkspace activeTab={config.activeTab} />;
   if (config.kind === "classes")
     return <ClassesWorkspace activeTab={config.activeTab} />;
-  if (config.kind === "departments") return <DepartmentsWorkspace />;
+  if (config.kind === "departments")
+    return <DepartmentsWorkspace activeTab={config.activeTab} />;
   if (config.kind === "academic") {
     return (
       <AcademicSetupWorkspace
