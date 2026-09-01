@@ -17,7 +17,6 @@ import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLife
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
 import SchoolCalendarEventsWorkspace from "../../features/schoolCalendar/components/SchoolCalendarEventsWorkspace";
-import SchoolCalendarGuide from "../../features/schoolCalendar/components/SchoolCalendarGuide";
 import SchoolCalendarWorkspace from "../../features/schoolCalendar/components/SchoolCalendarWorkspace";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { academicService } from "../../services/academicService";
@@ -30,6 +29,7 @@ const workflowAliases = {
 };
 const asItems = (r) =>
   Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : [];
+
 export default function AcademicWorkflowPage() {
   const { workflow: routeWorkflow = "sessions" } = useParams();
   const workflow = workflowAliases[routeWorkflow] || routeWorkflow;
@@ -42,6 +42,7 @@ export default function AcademicWorkflowPage() {
     currentTerm: null,
   });
   const [loadingContext, setLoadingContext] = useState(true);
+
   const loadContext = useCallback(async () => {
     setLoadingContext(true);
     try {
@@ -59,9 +60,11 @@ export default function AcademicWorkflowPage() {
       setLoadingContext(false);
     }
   }, []);
+
   useEffect(() => {
     loadContext();
   }, [loadContext]);
+
   const updateContext = useCallback(
     ({ currentSession, currentTerm }) =>
       setContext((c) => ({
@@ -71,18 +74,23 @@ export default function AcademicWorkflowPage() {
       })),
     [],
   );
-  if (!academicWorkflowConfig[workflow])
+
+  if (!academicWorkflowConfig[workflow]) {
     return <Navigate to="/admin/academic" replace />;
+  }
+
   const renderWorkspace = (activeTab) => {
     const key = `${workflow}:${activeTab}`;
-    if (workflow === "grading" && activeTab === "assessment-schemes")
+    if (workflow === "grading" && activeTab === "assessment-schemes") {
       return <AssessmentConfigWorkspace key={key} />;
-    if (workflow === "grading")
+    }
+    if (workflow === "grading") {
       return <GradingScalesWorkspace key={key} activeTab={activeTab} />;
+    }
     if (
       workflow === "sessions" &&
       ["overview", "open", "closing"].includes(activeTab)
-    )
+    ) {
       return (
         <SessionLifecycleWorkspace
           key="session-lifecycle"
@@ -90,7 +98,8 @@ export default function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
-    if (["sessions", "terms", "subjects"].includes(workflow))
+    }
+    if (["sessions", "terms", "subjects"].includes(workflow)) {
       return (
         <AcademicSetupWorkspace
           key={key}
@@ -99,24 +108,32 @@ export default function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
-    if (workflow === "levels")
+    }
+    if (workflow === "levels") {
       return <AcademicLevelsWorkspace key={key} activeTab={activeTab} />;
-    if (workflow === "arm-labels")
+    }
+    if (workflow === "arm-labels") {
       return <ArmLabelsWorkspace key={key} activeTab={activeTab} />;
-    if (workflow === "classes")
+    }
+    if (workflow === "classes") {
       return <ClassesWorkspace key={key} activeTab={activeTab} />;
-    if (workflow === "departments")
+    }
+    if (workflow === "departments") {
       return <DepartmentsWorkspace key={key} activeTab={activeTab} />;
-    if (workflow === "curriculum")
+    }
+    if (workflow === "curriculum") {
       return <CurriculumWorkspace key={key} activeTab={activeTab} />;
-    if (workflow === "assignments")
+    }
+    if (workflow === "assignments") {
       return <TeacherAssignmentsWorkspace key={key} activeTab={activeTab} />;
-    if (workflow === "progression")
+    }
+    if (workflow === "progression") {
       return <ProgressionWorkspace key="automatic-progression" />;
+    }
     if (
       ["results", "report-cards"].includes(workflow) &&
       activeTab === "bulk-actions"
-    )
+    ) {
       return (
         <BulkAcademicActionsWorkspace
           key={`${workflow}-bulk`}
@@ -125,7 +142,8 @@ export default function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
-    if (workflow === "results")
+    }
+    if (workflow === "results") {
       return (
         <ResultsWorkspace
           key="results"
@@ -133,7 +151,8 @@ export default function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
-    if (workflow === "report-cards")
+    }
+    if (workflow === "report-cards") {
       return (
         <ReportCardsWorkspace
           key="report-cards"
@@ -141,19 +160,17 @@ export default function AcademicWorkflowPage() {
           onContextChange={updateContext}
         />
       );
-    if (workflow === "school-calendar")
-      return (
-        <div key="calendar" className="space-y-4">
-          <SchoolCalendarGuide activeTab={activeTab} />
-          {activeTab === "events" ? (
-            <SchoolCalendarEventsWorkspace />
-          ) : (
-            <SchoolCalendarWorkspace activeTab={activeTab} />
-          )}
-        </div>
+    }
+    if (workflow === "school-calendar") {
+      return activeTab === "events" ? (
+        <SchoolCalendarEventsWorkspace key="calendar-events" />
+      ) : (
+        <SchoolCalendarWorkspace key={`calendar-${activeTab}`} activeTab={activeTab} />
       );
+    }
     return <Navigate to="/admin/academic" replace />;
   };
+
   return (
     <AcademicWorkflowShell
       workflow={workflow}
