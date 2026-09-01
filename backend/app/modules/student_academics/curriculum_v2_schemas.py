@@ -15,7 +15,6 @@ class OutputBase(BaseModel):
 
 class CurriculumSubjectCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     subject_id: uuid.UUID
     is_elective: bool = False
 
@@ -24,7 +23,6 @@ class CurriculumSubjectUpdate(BaseModel):
     """Semantic configuration only; lifecycle uses dedicated endpoints."""
 
     model_config = ConfigDict(extra="forbid")
-
     is_elective: bool | None = None
 
     @field_validator("is_elective", mode="before")
@@ -63,8 +61,9 @@ class CurriculumResponse(OutputBase):
 
 
 class CurriculumOfferingCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     academic_term_id: uuid.UUID
-    department_id: uuid.UUID | None = None
+    academic_level_department_id: uuid.UUID | None = None
 
 
 class CurriculumOfferingResponse(OutputBase):
@@ -72,13 +71,16 @@ class CurriculumOfferingResponse(OutputBase):
     tenant_id: uuid.UUID
     curriculum_subject_id: uuid.UUID
     academic_term_id: uuid.UUID
+    academic_level_department_id: uuid.UUID | None = None
     department_id: uuid.UUID | None = None
+    department_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class ClassTermDepartmentSet(BaseModel):
-    department_id: uuid.UUID
+    model_config = ConfigDict(extra="forbid")
+    academic_level_department_id: uuid.UUID
 
 
 class ClassTermDepartmentResponse(OutputBase):
@@ -86,7 +88,9 @@ class ClassTermDepartmentResponse(OutputBase):
     tenant_id: uuid.UUID
     class_id: uuid.UUID
     academic_term_id: uuid.UUID
-    department_id: uuid.UUID
+    academic_level_department_id: uuid.UUID
+    department_id: uuid.UUID | None = None
+    department_name: str | None = None
     assigned_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime

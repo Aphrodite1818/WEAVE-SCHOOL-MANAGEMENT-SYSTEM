@@ -51,10 +51,6 @@ class AcademicLevelUpdate(InputBase):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     category: AcademicCategory | None = None
     position: int | None = Field(default=None, gt=0)
-
-    # none deliberately means this level
-    # does not require department specialization
-
     specialization_required_from_term_position: int | None = Field(default=None, ge=1, le=3)
 
     @field_validator("name", mode="before")
@@ -139,8 +135,44 @@ class DepartmentDeleteRequest(InputBase):
 class DepartmentResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    academic_level_id: uuid.UUID
     name: str
+    is_active: bool
+    archived_at: datetime | None = None
+    archived_by_admin_id: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AcademicLevelDepartmentCreate(InputBase):
+    department_id: uuid.UUID
+
+
+class AcademicLevelDepartmentActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_LEVEL_DEPARTMENT"]
+
+
+class AcademicLevelDepartmentDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_LEVEL_DEPARTMENT"]
+
+
+class AcademicLevelDepartmentArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_LEVEL_DEPARTMENT"]
+
+
+class AcademicLevelDepartmentRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_LEVEL_DEPARTMENT"]
+
+
+class AcademicLevelDepartmentDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_LEVEL_DEPARTMENT"]
+
+
+class AcademicLevelDepartmentResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    department_id: uuid.UUID
+    department_name: str | None = None
     is_active: bool
     archived_at: datetime | None = None
     archived_by_admin_id: uuid.UUID | None = None

@@ -14,10 +14,10 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     event,
-    Integer,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -87,8 +87,8 @@ class AcademicLevel(BaseModel):
     classrooms: Mapped[list["ClassRoom"]] = relationship(
         "ClassRoom", back_populates="academic_level"
     )
-    departments: Mapped[list["Department"]] = relationship(
-        "Department", back_populates="academic_level"
+    department_links: Mapped[list["AcademicLevelDepartment"]] = relationship(
+        "AcademicLevelDepartment", back_populates="academic_level"
     )
 
     __table_args__ = (
@@ -120,16 +120,10 @@ class AcademicLevel(BaseModel):
 
 
 class Department(BaseModel):
-    """Specialization owned by one academic level, e.g. SS1 Science."""
+    """Tenant-wide canonical specialization definition, e.g. Science or Arts."""
 
     __tablename__ = "departments"
 
-    academic_level_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(120), nullable=False)
     is_active: Mapped[bool] = mapped_column(
@@ -140,16 +134,15 @@ class Department(BaseModel):
         UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
     )
 
-    academic_level: Mapped[AcademicLevel] = relationship(
-        "AcademicLevel", back_populates="departments"
+    level_links: Mapped[list["AcademicLevelDepartment"]] = relationship(
+        "AcademicLevelDepartment", back_populates="department"
     )
 
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
-            "academic_level_id",
             "normalized_name",
-            name="uq_departments_tenant_level_name",
+            name="uq_departments_tenant_name",
         ),
         CheckConstraint(
             """
@@ -158,7 +151,69 @@ class Department(BaseModel):
             """,
             name="ck_departments_archive_metadata_consistency",
         ),
-        Index("ix_departments_tenant_level_active", "tenant_id", "academic_level_id", "is_active"),
+        Index("ix_departments_tenant_active", "tenant_id", "is_active"),
+        Index("ix_departments_tenant_archived", "tenant_id", "archived_at"),
+    )
+
+
+class AcademicLevelDepartment(BaseModel):
+    """Enable one canonical Department for one AcademicLevel.
+
+    Per-level lifecycle belongs here. Operational specialization references use this
+    identity so the database preserves the exact level/department scope.
+    """
+
+    __tablename__ = "academic_level_departments"
+
+    academic_level_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("academic_levels.id", ondelete="RESTRICT"), nullable=False
+    )
+    department_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
+    )
+
+    academic_level: Mapped[AcademicLevel] = relationship(
+        "AcademicLevel", back_populates="department_links"
+    )
+    department: Mapped[Department] = relationship("Department", back_populates="level_links")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "academic_level_id",
+            "department_id",
+            name="uq_academic_level_departments_scope",
+        ),
+        CheckConstraint(
+            """
+            (archived_at IS NULL AND archived_by_admin_id IS NULL)
+            OR (archived_at IS NOT NULL AND is_active = false)
+            """,
+            name="ck_academic_level_departments_archive_metadata",
+        ),
+        Index(
+            "ix_academic_level_departments_tenant_level",
+            "tenant_id",
+            "academic_level_id",
+        ),
+        Index(
+            "ix_academic_level_departments_tenant_department",
+            "tenant_id",
+            "department_id",
+        ),
+        Index(
+            "ix_academic_level_departments_tenant_level_active",
+            "tenant_id",
+            "academic_level_id",
+            "is_active",
+        ),
     )
 
 

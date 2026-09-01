@@ -1,12 +1,14 @@
 """V2 curriculum and term-specialization models.
 
-These models are the new academic-structure source of truth. They deliberately
-avoid class-level curriculum duplication and student-level department state.
+Curricula belong to academic levels. Departments are canonical tenant-wide
+concepts, while AcademicLevelDepartment supplies the exact level specialization
+identity used by offerings and class-term placements.
 """
 
 from __future__ import annotations
 
 import uuid
+
 from sqlalchemy import Boolean, ForeignKey, Index, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -57,8 +59,10 @@ class ClassTermDepartmentAssignment(BaseModel):
     academic_term_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False
     )
-    department_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=False
+    academic_level_department_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_level_departments.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     assigned_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenant_admins.id", ondelete="SET NULL"), nullable=True
@@ -68,6 +72,11 @@ class ClassTermDepartmentAssignment(BaseModel):
             "tenant_id", "class_id", "academic_term_id", name="uq_class_term_department_assignment"
         ),
         Index("ix_class_term_department_tenant_term", "tenant_id", "academic_term_id"),
+        Index(
+            "ix_class_term_department_tenant_level_department",
+            "tenant_id",
+            "academic_level_department_id",
+        ),
     )
 
 
@@ -79,15 +88,17 @@ class CurriculumOffering(BaseModel):
     academic_term_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False
     )
-    department_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("departments.id", ondelete="RESTRICT"), nullable=True
+    academic_level_department_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_level_departments.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     __table_args__ = (
         UniqueConstraint(
             "tenant_id",
             "curriculum_subject_id",
             "academic_term_id",
-            "department_id",
+            "academic_level_department_id",
             name="uq_curriculum_offering_scope",
         ),
         Index(
@@ -96,7 +107,12 @@ class CurriculumOffering(BaseModel):
             "curriculum_subject_id",
             "academic_term_id",
             unique=True,
-            postgresql_where=text("department_id IS NULL"),
+            postgresql_where=text("academic_level_department_id IS NULL"),
         ),
         Index("ix_curriculum_offerings_tenant_term", "tenant_id", "academic_term_id"),
+        Index(
+            "ix_curriculum_offerings_tenant_level_department",
+            "tenant_id",
+            "academic_level_department_id",
+        ),
     )
