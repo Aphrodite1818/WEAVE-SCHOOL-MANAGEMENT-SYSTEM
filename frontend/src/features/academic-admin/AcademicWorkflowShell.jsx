@@ -34,6 +34,14 @@ const lifecycleSteps = [
   },
 ];
 
+const createActionWorkflows = new Set([
+  "levels",
+  "arm-labels",
+  "classes",
+  "departments",
+  "subjects",
+]);
+
 const normalizeTab = (workflow, tab) => {
   const config = academicWorkflowConfig[workflow];
   if (!config) return "";
@@ -53,6 +61,9 @@ function AcademicWorkflowShell({
   const activeTab = normalizeTab(
     workflow,
     searchParams.get("view") || searchParams.get("tab"),
+  );
+  const visibleTabs = config.tabs.filter(
+    (tab) => !(tab.id === "create" && createActionWorkflows.has(workflow)),
   );
 
   const selectTab = (tabId) => {
@@ -118,13 +129,13 @@ function AcademicWorkflowShell({
           </div>
         ) : null}
 
-        {config.tabs.length > 1 ? (
+        {visibleTabs.length > 1 ? (
           <div
             data-academic-workflow-switcher="true"
             className="overflow-x-auto border-b border-border/70"
           >
             <div className="flex min-w-max gap-5 px-1">
-              {config.tabs.map((tab) => (
+              {visibleTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
