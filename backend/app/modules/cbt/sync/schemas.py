@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
 
-SYNC_SCHEMA_VERSION = 3
+SYNC_SCHEMA_VERSION = 4
 
 
 class CBTSyncMutation(BaseModel):
@@ -55,12 +55,7 @@ class CBTSyncDeltaResponse(BaseModel):
 
 
 class CBTSyncNotification(BaseModel):
-    """Tiny PostgreSQL/WebSocket high-water notification.
-
-    The durable HTTP change log is the only entity transport. Live channels only
-    advertise the newest committed tenant cursor so repeated notifications can be
-    safely coalesced.
-    """
+    """Tiny PostgreSQL/WebSocket high-water notification."""
 
     tenant_id: uuid.UUID
     cursor: int = Field(ge=1)

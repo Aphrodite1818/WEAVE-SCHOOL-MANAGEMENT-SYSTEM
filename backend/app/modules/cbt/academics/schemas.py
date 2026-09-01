@@ -1,4 +1,4 @@
-"""Stable v3 Cloud -> local CBT bootstrap contract."""
+"""Stable v4 Cloud -> local CBT bootstrap contract."""
 
 from __future__ import annotations
 
@@ -62,6 +62,12 @@ class CBTArmLabelSnapshot(SnapshotBase):
 
 
 class CBTDepartmentSnapshot(SnapshotBase):
+    """Level-specific specialization identity consumed by CBT.
+
+    ``id`` is the AcademicLevelDepartment mapping UUID, while ``name`` comes from
+    the tenant-wide canonical Department pool.
+    """
+
     id: uuid.UUID
     academic_level_id: uuid.UUID
     name: str

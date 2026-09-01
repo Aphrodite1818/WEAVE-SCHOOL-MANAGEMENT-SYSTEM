@@ -95,13 +95,7 @@ def project_teacher(
 def project_teacher_assignment(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Project current and scheduled assignment structure for local date evaluation.
-
-    A scheduled assignment must reach CBT before its effective date because the date
-    can advance without another Cloud mutation. Ended assignments are omitted from
-    fresh projections; CBT also owns date-based usability for snapshots it already
-    holds.
-    """
+    """Project current and scheduled assignment structure for local date evaluation."""
 
     assignment_row = session.execute(
         select(TeacherAssignment, TeacherMembership, TeacherAccount)
@@ -164,8 +158,8 @@ def project_teacher_assignment(
         return None
 
     classroom, curriculum_subject, _curriculum, _level = context
-    class_department_id = session.execute(
-        select(ClassTermDepartmentAssignment.department_id).where(
+    academic_level_department_id = session.execute(
+        select(ClassTermDepartmentAssignment.academic_level_department_id).where(
             ClassTermDepartmentAssignment.tenant_id == tenant_id,
             ClassTermDepartmentAssignment.class_id == classroom.id,
             ClassTermDepartmentAssignment.academic_term_id == term.id,
@@ -179,8 +173,9 @@ def project_teacher_assignment(
             CurriculumOffering.curriculum_subject_id == curriculum_subject.id,
             CurriculumOffering.academic_term_id == term.id,
             or_(
-                CurriculumOffering.department_id.is_(None),
-                CurriculumOffering.department_id == class_department_id,
+                CurriculumOffering.academic_level_department_id.is_(None),
+                CurriculumOffering.academic_level_department_id
+                == academic_level_department_id,
             ),
         )
         .limit(1)
