@@ -289,62 +289,81 @@ export function RecordList({
           description={emptyDescription}
         />
       ) : (
-        <div
-          className={cn(
-            "mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3",
-            listClassName,
-          )}
-        >
-          {items.map((item) => {
-            const status = renderStatus?.(item);
-            const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
-            return (
-              <div
-                key={item.id}
-                className="flex min-h-[9rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words text-sm font-semibold text-text">
-                      {renderTitle(item)}
-                    </p>
-                    {renderMeta ? (
-                      <p className="mt-1 break-words text-xs text-text-muted">
-                        {renderMeta(item)}
-                      </p>
-                    ) : null}
+        <>
+          <div className={cn("hidden overflow-x-auto rounded-xl border border-border/70 lg:block", listClassName)}>
+            <table className="w-full min-w-[46rem] border-collapse text-left">
+              <thead className="bg-surface-muted/55 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                <tr>
+                  <th className="px-4 py-3">Record</th>
+                  <th className="px-4 py-3">Details</th>
+                  <th className="px-4 py-3">Lifecycle</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {items.map((item) => {
+                  const status = renderStatus?.(item);
+                  const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
+                  return (
+                    <tr key={item.id} className="bg-surface transition hover:bg-surface-muted/25">
+                      <td className="px-4 py-3 align-top">
+                        <p className="font-semibold text-text">{renderTitle(item)}</p>
+                        {renderMeta ? <p className="mt-1 text-xs text-text-muted">{renderMeta(item)}</p> : null}
+                      </td>
+                      <td className="max-w-md px-4 py-3 align-top text-sm leading-5 text-text-muted">
+                        {renderDescription ? renderDescription(item) : "-"}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {status ? (
+                          <Badge variant={badgeVariant(status)} title={String(status).replaceAll("_", " ")}>
+                            {String(status).replaceAll("_", " ")}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-text-muted">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {renderActions ? renderActions(item) : null}
+                          {showEdit ? (
+                            <Button type="button" size="small" variant="outline" onClick={() => onEdit(item)}>
+                              <Edit3 className="h-4 w-4" /> Edit
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 lg:hidden">
+            {items.map((item) => {
+              const status = renderStatus?.(item);
+              const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
+              return (
+                <div key={item.id} className="flex min-h-[9rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-semibold text-text">{renderTitle(item)}</p>
+                      {renderMeta ? <p className="mt-1 break-words text-xs text-text-muted">{renderMeta(item)}</p> : null}
+                    </div>
+                    {status ? <Badge variant={badgeVariant(status)}>{String(status).replaceAll("_", " ")}</Badge> : null}
                   </div>
-                  {status ? (
-                    <Badge variant={badgeVariant(status)} title={String(status).replaceAll("_", " ")}>
-                      {String(status).replaceAll("_", " ")}
-                    </Badge>
+                  {renderDescription ? <p className="mt-3 line-clamp-3 text-sm leading-6 text-text-muted">{renderDescription(item)}</p> : null}
+                  {showEdit || renderActions ? (
+                    <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                      {renderActions ? renderActions(item) : null}
+                      {showEdit ? <Button type="button" size="small" variant="outline" onClick={() => onEdit(item)}><Edit3 className="h-4 w-4" /> Edit</Button> : null}
+                    </div>
                   ) : null}
                 </div>
-                {renderDescription ? (
-                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-text-muted">
-                    {renderDescription(item)}
-                  </p>
-                ) : null}
-                {showEdit || renderActions ? (
-                  <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                    {renderActions ? renderActions(item) : null}
-                    {showEdit ? (
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="outline"
-                      onClick={() => onEdit(item)}
-                    >
-                      <Edit3 className="h-4 w-4" />
-                      Edit
-                    </Button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </WorkspacePanel>
   );

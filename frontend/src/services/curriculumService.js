@@ -13,6 +13,16 @@ export const curriculumService = {
       `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}`,
       payload,
     ),
+  activateSubject: (curriculumSubjectId) =>
+    api.post(
+      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/activate`,
+      {},
+    ),
+  deactivateSubject: (curriculumSubjectId) =>
+    api.post(
+      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/deactivate`,
+      {},
+    ),
   listOfferings: (curriculumSubjectId) =>
     api.get(
       `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/offerings`,

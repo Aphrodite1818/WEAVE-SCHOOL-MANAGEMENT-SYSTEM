@@ -105,8 +105,10 @@ export default function AcademicWorkflowPage() {
       return <ArmLabelsWorkspace key={key} activeTab={activeTab} />;
     if (workflow === "classes")
       return <ClassesWorkspace key={key} activeTab={activeTab} />;
-    if (workflow === "departments") return <DepartmentsWorkspace key={key} />;
-    if (workflow === "curriculum") return <CurriculumWorkspace key={key} />;
+    if (workflow === "departments")
+      return <DepartmentsWorkspace key={key} activeTab={activeTab} />;
+    if (workflow === "curriculum")
+      return <CurriculumWorkspace key={key} activeTab={activeTab} />;
     if (workflow === "assignments")
       return <TeacherAssignmentsWorkspace key={key} activeTab={activeTab} />;
     if (workflow === "progression")

@@ -116,6 +116,26 @@ class DepartmentUpdate(InputBase):
         return self
 
 
+class DepartmentActivateRequest(InputBase):
+    confirmation: Literal["ACTIVATE_DEPARTMENT"]
+
+
+class DepartmentDeactivateRequest(InputBase):
+    confirmation: Literal["DEACTIVATE_DEPARTMENT"]
+
+
+class DepartmentArchiveRequest(InputBase):
+    confirmation: Literal["ARCHIVE_DEPARTMENT"]
+
+
+class DepartmentRestoreRequest(InputBase):
+    confirmation: Literal["RESTORE_DEPARTMENT"]
+
+
+class DepartmentDeleteRequest(InputBase):
+    confirmation: Literal["DELETE_DEPARTMENT"]
+
+
 class DepartmentResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID

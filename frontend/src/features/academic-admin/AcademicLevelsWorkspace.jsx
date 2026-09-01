@@ -1,17 +1,14 @@
 import { Library } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
-import {
-  academicLevelService,
-  classService,
-} from "../../services/academicsService";
+import { academicLevelService, classService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
 import {
   FormActions,
   Input,
+  RecordList,
   SelectControl,
   WorkspaceGrid,
   WorkspacePanel,
@@ -29,7 +26,7 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   const [levelForm, setLevelForm] = useState(emptyLevelForm);
   const [editingLevelId, setEditingLevelId] = useState("");
   const [editingLevelForm, setEditingLevelForm] = useState(null);
-  const [levelPendingDeletion, setLevelPendingDeletion] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -43,13 +40,11 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       setLevels(asItems(levelRows));
       setClasses(asItems(classRows));
       setCategoryOptions(allowedCategories);
-      setLevelForm((current) => {
-        if (
-          allowedCategories.some((option) => option.value === current.category)
-        )
-          return current;
-        return { ...current, category: allowedCategories[0]?.value || "" };
-      });
+      setLevelForm((current) =>
+        allowedCategories.some((option) => option.value === current.category)
+          ? current
+          : { ...current, category: allowedCategories[0]?.value || "" },
+      );
     } catch (error) {
       showError(getErrorMessage(error, "Could not load academic levels."));
     }
@@ -60,17 +55,24 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   }, [load]);
 
   const selectOptions = useMemo(
-    () =>
-      categoryOptions.map((option) => ({
-        value: option.value,
-        label: option.label,
-      })),
+    () => categoryOptions.map((option) => ({ value: option.value, label: option.label })),
     [categoryOptions],
   );
   const categoryLabels = useMemo(
-    () =>
-      new Map(categoryOptions.map((option) => [option.value, option.label])),
+    () => new Map(categoryOptions.map((option) => [option.value, option.label])),
     [categoryOptions],
+  );
+  const classCounts = useMemo(() => {
+    const counts = new Map();
+    classes.forEach((row) => counts.set(row.academic_level_id, (counts.get(row.academic_level_id) || 0) + 1));
+    return counts;
+  }, [classes]);
+  const visibleLevels = useMemo(
+    () =>
+      ["draft", "active", "inactive", "archived"].includes(activeTab)
+        ? levels.filter((row) => String(row.status).toLowerCase() === activeTab)
+        : levels,
+    [activeTab, levels],
   );
 
   const createLevel = async (event) => {
@@ -78,15 +80,9 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     if (!levelForm.category) return;
     setSaving(true);
     try {
-      await academicLevelService.createLevel({
-        ...levelForm,
-        position: Number(levelForm.position),
-      });
-      setLevelForm({
-        ...emptyLevelForm,
-        category: categoryOptions[0]?.value || "",
-      });
-      showSuccess("Academic level created.");
+      await academicLevelService.createLevel({ ...levelForm, position: Number(levelForm.position) });
+      setLevelForm({ ...emptyLevelForm, category: categoryOptions[0]?.value || "" });
+      showSuccess("Academic level created as draft.");
       await load();
     } catch (error) {
       showError(getErrorMessage(error, "Could not create academic level."));
@@ -97,12 +93,7 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
 
   const updateLevel = async (event) => {
     event.preventDefault();
-    if (
-      !editingLevelId ||
-      !editingLevelForm?.name.trim() ||
-      !editingLevelForm?.category
-    )
-      return;
+    if (!editingLevelId || !editingLevelForm?.name.trim() || !editingLevelForm?.category) return;
     setSaving(editingLevelId);
     try {
       await academicLevelService.updateLevel(editingLevelId, {
@@ -115,235 +106,90 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       showSuccess("Academic level updated.");
       await load();
     } catch (error) {
-      showError(
-        getErrorMessage(error, "Could not update this academic level."),
-      );
+      showError(getErrorMessage(error, "Could not update this academic level."));
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteEmptyLevel = async () => {
-    if (!levelPendingDeletion) return;
-    const level = levelPendingDeletion;
-    setSaving(level.id);
+  const runPendingAction = async () => {
+    if (!pendingAction) return;
+    const { item, action } = pendingAction;
+    setSaving(item.id);
     try {
-      await academicLevelService.removeLevelFromSetup(level.id);
-      if (editingLevelId === level.id) {
-        setEditingLevelId("");
-        setEditingLevelForm(null);
-      }
-      setLevelPendingDeletion(null);
-      showSuccess("Empty academic level deleted.");
+      if (action === "activate") await academicLevelService.activateLevel(item.id);
+      if (action === "deactivate") await academicLevelService.deactivateLevel(item.id);
+      if (action === "archive") await academicLevelService.archiveLevel(item.id);
+      if (action === "restore") await academicLevelService.restoreLevel(item.id);
+      if (action === "delete") await academicLevelService.removeLevelFromSetup(item.id);
+      showSuccess(`Academic level ${action}d.`);
+      setPendingAction(null);
       await load();
     } catch (error) {
-      showError(
-        getErrorMessage(error, "Could not delete this academic level."),
-      );
+      showError(getErrorMessage(error, `Could not ${action} this academic level.`));
     } finally {
       setSaving(false);
     }
   };
 
-  const workspaceTitle =
-    activeTab === "manage" ? "Manage academic levels" : "Academic levels";
-  const workspaceDescription =
-    activeTab === "manage"
-      ? "Update level names or remove genuinely empty levels."
-      : "Review the category, position, and organizational class distribution.";
+  const actionConfig = pendingAction
+    ? {
+        activate: ["Activate academic level", "ACTIVATE_ACADEMIC_LEVEL", "Activate"],
+        deactivate: ["Deactivate academic level", "DEACTIVATE_ACADEMIC_LEVEL", "Deactivate"],
+        archive: ["Archive academic level", "ARCHIVE_ACADEMIC_LEVEL", "Archive"],
+        restore: ["Restore academic level", "RESTORE_ACADEMIC_LEVEL", "Restore"],
+        delete: ["Delete empty level", "DELETE_EMPTY_LEVEL", "Delete"],
+      }[pendingAction.action]
+    : null;
 
   return (
     <>
       <WorkspaceGrid
         editor={
-          activeTab === "create" ? (
-            <WorkspacePanel
-              title="Create academic level"
-              description="Levels own curriculum and ordered progression; classes remain optional organization."
-            >
-              <form className="space-y-3" onSubmit={createLevel}>
-                <Input
-                  label="Level name"
-                  value={levelForm.name}
-                  onChange={(event) =>
-                    setLevelForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  placeholder="JSS1"
-                  required
-                />
-                <SelectControl
-                  label="Category"
-                  value={levelForm.category}
-                  onChange={(value) =>
-                    setLevelForm((current) => ({ ...current, category: value }))
-                  }
-                  options={selectOptions}
-                  placeholder="Select an institution category"
-                  required
-                />
-                <Input
-                  label="Position"
-                  type="number"
-                  min="1"
-                  value={levelForm.position}
-                  onChange={(event) =>
-                    setLevelForm((current) => ({
-                      ...current,
-                      position: event.target.value,
-                    }))
-                  }
-                  required
-                />
-                <FormActions submitting={saving} submitLabel="Create level" />
+          activeTab === "create" || editingLevelId ? (
+            <WorkspacePanel title={editingLevelId ? "Update level" : "Create academic level"} description="Levels own curriculum and ordered progression; classes remain optional organization.">
+              <form className="space-y-3" onSubmit={editingLevelId ? updateLevel : createLevel}>
+                <Input label="Level name" value={editingLevelId ? editingLevelForm?.name || "" : levelForm.name} onChange={(event) => editingLevelId ? setEditingLevelForm((current) => ({ ...current, name: event.target.value })) : setLevelForm((current) => ({ ...current, name: event.target.value }))} placeholder="JSS1" required />
+                <SelectControl label="Category" value={editingLevelId ? editingLevelForm?.category || "" : levelForm.category} onChange={(value) => editingLevelId ? setEditingLevelForm((current) => ({ ...current, category: value })) : setLevelForm((current) => ({ ...current, category: value }))} options={selectOptions} required />
+                <Input label="Position" type="number" min="1" value={editingLevelId ? editingLevelForm?.position || "" : levelForm.position} onChange={(event) => editingLevelId ? setEditingLevelForm((current) => ({ ...current, position: event.target.value })) : setLevelForm((current) => ({ ...current, position: event.target.value }))} required />
+                <FormActions submitting={Boolean(saving)} submitLabel={editingLevelId ? "Save level" : "Create level"} editing={Boolean(editingLevelId)} onCancel={() => { setEditingLevelId(""); setEditingLevelForm(null); }} />
               </form>
             </WorkspacePanel>
           ) : null
         }
         content={
-          <WorkspacePanel
-            title={workspaceTitle}
-            description={workspaceDescription}
-          >
-            <div className="grid max-h-[34rem] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-              {levels.map((item) => {
-                const armCount = classes.filter(
-                  (classroom) => classroom.academic_level_id === item.id,
-                ).length;
-                return (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl border border-border/70 bg-surface p-4"
-                  >
-                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="font-semibold text-text">{item.name}</p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={armCount > 0 ? "default" : "warning"}>
-                          {armCount} arm{armCount === 1 ? "" : "s"}
-                        </Badge>
-                        <Badge variant="default">
-                          {categoryLabels.get(item.category) ||
-                            String(item.category || "").replaceAll(
-                              "_",
-                              " ",
-                            )}{" "}
-                          · {item.position}
-                        </Badge>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-sm text-text-muted">
-                      Automatic progression follows the next configured
-                      position. Class and arm are assigned separately.
-                    </p>
-                    {activeTab === "manage" && editingLevelId === item.id ? (
-                      <form
-                        className="mt-3 space-y-3 border-t border-border/70 pt-3"
-                        onSubmit={updateLevel}
-                      >
-                        <Input
-                          label="Level name"
-                          value={editingLevelForm?.name || ""}
-                          onChange={(event) =>
-                            setEditingLevelForm((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                          required
-                        />
-                        <SelectControl
-                          label="Category"
-                          value={editingLevelForm?.category || ""}
-                          onChange={(value) =>
-                            setEditingLevelForm((current) => ({
-                              ...current,
-                              category: value,
-                            }))
-                          }
-                          options={selectOptions}
-                          required
-                        />
-                        <Input
-                          label="Position"
-                          type="number"
-                          min="1"
-                          value={editingLevelForm?.position || ""}
-                          onChange={(event) =>
-                            setEditingLevelForm((current) => ({
-                              ...current,
-                              position: event.target.value,
-                            }))
-                          }
-                          required
-                        />
-                        <FormActions
-                          submitting={saving === item.id}
-                          submitLabel="Save level"
-                          editing
-                          onCancel={() => {
-                            setEditingLevelId("");
-                            setEditingLevelForm(null);
-                          }}
-                        />
-                      </form>
-                    ) : activeTab === "manage" ? (
-                      <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
-                        <Button
-                          size="small"
-                          variant="outline"
-                          className="w-full sm:w-auto"
-                          onClick={() => {
-                            setEditingLevelId(item.id);
-                            setEditingLevelForm({
-                              name: item.name,
-                              category: item.category,
-                              position: String(item.position),
-                            });
-                          }}
-                        >
-                          Update level
-                        </Button>
-                        {armCount === 0 ? (
-                          <Button
-                            size="small"
-                            variant="danger"
-                            className="w-full sm:w-auto"
-                            disabled={saving === item.id}
-                            onClick={() => setLevelPendingDeletion(item)}
-                          >
-                            Delete empty level
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {!levels.length ? (
-                <div className="rounded-2xl border border-dashed border-border p-6 text-center">
-                  <Library className="mx-auto h-7 w-7 text-text-muted" />
-                  <p className="mt-2 text-sm text-text-muted">
-                    No academic levels yet. Use Create Level to add the first
-                    one.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </WorkspacePanel>
+          activeTab === "create" && !editingLevelId ? null : (
+            <RecordList
+              title="Academic levels"
+              description="The lifecycle controls whether a level can receive classes, curriculum, enrollments, and progression work."
+              items={visibleLevels}
+              listClassName="max-h-[34rem] overflow-y-auto"
+              emptyIcon={Library}
+              emptyTitle="No academic levels"
+              emptyDescription="Create the first level to begin configuring the academic structure."
+              renderTitle={(item) => item.name}
+              renderMeta={(item) => `${categoryLabels.get(item.category) || String(item.category).replaceAll("_", " ")} · Position ${item.position}`}
+              renderDescription={(item) => `${classCounts.get(item.id) || 0} class arms · Progression follows the next configured position.`}
+              renderStatus={(item) => item.status}
+              onEdit={(item) => {
+                setEditingLevelId(item.id);
+                setEditingLevelForm({ name: item.name, category: item.category, position: String(item.position) });
+              }}
+              canEdit={(item) => item.status !== "archived"}
+              renderActions={(item) => (
+                <>
+                  {["draft", "inactive"].includes(item.status) ? <Button size="small" variant="outline" disabled={saving === item.id} onClick={() => setPendingAction({ item, action: "activate" })}>Activate</Button> : null}
+                  {item.status === "active" ? <Button size="small" variant="outline" disabled={saving === item.id} onClick={() => setPendingAction({ item, action: "deactivate" })}>Deactivate</Button> : null}
+                  {item.status === "inactive" ? <Button size="small" variant="outline" disabled={saving === item.id} onClick={() => setPendingAction({ item, action: "archive" })}>Archive</Button> : null}
+                  {item.status === "archived" ? <Button size="small" variant="outline" disabled={saving === item.id} onClick={() => setPendingAction({ item, action: "restore" })}>Restore</Button> : null}
+                  {item.status === "draft" && !classCounts.get(item.id) ? <Button size="small" variant="danger" disabled={saving === item.id} onClick={() => setPendingAction({ item, action: "delete" })}>Delete</Button> : null}
+                </>
+              )}
+            />
+          )
         }
       />
-      <TypedConfirmationDialog
-        open={Boolean(levelPendingDeletion)}
-        title="Delete empty academic level"
-        description={`${levelPendingDeletion?.name || "This level"} has no class arms. The backend will still reject deletion if another academic record depends on it.`}
-        confirmationText="DELETE_EMPTY_LEVEL"
-        confirmLabel="Delete level"
-        isLoading={saving === levelPendingDeletion?.id}
-        onConfirm={deleteEmptyLevel}
-        onCancel={() => setLevelPendingDeletion(null)}
-      />
+      <TypedConfirmationDialog open={Boolean(pendingAction)} title={actionConfig?.[0]} description={`${pendingAction?.item?.name || "This level"} will move through the supported academic-level lifecycle. The backend will reject unsafe transitions with live dependencies.`} confirmationText={actionConfig?.[1] || ""} confirmLabel={actionConfig?.[2]} variant={["deactivate", "archive", "delete"].includes(pendingAction?.action) ? "danger" : "primary"} isLoading={saving === pendingAction?.item?.id} onConfirm={runPendingAction} onCancel={() => setPendingAction(null)} />
     </>
   );
 }

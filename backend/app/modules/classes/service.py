@@ -444,6 +444,11 @@ class AcademicLevelService:
 
 class DepartmentService:
     @staticmethod
+    def _ensure_level_scope(department: Department, academic_level_id: uuid.UUID | None) -> None:
+        if academic_level_id is not None and department.academic_level_id != academic_level_id:
+            raise NotFoundException("Department not found")
+
+    @staticmethod
     async def create(
         db: AsyncSession,
         actor: TenantAdmin,
@@ -519,7 +524,11 @@ class DepartmentService:
 
     @staticmethod
     async def deactivate(
-        db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID
+        db: AsyncSession,
+        actor: TenantAdmin,
+        department_id: uuid.UUID,
+        *,
+        academic_level_id: uuid.UUID | None = None,
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
@@ -528,6 +537,7 @@ class DepartmentService:
         )
         if department is None:
             raise NotFoundException("Department not found")
+        DepartmentService._ensure_level_scope(department, academic_level_id)
         if department.archived_at is not None:
             raise ConflictException("Archived departments cannot be deactivated")
         if not department.is_active:
@@ -551,7 +561,11 @@ class DepartmentService:
 
     @staticmethod
     async def activate(
-        db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID
+        db: AsyncSession,
+        actor: TenantAdmin,
+        department_id: uuid.UUID,
+        *,
+        academic_level_id: uuid.UUID | None = None,
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
@@ -560,6 +574,7 @@ class DepartmentService:
         )
         if department is None:
             raise NotFoundException("Department not found")
+        DepartmentService._ensure_level_scope(department, academic_level_id)
         if department.archived_at is not None:
             raise ConflictException("Restore this department before activating it")
         if department.is_active:
@@ -586,7 +601,13 @@ class DepartmentService:
         return DepartmentResponse.model_validate(department)
 
     @staticmethod
-    async def restore(db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID):
+    async def restore(
+        db: AsyncSession,
+        actor: TenantAdmin,
+        department_id: uuid.UUID,
+        *,
+        academic_level_id: uuid.UUID | None = None,
+    ):
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         department = await DepartmentRepository.get_by_id(
@@ -594,6 +615,7 @@ class DepartmentService:
         )
         if department is None:
             raise NotFoundException("Department not found")
+        DepartmentService._ensure_level_scope(department, academic_level_id)
         if department.archived_at is None:
             raise ConflictException("Only archived departments can be restored")
 
@@ -615,7 +637,11 @@ class DepartmentService:
 
     @staticmethod
     async def archive(
-        db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID
+        db: AsyncSession,
+        actor: TenantAdmin,
+        department_id: uuid.UUID,
+        *,
+        academic_level_id: uuid.UUID | None = None,
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
@@ -624,6 +650,7 @@ class DepartmentService:
         )
         if department is None:
             raise NotFoundException("Department not found")
+        DepartmentService._ensure_level_scope(department, academic_level_id)
         if department.archived_at is not None:
             return DepartmentResponse.model_validate(department)
         if department.is_active:
@@ -649,7 +676,12 @@ class DepartmentService:
 
     @staticmethod
     async def update(
-        db: AsyncSession, actor: TenantAdmin, department_id: uuid.UUID, payload: DepartmentUpdate
+        db: AsyncSession,
+        actor: TenantAdmin,
+        department_id: uuid.UUID,
+        payload: DepartmentUpdate,
+        *,
+        academic_level_id: uuid.UUID | None = None,
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
@@ -658,6 +690,7 @@ class DepartmentService:
         )
         if department is None:
             raise NotFoundException("Department not found")
+        DepartmentService._ensure_level_scope(department, academic_level_id)
         if department.archived_at is not None:
             raise ConflictException("Archived departments cannot be updated")
 
@@ -707,6 +740,8 @@ class DepartmentService:
         db: AsyncSession,
         actor: TenantAdmin,
         department_id: uuid.UUID,
+        *,
+        academic_level_id: uuid.UUID | None = None,
     ) -> DepartmentResponse:
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
@@ -715,6 +750,7 @@ class DepartmentService:
         )
         if department is None:
             raise NotFoundException("Department not found")
+        DepartmentService._ensure_level_scope(department, academic_level_id)
 
         dependencies = await DepartmentRepository.count_dependencies(
             db, actor.tenant_id, department.id

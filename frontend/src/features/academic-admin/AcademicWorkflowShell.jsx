@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -81,64 +81,33 @@ function AcademicWorkflowShell({
       description={config.description}
       actions={actions}
     >
-      <section className="grid gap-4 xl:grid-cols-[14.25rem_minmax(0,1fr)]">
-        <Card className="h-fit overflow-hidden p-3 max-xl:hidden xl:sticky xl:top-24">
-          <Link
-            to="/admin/academic"
-            className="mb-3 flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary transition hover:bg-primary-subtle/40"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Academic Hub
-          </Link>
-
-          <div className="space-y-1">
-            {academicWorkflowOrder.map((key) => {
-              const item = academicWorkflowConfig[key];
-              const ItemIcon = item.icon;
-              const active = key === workflow;
-
-              return (
-                <Link
-                  key={key}
-                  to={`/admin/academic/${key}`}
-                  className={cn(
-                    "flex min-h-10 items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition",
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-text-muted hover:bg-surface-muted hover:text-text",
-                  )}
-                >
-                  <ItemIcon className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 flex-1 truncate">
-                    {item.shortTitle}
-                  </span>
-                  {active ? <ChevronRight className="h-4 w-4" /> : null}
-                </Link>
-              );
-            })}
-          </div>
-        </Card>
-
-        <div className="min-w-0 space-y-4">
-          <Card className="p-3 xl:hidden">
+      <section className="min-w-0 space-y-4">
+          <Card className="p-3 sm:p-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-end">
+              <div>
             <Link
               to="/admin/academic"
-              className="mb-3 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary"
+                  className="inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary transition hover:bg-primary-soft/50"
             >
               <ArrowLeft className="h-4 w-4" />
-              Academic Hub
+                  All academic entities
             </Link>
+                <p className="mt-1 px-2 text-xs text-text-muted">
+                  Switch entities without leaving the academic workspace.
+                </p>
+              </div>
             <SearchableSelect
-              label="Workspace"
+                label="Academic entity"
               value={workflow}
               onChange={selectWorkflow}
-              searchPlaceholder="Search academic workspaces"
+              searchPlaceholder="Search academic entities"
               options={academicWorkflowOrder.map((key) => ({
                 value: key,
                 label: academicWorkflowConfig[key].title,
                 description: academicWorkflowConfig[key].description,
               }))}
             />
+            </div>
           </Card>
 
           <Card className="overflow-hidden p-4 sm:p-5">
@@ -226,7 +195,6 @@ function AcademicWorkflowShell({
           ) : null}
 
           {children(activeTab)}
-        </div>
       </section>
     </DashboardLayout>
   );

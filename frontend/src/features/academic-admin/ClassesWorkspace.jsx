@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { displayClass } from "../../components/academic/academicDisplay";
-import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
 import {
@@ -13,6 +12,7 @@ import { getErrorMessage } from "../../services/api";
 import { teacherService } from "../../services/teacherService";
 import {
   FormActions,
+  RecordList,
   SelectControl,
   WorkspaceGrid,
   WorkspacePanel,
@@ -203,63 +203,27 @@ function ClassesWorkspace({ activeTab = "overview" }) {
       }
       content={
         activeTab === "create" && !editingClassId ? null : (
-          <WorkspacePanel
+          <RecordList
             title="Classes and arms"
             description="Each class is a concrete student grouping within one level."
-          >
-            {filteredClasses.length ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {filteredClasses.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl border border-border/70 bg-surface p-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-text">
-                          {displayClass(item)}
-                        </p>
-                        <p className="mt-1 text-sm text-text-muted">
-                          {item.teacher_membership_id
-                            ? "Class teacher assigned"
-                            : "No class teacher"}
-                        </p>
-                      </div>
-                      <Badge
-                        variant={
-                          item.archived_at
-                            ? "warning"
-                            : item.is_active
-                              ? "success"
-                              : "error"
-                        }
-                      >
-                        {item.archived_at
-                          ? "archived"
-                          : item.is_active
-                            ? "active"
-                            : "inactive"}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {!item.archived_at ? (
-                        <Button
-                          size="small"
-                          variant="outline"
-                          onClick={() => {
-                            setEditingClassId(item.id);
-                            setClassForm({
-                              academic_level_id: item.academic_level_id,
-                              arm_label_id: item.arm_label_id || "",
-                              teacher_membership_id:
-                                item.teacher_membership_id || "",
-                            });
-                          }}
-                        >
-                          Edit
-                        </Button>
-                      ) : null}
+            items={filteredClasses}
+            emptyTitle="No classes"
+            emptyDescription="No classes match this lifecycle view."
+            renderTitle={displayClass}
+            renderMeta={(item) => item.academic_level_name || "Academic level"}
+            renderDescription={(item) => item.teacher_membership_id ? "Class teacher assigned" : "No class teacher assigned"}
+            renderStatus={(item) => item.archived_at ? "archived" : item.is_active ? "active" : "inactive"}
+            onEdit={(item) => {
+              setEditingClassId(item.id);
+              setClassForm({
+                academic_level_id: item.academic_level_id,
+                arm_label_id: item.arm_label_id || "",
+                teacher_membership_id: item.teacher_membership_id || "",
+              });
+            }}
+            canEdit={(item) => !item.archived_at}
+            renderActions={(item) => (
+              <>
                       {!item.archived_at && item.is_active ? (
                         <Button
                           size="small"
@@ -300,16 +264,9 @@ function ClassesWorkspace({ activeTab = "overview" }) {
                           Restore
                         </Button>
                       ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-text-muted">
-                No classes match this lifecycle view.
-              </p>
+              </>
             )}
-          </WorkspacePanel>
+          />
         )
       }
     />

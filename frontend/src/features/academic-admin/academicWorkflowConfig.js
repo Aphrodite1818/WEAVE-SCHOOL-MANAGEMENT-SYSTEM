@@ -37,9 +37,12 @@ export const academicWorkflowConfig = {
     tone: "primary",
     defaultTab: "overview",
     tabs: [
-      { id: "overview", label: "Overview" },
+      { id: "overview", label: "All Levels" },
       { id: "create", label: "Create Level" },
-      { id: "manage", label: "Manage Levels" },
+      { id: "draft", label: "Draft" },
+      { id: "active", label: "Active" },
+      { id: "inactive", label: "Inactive" },
+      { id: "archived", label: "Archived" },
     ],
   },
   progression: {
@@ -61,8 +64,11 @@ export const academicWorkflowConfig = {
     tone: "accent",
     defaultTab: "overview",
     tabs: [
-      { id: "overview", label: "Overview" },
+      { id: "overview", label: "All Labels" },
       { id: "create", label: "Add Arm Label" },
+      { id: "active", label: "Active" },
+      { id: "inactive", label: "Inactive" },
+      { id: "archived", label: "Archived" },
     ],
   },
   classes: {
@@ -89,7 +95,14 @@ export const academicWorkflowConfig = {
     icon: Users,
     tone: "warning",
     defaultTab: "overview",
-    tabs: [{ id: "overview", label: "Level Departments" }],
+    tabs: [
+      { id: "overview", label: "All Departments" },
+      { id: "create", label: "Add Department" },
+      { id: "active", label: "Active" },
+      { id: "inactive", label: "Inactive" },
+      { id: "archived", label: "Archived" },
+      { id: "placements", label: "Class Placements" },
+    ],
   },
   subjects: {
     title: "Subjects",
@@ -115,7 +128,10 @@ export const academicWorkflowConfig = {
     icon: BookOpen,
     tone: "accent",
     defaultTab: "subjects",
-    tabs: [{ id: "subjects", label: "Curriculum Subjects" }],
+    tabs: [
+      { id: "subjects", label: "Curriculum Subjects" },
+      { id: "offerings", label: "Term Offerings" },
+    ],
   },
   assignments: {
     title: "Teacher Assignments",

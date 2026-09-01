@@ -81,6 +81,11 @@ export const academicLevelService = {
       payload,
       request: (changes) => api.patch(`/academic-levels/${levelId}`, changes),
     }),
+  activateLevel: (levelId) => api.post(`/academic-levels/${levelId}/activate`, {}),
+  deactivateLevel: (levelId) =>
+    api.post(`/academic-levels/${levelId}/deactivate`, {}),
+  archiveLevel: (levelId) => api.post(`/academic-levels/${levelId}/archive`, {}),
+  restoreLevel: (levelId) => api.post(`/academic-levels/${levelId}/restore`, {}),
   removeLevelFromSetup: (levelId) =>
     api.post(`/tenant-admin/setup-assistant/levels/${levelId}/remove`, {}),
 };
@@ -139,10 +144,28 @@ export const classService = {
 export const departmentService = {
   getDepartments: (levelId, options = {}) =>
     api.get(
-      `/academic-levels/${levelId}/departments?${buildQuery(options, { activeOnly: "active_only" })}`,
+      `/academic-levels/${levelId}/departments?${buildQuery(options, { activeOnly: "active_only", includeArchived: "include_archived" })}`,
     ),
   createDepartment: (levelId, payload) =>
     api.post(`/academic-levels/${levelId}/departments`, payload),
+  updateDepartment: (levelId, departmentId, payload) =>
+    api.patch(`/academic-levels/${levelId}/departments/${departmentId}`, payload),
+  activateDepartment: (levelId, departmentId) =>
+    api.post(`/academic-levels/${levelId}/departments/${departmentId}/activate`, {
+      confirmation: "ACTIVATE_DEPARTMENT",
+    }),
+  deactivateDepartment: (levelId, departmentId) =>
+    api.post(`/academic-levels/${levelId}/departments/${departmentId}/deactivate`, {
+      confirmation: "DEACTIVATE_DEPARTMENT",
+    }),
+  archiveDepartment: (levelId, departmentId) =>
+    api.post(`/academic-levels/${levelId}/departments/${departmentId}/archive`, {
+      confirmation: "ARCHIVE_DEPARTMENT",
+    }),
+  restoreDepartment: (levelId, departmentId) =>
+    api.post(`/academic-levels/${levelId}/departments/${departmentId}/restore`, {
+      confirmation: "RESTORE_DEPARTMENT",
+    }),
 };
 
 export const armLabelService = {
@@ -165,5 +188,20 @@ export const armLabelService = {
       payload,
       request: (changes) => api.patch(`/classes/arm-labels/${id}`, changes),
     }),
-  archiveArmLabel: (id) => api.post(`/classes/arm-labels/${id}/archive`, {}),
+  activateArmLabel: (id) =>
+    api.post(`/classes/arm-labels/${id}/activate`, {
+      confirmation: "ACTIVATE_ARM_LABEL",
+    }),
+  deactivateArmLabel: (id) =>
+    api.post(`/classes/arm-labels/${id}/deactivate`, {
+      confirmation: "DEACTIVATE_ARM_LABEL",
+    }),
+  archiveArmLabel: (id) =>
+    api.post(`/classes/arm-labels/${id}/archive`, {
+      confirmation: "ARCHIVE_ARM_LABEL",
+    }),
+  restoreArmLabel: (id) =>
+    api.post(`/classes/arm-labels/${id}/restore`, {
+      confirmation: "RESTORE_ARM_LABEL",
+    }),
 };
