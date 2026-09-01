@@ -86,6 +86,7 @@ export const academicLevelService = {
     api.post(`/academic-levels/${levelId}/deactivate`, {}),
   archiveLevel: (levelId) => api.post(`/academic-levels/${levelId}/archive`, {}),
   restoreLevel: (levelId) => api.post(`/academic-levels/${levelId}/restore`, {}),
+  deleteLevel: (levelId) => api.delete(`/academic-levels/${levelId}`),
   removeLevelFromSetup: (levelId) =>
     api.post(`/tenant-admin/setup-assistant/levels/${levelId}/remove`, {}),
 };
@@ -166,6 +167,10 @@ export const departmentService = {
     api.post(`/academic-levels/${levelId}/departments/${departmentId}/restore`, {
       confirmation: "RESTORE_DEPARTMENT",
     }),
+  deleteDepartment: (levelId, departmentId) =>
+    api.delete(`/academic-levels/${levelId}/departments/${departmentId}`, {
+      body: JSON.stringify({ confirmation: "DELETE_DEPARTMENT" }),
+    }),
 };
 
 export const armLabelService = {
@@ -203,5 +208,9 @@ export const armLabelService = {
   restoreArmLabel: (id) =>
     api.post(`/classes/arm-labels/${id}/restore`, {
       confirmation: "RESTORE_ARM_LABEL",
+    }),
+  deleteArmLabel: (id) =>
+    api.delete(`/classes/arm-labels/${id}`, {
+      body: JSON.stringify({ confirmation: "DELETE_ARM_LABEL" }),
     }),
 };
