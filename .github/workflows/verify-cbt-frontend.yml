@@ -6,42 +6,18 @@ on:
       - cbt-sync-module-structure
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: verify-cbt-frontend-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   verify:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch
+      - name: Checkout triggering commit
         uses: actions/checkout@v4
-        with:
-          ref: cbt-sync-module-structure
-          fetch-depth: 0
-
-      - name: Remove stale unused icon import
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('frontend/src/features/academic-admin/DepartmentsWorkspace.jsx')
-          source = path.read_text()
-          source = source.replace('import { Building2, Link2, School } from "lucide-react";', 'import { Building2, Link2 } from "lucide-react";')
-          path.write_text(source)
-          PY
-
-      - name: Commit lint fix when needed
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/features/academic-admin/DepartmentsWorkspace.jsx
-          if ! git diff --cached --quiet; then
-            git commit -m "Fix department workspace lint"
-            git push origin HEAD:cbt-sync-module-structure
-          fi
 
       - name: Set up Node
         uses: actions/setup-node@v4
