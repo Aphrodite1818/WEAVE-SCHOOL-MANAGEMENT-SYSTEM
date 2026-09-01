@@ -57,7 +57,7 @@ test("frontend services use level enrollment, batch class assignment, and staged
   assert.match(directory, /academic_session_id/);
 });
 
-test("Academic Hub supports ordered level updates, departments, and guarded level deletion", async () => {
+test("Academic Hub supports ordered level updates, departments, and backend-guarded level deletion", async () => {
   const source = await read("src/features/academic-admin/AcademicLevelsWorkspace.jsx");
   const config = await read("src/features/academic-admin/academicWorkflowConfig.js");
   assert.match(source, /Update level/);
@@ -68,8 +68,9 @@ test("Academic Hub supports ordered level updates, departments, and guarded leve
   const departments = await read("src/features/academic-admin/DepartmentsWorkspace.jsx");
   assert.match(departments, /departmentService\.createDepartment/);
   assert.match(source, /Delete empty level/);
-  assert.match(source, /DELETE_EMPTY_LEVEL/);
   assert.match(source, /removeLevelFromSetup/);
+  assert.match(source, /ConfirmDialog/);
+  assert.doesNotMatch(source, /TypedConfirmationDialog|DELETE_EMPTY_LEVEL|ACTIVATE_ACADEMIC_LEVEL/);
   assert.match(source, /max-h-\[34rem\].*overflow-y-auto/);
   assert.doesNotMatch(config, /id: ["']progression["']/);
 });
