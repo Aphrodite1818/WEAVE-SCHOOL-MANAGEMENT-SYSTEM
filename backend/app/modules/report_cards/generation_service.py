@@ -97,6 +97,7 @@ class EnrollmentReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
         commit: bool,
+        apply_positions: bool = True,
     ) -> ReportCardResponse:
         student = await StudentRepository.get_student_by_id(db, actor.tenant_id, student_id)
         if student is None:
@@ -145,13 +146,14 @@ class EnrollmentReportCardService:
             results=results,
             replace_existing=existing if existing is not None else None,
         )
-        await ReportCardService._apply_class_positions(
-            db,
-            actor.tenant_id,
-            enrollment.class_id,
-            academic_session_id,
-            academic_term_id,
-        )
+        if apply_positions:
+            await ReportCardService._apply_class_positions(
+                db,
+                actor.tenant_id,
+                enrollment.class_id,
+                academic_session_id,
+                academic_term_id,
+            )
         if commit:
             await db.commit()
         return await ReportCardService.get(db, actor, card.id)
@@ -202,6 +204,7 @@ class EnrollmentReportCardService:
                         academic_session_id=payload.academic_session_id,
                         academic_term_id=payload.academic_term_id,
                         commit=False,
+                        apply_positions=False,
                     )
                 generated.append(card)
             except (BadRequestException, NotFoundException) as exc:
@@ -212,6 +215,8 @@ class EnrollmentReportCardService:
                     }
                 )
 
+        # Rank the class once after every successful card has been created. Re-ranking
+        # after each student turns bulk generation into near-quadratic database work.
         await ReportCardService._apply_class_positions(
             db,
             actor.tenant_id,
