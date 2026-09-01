@@ -1,4 +1,4 @@
-import { Building2, Link2, School } from "lucide-react";
+import { Building2, Link2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
