@@ -8,49 +8,9 @@ import {
   academicWorkflowOrder,
 } from "./academicWorkflowConfig";
 
-const INNER_RING_COUNT = 7;
-
-const orbitPosition = (index, total, radius, startAngle = -90) => {
-  const angle = startAngle + (360 / total) * index;
-  const radians = (angle * Math.PI) / 180;
-  return {
-    left: `calc(50% + ${Math.cos(radians) * radius}px)`,
-    top: `calc(50% + ${Math.sin(radians) * radius}px)`,
-  };
-};
-
-function OrbitItem({ workflow, currentWorkflow, position, onSelect }) {
-  const config = academicWorkflowConfig[workflow];
-  const Icon = config.icon;
-  const active = workflow === currentWorkflow;
-
-  return (
-    <button
-      type="button"
-      title={config.title}
-      aria-label={`Open ${config.title}`}
-      onClick={() => onSelect(workflow)}
-      className={cn(
-        "group absolute z-10 grid h-11 w-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border bg-surface shadow-sm transition hover:-translate-y-[55%] hover:border-primary/40 hover:text-primary hover:shadow-md",
-        active
-          ? "border-primary bg-primary text-white"
-          : "border-border/80 text-text-soft",
-      )}
-      style={position}
-    >
-      <Icon className="h-4 w-4" />
-      <span className="pointer-events-none absolute bottom-full mb-2 hidden max-w-36 whitespace-nowrap rounded-lg border border-border bg-surface px-2 py-1 text-[11px] font-semibold text-text shadow-lg group-hover:block">
-        {config.title}
-      </span>
-    </button>
-  );
-}
-
 export default function AcademicOrbitNavigator({ currentWorkflow = "" }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const inner = academicWorkflowOrder.slice(0, INNER_RING_COUNT);
-  const outer = academicWorkflowOrder.slice(INNER_RING_COUNT);
 
   const selectWorkflow = (workflow) => {
     setOpen(false);
@@ -68,10 +28,33 @@ export default function AcademicOrbitNavigator({ currentWorkflow = "" }) {
         />
       ) : null}
 
-      <div className="fixed bottom-20 right-4 z-50 sm:bottom-6 sm:right-6">
+      <div
+        data-academic-workflow-navigator="true"
+        className="fixed bottom-4 right-3 z-50 sm:right-6 md:bottom-6"
+      >
         {open ? (
-          <>
-            <div className="mb-3 grid w-[min(22rem,calc(100vw-1.5rem))] grid-cols-3 gap-2 rounded-2xl border border-border bg-surface p-3 shadow-2xl sm:hidden">
+          <div
+            data-academic-workflow-menu="true"
+            className="mb-3 flex max-h-[65dvh] w-[min(23rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 px-3.5 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-text">Academic navigation</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-text-muted">
+                  Jump to any academic workspace.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border/70 text-text-muted transition hover:bg-surface-muted hover:text-text"
+                aria-label="Close academic navigation"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 overflow-y-auto overscroll-contain p-3">
               {academicWorkflowOrder.map((workflow) => {
                 const config = academicWorkflowConfig[workflow];
                 const Icon = config.icon;
@@ -80,54 +63,33 @@ export default function AcademicOrbitNavigator({ currentWorkflow = "" }) {
                   <button
                     key={workflow}
                     type="button"
+                    title={config.title}
+                    aria-label={`Open ${config.title}`}
+                    aria-current={active ? "page" : undefined}
                     onClick={() => selectWorkflow(workflow)}
                     className={cn(
-                      "flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border px-2 py-2 text-center text-[11px] font-semibold transition",
+                      "flex min-h-[4.75rem] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-center transition",
                       active
-                        ? "border-primary bg-primary-soft text-primary"
-                        : "border-border/70 text-text-soft hover:bg-surface-muted",
+                        ? "border-primary/35 bg-primary-soft text-primary"
+                        : "border-border/70 bg-surface text-text-soft hover:border-primary/25 hover:bg-surface-muted hover:text-text",
                     )}
                   >
-                    <Icon className="h-4 w-4" />
-                    <span>{config.title}</span>
+                    <span
+                      className={cn(
+                        "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
+                        active ? "bg-primary/10" : "bg-surface-muted",
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="w-full break-words text-[11px] font-semibold leading-4">
+                      {config.shortTitle || config.title}
+                    </span>
                   </button>
                 );
               })}
             </div>
-
-            <div className="relative hidden h-[22rem] w-[22rem] rounded-full border border-border/60 bg-surface/95 shadow-2xl backdrop-blur sm:block">
-              <div className="absolute inset-[4.9rem] rounded-full border border-dashed border-primary/20" />
-              <div className="absolute inset-[1.1rem] rounded-full border border-dashed border-border/70" />
-
-              {inner.map((workflow, index) => (
-                <OrbitItem
-                  key={workflow}
-                  workflow={workflow}
-                  currentWorkflow={currentWorkflow}
-                  position={orbitPosition(index, inner.length, 82)}
-                  onSelect={selectWorkflow}
-                />
-              ))}
-              {outer.map((workflow, index) => (
-                <OrbitItem
-                  key={workflow}
-                  workflow={workflow}
-                  currentWorkflow={currentWorkflow}
-                  position={orbitPosition(index, outer.length, 145, -64)}
-                  onSelect={selectWorkflow}
-                />
-              ))}
-
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="absolute left-1/2 top-1/2 grid h-16 w-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[6px] border-primary-soft bg-primary text-white shadow-lg"
-                aria-label="Close academic navigation"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </>
+          </div>
         ) : null}
 
         <button
@@ -137,10 +99,10 @@ export default function AcademicOrbitNavigator({ currentWorkflow = "" }) {
           aria-label={open ? "Close academic navigation" : "Open academic navigation"}
           className={cn(
             "ml-auto grid h-14 w-14 place-items-center rounded-full border-[5px] border-primary-soft bg-primary text-white shadow-xl transition hover:scale-105",
-            open && "sm:hidden",
+            open && "shadow-lg",
           )}
         >
-          <GraduationCap className="h-5 w-5" />
+          {open ? <X className="h-5 w-5" /> : <GraduationCap className="h-5 w-5" />}
         </button>
       </div>
     </>
