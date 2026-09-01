@@ -142,37 +142,6 @@ export const classService = {
     api.post(`/tenant-admin/setup-assistant/classes/${classId}/remove`, {}),
 };
 
-export const departmentService = {
-  getDepartments: (levelId, options = {}) =>
-    api.get(
-      `/academic-levels/${levelId}/departments?${buildQuery(options, { activeOnly: "active_only", includeArchived: "include_archived" })}`,
-    ),
-  createDepartment: (levelId, payload) =>
-    api.post(`/academic-levels/${levelId}/departments`, payload),
-  updateDepartment: (levelId, departmentId, payload) =>
-    api.patch(`/academic-levels/${levelId}/departments/${departmentId}`, payload),
-  activateDepartment: (levelId, departmentId) =>
-    api.post(`/academic-levels/${levelId}/departments/${departmentId}/activate`, {
-      confirmation: "ACTIVATE_DEPARTMENT",
-    }),
-  deactivateDepartment: (levelId, departmentId) =>
-    api.post(`/academic-levels/${levelId}/departments/${departmentId}/deactivate`, {
-      confirmation: "DEACTIVATE_DEPARTMENT",
-    }),
-  archiveDepartment: (levelId, departmentId) =>
-    api.post(`/academic-levels/${levelId}/departments/${departmentId}/archive`, {
-      confirmation: "ARCHIVE_DEPARTMENT",
-    }),
-  restoreDepartment: (levelId, departmentId) =>
-    api.post(`/academic-levels/${levelId}/departments/${departmentId}/restore`, {
-      confirmation: "RESTORE_DEPARTMENT",
-    }),
-  deleteDepartment: (levelId, departmentId) =>
-    api.delete(`/academic-levels/${levelId}/departments/${departmentId}`, {
-      body: JSON.stringify({ confirmation: "DELETE_DEPARTMENT" }),
-    }),
-};
-
 export const armLabelService = {
   getArmLabels: async (options = {}) => {
     const response = await api.get(
