@@ -1,16 +1,51 @@
 import { ArrowLeft, ArrowRight, SkipForward } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import { supportsDepartmentWorkflow } from "../../features/academic-admin/academicDepartmentCapability";
 import AdminGuideTaskWorkspace from "../../features/guides/AdminGuideTaskWorkspace";
 import { ROLE_GUIDES } from "../../features/guides/roleGuideConfig";
+import { academicLevelService } from "../../services/academicsService";
+
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 
 function AdminGettingStartedStepPage() {
   const navigate = useNavigate();
   const { step: stepId } = useParams();
-  const steps = ROLE_GUIDES.admin.steps;
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [capabilitiesReady, setCapabilitiesReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    academicLevelService
+      .getCategories()
+      .then((result) => {
+        if (mounted) setCategoryOptions(asItems(result));
+      })
+      .catch(() => {
+        if (mounted) setCategoryOptions([]);
+      })
+      .finally(() => {
+        if (mounted) setCapabilitiesReady(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const steps = useMemo(() => {
+    const configured = ROLE_GUIDES.admin.steps;
+    if (!capabilitiesReady) return configured;
+    return supportsDepartmentWorkflow(categoryOptions)
+      ? configured
+      : configured.filter((item) => item.id !== "departments");
+  }, [capabilitiesReady, categoryOptions]);
+
+  if (!capabilitiesReady) return null;
+
   const index = steps.findIndex((item) => item.id === stepId);
   const step = steps[index];
 
