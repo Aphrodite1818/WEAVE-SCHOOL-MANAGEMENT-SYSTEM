@@ -16,6 +16,7 @@ from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.modules.bulk_imports.live_service import BulkImportLiveService
 from app.modules.bulk_imports.models import ImportJobStatus, ImportResourceType
+from app.modules.bulk_imports.optimized_service import OptimizedBulkImportService
 from app.modules.bulk_imports.repository import ImportJobRepository
 from app.modules.bulk_imports.result_writer import (
     create_error_report,
@@ -95,7 +96,7 @@ async def dry_run_bulk_import(
     file: UploadFile = File(...),
     notify_on_completion: bool = Form(default=True),
 ) -> ImportJobDetailResponse:
-    return await BulkImportService.create_dry_run_from_upload(
+    return await OptimizedBulkImportService.create_dry_run_from_upload(
         db=db,
         actor=current_user,
         resource_type=resource_type,
@@ -160,7 +161,7 @@ async def upload_bulk_import(
     dry_run: bool = Form(default=False),
     notify_on_completion: bool = Form(default=True),
 ) -> ImportJobDetailResponse:
-    return await BulkImportService.create_import_from_upload(
+    return await OptimizedBulkImportService.create_import_from_upload(
         db=db,
         actor=current_user,
         resource_type=resource_type,
