@@ -2,13 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
-import {
-  academicLevelService,
-  departmentService,
-} from "../../services/academicsService";
+import { academicLevelService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 import { curriculumService } from "../../services/curriculumService";
+import { departmentService } from "../../services/departmentService";
 import { subjectService } from "../../services/subject.service";
 import {
   RecordList,
@@ -28,14 +26,14 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const [levels, setLevels] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [terms, setTerms] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [levelDepartments, setLevelDepartments] = useState([]);
   const [levelId, setLevelId] = useState("");
   const [curriculum, setCurriculum] = useState(null);
   const [subjectId, setSubjectId] = useState("");
   const [elective, setElective] = useState(false);
   const [scopeSubjectId, setScopeSubjectId] = useState("");
   const [termId, setTermId] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
+  const [academicLevelDepartmentId, setAcademicLevelDepartmentId] = useState("");
   const [offerings, setOfferings] = useState([]);
   const [editorMode, setEditorMode] = useState("");
   const [saving, setSaving] = useState("");
@@ -67,24 +65,22 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const loadLevel = useCallback(async () => {
     if (!levelId) {
       setCurriculum(null);
-      setDepartments([]);
+      setLevelDepartments([]);
       return;
     }
     try {
       const [curriculumResponse, departmentResponse] = await Promise.all([
         curriculumService.getCurriculum(levelId),
-        departmentService.getDepartments(levelId),
+        departmentService.getLevelDepartments(levelId, { activeOnly: true }),
       ]);
       setCurriculum(curriculumResponse);
-      setDepartments(
-        items(departmentResponse).filter((row) => row.is_active !== false && !row.archived_at),
-      );
+      setLevelDepartments(items(departmentResponse));
       setScopeSubjectId((current) =>
         (curriculumResponse?.subjects || []).some((row) => row.id === current)
           ? current
           : curriculumResponse?.subjects?.[0]?.id || "",
       );
-      setDepartmentId("");
+      setAcademicLevelDepartmentId("");
     } catch (error) {
       showError(getErrorMessage(error, "Could not load this level curriculum."));
     }
@@ -124,9 +120,9 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     (row) => !attached.has(row.id) && row.is_active !== false && !row.archived_at,
   );
   const termById = useMemo(() => new Map(terms.map((row) => [row.id, row])), [terms]);
-  const departmentById = useMemo(
-    () => new Map(departments.map((row) => [row.id, row])),
-    [departments],
+  const levelDepartmentById = useMemo(
+    () => new Map(levelDepartments.map((row) => [row.id, row])),
+    [levelDepartments],
   );
 
   const addSubject = async (event) => {
@@ -184,12 +180,12 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     try {
       await curriculumService.addOffering(scopeSubjectId, {
         academic_term_id: termId,
-        department_id: departmentId || null,
+        academic_level_department_id: academicLevelDepartmentId || null,
       });
       setEditorMode("");
       await loadOfferings();
       showSuccess(
-        departmentId
+        academicLevelDepartmentId
           ? "Department-specific offering configured."
           : "General level offering configured.",
       );
@@ -215,11 +211,16 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
 
   const offeringRows = offerings.map((row) => {
     const term = termById.get(row.academic_term_id);
-    const department = row.department_id ? departmentById.get(row.department_id) : null;
+    const levelDepartment = row.academic_level_department_id
+      ? levelDepartmentById.get(row.academic_level_department_id)
+      : null;
+    const departmentName = row.department_name || levelDepartment?.department_name;
     return {
       ...row,
       termLabel: term ? termName(term.name) : "Academic term",
-      scopeLabel: department ? `${department.name} department` : "General · all classes in level",
+      scopeLabel: departmentName
+        ? `${departmentName} department only`
+        : "General · all classes in level",
     };
   });
 
@@ -241,7 +242,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
           editorOpen ? (
             <WorkspacePanel
               title="Configure term offering"
-              description="General offerings reach every class in the level; department offerings target one specialization."
+              description="General offerings reach every class in the level; specialized offerings target an active level-department mapping."
             >
               <form className="space-y-3" onSubmit={addOffering}>
                 <SelectControl
@@ -265,16 +266,22 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                 />
                 <SelectControl
                   label="Scope"
-                  value={departmentId}
-                  onChange={setDepartmentId}
+                  value={academicLevelDepartmentId}
+                  onChange={setAcademicLevelDepartmentId}
                   options={[
                     { value: "", label: "General — every class in this level" },
-                    ...departments.map((row) => ({
+                    ...levelDepartments.map((row) => ({
                       value: row.id,
-                      label: `${row.name} department only`,
+                      label: `${row.department_name || "Department"} department only`,
                     })),
                   ]}
                 />
+                {levelDepartments.length === 0 ? (
+                  <p className="text-xs leading-5 text-text-muted">
+                    No specializations are active for this level. Configure Department → Level
+                    Availability before creating a specialized offering.
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="submit"
@@ -293,7 +300,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
         content={
           <RecordList
             title="Term offerings"
-            description="Offerings decide whether a curriculum subject is taught generally or to a department in a specific term."
+            description="Offerings decide whether a curriculum subject is taught generally or to one level specialization in a specific term."
             actions={
               <div className="flex min-w-[18rem] flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="min-w-0 flex-1">{levelControl}</div>
@@ -372,7 +379,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
       content={
         <RecordList
           title={curriculum?.level_name ? `${curriculum.level_name} curriculum` : "Curriculum"}
-          description="The level-owned source used by term offerings, teacher assignments, results, and reports."
+          description="The level-owned subject set used by term offerings, teacher assignments, results, and reports."
           actions={
             <div className="flex min-w-[18rem] flex-col gap-2 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1">{levelControl}</div>

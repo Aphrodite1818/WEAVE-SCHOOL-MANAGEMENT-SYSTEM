@@ -91,16 +91,13 @@ export const academicWorkflowConfig = {
     title: "Departments",
     shortTitle: "Departments",
     description:
-      "Configure specializations for levels whose institution category supports departments.",
+      "Create school-wide specializations, choose which levels use them, and set term-specific class placement.",
     icon: Users,
     tone: "warning",
-    defaultTab: "overview",
+    defaultTab: "pool",
     tabs: [
-      { id: "overview", label: "All Departments" },
-      { id: "create", label: "Add Department" },
-      { id: "active", label: "Active" },
-      { id: "inactive", label: "Inactive" },
-      { id: "archived", label: "Archived" },
+      { id: "pool", label: "Department Pool" },
+      { id: "availability", label: "Level Availability" },
       { id: "placements", label: "Class Placements" },
     ],
   },
@@ -260,6 +257,7 @@ export const academicToneStyles = {
   accent: "bg-accent-soft text-accent",
   neutral: "bg-surface-muted text-text-muted",
 };
+
 export const academicWorkflowSummaryCards = [
   {
     label: "Sessions",
@@ -293,7 +291,7 @@ export const academicWorkflowSummaryCards = [
   },
   {
     label: "Departments",
-    description: "Level specialization",
+    description: "Pool, level availability and placement",
     to: "/admin/academic/departments",
     icon: Users,
   },

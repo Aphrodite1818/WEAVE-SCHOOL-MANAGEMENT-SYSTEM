@@ -38,11 +38,11 @@ export const curriculumService = {
     api.get(
       `/tenant-admin/academics/classes/${classId}/terms/${termId}/department`,
     ),
-  setClassDepartment: (classId, termId, departmentId) =>
+  setClassDepartment: (classId, termId, academicLevelDepartmentId) =>
     api.put(
       `/tenant-admin/academics/classes/${classId}/terms/${termId}/department`,
       {
-        department_id: departmentId,
+        academic_level_department_id: academicLevelDepartmentId,
       },
     ),
   clearClassDepartment: (classId, termId) =>
