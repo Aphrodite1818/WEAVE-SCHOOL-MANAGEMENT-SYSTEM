@@ -35,10 +35,13 @@ const lifecycleSteps = [
 ];
 
 const createActionWorkflows = new Set([
+  "sessions",
+  "terms",
   "levels",
   "arm-labels",
   "classes",
   "departments",
+  "subjects",
 ]);
 
 const normalizeTab = (workflow, tab) => {
