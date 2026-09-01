@@ -164,7 +164,7 @@ function SuperadminDashboardPage() {
             ]}
           />
 
-          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Platform mode"
               value={lockdownEnabled ? "Locked" : "Normal"}
@@ -246,7 +246,7 @@ function SuperadminDashboardPage() {
               primaryAction={{ to: "/superadmin/control-center", label: lockdownEnabled ? "Manage Lockdown" : "Control Center", icon: KeyRound }}
               secondaryAction={{ to: "/superadmin/analytics", label: "Security analytics", icon: BarChart3 }}
             >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Token reuse" value={tokenReuse} />
                 <InfoTile label="Unusual actors" value={unusualSignals} />
                 <InfoTile label="Sessions 24h" value={metricNumber(securityStats.sessions_last_24h)} />
@@ -262,7 +262,7 @@ function SuperadminDashboardPage() {
               icon={GaugeIcon}
               tone="primary"
             >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Total schools" value={totalTenants} />
                 <InfoTile label="Active schools" value={activeTenants} />
                 <InfoTile label="Loaded admins" value={superadmins.length} />

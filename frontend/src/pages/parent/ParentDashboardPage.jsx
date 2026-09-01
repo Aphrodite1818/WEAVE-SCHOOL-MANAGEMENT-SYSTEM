@@ -216,7 +216,7 @@ function ParentDashboardPage() {
             academicLabel={selectedChildAcademicLabel}
           />
 
-          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Linked children"
               value={linkedStudents}
@@ -260,7 +260,7 @@ function ParentDashboardPage() {
               primaryAction={{ to: "/parent/results", label: "View results", icon: BarChart3, disabled: !selectedChildId }}
               secondaryAction={{ to: "/parent/report-cards", label: "Report cards", icon: FileText, disabled: !selectedChildId }}
             >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Selected child" value={selectedChildName} />
                 <InfoTile label="Latest average" value={latestAverageValue} />
                 <InfoTile label="Strongest subject" value={subjectHighlights.best?.label || "Awaiting results"} />

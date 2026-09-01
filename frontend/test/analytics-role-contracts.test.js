@@ -27,7 +27,7 @@ test("parent analytics is discoverable without inventing a backend route", async
   assert.match(navigation, /Family Insights[^\n]*\/parent\/analytics/);
 });
 
-test("actor dashboard metrics collapse to one column on narrow phones", async () => {
+test("actor dashboard metrics remain a two-column grid on narrow phones", async () => {
   const styles = await read("src/styles/mobileDashboard.css");
   const dashboards = await Promise.all([
     read("src/pages/admin/AdminDashboardPage.jsx"),
@@ -36,8 +36,18 @@ test("actor dashboard metrics collapse to one column on narrow phones", async ()
     read("src/pages/parent/ParentDashboardPage.jsx"),
     read("src/pages/superadmin/SuperadminDashboardPage.jsx"),
   ]);
+  const analyticsPages = await Promise.all([
+    read("src/pages/shared/RoleAnalyticsPage.jsx"),
+    read("src/pages/superadmin/SuperadminAnalyticsPage.jsx"),
+    read("src/pages/superadmin/SuperadminTrafficMonitorPage.jsx"),
+  ]);
 
-  assert.match(styles, /#dashboard-content \.dashboard-kpi-grid \{\s*grid-template-columns: minmax\(0, 1fr\)/);
-  assert.match(styles, /@media \(min-width: 430px\)[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
-  dashboards.forEach((source) => assert.match(source, /dashboard-kpi-grid dashboard-kpi-grid-four/));
+  assert.match(styles, /#dashboard-content \.dashboard-kpi-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(styles, /#dashboard-content \.dashboard-kpi-grid \{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  dashboards.forEach((source) => {
+    assert.match(source, /dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2/);
+  });
+  analyticsPages.forEach((source) => {
+    assert.match(source, /grid grid-cols-2/);
+  });
 });

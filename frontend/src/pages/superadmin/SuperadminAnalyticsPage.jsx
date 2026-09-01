@@ -172,7 +172,7 @@ function SuperadminAnalyticsPage() {
             <RiskIndicatorsCard indicators={riskIndicators} />
           </section>
 
-          <section className="analytics-metric-grid grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 xl:grid-cols-6">
+          <section className="analytics-metric-grid grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-6">
             <MissionTile label="Security events" value={securityEvents} icon={ShieldAlert} danger={securityEvents > 0} />
             <MissionTile label="Active sessions" value={activeSessions} icon={Server} />
             <MissionTile label="Sessions 24h" value={sessions24h} icon={BarChart3} />

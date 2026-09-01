@@ -252,7 +252,7 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
         <div className="analytics-page space-y-6 lg:space-y-8">
           <AnalyticsInsight insight={insight} />
 
-          <section className="analytics-metric-grid grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+          <section className="analytics-metric-grid grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {copy.metricCards.map((metric) => (
               <DashboardMetricCard
                 key={metric.key}

@@ -180,7 +180,7 @@ function AdminDashboardPage() {
             ]}
           />
 
-          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Students"
               value={totalStudents}
@@ -224,7 +224,7 @@ function AdminDashboardPage() {
               primaryAction={{ to: "/admin/academic", label: "Open academic hub", icon: BookOpen }}
               secondaryAction={{ to: "/admin/analytics", label: "Advanced analytics", icon: BarChart3, disabled: !advancedAnalyticsGuard.allowed }}
             >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Active session" value={cleanText(stats.active_academic_session, "Not set")} />
                 <InfoTile label="Active term" value={cleanText(stats.active_academic_term, "Not set")} />
                 <InfoTile label="Result completion" value={`${resultCompletion}%`} />
