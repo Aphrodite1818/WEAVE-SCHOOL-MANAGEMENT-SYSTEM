@@ -7,7 +7,6 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictException
 from app.core.utils.normalization import normalized_class_arm_key, normalized_class_name_key
 from app.modules.auth.account_email_guard import INVITATION_EMAIL_CONFLICT_MESSAGE
 from app.modules.auth_identity.models import ActorType, AuthIdentity, IdentifierType
@@ -45,7 +44,6 @@ async def resolve_student_class_references_batch(
         for result in validation_results
         if not _is_blank(result.normalized_row.get("level"))
     }
-    level_keys.discard(None)
     levels = (
         list(
             (
@@ -69,7 +67,6 @@ async def resolve_student_class_references_batch(
         for result in validation_results
         if not _is_blank(result.normalized_row.get("arm"))
     }
-    arm_keys.discard(None)
     arms = (
         list(
             (
@@ -149,9 +146,7 @@ async def resolve_student_class_references_batch(
             | (Department.normalized_name.in_(supplied_department_names))
         )
         departments = list(
-            (
-                await db.execute(select(Department).where(*department_filters))
-            )
+            (await db.execute(select(Department).where(*department_filters)))
             .scalars()
             .all()
         )
@@ -318,7 +313,9 @@ async def resolve_student_class_references_batch(
                 validation_result=validation_result,
                 field_name="department",
                 error_code="department_inactive",
-                error_message=f"Department {supplied_department.name} is inactive or archived.",
+                error_message=(
+                    f"Department {supplied_department.name} is inactive or archived."
+                ),
             )
             continue
         if supplied_department.id != assigned_department.id:
@@ -374,7 +371,9 @@ async def preflight_student_parent_invitations_batch(
                     func.lower(SuperAdmin.email).in_(unique_emails)
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     identities = list(
         (
