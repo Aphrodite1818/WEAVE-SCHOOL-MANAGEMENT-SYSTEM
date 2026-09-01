@@ -83,7 +83,9 @@ class ClassTermDepartmentAssignment(BaseModel):
 class CurriculumOffering(BaseModel):
     __tablename__ = "curriculum_offerings"
     curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     academic_term_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("academic_terms.id", ondelete="CASCADE"), nullable=False

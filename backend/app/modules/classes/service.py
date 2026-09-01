@@ -837,18 +837,14 @@ class ArmLabelService:
             await db.refresh(row)
             return ArmLabelResponse.model_validate(row)
 
-        dependencies = await ArmLabelRepository.count_dependencies(
-            db, actor.tenant_id, row.id
-        )
+        dependencies = await ArmLabelRepository.count_dependencies(db, actor.tenant_id, row.id)
         if ArmLabelService._has_any_usage(dependencies):
             raise ConflictException(
                 "This arm label has already been used and can no longer be renamed.",
                 payload={"dependency_counts": dependencies},
             )
 
-        existing = await ArmLabelRepository.get_by_normalized_label(
-            db, actor.tenant_id, normalized
-        )
+        existing = await ArmLabelRepository.get_by_normalized_label(db, actor.tenant_id, normalized)
         if existing is not None and existing.id != row.id:
             raise ConflictException("Arm label with this name already exists")
 
@@ -873,9 +869,7 @@ class ArmLabelService:
         if not row.is_active:
             return ArmLabelResponse.model_validate(row)
 
-        dependencies = await ArmLabelRepository.count_dependencies(
-            db, actor.tenant_id, row.id
-        )
+        dependencies = await ArmLabelRepository.count_dependencies(db, actor.tenant_id, row.id)
         live_dependencies = ArmLabelService._live_dependency_counts(dependencies)
         if live_dependencies:
             raise ConflictException(
@@ -923,9 +917,7 @@ class ArmLabelService:
         if row.is_active:
             raise ConflictException("Deactivate the arm label before archiving it")
 
-        dependencies = await ArmLabelRepository.count_dependencies(
-            db, actor.tenant_id, row.id
-        )
+        dependencies = await ArmLabelRepository.count_dependencies(db, actor.tenant_id, row.id)
         live_dependencies = ArmLabelService._live_dependency_counts(dependencies)
         if live_dependencies:
             raise ConflictException(
@@ -971,9 +963,7 @@ class ArmLabelService:
         if row is None:
             raise NotFoundException("Arm label not found")
 
-        dependencies = await ArmLabelRepository.count_dependencies(
-            db, actor.tenant_id, row.id
-        )
+        dependencies = await ArmLabelRepository.count_dependencies(db, actor.tenant_id, row.id)
         if ArmLabelService._has_any_usage(dependencies):
             raise ConflictException(
                 "This arm label has already been used and cannot be permanently deleted.",
@@ -1075,7 +1065,9 @@ class ClassRoomService:
         row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id)
         if not row:
             raise NotFoundException("Classroom not found")
-        if not isinstance(actor, TenantAdmin) and (not row.is_active or row.archived_at is not None):
+        if not isinstance(actor, TenantAdmin) and (
+            not row.is_active or row.archived_at is not None
+        ):
             raise NotFoundException("Classroom not found")
         return ClassRoomResponse.model_validate(row)
 
@@ -1144,9 +1136,8 @@ class ClassRoomService:
         data = payload.model_dump(exclude_unset=True)
         level_id = data.get("academic_level_id", row.academic_level_id)
         arm_id = data.get("arm_label_id", row.arm_label_id)
-        structural_change = (
-            ("academic_level_id" in data and level_id != row.academic_level_id)
-            or ("arm_label_id" in data and arm_id != row.arm_label_id)
+        structural_change = ("academic_level_id" in data and level_id != row.academic_level_id) or (
+            "arm_label_id" in data and arm_id != row.arm_label_id
         )
 
         if structural_change:

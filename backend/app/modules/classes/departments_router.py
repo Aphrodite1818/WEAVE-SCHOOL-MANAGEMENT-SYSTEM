@@ -30,7 +30,9 @@ CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenan
 
 
 @router.post("/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
-async def create_department(payload: DepartmentCreate, db: DbSession, current_admin: CurrentTenantAdmin):
+async def create_department(
+    payload: DepartmentCreate, db: DbSession, current_admin: CurrentTenantAdmin
+):
     return await DepartmentPoolService.create_department(db, current_admin, payload)
 
 
@@ -122,7 +124,9 @@ async def attach_department(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    return await DepartmentPoolService.attach_to_level(db, current_admin, academic_level_id, payload)
+    return await DepartmentPoolService.attach_to_level(
+        db, current_admin, academic_level_id, payload
+    )
 
 
 @router.get(

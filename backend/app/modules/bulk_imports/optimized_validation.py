@@ -110,9 +110,7 @@ async def resolve_student_class_references_batch(
         if level_ids and arm_ids
         else []
     )
-    classrooms_by_key = {
-        (room.academic_level_id, room.arm_label_id): room for room in classrooms
-    }
+    classrooms_by_key = {(room.academic_level_id, room.arm_label_id): room for room in classrooms}
 
     assignments_by_class: dict[UUID, ClassTermDepartmentAssignment] = {}
     if current_term is not None and classrooms:
@@ -131,9 +129,7 @@ async def resolve_student_class_references_batch(
             .scalars()
             .all()
         )
-        assignments_by_class = {
-            assignment.class_id: assignment for assignment in assignments
-        }
+        assignments_by_class = {assignment.class_id: assignment for assignment in assignments}
     else:
         assignments = []
 
@@ -295,9 +291,8 @@ async def resolve_student_class_references_batch(
             )
             continue
         assigned_link, assigned_department = assigned_pair
-        if (
-            assigned_link.academic_level_id != level.id
-            or not mapping_is_available(assigned_link, assigned_department)
+        if assigned_link.academic_level_id != level.id or not mapping_is_available(
+            assigned_link, assigned_department
         ):
             append_validation_error(
                 validation_result=validation_result,
@@ -416,11 +411,7 @@ async def preflight_student_parent_invitations_batch(
     )
     identities_by_email = {identity.identifier: identity for identity in identities}
     parents = list(
-        (
-            await db.execute(
-                select(ParentAccount).where(ParentAccount.email.in_(unique_emails))
-            )
-        )
+        (await db.execute(select(ParentAccount).where(ParentAccount.email.in_(unique_emails))))
         .scalars()
         .all()
     )

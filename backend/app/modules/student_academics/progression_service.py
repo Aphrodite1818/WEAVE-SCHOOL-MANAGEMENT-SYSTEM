@@ -229,7 +229,9 @@ class AcademicProgressionService:
         created_by_admin_id: uuid.UUID | None,
     ) -> StudentProgressionItem:
         if next_session.status != AcademicSessionStatus.DRAFT:
-            raise ConflictException("The target academic session must remain draft during progression.")
+            raise ConflictException(
+                "The target academic session must remain draft during progression."
+            )
         if next_session.start_date is None:
             raise ConflictException("The target academic session is missing its start date.")
         current = await StudentEnrollmentRepository.get_current(

@@ -143,9 +143,7 @@ class DepartmentPoolService:
             raise ConflictException("Archived departments cannot be deactivated")
         if not row.is_active:
             return DepartmentPoolService._response(row)
-        counts = await CanonicalDepartmentRepository.count_level_links(
-            db, actor.tenant_id, row.id
-        )
+        counts = await CanonicalDepartmentRepository.count_level_links(db, actor.tenant_id, row.id)
         if counts["level_links_active"]:
             raise ConflictException(
                 "Disable this department for every academic level before deactivating it",
@@ -191,9 +189,7 @@ class DepartmentPoolService:
             return DepartmentPoolService._response(row)
         if row.is_active:
             raise ConflictException("Deactivate the department before archiving it")
-        counts = await CanonicalDepartmentRepository.count_level_links(
-            db, actor.tenant_id, row.id
-        )
+        counts = await CanonicalDepartmentRepository.count_level_links(db, actor.tenant_id, row.id)
         if counts["level_links_active"]:
             raise ConflictException(
                 "This department is still enabled for an academic level",
@@ -239,9 +235,7 @@ class DepartmentPoolService:
         )
         if row is None:
             raise NotFoundException("Department not found")
-        counts = await CanonicalDepartmentRepository.count_level_links(
-            db, actor.tenant_id, row.id
-        )
+        counts = await CanonicalDepartmentRepository.count_level_links(db, actor.tenant_id, row.id)
         if counts["level_links_total"]:
             raise ConflictException(
                 "This department has level history and cannot be permanently deleted",
@@ -258,10 +252,14 @@ class DepartmentPoolService:
         if level is None:
             raise NotFoundException("Academic level not found")
         if level.status != AcademicLevelStatus.ACTIVE:
-            raise ConflictException("Academic level must be active before departments are configured")
+            raise ConflictException(
+                "Academic level must be active before departments are configured"
+            )
         tenant = await TenantRepository.get_by_id(db, tenant_id)
         if tenant is None or tenant.institution_type is None:
-            raise ConflictException("Institution type is required before departments are configured")
+            raise ConflictException(
+                "Institution type is required before departments are configured"
+            )
         if not category_supports_departments(tenant.institution_type, level.category):
             raise ConflictException("Departments are not supported by this academic level category")
         return level
@@ -282,13 +280,17 @@ class DepartmentPoolService:
         if department is None:
             raise NotFoundException("Department not found")
         if not department.is_active or department.archived_at is not None:
-            raise ConflictException("Department must be globally active before it can be enabled for a level")
+            raise ConflictException(
+                "Department must be globally active before it can be enabled for a level"
+            )
         existing = await AcademicLevelDepartmentRepository.get_for_level_department(
             db, actor.tenant_id, academic_level_id, department.id, lock=True
         )
         if existing is not None:
             if existing.archived_at is not None:
-                raise ConflictException("Restore the existing level department instead of creating another")
+                raise ConflictException(
+                    "Restore the existing level department instead of creating another"
+                )
             raise ConflictException("This department is already configured for the academic level")
         row = AcademicLevelDepartment(
             tenant_id=actor.tenant_id,
@@ -373,7 +375,9 @@ class DepartmentPoolService:
         if row.archived_at is not None:
             raise ConflictException("Restore this level department before activating it")
         if not row.department.is_active or row.department.archived_at is not None:
-            raise ConflictException("Activate the canonical department before enabling it for a level")
+            raise ConflictException(
+                "Activate the canonical department before enabling it for a level"
+            )
         row.is_active = True
         await AcademicLevelDepartmentRepository.save(db, row)
         await db.commit()

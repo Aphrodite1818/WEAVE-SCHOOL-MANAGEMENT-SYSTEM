@@ -174,8 +174,7 @@ def project_teacher_assignment(
             CurriculumOffering.academic_term_id == term.id,
             or_(
                 CurriculumOffering.academic_level_department_id.is_(None),
-                CurriculumOffering.academic_level_department_id
-                == academic_level_department_id,
+                CurriculumOffering.academic_level_department_id == academic_level_department_id,
             ),
         )
         .limit(1)
