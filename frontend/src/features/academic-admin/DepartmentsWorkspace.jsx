@@ -32,6 +32,28 @@ const termName = (value) =>
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 const lifecycleStatus = (row) =>
   row.archived_at ? "archived" : row.is_active ? "active" : "inactive";
+const normalizedDepartmentName = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+const editDistance = (left, right) => {
+  const a = normalizedDepartmentName(left);
+  const b = normalizedDepartmentName(right);
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[b.length];
+};
 
 export default function DepartmentsWorkspace({ activeTab = "overview" }) {
   const { showError, showSuccess } = useToast();
@@ -93,6 +115,27 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
         : departments,
     [activeTab, departments],
   );
+  const exactDuplicate = useMemo(() => {
+    const candidate = normalizedDepartmentName(name);
+    if (!candidate) return null;
+    return (
+      departments.find(
+        (row) =>
+          row.id !== editing?.id && normalizedDepartmentName(row.name) === candidate,
+      ) || null
+    );
+  }, [departments, editing?.id, name]);
+  const similarDepartment = useMemo(() => {
+    if (exactDuplicate || normalizedDepartmentName(name).length < 5) return null;
+    return (
+      departments.find(
+        (row) =>
+          row.id !== editing?.id &&
+          normalizedDepartmentName(row.name).length >= 5 &&
+          editDistance(row.name, name) <= 2,
+      ) || null
+    );
+  }, [departments, editing?.id, exactDuplicate, name]);
 
   const loadDepartments = useCallback(async () => {
     if (!levelId) {
@@ -161,6 +204,10 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
   const saveDepartment = async (event) => {
     event.preventDefault();
     if (!name.trim() || !levelId) return;
+    if (exactDuplicate) {
+      showError(`${exactDuplicate.name} already exists in this academic level.`);
+      return;
+    }
     setSaving("department");
     try {
       if (editing) {
@@ -187,7 +234,10 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
       if (action === "deactivate") await departmentService.deactivateDepartment(levelId, item.id);
       if (action === "archive") await departmentService.archiveDepartment(levelId, item.id);
       if (action === "restore") await departmentService.restoreDepartment(levelId, item.id);
-      showSuccess(`Department ${action}d.`);
+      if (action === "delete") await departmentService.deleteDepartment(levelId, item.id);
+      showSuccess(
+        action === "delete" ? "Department permanently deleted." : `Department ${action}d.`,
+      );
       setPendingAction(null);
       await loadDepartments();
     } catch (error) {
@@ -233,6 +283,7 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
         deactivate: ["Deactivate department", "DEACTIVATE_DEPARTMENT", "Deactivate"],
         archive: ["Archive department", "ARCHIVE_DEPARTMENT", "Archive"],
         restore: ["Restore department", "RESTORE_DEPARTMENT", "Restore"],
+        delete: ["Permanently delete department", "DELETE_DEPARTMENT", "Delete permanently"],
       }[pendingAction.action]
     : null;
   const showEditor = activeTab === "create" || Boolean(editing);
@@ -360,10 +411,25 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
                   placeholder="Science"
                   required
                 />
+                {exactDuplicate ? (
+                  <p className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+                    {exactDuplicate.name} already exists in this academic level. Use the
+                    existing department instead of creating a duplicate.
+                  </p>
+                ) : similarDepartment ? (
+                  <p className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-text-muted">
+                    Check the spelling: this looks very similar to {similarDepartment.name}.
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="submit"
-                    disabled={saving === "department" || !levelId || !name.trim()}
+                    disabled={
+                      saving === "department" ||
+                      !levelId ||
+                      !name.trim() ||
+                      Boolean(exactDuplicate)
+                    }
                   >
                     {saving === "department"
                       ? "Saving…"
@@ -471,6 +537,15 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
                         Restore
                       </Button>
                     ) : null}
+                    {["inactive", "archived"].includes(status) ? (
+                      <Button
+                        size="small"
+                        variant="danger"
+                        onClick={() => setPendingAction({ item: row, action: "delete" })}
+                      >
+                        Delete permanently
+                      </Button>
+                    ) : null}
                   </>
                 );
               }}
@@ -481,10 +556,14 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
       <TypedConfirmationDialog
         open={Boolean(pendingAction)}
         title={actionConfig?.[0]}
-        description={`${pendingAction?.item?.name || "This department"} will move through the supported department lifecycle. Live class placements and offerings remain protected by backend dependency checks.`}
+        description={
+          pendingAction?.action === "delete"
+            ? `${pendingAction?.item?.name || "This department"} will be permanently removed only if it has never been used by a class placement or curriculum offering. Used departments are rejected by the backend and retained as academic history.`
+            : `${pendingAction?.item?.name || "This department"} will move through the supported department lifecycle. Live class placements and offerings remain protected by backend dependency checks.`
+        }
         confirmationText={actionConfig?.[1] || ""}
         confirmLabel={actionConfig?.[2]}
-        variant={["deactivate", "archive"].includes(pendingAction?.action) ? "danger" : "primary"}
+        variant={["deactivate", "archive", "delete"].includes(pendingAction?.action) ? "danger" : "primary"}
         isLoading={saving === pendingAction?.item?.id}
         onConfirm={runLifecycle}
         onCancel={() => setPendingAction(null)}
