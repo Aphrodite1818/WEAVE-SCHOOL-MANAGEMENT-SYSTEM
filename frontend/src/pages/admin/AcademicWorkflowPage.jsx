@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import AcademicLevelsWorkspace from "../../features/academic-admin/AcademicLevelsWorkspace";
+import AcademicPeriodsWorkspace from "../../features/academic-admin/AcademicPeriodsWorkspace";
 import AcademicSetupWorkspace from "../../features/academic-admin/AcademicSetupWorkspace";
 import AcademicWorkflowShell from "../../features/academic-admin/AcademicWorkflowShell";
 import ArmLabelsWorkspace from "../../features/academic-admin/ArmLabelsWorkspace";
@@ -87,23 +88,30 @@ export default function AcademicWorkflowPage() {
     if (workflow === "grading") {
       return <GradingScalesWorkspace key={key} activeTab={activeTab} />;
     }
-    if (
-      workflow === "sessions" &&
-      ["overview", "open", "closing"].includes(activeTab)
-    ) {
+    if (workflow === "sessions" && activeTab === "closing") {
       return (
         <SessionLifecycleWorkspace
-          key="session-lifecycle"
+          key="session-closing"
           activeTab={activeTab}
           onContextChange={updateContext}
         />
       );
     }
-    if (["sessions", "terms", "subjects"].includes(workflow)) {
+    if (["sessions", "terms"].includes(workflow)) {
+      return (
+        <AcademicPeriodsWorkspace
+          key={key}
+          domain={workflow}
+          activeTab={activeTab}
+          onContextChange={updateContext}
+        />
+      );
+    }
+    if (workflow === "subjects") {
       return (
         <AcademicSetupWorkspace
           key={key}
-          domain={workflow}
+          domain="subjects"
           activeTab={activeTab}
           onContextChange={updateContext}
         />
@@ -165,7 +173,10 @@ export default function AcademicWorkflowPage() {
       return activeTab === "events" ? (
         <SchoolCalendarEventsWorkspace key="calendar-events" />
       ) : (
-        <SchoolCalendarWorkspace key={`calendar-${activeTab}`} activeTab={activeTab} />
+        <SchoolCalendarWorkspace
+          key={`calendar-${activeTab}`}
+          activeTab={activeTab}
+        />
       );
     }
     return <Navigate to="/admin/academic" replace />;
