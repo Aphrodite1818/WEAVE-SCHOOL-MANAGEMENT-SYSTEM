@@ -1,10 +1,7 @@
 import { Check } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import {
-  buildRegistrationHref,
-  formatLimitValue,
-} from "../../features/subscriptions/subscriptionConfig";
+import { formatLimitValue } from "../../features/subscriptions/subscriptionConfig";
 import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 
@@ -22,13 +19,7 @@ function formatPrice(plan) {
   return `₦${Number(plan.pricePerTerm).toLocaleString()}`;
 }
 
-function PublicPricingCard({
-  plan,
-  selected = false,
-  onSelect,
-  id,
-  className = "",
-}) {
+function PublicPricingCard({ plan, selected = false, id, className = "" }) {
   const features = (plan.features || []).slice(0, 4);
   const price = formatPrice(plan);
   const compactPrice = /unavailable/i.test(price);
@@ -70,13 +61,10 @@ function PublicPricingCard({
       </p>
 
       <Link
-        to={buildRegistrationHref(plan.planCode)}
-        onClick={() => onSelect?.(plan.planCode)}
+        to="/register"
         className="mt-7 block"
       >
-        <Button className="min-h-12 w-full rounded-xl">
-          Choose {plan.name}
-        </Button>
+        <Button className="min-h-12 w-full rounded-xl">Get Started</Button>
       </Link>
 
       <div className="my-8 border-t border-border/70" />

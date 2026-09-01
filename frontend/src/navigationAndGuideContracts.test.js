@@ -61,7 +61,7 @@ test("academic level categories come from the institution-scoped backend catalog
   assert.doesNotMatch(levelsWorkspace, /value: "SENIOR_SECONDARY"/);
 });
 
-test("assisted term opening honors registration plan intent", () => {
+test("assisted term opening keeps plan choice inside authenticated term flow", () => {
   const academicSetup = readSource(
     "features",
     "academic-admin",
@@ -74,7 +74,8 @@ test("assisted term opening honors registration plan intent", () => {
   assert.match(academicSetup, /plan_code: termPlanPrompt\.suggested_plan/);
   assert.match(academicSetup, /window\.location\.assign\(subscriptionService\.checkoutRedirectUrl\(checkout\)\)/);
   assert.match(academicSetup, /billing\/plans\?term=/);
-  assert.match(registerPage, /selectedPlan\?\.planCode/);
+  assert.doesNotMatch(registerPage, /selectedPlan\?\.planCode/);
+  assert.doesNotMatch(registerPage, /initial_plan_intent/);
   assert.match(plansPage, /option\.plan_code === "free"/);
   assert.match(plansPage, /activateFreeTerm\(term\.id\)/);
 });

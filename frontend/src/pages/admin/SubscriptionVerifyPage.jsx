@@ -6,7 +6,6 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import { clearSelectedSubscriptionPlan } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { academicService } from "../../services/academicService";
 import { parseApiError } from "../../services/api";
@@ -71,7 +70,6 @@ function SubscriptionVerifyPage() {
 
         if (!mounted) return;
 
-        clearSelectedSubscriptionPlan();
         setSuccessRoute(returnPath);
         setStatus("success");
         setMessage(
@@ -97,7 +95,6 @@ function SubscriptionVerifyPage() {
             academicTermId: apiError.data?.academic_term_id,
             reference,
           });
-          clearSelectedSubscriptionPlan();
           setSuccessRoute("/admin/billing");
           setStatus("review");
           setMessage(apiError.message);

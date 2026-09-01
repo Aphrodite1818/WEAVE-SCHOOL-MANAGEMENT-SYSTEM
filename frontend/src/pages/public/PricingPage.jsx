@@ -10,7 +10,6 @@ import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import {
   LANDING_PRICING_PLANS,
-  buildRegistrationHref,
   formatLimitValue,
 } from "../../features/subscriptions/subscriptionConfig";
 
@@ -98,7 +97,7 @@ function PricingPage() {
                     </Button>
                   </a>
                   <Link
-                    to={buildRegistrationHref("free")}
+                    to="/register"
                     className="w-full sm:w-auto"
                   >
                     <Button
@@ -237,7 +236,7 @@ function PricingPage() {
               an existing term is upgraded.
             </p>
             <Link
-              to={buildRegistrationHref("free")}
+              to="/register"
               className="mt-8 inline-flex"
             >
               <Button size="large">Get started</Button>

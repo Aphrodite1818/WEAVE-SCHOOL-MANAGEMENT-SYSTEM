@@ -18,8 +18,6 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import {
   LANDING_PRICING_PLANS,
-  buildRegistrationHref,
-  saveSelectedSubscriptionPlan,
 } from "../../features/subscriptions/subscriptionConfig";
 
 const features = [
@@ -100,10 +98,6 @@ function LandingPage() {
     (plan) => plan.planCode !== "free",
   );
 
-  const handlePlanSelection = (planCode) => {
-    saveSelectedSubscriptionPlan({ planCode, billingInterval: "term" });
-  };
-
   useEffect(() => {
     if (!location.hash) return;
     const target = document.getElementById(location.hash.slice(1));
@@ -139,7 +133,7 @@ function LandingPage() {
                   operations into one structured workspace.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <Link to={buildRegistrationHref("free")}>
+                  <Link to="/register">
                     <Button size="large" className="w-full sm:w-auto">
                       Get started free
                     </Button>
@@ -175,7 +169,6 @@ function LandingPage() {
                     <Link
                       key={plan.planCode}
                       to="/pricing"
-                      onClick={() => handlePlanSelection(plan.planCode)}
                       className={`rounded-[1.25rem] border px-4 py-4 text-left transition ${
                         plan.highlighted
                           ? "border-primary/40 bg-primary/10"
@@ -335,7 +328,6 @@ function LandingPage() {
                   plan={plan}
                   id={`landing-plan-${plan.planCode}`}
                   selected={activePricingPlan === plan.planCode}
-                  onSelect={handlePlanSelection}
                 />
               ))}
             </div>
@@ -372,7 +364,7 @@ function LandingPage() {
               Create your school workspace on Free. Move to a paid plan only
               when an academic term needs greater capacity or premium features.
             </p>
-            <Link to={buildRegistrationHref("free")} className="mt-8 inline-flex">
+            <Link to="/register" className="mt-8 inline-flex">
               <Button size="large">Create workspace</Button>
             </Link>
           </div>

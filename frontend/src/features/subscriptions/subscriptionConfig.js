@@ -111,8 +111,6 @@ export const LANDING_PRICING_PLANS = [
   },
 ];
 
-const SUBSCRIPTION_SELECTION_STORAGE_KEY = "weave_subscription_selection";
-
 const ATTENTION_STATUSES = new Set();
 
 const canonicalPlanCode = (value) => {
@@ -122,8 +120,6 @@ const canonicalPlanCode = (value) => {
   if (normalized === "free_trial") return "free";
   return PLAN_ORDER.includes(normalized) ? normalized : "free";
 };
-
-const canonicalBillingInterval = () => "term";
 
 export const formatPlanName = (planCode) =>
   PLAN_DISPLAY_NAMES[canonicalPlanCode(planCode)] || "Free";
@@ -167,52 +163,3 @@ export const formatUsageValue = (usage) => {
   return `${usage.used} / ${usage.limit ?? 0}`;
 };
 
-export const buildRegistrationHref = (planCode) => {
-  const nextPlanCode = canonicalPlanCode(planCode);
-  const params = new URLSearchParams({
-    plan: nextPlanCode,
-    billing: "term",
-  });
-  return `/register?${params.toString()}`;
-};
-
-export const saveSelectedSubscriptionPlan = ({
-  planCode,
-  billingInterval = "term",
-} = {}) => {
-  if (typeof window === "undefined") return;
-
-  const payload = {
-    planCode: canonicalPlanCode(planCode),
-    billingInterval: canonicalBillingInterval(billingInterval),
-  };
-
-  window.sessionStorage.setItem(
-    SUBSCRIPTION_SELECTION_STORAGE_KEY,
-    JSON.stringify(payload),
-  );
-};
-
-export const getSelectedSubscriptionPlan = () => {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const rawValue = window.sessionStorage.getItem(
-      SUBSCRIPTION_SELECTION_STORAGE_KEY,
-    );
-    if (!rawValue) return null;
-
-    const parsed = JSON.parse(rawValue);
-    return {
-      planCode: canonicalPlanCode(parsed?.planCode),
-      billingInterval: "term",
-    };
-  } catch {
-    return null;
-  }
-};
-
-export const clearSelectedSubscriptionPlan = () => {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(SUBSCRIPTION_SELECTION_STORAGE_KEY);
-};

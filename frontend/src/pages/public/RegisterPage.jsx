@@ -1,31 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, CheckCircle2, TriangleAlert } from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowRight, TriangleAlert } from "lucide-react";
 import AuthLayout from "../../components/layout/AuthLayout";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
 import { tenantService } from "../../services/tenant.service";
 import { authService } from "../../services/auth.service";
 import { parseApiError, remapFieldErrors } from "../../services/api";
-import {
-  LANDING_PRICING_PLANS,
-  formatPlanName,
-  getSelectedSubscriptionPlan,
-  saveSelectedSubscriptionPlan,
-} from "../../features/subscriptions/subscriptionConfig";
 
 const REGISTER_FIELD_MAP = {
   school_name: "schoolName",
 };
 
-const canonicalPlanCode = (value) =>
-  String(value || "").toLowerCase() === "free_trial"
-    ? "free"
-    : String(value || "").toLowerCase();
-
 function RegisterPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({
     schoolName: "",
     email: "",
@@ -36,30 +24,6 @@ function RegisterPage() {
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [passwordStrength, setPasswordStrength] = useState(0);
-  const selectedPlan = useMemo(() => {
-    const queryPlan = canonicalPlanCode(searchParams.get("plan"));
-    const queryBilling = searchParams.get("billing");
-    const storedPlan = getSelectedSubscriptionPlan();
-    return (
-      (queryPlan && {
-        planCode: queryPlan,
-        billingInterval: queryBilling || "term",
-      }) ||
-      storedPlan
-    );
-  }, [searchParams]);
-  const selectedPlanDetails = useMemo(
-    () =>
-      LANDING_PRICING_PLANS.find(
-        (plan) => plan.planCode === selectedPlan?.planCode,
-      ) || null,
-    [selectedPlan],
-  );
-
-  useEffect(() => {
-    if (selectedPlan) saveSelectedSubscriptionPlan(selectedPlan);
-  }, [selectedPlan]);
-
   const getPasswordStrength = (password) => {
     let score = 0;
     if (password.length >= 8) score++;
@@ -117,9 +81,6 @@ function RegisterPage() {
         school_name: formData.schoolName,
         email: formData.email,
         password: formData.password,
-        ...(selectedPlan?.planCode
-          ? { initial_plan_intent: selectedPlan.planCode }
-          : {}),
       });
 
       if (result?.verification_required) {
@@ -194,40 +155,6 @@ function RegisterPage() {
           {error}
         </div>
       )}
-
-      {selectedPlan?.planCode ? (
-        <div className="mb-5 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-4">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                First-term preference
-              </p>
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <p className="text-base font-semibold text-text">
-                  {formatPlanName(selectedPlan.planCode)}
-                </p>
-                {selectedPlanDetails?.priceLabel ? (
-                  <span className="text-sm text-text-muted">
-                    {selectedPlanDetails.priceLabel}
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-2 text-xs leading-5 text-text-muted">
-                No payment is collected during registration. Your school starts
-                on permanent Free access, and this preference is only suggested
-                when you open an academic term.
-              </p>
-              <Link
-                to="/pricing"
-                className="mt-2 inline-flex text-xs font-semibold text-primary hover:text-primary-hover"
-              >
-                Change preference
-              </Link>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-3.5">
         <Input
