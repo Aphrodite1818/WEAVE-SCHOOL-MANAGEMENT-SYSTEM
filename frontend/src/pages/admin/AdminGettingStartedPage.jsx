@@ -1,14 +1,43 @@
 import { ArrowRight, CheckCircle2, GraduationCap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import { supportsDepartmentWorkflow } from "../../features/academic-admin/academicDepartmentCapability";
 import { ROLE_GUIDES } from "../../features/guides/roleGuideConfig";
+import { academicLevelService } from "../../services/academicsService";
+
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 
 function AdminGettingStartedPage() {
   const navigate = useNavigate();
   const guide = ROLE_GUIDES.admin;
+  const [categoryOptions, setCategoryOptions] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+    academicLevelService
+      .getCategories()
+      .then((result) => {
+        if (mounted) setCategoryOptions(asItems(result));
+      })
+      .catch(() => {
+        if (mounted) setCategoryOptions([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const steps = useMemo(
+    () =>
+      supportsDepartmentWorkflow(categoryOptions)
+        ? guide.steps
+        : guide.steps.filter((step) => step.id !== "departments"),
+    [categoryOptions, guide.steps],
+  );
 
   return (
     <DashboardLayout
@@ -45,7 +74,7 @@ function AdminGettingStartedPage() {
         </Card>
 
         <div className="grid gap-3 md:grid-cols-2">
-          {guide.steps.map((step, index) => {
+          {steps.map((step, index) => {
             const Icon = step.icon || CheckCircle2;
             return (
               <button
