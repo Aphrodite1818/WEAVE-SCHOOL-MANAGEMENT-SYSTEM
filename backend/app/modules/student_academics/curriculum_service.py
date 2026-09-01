@@ -9,7 +9,12 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException, NotFoundException
-from app.modules.classes.models import AcademicLevel, AcademicLevelStatus
+from app.modules.classes.models import (
+    AcademicLevel,
+    AcademicLevelDepartment,
+    AcademicLevelStatus,
+    Department,
+)
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
@@ -34,7 +39,7 @@ class ResolvedCurriculumOffering:
     curriculum_subject_id: uuid.UUID
     subject_id: uuid.UUID
     academic_term_id: uuid.UUID
-    department_id: uuid.UUID | None
+    academic_level_department_id: uuid.UUID | None
     is_elective: bool
 
 
@@ -48,14 +53,11 @@ class CurriculumResolutionService:
         tenant_id: uuid.UUID,
         academic_level_id: uuid.UUID,
         academic_term_id: uuid.UUID,
-        department_id: uuid.UUID | None,
+        academic_level_department_id: uuid.UUID | None,
     ) -> list[ResolvedCurriculumOffering]:
         result = await db.execute(
             select(CurriculumOffering, CurriculumSubject)
-            .join(
-                CurriculumSubject,
-                CurriculumSubject.id == CurriculumOffering.curriculum_subject_id,
-            )
+            .join(CurriculumSubject, CurriculumSubject.id == CurriculumOffering.curriculum_subject_id)
             .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
             .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
             .join(Subject, Subject.id == CurriculumSubject.subject_id)
@@ -72,34 +74,35 @@ class CurriculumResolutionService:
                 Subject.is_active.is_(True),
                 Subject.archived_at.is_(None),
                 or_(
-                    CurriculumOffering.department_id.is_(None),
-                    CurriculumOffering.department_id == department_id,
+                    CurriculumOffering.academic_level_department_id.is_(None),
+                    CurriculumOffering.academic_level_department_id == academic_level_department_id,
                 ),
             )
-            .order_by(CurriculumSubject.subject_id, CurriculumOffering.department_id)
+            .order_by(
+                CurriculumSubject.subject_id,
+                CurriculumOffering.academic_level_department_id,
+            )
         )
 
-        # Writes enforce one scope model per subject/term: general OR department-specific.
-        # If both somehow reach resolution, fail loudly rather than inventing precedence.
         resolved: dict[uuid.UUID, ResolvedCurriculumOffering] = {}
         for offering, curriculum_subject in result.all():
             if curriculum_subject.id in resolved:
                 raise ConflictException(
                     "Curriculum offering scope is ambiguous for this term. "
-                    "Use either a general offering or department-specific offerings, not both."
+                    "Use either a general offering or level-department offerings, not both."
                 )
             resolved[curriculum_subject.id] = ResolvedCurriculumOffering(
                 curriculum_offering_id=offering.id,
                 curriculum_subject_id=curriculum_subject.id,
                 subject_id=curriculum_subject.subject_id,
                 academic_term_id=academic_term_id,
-                department_id=offering.department_id,
+                academic_level_department_id=offering.academic_level_department_id,
                 is_elective=curriculum_subject.is_elective,
             )
         return list(resolved.values())
 
     @staticmethod
-    async def resolve_department_for_student(
+    async def resolve_level_department_for_student(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
@@ -110,16 +113,41 @@ class CurriculumResolutionService:
 
         if enrollment.class_id is None:
             return None
-        assignment = (
+        row = (
             await db.execute(
-                select(ClassTermDepartmentAssignment).where(
+                select(
+                    ClassTermDepartmentAssignment,
+                    AcademicLevelDepartment,
+                    Department,
+                )
+                .join(
+                    AcademicLevelDepartment,
+                    AcademicLevelDepartment.id
+                    == ClassTermDepartmentAssignment.academic_level_department_id,
+                )
+                .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                .where(
                     ClassTermDepartmentAssignment.tenant_id == tenant_id,
                     ClassTermDepartmentAssignment.class_id == enrollment.class_id,
                     ClassTermDepartmentAssignment.academic_term_id == academic_term.id,
+                    AcademicLevelDepartment.tenant_id == tenant_id,
+                    Department.tenant_id == tenant_id,
                 )
             )
-        ).scalar_one_or_none()
-        return assignment.department_id if assignment is not None else None
+        ).first()
+        if row is None:
+            return None
+        _assignment, link, department = row
+        if link.academic_level_id != enrollment.academic_level_id:
+            raise ConflictException("Class specialization does not belong to the student's academic level.")
+        if (
+            not link.is_active
+            or link.archived_at is not None
+            or not department.is_active
+            or department.archived_at is not None
+        ):
+            raise ConflictException("Class specialization is no longer active for this academic level.")
+        return link.id
 
     @staticmethod
     async def resolve_student_offerings(
@@ -129,8 +157,6 @@ class CurriculumResolutionService:
         student_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[ResolvedCurriculumOffering]:
-        """Resolve every offering the student may take, including untouched electives."""
-
         term = (
             await db.execute(
                 select(AcademicTerm).where(
@@ -151,7 +177,7 @@ class CurriculumResolutionService:
         if enrollment is None:
             raise ConflictException("Student enrollment for this academic session is required.")
 
-        department_id = await CurriculumResolutionService.resolve_department_for_student(
+        link_id = await CurriculumResolutionService.resolve_level_department_for_student(
             db,
             tenant_id=tenant_id,
             enrollment=enrollment,
@@ -162,7 +188,7 @@ class CurriculumResolutionService:
             tenant_id=tenant_id,
             academic_level_id=enrollment.academic_level_id,
             academic_term_id=term.id,
-            department_id=department_id,
+            academic_level_department_id=link_id,
         )
 
     @staticmethod
@@ -173,13 +199,7 @@ class CurriculumResolutionService:
         student_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[ResolvedCurriculumOffering]:
-        """Return report-card-required curriculum for one student and term.
-
-        Compulsory subjects always participate. An elective is intentionally ignored
-        until at least one assessment score has actually been recorded for it. As soon
-        as score activity exists, the elective becomes a normal required result and
-        the standard completeness/locking rules apply.
-        """
+        """Return report-card-required curriculum for one student and term."""
 
         offerings = await CurriculumResolutionService.resolve_student_offerings(
             db,
