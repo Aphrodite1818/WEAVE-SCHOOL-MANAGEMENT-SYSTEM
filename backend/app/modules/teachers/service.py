@@ -603,14 +603,21 @@ class TeacherMembershipService:
         if membership is None:
             raise NotFoundException("Teacher membership not found.")
 
-        for subject_id in payload.subject_ids:
-            subject = await SubjectRepository.get_subject_by_id(
-                db,
-                actor.tenant_id,
-                subject_id,
-            )
-            if subject is None or not subject.is_active:
-                raise NotFoundException(f"Subject {subject_id} was not found or is inactive.")
+        requested = set(payload.subject_ids)
+        subjects = await SubjectRepository.get_subjects_by_id(
+            db,
+            actor.tenant_id,
+            list(requested),
+        )
+        active_subject_ids = {
+            subject.id
+            for subject in subjects
+            if subject.is_active and subject.archived_at is None
+        }
+        unavailable = requested - active_subject_ids
+        if unavailable:
+            subject_id = sorted(unavailable, key=str)[0]
+            raise NotFoundException(f"Subject {subject_id} was not found or is inactive.")
 
         existing = {
             link.subject_id: link
@@ -620,10 +627,10 @@ class TeacherMembershipService:
                 membership.id,
             )
         }
-        requested = set(payload.subject_ids)
         for subject_id, link in existing.items():
             link.is_active = subject_id in requested
-            await TeacherMembershipSubjectRepository.save(db, link)
+            db.add(link)
+        await db.flush()
 
         missing = [subject_id for subject_id in requested if subject_id not in existing]
         if missing:
