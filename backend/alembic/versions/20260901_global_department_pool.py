@@ -241,8 +241,9 @@ def upgrade() -> None:
 
     op.drop_constraint("uq_departments_tenant_level_name", "departments", schema=SCHEMA, type_="unique")
     op.drop_index("ix_departments_tenant_level_active", table_name="departments", schema=SCHEMA)
-    # academic_level_id was declared index=True before the composite indexes.
-    op.drop_index("ix_departments_academic_level_id", table_name="departments", schema=SCHEMA)
+    # academic_level_id was declared index=True before the composite indexes,
+    # but older local databases may already be missing this redundant index.
+    op.execute(f"DROP INDEX IF EXISTS {SCHEMA}.ix_departments_academic_level_id")
     op.drop_column("departments", "academic_level_id", schema=SCHEMA)
     op.create_unique_constraint(
         "uq_departments_tenant_name", "departments", ["tenant_id", "normalized_name"], schema=SCHEMA
