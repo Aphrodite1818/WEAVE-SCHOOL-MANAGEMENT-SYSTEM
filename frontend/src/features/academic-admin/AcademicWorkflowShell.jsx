@@ -57,6 +57,7 @@ function AcademicWorkflowShell({
   currentTerm,
   loading = false,
   actions,
+  availableWorkflows,
 }) {
   const config = academicWorkflowConfig[workflow];
   const [searchParams, setSearchParams] = useSearchParams();
@@ -158,7 +159,10 @@ function AcademicWorkflowShell({
 
         {children(activeTab)}
       </section>
-      <AcademicOrbitNavigator currentWorkflow={workflow} />
+      <AcademicOrbitNavigator
+        currentWorkflow={workflow}
+        workflows={availableWorkflows}
+      />
     </DashboardLayout>
   );
 }

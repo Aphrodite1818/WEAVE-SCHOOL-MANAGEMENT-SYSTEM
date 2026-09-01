@@ -1,16 +1,55 @@
 import { GraduationCap, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { academicLevelService } from "../../services/academicsService";
 import { cn } from "../../utils/cn";
+import { filterDepartmentWorkflow } from "./academicDepartmentCapability";
 import {
   academicWorkflowConfig,
   academicWorkflowOrder,
 } from "./academicWorkflowConfig";
 
-export default function AcademicOrbitNavigator({ currentWorkflow = "" }) {
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
+
+export default function AcademicOrbitNavigator({
+  currentWorkflow = "",
+  workflows,
+}) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [fallbackWorkflows, setFallbackWorkflows] = useState(() =>
+    filterDepartmentWorkflow(academicWorkflowOrder, []),
+  );
+  const visibleWorkflows = Array.isArray(workflows)
+    ? workflows
+    : fallbackWorkflows;
+
+  useEffect(() => {
+    if (Array.isArray(workflows)) return undefined;
+
+    let mounted = true;
+    academicLevelService
+      .getCategories()
+      .then((response) => {
+        if (mounted) {
+          setFallbackWorkflows(
+            filterDepartmentWorkflow(academicWorkflowOrder, asItems(response)),
+          );
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setFallbackWorkflows(
+            filterDepartmentWorkflow(academicWorkflowOrder, []),
+          );
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [workflows]);
 
   const selectWorkflow = (workflow) => {
     setOpen(false);
@@ -55,7 +94,7 @@ export default function AcademicOrbitNavigator({ currentWorkflow = "" }) {
             </div>
 
             <div className="grid grid-cols-3 gap-2 overflow-y-auto overscroll-contain p-3">
-              {academicWorkflowOrder.map((workflow) => {
+              {visibleWorkflows.map((workflow) => {
                 const config = academicWorkflowConfig[workflow];
                 const Icon = config.icon;
                 const active = workflow === currentWorkflow;

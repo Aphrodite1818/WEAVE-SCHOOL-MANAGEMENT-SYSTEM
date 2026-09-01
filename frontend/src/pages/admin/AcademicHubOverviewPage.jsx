@@ -7,6 +7,7 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import AcademicOrbitNavigator from "../../features/academic-admin/AcademicOrbitNavigator";
+import { filterDepartmentWorkflow } from "../../features/academic-admin/academicDepartmentCapability";
 import {
   buildAcademicHubDirectory,
   filterAcademicHubDirectory,
@@ -16,6 +17,7 @@ import {
   academicWorkflowConfig,
   academicWorkflowOrder,
 } from "../../features/academic-admin/academicWorkflowConfig";
+import { academicLevelService } from "../../services/academicsService";
 import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import {
@@ -27,6 +29,7 @@ import { cn } from "../../utils/cn";
 const ACADEMIC_HUB_CACHE_KEY = getDashboardSessionCacheKey(
   "admin:academic-hub-overview",
 );
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 
 const statusVariant = (status) => {
   const value = String(status || "").toLowerCase();
@@ -38,6 +41,7 @@ const statusVariant = (status) => {
 function AcademicHubOverviewPage() {
   const navigate = useNavigate();
   const [analytics, setAnalytics] = useState(null);
+  const [categoryOptions, setCategoryOptions] = useState([]);
   const [metricsError, setMetricsError] = useState("");
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState("sessions");
@@ -62,16 +66,38 @@ function AcademicHubOverviewPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    academicLevelService
+      .getCategories()
+      .then((response) => {
+        if (mounted) setCategoryOptions(asItems(response));
+      })
+      .catch(() => {
+        if (mounted) setCategoryOptions([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const availableWorkflows = useMemo(
+    () => filterDepartmentWorkflow(academicWorkflowOrder, categoryOptions),
+    [categoryOptions],
+  );
+
   const rows = useMemo(() => {
     const configRows = new Map(
-      academicWorkflowOrder.map((key) => [key, { key, ...academicWorkflowConfig[key] }]),
+      availableWorkflows.map((key) => [key, { key, ...academicWorkflowConfig[key] }]),
     );
-    const directory = buildAcademicHubDirectory(analytics?.stats || {}).map((row) => ({
-      ...configRows.get(row.key),
-      ...row,
-    }));
+    const directory = buildAcademicHubDirectory(analytics?.stats || {})
+      .filter((row) => configRows.has(row.key))
+      .map((row) => ({
+        ...configRows.get(row.key),
+        ...row,
+      }));
     return filterAcademicHubDirectory(directory, query);
-  }, [analytics?.stats, query]);
+  }, [analytics?.stats, availableWorkflows, query]);
 
   useEffect(() => {
     if (!rows.length) return;
@@ -299,7 +325,7 @@ function AcademicHubOverviewPage() {
           ) : null}
         </div>
       </section>
-      <AcademicOrbitNavigator />
+      <AcademicOrbitNavigator workflows={availableWorkflows} />
     </DashboardLayout>
   );
 }

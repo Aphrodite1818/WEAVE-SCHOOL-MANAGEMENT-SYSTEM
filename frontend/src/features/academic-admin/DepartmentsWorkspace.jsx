@@ -331,6 +331,28 @@ export default function DepartmentsWorkspace({ activeTab = "overview" }) {
               description={`Department definitions are scoped to ${selectedLevel?.name || "the selected academic level"}.`}
             >
               <form className="space-y-3" onSubmit={saveDepartment}>
+                <SelectControl
+                  label="Academic level"
+                  value={levelId}
+                  onChange={setLevelId}
+                  options={eligibleLevels.map((row) => ({
+                    value: row.id,
+                    label: row.name,
+                  }))}
+                  placeholder={
+                    eligibleLevels.length
+                      ? "Select department-enabled level"
+                      : "No department-enabled levels"
+                  }
+                  disabled={Boolean(editing)}
+                  required
+                />
+                {editing ? (
+                  <p className="text-xs leading-5 text-text-muted">
+                    A department belongs permanently to one academic level. Create a new
+                    department instead of moving this definition to another level.
+                  </p>
+                ) : null}
                 <Input
                   label="Department name"
                   value={name}
