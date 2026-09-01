@@ -34,7 +34,12 @@ const lifecycleSteps = [
   },
 ];
 
-const createActionWorkflows = new Set(["levels", "arm-labels", "classes"]);
+const createActionWorkflows = new Set([
+  "levels",
+  "arm-labels",
+  "classes",
+  "departments",
+]);
 
 const normalizeTab = (workflow, tab) => {
   const config = academicWorkflowConfig[workflow];
