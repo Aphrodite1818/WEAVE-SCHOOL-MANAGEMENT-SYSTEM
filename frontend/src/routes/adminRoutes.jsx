@@ -63,6 +63,8 @@ import AdminGettingStartedRoute from "./AdminGettingStartedRoute";
 import BulkImportRouteGuard from "./BulkImportRouteGuard";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
+import SubscriptionFeatureRouteGuard from "./SubscriptionFeatureRouteGuard";
+import { FEATURE_CODES } from "../features/subscriptions/subscriptionConfig";
 
 const protectedWorkflow = (element) => (
   <PullRefreshBoundary>{element}</PullRefreshBoundary>
@@ -160,11 +162,19 @@ export const adminRoutes = (
       />
       <Route
         path="/admin/cbt"
-        element={protectedWorkflow(<CBTServersPage />)}
+        element={protectedWorkflow(
+          <SubscriptionFeatureRouteGuard featureCode={FEATURE_CODES.CBT_PAIRING}>
+            <CBTServersPage />
+          </SubscriptionFeatureRouteGuard>,
+        )}
       />
       <Route
         path="/admin/cbt/pairing-code"
-        element={protectedWorkflow(<CBTPairingCodePage />)}
+        element={protectedWorkflow(
+          <SubscriptionFeatureRouteGuard featureCode={FEATURE_CODES.CBT_PAIRING}>
+            <CBTPairingCodePage />
+          </SubscriptionFeatureRouteGuard>,
+        )}
       />
       <Route path="/admin/usage" element={<UsagePage />} />
       <Route path="/admin/inbox" element={<CommunicationInboxPage />} />
@@ -184,7 +194,14 @@ export const adminRoutes = (
         path="/admin/settings"
         element={<RoleSettingsPage role="admin" />}
       />
-      <Route path="/admin/settings/branding" element={<TenantBrandingPage />} />
+      <Route
+        path="/admin/settings/branding"
+        element={
+          <SubscriptionFeatureRouteGuard featureCode={FEATURE_CODES.TENANT_BRANDING}>
+            <TenantBrandingPage />
+          </SubscriptionFeatureRouteGuard>
+        }
+      />
     </Route>
   </Route>
 );

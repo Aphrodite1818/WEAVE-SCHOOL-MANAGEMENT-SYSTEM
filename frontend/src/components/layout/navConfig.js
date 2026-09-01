@@ -134,7 +134,12 @@ export const navGroups = {
           icon: BarChart3,
         },
         { label: "Billing", to: "/admin/billing", icon: CreditCard },
-        { label: "CBT Servers", to: "/admin/cbt", icon: Cpu },
+        {
+          label: "CBT Servers",
+          to: "/admin/cbt",
+          icon: Cpu,
+          featureCode: FEATURE_CODES.CBT_PAIRING,
+        },
         { label: "Usage", to: "/admin/usage", icon: Activity },
         { label: "Settings", to: "/admin/settings", icon: Settings },
       ],

@@ -13,3 +13,4 @@ async def test_public_catalogue_is_term_priced_and_includes_permanent_free(monke
     assert by_code["free"].amount_kobo == 0
     assert by_code["plus"].amount_kobo == 1_700_000
     assert "free_trial" not in by_code
+    assert by_code["free"].features["advanced_analytics"] is True

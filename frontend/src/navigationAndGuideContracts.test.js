@@ -61,6 +61,21 @@ test("academic level categories come from the institution-scoped backend catalog
   assert.doesNotMatch(levelsWorkspace, /value: "SENIOR_SECONDARY"/);
 });
 
+test("academic lifecycle status icons use semantic colors, not tenant branding", () => {
+  const primitives = readSource(
+    "features",
+    "academic-admin",
+    "AcademicWorkspacePrimitives.jsx",
+  );
+
+  assert.match(primitives, /const lifecycleStatusMeta = \(status\) =>/);
+  assert.match(primitives, /"text-success"/);
+  assert.match(primitives, /"text-error"/);
+  assert.match(primitives, /"text-warning"/);
+  assert.match(primitives, /value === "archived" \? Archive : AlertTriangle/);
+  assert.doesNotMatch(primitives, /h-4 w-4 shrink-0 text-primary/);
+});
+
 test("assisted term opening keeps plan choice inside authenticated term flow", () => {
   const academicSetup = readSource(
     "features",
@@ -102,6 +117,25 @@ test("internal billing keeps staging visuals with term-based behavior", () => {
   assert.doesNotMatch(billingPage, /automatic renewal/i);
 });
 
+test("paid-only admin features are hidden instead of rendered for ineligible plans", () => {
+  const sidebar = readSource("components", "layout", "Sidebar.jsx");
+  const navConfig = readSource("components", "layout", "navConfig.js");
+  const adminRoutes = readSource("routes", "adminRoutes.jsx");
+  const settingsPage = readSource("pages", "shared", "RoleSettingsPage.jsx");
+  const analyticsPage = readSource("pages", "shared", "RoleAnalyticsPage.jsx");
+  const adminDashboard = readSource("pages", "admin", "AdminDashboardPage.jsx");
+
+  assert.match(sidebar, /featureGuard\.pending \|\| featureGuard\.allowed === false/);
+  assert.match(navConfig, /featureCode: FEATURE_CODES\.CBT_PAIRING/);
+  assert.match(adminRoutes, /SubscriptionFeatureRouteGuard featureCode=\{FEATURE_CODES\.CBT_PAIRING\}/);
+  assert.match(adminRoutes, /SubscriptionFeatureRouteGuard featureCode=\{FEATURE_CODES\.TENANT_BRANDING\}/);
+  assert.match(settingsPage, /tenantBrandingGuard\.allowed/);
+  assert.match(settingsPage, /!tenantBrandingGuard\.pending/);
+  assert.doesNotMatch(analyticsPage, /Advanced analytics is not active on this plan/);
+  assert.doesNotMatch(analyticsPage, /FEATURE_CODES\.ADVANCED_ANALYTICS/);
+  assert.doesNotMatch(adminDashboard, /FEATURE_CODES\.ADVANCED_ANALYTICS/);
+});
+
 test("new tenant admins enter assisted setup immediately after onboarding", () => {
   const onboardingGate = readSource(
     "components",
@@ -124,6 +158,7 @@ test("linked-school role guides auto-show once with the intended persistence sco
     "useOnboardingGate.js",
   );
   const dashboardLayout = readSource("components", "layout", "DashboardLayout.jsx");
+  const banner = readSource("components", "guides", "GettingStartedBanner.jsx");
   const guideService = readSource("services", "guideService.js");
 
   assert.match(onboardingGate, /teacher: "\/teacher\/getting-started"/);
@@ -135,6 +170,9 @@ test("linked-school role guides auto-show once with the intended persistence sco
   assert.match(guideService, /user\.meta\?\.teacher_account_id/);
   assert.match(guideService, /user\.meta\?\.parent_account_id/);
   assert.match(guideService, /accountScoped\s*\? "global"/);
+  assert.match(dashboardLayout, /await roleGuide\.dismiss\(\)/);
+  assert.match(dashboardLayout, /onDismiss=\{dismissGettingStartedBanner\}/);
+  assert.match(banner, /Do not show again/);
 });
 
 test("tenant admin guide exits always leave the full-screen setup shell", () => {

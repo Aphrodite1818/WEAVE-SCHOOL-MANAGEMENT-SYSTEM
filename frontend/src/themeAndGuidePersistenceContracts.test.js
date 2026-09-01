@@ -29,6 +29,15 @@ test("browser theme chrome is finalized after branded theme tokens paint", () =>
   );
 });
 
+test("tenant admin branding reads reuse the tenant-scoped frontend snapshot", () => {
+  const brandingService = readSource("services", "tenantBrandingService.js");
+
+  assert.match(brandingService, /const adminBrandingSnapshots = new Map\(\)/);
+  assert.match(brandingService, /const adminBrandingCacheKey/);
+  assert.match(brandingService, /getCachedAdminBranding/);
+  assert.match(brandingService, /if \(!force\)/);
+});
+
 test("failed guide writes remain locally terminal and retryable", () => {
   const guideService = readSource("services", "guideService.js");
 

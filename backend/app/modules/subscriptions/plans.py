@@ -26,7 +26,7 @@ def _features(
     announcements: bool = True,
     attendance: bool = True,
     geofencing: bool = True,
-    advanced_analytics: bool = False,
+    advanced_analytics: bool = True,
     ai_assistant: bool = False,
     bulk_import: bool = False,
     bulk_academic_operations: bool = False,
@@ -85,7 +85,6 @@ def _limits(
 
 _FREE_ENTITLEMENTS = PlanEntitlements(
     features=_features(
-        advanced_analytics=False,
         ai_assistant=False,
         bulk_import=False,
         bulk_academic_operations=False,

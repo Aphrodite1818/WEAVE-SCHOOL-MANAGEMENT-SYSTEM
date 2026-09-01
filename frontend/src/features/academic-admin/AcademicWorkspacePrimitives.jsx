@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Archive,
   ArrowRight,
   CheckCircle2,
   Edit3,
@@ -126,16 +127,38 @@ export function FormActions({
   );
 }
 
-const badgeVariant = (status) => {
+const lifecycleStatusMeta = (status) => {
   const value = String(status || "").toLowerCase();
   if (["active", "current", "submitted", "published", "complete"].includes(value)) {
-    return "success";
+    return {
+      badge: "success",
+      Icon: CheckCircle2,
+      iconClassName: "text-success",
+    };
   }
-  if (["draft", "pending", "read_only"].includes(value)) return "warning";
-  if (["inactive", "ended", "failed", "revoked", "archived"].includes(value)) {
-    return "error";
+  if (["archived", "draft", "pending", "read_only"].includes(value)) {
+    return {
+      badge: "warning",
+      Icon: value === "archived" ? Archive : AlertTriangle,
+      iconClassName: "text-warning",
+    };
   }
-  return "default";
+  if (["inactive", "ended", "failed", "revoked"].includes(value)) {
+    return {
+      badge: "error",
+      Icon: AlertTriangle,
+      iconClassName: "text-error",
+    };
+  }
+  return {
+    badge: "default",
+    Icon: Info,
+    iconClassName: "text-text-muted",
+  };
+};
+
+const badgeVariant = (status) => {
+  return lifecycleStatusMeta(status).badge;
 };
 
 export function AcademicStatusBadge({ label, status, helper }) {
@@ -293,6 +316,8 @@ function DefaultRecordInspector({
   canEdit,
 }) {
   const status = renderStatus?.(item);
+  const statusMeta = lifecycleStatusMeta(status);
+  const StatusIcon = statusMeta.Icon;
   const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
 
   return (
@@ -326,7 +351,12 @@ function DefaultRecordInspector({
             Lifecycle
           </p>
           <div className="mt-2 flex items-start gap-2">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <StatusIcon
+              className={cn(
+                "mt-0.5 h-4 w-4 shrink-0",
+                statusMeta.iconClassName,
+              )}
+            />
             <div>
               <p className="text-sm font-semibold text-text">
                 {status ? String(status).replaceAll("_", " ") : "No lifecycle state"}

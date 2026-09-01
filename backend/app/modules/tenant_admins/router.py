@@ -78,7 +78,7 @@ async def get_tenant_admin_onboarding_status(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TenantOnboardingStatusResponse:
-    return await TenantService.get_tenant_admin_onboarding_status(
+    return await TenantService.get_tenant_onboarding_status(
         db,
         current_admin.tenant_id,
     )
@@ -98,7 +98,7 @@ async def complete_tenant_admin_onboarding(
         current_admin.tenant_id,
         payload,
     )
-    return await TenantService.get_tenant_admin_onboarding_status(
+    return await TenantService.get_tenant_onboarding_status(
         db,
         current_admin.tenant_id,
     )

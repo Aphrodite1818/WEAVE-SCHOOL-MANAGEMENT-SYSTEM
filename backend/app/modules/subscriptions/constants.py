@@ -46,5 +46,4 @@ WRITE_GATED_FEATURES = {
     FeatureCode.ANNOUNCEMENTS,
     FeatureCode.AI_ASSISTANT,
     FeatureCode.BULK_IMPORT,
-    FeatureCode.ADVANCED_ANALYTICS,
 }

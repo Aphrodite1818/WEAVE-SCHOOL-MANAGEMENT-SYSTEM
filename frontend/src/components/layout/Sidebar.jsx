@@ -37,7 +37,7 @@ function shouldHideNavItem(item, subscription, runtimeConfig) {
     return true;
   }
 
-  return featureGuard.allowed === false;
+  return featureGuard.pending || featureGuard.allowed === false;
 }
 
 export default function SidebarContent({

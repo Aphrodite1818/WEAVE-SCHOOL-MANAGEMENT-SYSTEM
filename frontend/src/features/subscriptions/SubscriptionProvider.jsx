@@ -19,7 +19,6 @@ const normalizeRole = (value) =>
   String(value || "")
     .trim()
     .toLowerCase();
-const MANAGEMENT_VISIBLE_FEATURES = new Set(["cbt_pairing"]);
 
 const scheduleDeferredWork = (
   callback,
@@ -227,14 +226,6 @@ export function SubscriptionProvider({ children }) {
       }
 
       if (features[featureCode] === false) {
-        if (MANAGEMENT_VISIBLE_FEATURES.has(featureCode)) {
-          return {
-            allowed: true,
-            pending: false,
-            reason:
-              "Management remains available, but new use requires an eligible plan.",
-          };
-        }
         return {
           allowed: false,
           pending: false,

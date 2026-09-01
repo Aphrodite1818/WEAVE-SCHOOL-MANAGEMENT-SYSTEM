@@ -6,7 +6,6 @@ import {
   FileText,
   GraduationCap,
   LineChart,
-  LockKeyhole,
   PieChart,
   TrendingDown,
   TrendingUp,
@@ -23,9 +22,6 @@ import {
 } from "../../components/dashboard/DashboardPrimitives";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
-import Card from "../../components/ui/Card";
-import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
-import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
 import { formatChartLabel } from "../../utils/academicDashboard";
@@ -193,9 +189,6 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
   const copy = roleCopy[role] || roleCopy.admin;
   const [analytics, setAnalytics] = useState(null);
   const [error, setError] = useState(null);
-  const { getFeatureGuard, isTenantAdmin } = useSubscription();
-  const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
-  const shouldGateAdmin = role === "admin" && isTenantAdmin && !advancedAnalyticsGuard.allowed;
 
   useEffect(() => {
     let mounted = true;
@@ -213,12 +206,12 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
       }
     }
 
-    if (!shouldGateAdmin) loadAnalytics();
+    loadAnalytics();
     return () => {
       mounted = false;
       controller.abort();
     };
-  }, [copy, shouldGateAdmin]);
+  }, [copy]);
 
   const stats = analytics?.stats || {};
   const charts = analytics?.charts || {};
@@ -227,19 +220,6 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
   const supportingCharts = visibleCharts.filter((chart) => !chart.featured);
   const insight = getSnapshotInsight(role, stats)
     || getTrendInsight(chartData(charts, copy.trendKey), copy.insightLabel);
-
-  if (shouldGateAdmin) {
-    return (
-      <DashboardLayout role={role} title="Advanced Analytics">
-        <Card className="p-6 sm:p-8">
-          <div className="flex max-w-3xl flex-col gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-warning-soft text-amber-950"><LockKeyhole className="h-5 w-5" /></div>
-            <div><h2 className="section-title">Advanced analytics is not active on this plan</h2><p className="mt-2 text-sm leading-6 text-text-muted">Upgrade when deeper analytics are required.</p></div>
-          </div>
-        </Card>
-      </DashboardLayout>
-    );
-  }
 
   if (!analytics && !error) {
     return <DashboardLayout role={role} title={copy.title} description={copy.description}><LoadingState label="Loading analytics..." /></DashboardLayout>;

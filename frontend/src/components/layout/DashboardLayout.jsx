@@ -19,7 +19,7 @@ import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
-import { authSession } from "../../services/api";
+import { authSession, getErrorMessage } from "../../services/api";
 import { clearDashboardSessionCache } from "../../services/dashboardSessionCache";
 import { legalComplianceService } from "../../services/legalComplianceService";
 import { cn } from "../../utils/cn";
@@ -38,6 +38,7 @@ import Topbar from "./Topbar";
 import { onboardingModalCopy } from "./navConfig";
 import useOnboardingGate from "./useOnboardingGate";
 import useRoleGuide from "../../features/guides/useRoleGuide";
+import { useToast } from "../../hooks/useToast";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
@@ -99,6 +100,7 @@ function DashboardShellFrame({
   const user = useMemo(() => authSession.getUser() || {}, []);
   const location = useLocation();
   const navigate = useNavigate();
+  const { showError } = useToast();
   const role = getRole(user, roleProp);
   const guidePageActive = location.pathname.endsWith("/getting-started");
   const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
@@ -497,6 +499,20 @@ function DashboardShellFrame({
     clearGuideReturn();
     setGuideReturn(null);
   };
+  const dismissGettingStartedBanner = async () => {
+    try {
+      await roleGuide.dismiss();
+      clearGuideReturn();
+      setGuideReturn(null);
+    } catch (error) {
+      showError(
+        getErrorMessage(
+          error,
+          "Could not dismiss the setup guide. Please try again.",
+        ),
+      );
+    }
+  };
   const handleLegalAccepted = (status) => {
     setLegalState({
       loading: false,
@@ -697,6 +713,7 @@ function DashboardShellFrame({
               <GettingStartedBanner
                 guide={roleGuide}
                 onContinue={() => navigate(gettingStartedRoute)}
+                onDismiss={dismissGettingStartedBanner}
               />
             ) : null}
             {children}

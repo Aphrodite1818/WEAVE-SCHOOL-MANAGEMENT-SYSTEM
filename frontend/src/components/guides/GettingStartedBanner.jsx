@@ -2,7 +2,7 @@ import { ArrowRight, ClipboardList } from "lucide-react";
 
 import Button from "../ui/Button";
 
-function GettingStartedBanner({ guide, onContinue }) {
+function GettingStartedBanner({ guide, onContinue, onDismiss }) {
   if (!guide?.config || !guide.currentStep) return null;
 
   return (
@@ -30,7 +30,7 @@ function GettingStartedBanner({ guide, onContinue }) {
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 sm:min-w-52">
+        <div className="flex shrink-0 flex-col gap-2 sm:min-w-52 sm:flex-row sm:items-center sm:gap-3">
           <div className="hidden min-w-24 flex-1 sm:block">
             <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted">
               <div
@@ -39,10 +39,23 @@ function GettingStartedBanner({ guide, onContinue }) {
               />
             </div>
           </div>
-          <Button type="button" size="small" onClick={onContinue} className="w-full sm:w-auto">
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {onDismiss ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="small"
+                onClick={onDismiss}
+                className="w-full sm:w-auto"
+              >
+                Do not show again
+              </Button>
+            ) : null}
+            <Button type="button" size="small" onClick={onContinue} className="w-full sm:w-auto">
+              Continue
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </section>

@@ -20,6 +20,7 @@ import Avatar from "../../components/ui/Avatar";
 import Card from "../../components/ui/Card";
 import { authSession } from "../../services/api";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import {
   applyAccessibilityPreferences,
   getSavedAccessibilityPreferences,
@@ -93,7 +94,8 @@ function ToggleRow({ label, checked, onChange }) {
 function RoleSettingsPage({ role }) {
   const normalizedRole = String(role || "admin").toLowerCase();
   const user = authSession.getUser() || {};
-  const { planCode } = useSubscription();
+  const { getFeatureGuard } = useSubscription();
+  const tenantBrandingGuard = getFeatureGuard(FEATURE_CODES.TENANT_BRANDING);
   const copy = roleCopy[normalizedRole] || roleCopy.admin;
   const isStudent = normalizedRole === "student";
   const displayName = getUserDisplayName(user);
@@ -136,7 +138,9 @@ function RoleSettingsPage({ role }) {
             <SettingsRow icon={UserRound} label="Profile" value={profileSummary || "Details and photo"} to="/profile" />
           </SettingsGroup>
 
-          {normalizedRole === "admin" && ["professional", "enterprise"].includes(String(planCode || "").toLowerCase()) ? (
+          {normalizedRole === "admin" &&
+          tenantBrandingGuard.allowed &&
+          !tenantBrandingGuard.pending ? (
             <SettingsGroup title="School">
               <SettingsRow icon={Palette} label="School branding" description="Manage the shared school identity and colour palette." to="/admin/settings/branding" />
             </SettingsGroup>
