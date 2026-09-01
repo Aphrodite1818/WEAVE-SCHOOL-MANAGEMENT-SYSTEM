@@ -6,16 +6,16 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
-import { classService } from "../../services/academicsService";
 import { academicService } from "../../services/academicService";
+import { classService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
 import { studentService } from "../../services/studentService";
 import {
   Input,
+  RecordList,
   SelectControl,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
-import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
 const BLANK_FORM = {
   result_id: "",
@@ -47,19 +47,28 @@ const assignmentLabel = (item) =>
 const scoreValue = (value) =>
   value === "" || value === null || value === undefined ? null : Number(value);
 
+const readableTerm = (item) =>
+  String(item?.display_name || item?.name || "No term").replaceAll("_", " ");
+
 const statusTitle = (status) =>
   ({
     submitted: "Submit result",
     approved: "Approve result",
     locked: "Lock result",
-  })[status] || "Confirm action";
+  })[status] || "Confirm result action";
 
 const statusDescription = (status, item) =>
   ({
     submitted: `Submit ${item.student_name || "this student's"} ${item.subject_name || "result"} for administrative review?`,
-    approved: `Approve ${item.student_name || "this student's"} ${item.subject_name || "result"} after confirming the scores and grade?`,
-    locked: `Lock ${item.student_name || "this student's"} ${item.subject_name || "result"}? This finalizes it for student, parent, and report-card workflows.`,
-  })[status] || "Confirm this lifecycle action.";
+    approved: `Approve ${item.student_name || "this student's"} ${item.subject_name || "result"} after reviewing the recorded scores?`,
+    locked: `Lock ${item.student_name || "this student's"} ${item.subject_name || "result"}? Locked results become final for report-card workflows until explicitly reopened.`,
+  })[status] || "Confirm this result lifecycle action.";
+
+const badgeVariant = (status) => {
+  if (status === "draft") return "warning";
+  if (status === "locked") return "default";
+  return "success";
+};
 
 function ResultsWorkspace({ activeTab, onContextChange }) {
   const [, setSearchParams] = useSearchParams();
@@ -87,28 +96,6 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
 
   const resetForm = () => setForm(BLANK_FORM);
 
-  const handleEditScore = (item) => {
-    setForm({
-      result_id: item.id,
-      student_id: item.student_id || "",
-      teacher_assignment_id: item.teacher_assignment_id || "",
-      component_scores: Object.fromEntries(
-        (item.components || []).map((component) => [
-          component.assessment_component_id,
-          component.score ?? "",
-        ]),
-      ),
-    });
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set("view", "entry");
-        return next;
-      },
-      { replace: true },
-    );
-  };
-
   const loadBase = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -123,43 +110,31 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         academicService.listSessions({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
         classService.getClasses({ limit: 100, activeOnly: true }),
-        academicService.listTeacherAssignments({
-          active_only: true,
-          limit: 100,
-        }),
+        academicService.listTeacherAssignments({ active_only: true, limit: 100 }),
         academicService.getActiveAssessmentScheme().catch(() => null),
       ]);
 
       const nextSessions = asItems(sessionResponse);
       const nextTerms = asItems(termResponse);
       const nextClasses = asItems(classResponse);
-      const currentSession =
-        nextSessions.find((item) => item.is_current) || null;
+      const currentSession = nextSessions.find((item) => item.is_current) || null;
       const currentTerm = nextTerms.find((item) => item.is_current) || null;
 
       setSessions(nextSessions);
       setTerms(nextTerms);
       setClasses(nextClasses);
-      setAssignments(
-        asItems(assignmentResponse).filter((item) => item.is_active),
-      );
+      setAssignments(asItems(assignmentResponse).filter((item) => item.is_active));
       setAssessmentConfig(configResponse || null);
       setContextFilters((current) => ({
         class_id: current.class_id || nextClasses[0]?.id || "",
         academic_session_id:
-          current.academic_session_id ||
-          currentSession?.id ||
-          nextSessions[0]?.id ||
-          "",
+          current.academic_session_id || currentSession?.id || nextSessions[0]?.id || "",
         academic_term_id:
           current.academic_term_id || currentTerm?.id || nextTerms[0]?.id || "",
       }));
       onContextChange?.({ currentSession, currentTerm });
     } catch (requestError) {
-      const message = getErrorMessage(
-        requestError,
-        "Could not load results workspace.",
-      );
+      const message = getErrorMessage(requestError, "Could not load results workspace.");
       setError(message);
       showError(message);
     } finally {
@@ -182,10 +157,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     } catch (requestError) {
       setStudents([]);
       showError(
-        getErrorMessage(
-          requestError,
-          "Could not load students for this class.",
-        ),
+        getErrorMessage(requestError, "Could not load students for this class."),
       );
     }
   }, [contextFilters.class_id, showError]);
@@ -234,9 +206,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     if (activeTab !== "entry") resetForm();
   }, [activeTab]);
 
-  const selectedClass = classes.find(
-    (item) => item.id === contextFilters.class_id,
-  );
+  const selectedClass = classes.find((item) => item.id === contextFilters.class_id);
   const selectedSession = sessions.find(
     (item) => item.id === contextFilters.academic_session_id,
   );
@@ -245,40 +215,28 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   );
   const periodEditable = Boolean(
     selectedSession?.status === "open" &&
-    selectedSession?.is_current &&
-    selectedTerm?.status === "open" &&
-    selectedTerm?.is_current &&
-    selectedTerm?.academic_session_id === selectedSession?.id,
+      selectedSession?.is_current &&
+      selectedTerm?.status === "open" &&
+      selectedTerm?.is_current &&
+      selectedTerm?.academic_session_id === selectedSession?.id,
   );
   const limitsConfigured = Boolean(
     assessmentConfig?.is_configured && assessmentConfig.components?.length,
   );
 
-  const sessionOptions = sessions.map((item) => ({
-    value: item.id,
-    label: item.name,
-  }));
+  const sessionOptions = sessions.map((item) => ({ value: item.id, label: item.name }));
   const termOptions = terms
     .filter(
       (item) =>
         !contextFilters.academic_session_id ||
         item.academic_session_id === contextFilters.academic_session_id,
     )
-    .map((item) => ({
-      value: item.id,
-      label: String(item.name || "").replaceAll("_", " "),
-    }));
-  const classOptions = classes.map((item) => ({
-    value: item.id,
-    label: classLabel(item),
-  }));
+    .map((item) => ({ value: item.id, label: readableTerm(item) }));
+  const classOptions = classes.map((item) => ({ value: item.id, label: classLabel(item) }));
   const assignmentOptions = assignments
     .filter((item) => item.class_id === contextFilters.class_id)
     .map((item) => ({ value: item.id, label: assignmentLabel(item) }));
-  const studentOptions = students.map((item) => ({
-    value: item.id,
-    label: studentLabel(item),
-  }));
+  const studentOptions = students.map((item) => ({ value: item.id, label: studentLabel(item) }));
 
   const statusCounts = useMemo(
     () =>
@@ -300,8 +258,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   }, [activeTab, results]);
 
   const scoreTotal = (assessmentConfig?.components || []).reduce(
-    (sum, component) =>
-      sum + (Number(form.component_scores?.[component.id]) || 0),
+    (sum, component) => sum + (Number(form.component_scores?.[component.id]) || 0),
     0,
   );
   const totalMaximum = limitsConfigured
@@ -310,20 +267,17 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
 
   const validateScores = () => {
     if (!limitsConfigured) {
-      showWarning(
-        "Configure and activate an assessment scheme before entering scores.",
-      );
+      showWarning("Configure and activate an assessment scheme before entering scores.");
       return false;
     }
     for (const component of assessmentConfig.components) {
-      const label = component.name;
       const value = form.component_scores?.[component.id];
       const maximum = component.maximum_score;
       if (
         value !== "" &&
         (Number(value) < 0 || Number(value) > Number(maximum))
       ) {
-        showWarning(`${label} must be between 0 and ${maximum}.`);
+        showWarning(`${component.name} must be between 0 and ${maximum}.`);
         return false;
       }
     }
@@ -333,9 +287,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   const saveDraft = async (event) => {
     event.preventDefault();
     if (!periodEditable) {
-      showWarning(
-        "Results can only be edited in the current open session and term.",
-      );
+      showWarning("Results can only be edited in the current open session and term.");
       return;
     }
     if (!form.student_id || !form.teacher_assignment_id) {
@@ -357,9 +309,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         })),
         status: "draft",
       });
-      showSuccess(
-        form.result_id ? "Draft result updated." : "Draft result saved.",
-      );
+      showSuccess(form.result_id ? "Draft result updated." : "Draft result saved.");
       resetForm();
       await loadResults();
     } catch (requestError) {
@@ -367,6 +317,29 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     } finally {
       setSaving("");
     }
+  };
+
+  const handleEditScore = (item) => {
+    setForm({
+      result_id: item.id,
+      student_id: item.student_id || "",
+      teacher_assignment_id: item.teacher_assignment_id || "",
+      component_scores: Object.fromEntries(
+        (item.components || []).map((component) => [
+          component.assessment_component_id,
+          component.score ?? "",
+        ]),
+      ),
+    });
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("view", "entry");
+        next.delete("tab");
+        return next;
+      },
+      { replace: true },
+    );
   };
 
   const executeLifecycleAction = async () => {
@@ -379,9 +352,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       setPendingAction(null);
       await loadResults();
     } catch (requestError) {
-      showError(
-        getErrorMessage(requestError, "Could not update result status."),
-      );
+      showError(getErrorMessage(requestError, "Could not update result status."));
     } finally {
       setSaving("");
     }
@@ -406,170 +377,53 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   };
 
   const contextSummary = (
-    <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
+    <div className="rounded-xl border border-border/70 bg-surface px-4 py-3 text-sm text-text-muted">
       <span className="font-semibold text-text">Selected context:</span>{" "}
-      {classLabel(selectedClass)} · {selectedSession?.name || "No session"} ·{" "}
-      {String(selectedTerm?.name || "No term").replaceAll("_", " ")}
+      {classLabel(selectedClass)} · {selectedSession?.name || "No session"} · {readableTerm(selectedTerm)}
     </div>
   );
 
+  const resultActions = (item) => (
+    <ResultActions
+      item={item}
+      periodEditable={periodEditable}
+      busy={saving === item.id}
+      onEdit={handleEditScore}
+      onTransition={(status) => setPendingAction({ item, status })}
+      onReopen={() => {
+        setReopenTarget(item);
+        setReopenReason("");
+      }}
+    />
+  );
+
   const resultsList = (
-    <WorkspacePanel
+    <RecordList
       title={`${activeTab.charAt(0).toUpperCase()}${activeTab.slice(1)} results`}
       description={`${visibleResults.length} result row${visibleResults.length === 1 ? "" : "s"} in this lifecycle stage.`}
-    >
-      <div className="mb-4">
+      items={visibleResults}
+      emptyIcon={ClipboardList}
+      emptyTitle={`No ${activeTab} results`}
+      emptyDescription="No records in this stage match the selected class, academic period, and search."
+      renderTitle={(item) => item.student_name || item.admission_number || "Student"}
+      renderMeta={(item) => item.subject_name || item.subject_code || "Subject"}
+      renderDescription={(item) =>
+        `Total ${item.total_score ?? "–"}${item.maximum_score != null ? `/${item.maximum_score}` : ""} · Grade ${item.grade || "Pending"}`
+      }
+      renderStatus={(item) => item.status}
+      renderActions={resultActions}
+      renderInspector={(item) => (
+        <ResultInspector item={item} actions={resultActions(item)} />
+      )}
+      actions={
         <Input
-          label="Search this page"
+          label="Search"
           value={pageSearch}
-          placeholder="Student, admission number, or subject"
+          placeholder="Student or subject"
           onChange={(event) => setPageSearch(event.target.value)}
         />
-      </div>
-      {visibleResults.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border p-6 text-center">
-          <ClipboardList className="mx-auto h-7 w-7 text-text-muted" />
-          <p className="mt-3 text-sm font-semibold text-text">
-            No {activeTab} results
-          </p>
-          <p className="mt-1 text-sm text-text-muted">
-            No records in this stage match the selected context and this page's
-            search.
-          </p>
-        </div>
-      ) : (
-        <div className="mobile-scroll-list grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-          {visibleResults.map((item) => (
-            <div
-              key={item.id}
-              className="flex min-h-[13rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="break-words font-semibold text-text">
-                    {item.student_name || item.admission_number || "Student"}
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted">
-                    {item.subject_name || item.subject_code || "Subject"}
-                  </p>
-                </div>
-                <Badge
-                  variant={
-                    item.status === "draft"
-                      ? "warning"
-                      : item.status === "locked"
-                        ? "default"
-                        : "success"
-                  }
-                >
-                  {item.status}
-                </Badge>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-3">
-                {[
-                  ...(item.components || []).map((component) => ({
-                    label: component.name,
-                    value: component.score,
-                    maximum: component.maximum_score,
-                  })),
-                  {
-                    label: "Total",
-                    value: item.total_score,
-                    maximum: item.maximum_score,
-                  },
-                ].map(({ label, value, maximum }) => (
-                  <div
-                    key={label}
-                    className="rounded-xl bg-surface-muted/40 px-2 py-2"
-                  >
-                    <p className="text-[10px] uppercase tracking-wide text-text-muted">
-                      {label}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-text">
-                      {value ?? "–"}
-                      {maximum != null ? `/${maximum}` : ""}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-sm text-text-muted">
-                <GraduationCap className="h-4 w-4" />
-                Grade: {item.grade || "Pending"}
-              </div>
-              {item.status === "locked" ? (
-                <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-muted/40 px-3 py-2 text-xs text-text-muted">
-                  <LockKeyhole className="h-4 w-4" /> Finalized and read-only
-                </div>
-              ) : null}
-              <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                {item.status === "draft" ? (
-                  <>
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="outline"
-                      disabled={!periodEditable}
-                      onClick={() => handleEditScore(item)}
-                    >
-                      Edit scores
-                    </Button>
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="success"
-                      disabled={!periodEditable || saving === item.id}
-                      onClick={() =>
-                        setPendingAction({ item, status: "submitted" })
-                      }
-                    >
-                      Submit
-                    </Button>
-                  </>
-                ) : null}
-                {item.status === "submitted" ? (
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="success"
-                    disabled={!periodEditable || saving === item.id}
-                    onClick={() =>
-                      setPendingAction({ item, status: "approved" })
-                    }
-                  >
-                    Approve
-                  </Button>
-                ) : null}
-                {item.status === "approved" ? (
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="danger"
-                    disabled={!periodEditable || saving === item.id}
-                    onClick={() => setPendingAction({ item, status: "locked" })}
-                  >
-                    Lock
-                  </Button>
-                ) : null}
-                {item.status === "locked" ? (
-                  <Button
-                    type="button"
-                    size="small"
-                    variant="outline"
-                    disabled={!periodEditable || saving === item.id}
-                    onClick={() => {
-                      setReopenTarget(item);
-                      setReopenReason("");
-                    }}
-                  >
-                    Reopen
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </WorkspacePanel>
+      }
+    />
   );
 
   if (error && !loading) {
@@ -586,105 +440,97 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   let pageContent;
   if (activeTab === "overview") {
     pageContent = (
-      <div className="space-y-4">
-        <WorkspacePanel
-          title="Results overview"
-          description="Choose the class and academic period once. Every Results page uses this context until it is changed here."
+      <WorkspacePanel
+        title="Results context"
+        description="Choose the class and academic period once. Lifecycle pages reuse this selection until it changes."
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <SelectControl
+            label="Class"
+            value={contextFilters.class_id}
+            onChange={(value) => {
+              setContextFilters((current) => ({ ...current, class_id: value }));
+              resetForm();
+            }}
+            options={classOptions}
+            required
+          />
+          <SelectControl
+            label="Academic session"
+            value={contextFilters.academic_session_id}
+            onChange={(value) => {
+              const nextTerm =
+                terms.find((item) => item.academic_session_id === value && item.is_current) ||
+                terms.find((item) => item.academic_session_id === value);
+              setContextFilters((current) => ({
+                ...current,
+                academic_session_id: value,
+                academic_term_id: nextTerm?.id || "",
+              }));
+              resetForm();
+            }}
+            options={sessionOptions}
+            required
+          />
+          <SelectControl
+            label="Academic term"
+            value={contextFilters.academic_term_id}
+            onChange={(value) => {
+              setContextFilters((current) => ({ ...current, academic_term_id: value }));
+              resetForm();
+            }}
+            options={termOptions}
+            required
+          />
+        </div>
+
+        <div
+          className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+            periodEditable
+              ? "border-success/30 bg-success/5 text-success"
+              : "border-warning/30 bg-warning/5 text-warning"
+          }`}
         >
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <SelectControl
-              label="Class"
-              value={contextFilters.class_id}
-              onChange={(value) => {
-                setContextFilters((current) => ({
-                  ...current,
-                  class_id: value,
-                }));
-                resetForm();
-              }}
-              options={classOptions}
-              required
-            />
-            <SelectControl
-              label="Academic session"
-              value={contextFilters.academic_session_id}
-              onChange={(value) => {
-                const nextTerm = terms.find(
-                  (item) =>
-                    item.academic_session_id === value && item.is_current,
-                );
-                setContextFilters((current) => ({
-                  ...current,
-                  academic_session_id: value,
-                  academic_term_id:
-                    nextTerm?.id ||
-                    terms.find((item) => item.academic_session_id === value)
-                      ?.id ||
-                    "",
-                }));
-                resetForm();
-              }}
-              options={sessionOptions}
-              required
-            />
-            <SelectControl
-              label="Academic term"
-              value={contextFilters.academic_term_id}
-              onChange={(value) => {
-                setContextFilters((current) => ({
-                  ...current,
-                  academic_term_id: value,
-                }));
-                resetForm();
-              }}
-              options={termOptions}
-              required
-            />
+          {periodEditable
+            ? "Current period is open. Score entry and lifecycle actions are available."
+            : "The selected period is read-only. Choose the current open session and term to make changes."}
+        </div>
+
+        {!limitsConfigured ? (
+          <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning">
+            No assessment scheme is active. Score entry remains unavailable until an admin activates one under Grading.
           </div>
-          <div
-            className={`mt-4 rounded-xl border px-4 py-3 text-sm ${periodEditable ? "border-success/30 bg-success/5 text-success" : "border-warning/30 bg-warning/5 text-warning"}`}
-          >
-            {periodEditable
-              ? "Current period is open. Score entry and lifecycle actions are available."
-              : "The selected period is read-only. Choose the current open session and term to make changes."}
-          </div>
-          {!limitsConfigured ? (
-            <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-900">
-              No assessment scheme is active. Score entry remains unavailable
-              until an admin activates one under Grading.
-            </div>
-          ) : null}
-        </WorkspacePanel>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-xl border border-border/70 sm:grid-cols-4">
           {[
             ["Draft", statusCounts.draft],
             ["Submitted", statusCounts.submitted],
             ["Approved", statusCounts.approved],
             ["Locked", statusCounts.locked],
-          ].map(([label, count]) => (
+          ].map(([label, count], index) => (
             <div
               key={label}
-              className="rounded-2xl border border-border/70 bg-surface px-4 py-4"
+              className={`px-4 py-3 ${index ? "border-l border-border/70" : ""}`}
             >
-              <p className="text-sm text-text-muted">{label}</p>
-              <p className="mt-2 text-2xl font-semibold text-text">{count}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">{label}</p>
+              <p className="mt-1 text-xl font-semibold text-text">{count}</p>
             </div>
           ))}
         </div>
-      </div>
+      </WorkspacePanel>
     );
   } else if (activeTab === "entry") {
     pageContent = (
       <div className="space-y-4">
         {contextSummary}
         <WorkspacePanel
-          title="Score entry"
-          description="Enter scores for the configured assessment components and save them as a draft."
+          title={form.result_id ? "Edit draft scores" : "Score entry"}
+          description="Enter the configured assessment components and save the record as a draft."
         >
           {!limitsConfigured ? (
-            <p className="rounded-xl bg-warning-soft px-4 py-3 text-sm text-amber-900">
-              No assessment scheme is active. Open Grading → Assessment Scheme
-              before entering scores.
+            <p className="rounded-xl bg-warning-soft px-4 py-3 text-sm text-warning">
+              No assessment scheme is active. Open Grading → Assessment Scheme before entering scores.
             </p>
           ) : null}
           <form className="mt-3 space-y-3" onSubmit={saveDraft}>
@@ -697,7 +543,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
                 }
                 options={studentOptions}
                 placeholder="Select student"
-                disabled={!periodEditable || !limitsConfigured}
+                disabled={!periodEditable || !limitsConfigured || Boolean(form.result_id)}
                 required
               />
               <SelectControl
@@ -718,7 +564,8 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
                 disabled={
                   !periodEditable ||
                   !limitsConfigured ||
-                  assignmentOptions.length === 0
+                  assignmentOptions.length === 0 ||
+                  Boolean(form.result_id)
                 }
                 required
               />
@@ -746,8 +593,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
               ))}
             </div>
             <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-3 py-2 text-sm text-text-muted">
-              Combined score:{" "}
-              <span className="font-semibold text-text">{scoreTotal}</span>
+              Combined score: <span className="font-semibold text-text">{scoreTotal}</span>
               {totalMaximum != null ? ` / ${totalMaximum}` : ""}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -768,7 +614,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
               </Button>
               {form.result_id ? (
                 <Button type="button" variant="outline" onClick={resetForm}>
-                  Cancel
+                  Cancel edit
                 </Button>
               ) : null}
             </div>
@@ -788,25 +634,38 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   return (
     <>
       {pageContent}
-      <TypedConfirmationDialog
+
+      <Modal
         open={Boolean(pendingAction)}
-        title={
-          pendingAction ? statusTitle(pendingAction.status) : "Confirm action"
-        }
+        title={pendingAction ? statusTitle(pendingAction.status) : "Confirm result action"}
         description={
           pendingAction
             ? statusDescription(pendingAction.status, pendingAction.item)
             : ""
         }
-        confirmationText={pendingAction?.status?.toUpperCase() || "CONFIRM"}
-        confirmLabel={
-          pendingAction ? statusTitle(pendingAction.status) : "Confirm"
+        onClose={saving ? undefined : () => setPendingAction(null)}
+        footer={
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(saving)}
+              onClick={() => setPendingAction(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant={pendingAction?.status === "locked" ? "danger" : "primary"}
+              disabled={Boolean(saving)}
+              onClick={executeLifecycleAction}
+            >
+              {saving ? "Saving..." : pendingAction ? statusTitle(pendingAction.status) : "Confirm"}
+            </Button>
+          </div>
         }
-        variant={pendingAction?.status === "locked" ? "danger" : "success"}
-        isLoading={Boolean(pendingAction && saving === pendingAction.item.id)}
-        onConfirm={executeLifecycleAction}
-        onCancel={() => setPendingAction(null)}
       />
+
       <Modal
         open={Boolean(reopenTarget)}
         title="Reopen locked result"
@@ -841,6 +700,145 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         />
       </Modal>
     </>
+  );
+}
+
+function ResultActions({
+  item,
+  periodEditable,
+  busy,
+  onEdit,
+  onTransition,
+  onReopen,
+}) {
+  if (item.status === "draft") {
+    return (
+      <>
+        <Button
+          type="button"
+          size="small"
+          variant="outline"
+          disabled={!periodEditable || busy}
+          onClick={() => onEdit(item)}
+        >
+          Edit scores
+        </Button>
+        <Button
+          type="button"
+          size="small"
+          variant="success"
+          disabled={!periodEditable || busy}
+          onClick={() => onTransition("submitted")}
+        >
+          Submit
+        </Button>
+      </>
+    );
+  }
+  if (item.status === "submitted") {
+    return (
+      <Button
+        type="button"
+        size="small"
+        variant="success"
+        disabled={!periodEditable || busy}
+        onClick={() => onTransition("approved")}
+      >
+        Approve
+      </Button>
+    );
+  }
+  if (item.status === "approved") {
+    return (
+      <Button
+        type="button"
+        size="small"
+        variant="danger"
+        disabled={!periodEditable || busy}
+        onClick={() => onTransition("locked")}
+      >
+        Lock
+      </Button>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      size="small"
+      variant="outline"
+      disabled={!periodEditable || busy}
+      onClick={onReopen}
+    >
+      Reopen
+    </Button>
+  );
+}
+
+function ResultInspector({ item, actions }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
+      <div className="border-b border-border/70 px-4 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-text">
+              {item.student_name || item.admission_number || "Student"}
+            </p>
+            <p className="mt-1 text-xs text-text-muted">
+              {item.subject_name || item.subject_code || "Subject"}
+            </p>
+          </div>
+          <Badge variant={badgeVariant(item.status)}>{item.status}</Badge>
+        </div>
+      </div>
+
+      <div className="divide-y divide-border/70">
+        <section className="px-4 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
+            Scores
+          </p>
+          <dl className="mt-3 space-y-2 text-sm">
+            {(item.components || []).map((component) => (
+              <div key={component.assessment_component_id || component.name} className="flex justify-between gap-4">
+                <dt className="text-text-muted">{component.name}</dt>
+                <dd className="font-semibold text-text">
+                  {component.score ?? "–"}
+                  {component.maximum_score != null ? `/${component.maximum_score}` : ""}
+                </dd>
+              </div>
+            ))}
+            <div className="flex justify-between gap-4 border-t border-border/70 pt-2">
+              <dt className="font-semibold text-text">Total</dt>
+              <dd className="font-semibold text-text">
+                {item.total_score ?? "–"}
+                {item.maximum_score != null ? `/${item.maximum_score}` : ""}
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="px-4 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
+            Outcome
+          </p>
+          <div className="mt-2 flex items-center gap-2 text-sm text-text-muted">
+            <GraduationCap className="h-4 w-4" />
+            Grade: <span className="font-semibold text-text">{item.grade || "Pending"}</span>
+          </div>
+          {item.status === "locked" ? (
+            <div className="mt-3 flex items-center gap-2 rounded-lg bg-surface-muted/50 px-3 py-2 text-xs text-text-muted">
+              <LockKeyhole className="h-4 w-4" /> Finalized and read-only
+            </div>
+          ) : null}
+        </section>
+
+        <section className="px-4 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
+            Lifecycle actions
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">{actions}</div>
+        </section>
+      </div>
+    </div>
   );
 }
 
