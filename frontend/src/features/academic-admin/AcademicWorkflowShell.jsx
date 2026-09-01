@@ -40,7 +40,6 @@ const createActionWorkflows = new Set([
   "levels",
   "arm-labels",
   "classes",
-  "departments",
   "subjects",
 ]);
 
