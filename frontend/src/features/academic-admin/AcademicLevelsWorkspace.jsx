@@ -185,17 +185,20 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     }
     setSaving(editingLevelId);
     try {
-      await academicLevelService.updateLevel(editingLevelId, {
-        name: editingLevelForm.name.trim(),
-        category: editingLevelForm.category,
-        position: Number(editingLevelForm.position),
-        specialization_required_from_term_position:
-          normalizeSpecializationTermPosition(
-            categoryOptions,
-            editingLevelForm.category,
-            editingLevelForm.specialization_required_from_term_position,
-          ),
-      });
+      const payload = structuralFieldsLocked
+        ? { name: editingLevelForm.name.trim() }
+        : {
+            name: editingLevelForm.name.trim(),
+            category: editingLevelForm.category,
+            position: Number(editingLevelForm.position),
+            specialization_required_from_term_position:
+              normalizeSpecializationTermPosition(
+                categoryOptions,
+                editingLevelForm.category,
+                editingLevelForm.specialization_required_from_term_position,
+              ),
+          };
+      await academicLevelService.updateLevel(editingLevelId, payload);
       showSuccess("Academic level updated.");
       closeEditor();
       await load();
