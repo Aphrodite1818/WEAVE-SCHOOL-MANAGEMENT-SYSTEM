@@ -66,8 +66,8 @@ from app.modules.student_academics.schemas import (
 )
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.students.models import Student
+from app.modules.students.read_service import StudentReadService
 from app.modules.students.schemas import StudentListResponse
-from app.modules.students.service import StudentService
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.teachers.models import Teacher
@@ -731,7 +731,7 @@ async def list_my_assignment_students(
         or not assignment.is_active
     ):
         raise ForbiddenException("You may view students only for your current assignments.")
-    students, total = await StudentService.list_students(
+    students, total = await StudentReadService.list_students(
         db,
         current_teacher,
         skip=skip,
