@@ -87,7 +87,8 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
       if (action === "deactivate") await armLabelService.deactivateArmLabel(item.id);
       if (action === "archive") await armLabelService.archiveArmLabel(item.id);
       if (action === "restore") await armLabelService.restoreArmLabel(item.id);
-      showSuccess(`Arm label ${action}d.`);
+      if (action === "delete") await armLabelService.deleteArmLabel(item.id);
+      showSuccess(action === "delete" ? "Arm label permanently deleted." : `Arm label ${action}d.`);
       setPendingAction(null);
       await load();
     } catch (error) {
@@ -103,6 +104,7 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
         deactivate: ["Deactivate arm label", "DEACTIVATE_ARM_LABEL", "Deactivate"],
         archive: ["Archive arm label", "ARCHIVE_ARM_LABEL", "Archive"],
         restore: ["Restore arm label", "RESTORE_ARM_LABEL", "Restore"],
+        delete: ["Permanently delete arm label", "DELETE_ARM_LABEL", "Delete permanently"],
       }[pendingAction.action]
     : null;
   const showEditor = activeTab === "create" || Boolean(editing);
@@ -202,6 +204,15 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
                         Restore
                       </Button>
                     ) : null}
+                    {["inactive", "archived"].includes(status) ? (
+                      <Button
+                        size="small"
+                        variant="danger"
+                        onClick={() => setPendingAction({ item, action: "delete" })}
+                      >
+                        Delete permanently
+                      </Button>
+                    ) : null}
                   </>
                 );
               }}
@@ -212,10 +223,14 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
       <TypedConfirmationDialog
         open={Boolean(pendingAction)}
         title={actionConfig?.[0]}
-        description={`${pendingAction?.item?.label || "This label"} will move through the supported arm-label lifecycle. Classes using it are protected by backend dependency checks.`}
+        description={
+          pendingAction?.action === "delete"
+            ? `${pendingAction?.item?.label || "This label"} will be permanently removed only if no classroom has ever referenced it. Used labels are rejected by the backend and must remain as history.`
+            : `${pendingAction?.item?.label || "This label"} will move through the supported arm-label lifecycle. Classes using it are protected by backend dependency checks.`
+        }
         confirmationText={actionConfig?.[1] || ""}
         confirmLabel={actionConfig?.[2]}
-        variant={["deactivate", "archive"].includes(pendingAction?.action) ? "danger" : "primary"}
+        variant={["deactivate", "archive", "delete"].includes(pendingAction?.action) ? "danger" : "primary"}
         isLoading={saving === pendingAction?.item?.id}
         onConfirm={runLifecycle}
         onCancel={() => setPendingAction(null)}
