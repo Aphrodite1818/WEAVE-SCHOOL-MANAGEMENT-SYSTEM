@@ -15,9 +15,30 @@ import {
   WorkspaceGrid,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
+import {
+  categorySupportsDepartments,
+  normalizeSpecializationTermPosition,
+} from "./academicDepartmentCapability";
 
 const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
-const emptyLevelForm = { name: "", category: "", position: "" };
+const emptyLevelForm = {
+  name: "",
+  category: "",
+  position: "",
+  specialization_required_from_term_position: "",
+};
+const specializationOptions = [
+  { value: "", label: "Optional — classes may remain general" },
+  { value: "1", label: "Required from First Term" },
+  { value: "2", label: "Required from Second Term" },
+  { value: "3", label: "Required from Third Term" },
+];
+const specializationLabel = (position) =>
+  ({
+    1: "required from First Term",
+    2: "required from Second Term",
+    3: "required from Third Term",
+  })[Number(position)] || "optional";
 
 function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   const { showError, showSuccess } = useToast();
@@ -45,7 +66,11 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       setLevelForm((current) =>
         allowedCategories.some((option) => option.value === current.category)
           ? current
-          : { ...current, category: allowedCategories[0]?.value || "" },
+          : {
+              ...current,
+              category: allowedCategories[0]?.value || "",
+              specialization_required_from_term_position: "",
+            },
       );
     } catch (error) {
       showError(getErrorMessage(error, "Could not load academic levels."));
@@ -78,6 +103,19 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
         : levels,
     [activeTab, levels],
   );
+  const editingLevel = useMemo(
+    () => levels.find((row) => row.id === editingLevelId) || null,
+    [editingLevelId, levels],
+  );
+  const activeForm = editingLevelId ? editingLevelForm : levelForm;
+  const activeCategory = activeForm?.category || "";
+  const selectedCategorySupportsDepartments = categorySupportsDepartments(
+    categoryOptions,
+    activeCategory,
+  );
+  const structuralFieldsLocked = Boolean(
+    editingLevel && editingLevel.status !== "draft",
+  );
 
   const selectView = (view) => {
     const next = new URLSearchParams(searchParams);
@@ -89,8 +127,29 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   const closeEditor = () => {
     setEditingLevelId("");
     setEditingLevelForm(null);
-    setLevelForm({ ...emptyLevelForm, category: categoryOptions[0]?.value || "" });
+    setLevelForm({
+      ...emptyLevelForm,
+      category: categoryOptions[0]?.value || "",
+    });
     selectView("overview");
+  };
+
+  const updateFormCategory = (value) => {
+    const update = (current) => ({
+      ...current,
+      category: value,
+      specialization_required_from_term_position: categorySupportsDepartments(
+        categoryOptions,
+        value,
+      )
+        ? current.specialization_required_from_term_position
+        : "",
+    });
+    if (editingLevelId) {
+      setEditingLevelForm(update);
+    } else {
+      setLevelForm(update);
+    }
   };
 
   const createLevel = async (event) => {
@@ -99,8 +158,15 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     setSaving(true);
     try {
       await academicLevelService.createLevel({
-        ...levelForm,
+        name: levelForm.name,
+        category: levelForm.category,
         position: Number(levelForm.position),
+        specialization_required_from_term_position:
+          normalizeSpecializationTermPosition(
+            categoryOptions,
+            levelForm.category,
+            levelForm.specialization_required_from_term_position,
+          ),
       });
       showSuccess("Academic level created as draft.");
       closeEditor();
@@ -120,9 +186,15 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     setSaving(editingLevelId);
     try {
       await academicLevelService.updateLevel(editingLevelId, {
-        ...editingLevelForm,
         name: editingLevelForm.name.trim(),
+        category: editingLevelForm.category,
         position: Number(editingLevelForm.position),
+        specialization_required_from_term_position:
+          normalizeSpecializationTermPosition(
+            categoryOptions,
+            editingLevelForm.category,
+            editingLevelForm.specialization_required_from_term_position,
+          ),
       });
       showSuccess("Academic level updated.");
       closeEditor();
@@ -192,12 +264,9 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                 <SelectControl
                   label="Category"
                   value={editingLevelId ? editingLevelForm?.category || "" : levelForm.category}
-                  onChange={(value) =>
-                    editingLevelId
-                      ? setEditingLevelForm((current) => ({ ...current, category: value }))
-                      : setLevelForm((current) => ({ ...current, category: value }))
-                  }
+                  onChange={updateFormCategory}
                   options={selectOptions}
+                  disabled={structuralFieldsLocked}
                   required
                 />
                 <Input
@@ -216,8 +285,45 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                           position: event.target.value,
                         }))
                   }
+                  disabled={structuralFieldsLocked}
                   required
                 />
+                {selectedCategorySupportsDepartments ? (
+                  <div className="space-y-1.5">
+                    <SelectControl
+                      label="Department specialization"
+                      value={
+                        editingLevelId
+                          ? editingLevelForm?.specialization_required_from_term_position || ""
+                          : levelForm.specialization_required_from_term_position
+                      }
+                      onChange={(value) =>
+                        editingLevelId
+                          ? setEditingLevelForm((current) => ({
+                              ...current,
+                              specialization_required_from_term_position: value,
+                            }))
+                          : setLevelForm((current) => ({
+                              ...current,
+                              specialization_required_from_term_position: value,
+                            }))
+                      }
+                      options={specializationOptions}
+                      disabled={structuralFieldsLocked}
+                      searchable={false}
+                    />
+                    <p className="text-xs leading-5 text-text-muted">
+                      Choose when every class in this level must have a department
+                      placement. Leave it optional when classes may remain general.
+                    </p>
+                  </div>
+                ) : null}
+                {structuralFieldsLocked ? (
+                  <p className="text-xs leading-5 text-text-muted">
+                    Category, position, and specialization rules are locked after
+                    activation. The level name can still be updated.
+                  </p>
+                ) : null}
                 <FormActions
                   submitting={Boolean(saving)}
                   submitLabel={editingLevelId ? "Save level" : "Create level"}
@@ -249,9 +355,18 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
               renderMeta={(item) =>
                 `${categoryLabels.get(item.category) || String(item.category).replaceAll("_", " ")} · Position ${item.position}`
               }
-              renderDescription={(item) =>
-                `${classCounts.get(item.id) || 0} class arms · Progression follows the next configured position.`
-              }
+              renderDescription={(item) => {
+                const supportsDepartments = categorySupportsDepartments(
+                  categoryOptions,
+                  item.category,
+                );
+                const specialization = supportsDepartments
+                  ? ` · Department specialization ${specializationLabel(
+                      item.specialization_required_from_term_position,
+                    )}`
+                  : "";
+                return `${classCounts.get(item.id) || 0} class arms · Progression follows the next configured position${specialization}.`;
+              }}
               renderStatus={(item) => item.status}
               showInspector={!showEditor}
               onEdit={(item) => {
@@ -260,6 +375,10 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                   name: item.name,
                   category: item.category,
                   position: String(item.position),
+                  specialization_required_from_term_position:
+                    item.specialization_required_from_term_position == null
+                      ? ""
+                      : String(item.specialization_required_from_term_position),
                 });
               }}
               canEdit={(item) => item.status !== "archived"}

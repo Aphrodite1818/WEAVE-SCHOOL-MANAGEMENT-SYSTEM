@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import AcademicLevelsWorkspace from "../../features/academic-admin/AcademicLevelsWorkspace";
 import AcademicPeriodsWorkspace from "../../features/academic-admin/AcademicPeriodsWorkspace";
@@ -16,11 +16,16 @@ import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
 import SubjectsWorkspace from "../../features/academic-admin/SubjectsWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
-import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
+import { filterDepartmentWorkflow } from "../../features/academic-admin/academicDepartmentCapability";
+import {
+  academicWorkflowConfig,
+  academicWorkflowOrder,
+} from "../../features/academic-admin/academicWorkflowConfig";
 import SchoolCalendarEventsWorkspace from "../../features/schoolCalendar/components/SchoolCalendarEventsWorkspace";
 import SchoolCalendarWorkspace from "../../features/schoolCalendar/components/SchoolCalendarWorkspace";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { academicService } from "../../services/academicService";
+import { academicLevelService } from "../../services/academicsService";
 
 const workflowAliases = {
   reports: "report-cards",
@@ -42,22 +47,34 @@ export default function AcademicWorkflowPage() {
     currentSession: null,
     currentTerm: null,
   });
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [capabilitiesReady, setCapabilitiesReady] = useState(false);
   const [loadingContext, setLoadingContext] = useState(true);
 
   const loadContext = useCallback(async () => {
     setLoadingContext(true);
+    setCapabilitiesReady(false);
     try {
-      const [s, t] = await Promise.all([
+      const [sessionResult, termResult, categoryResult] = await Promise.allSettled([
         academicService.listSessions({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
+        academicLevelService.getCategories(),
       ]);
+
+      const sessions =
+        sessionResult.status === "fulfilled" ? asItems(sessionResult.value) : [];
+      const terms =
+        termResult.status === "fulfilled" ? asItems(termResult.value) : [];
+      const categories =
+        categoryResult.status === "fulfilled" ? asItems(categoryResult.value) : [];
+
       setContext({
-        currentSession: asItems(s).find((x) => x.is_current) || null,
-        currentTerm: asItems(t).find((x) => x.is_current) || null,
+        currentSession: sessions.find((x) => x.is_current) || null,
+        currentTerm: terms.find((x) => x.is_current) || null,
       });
-    } catch {
-      setContext({ currentSession: null, currentTerm: null });
+      setCategoryOptions(categories);
     } finally {
+      setCapabilitiesReady(true);
       setLoadingContext(false);
     }
   }, []);
@@ -65,6 +82,11 @@ export default function AcademicWorkflowPage() {
   useEffect(() => {
     loadContext();
   }, [loadContext]);
+
+  const availableWorkflows = useMemo(
+    () => filterDepartmentWorkflow(academicWorkflowOrder, categoryOptions),
+    [categoryOptions],
+  );
 
   const updateContext = useCallback(
     ({ currentSession, currentTerm }) =>
@@ -77,6 +99,17 @@ export default function AcademicWorkflowPage() {
   );
 
   if (!academicWorkflowConfig[workflow]) {
+    return <Navigate to="/admin/academic" replace />;
+  }
+
+  if (workflow === "departments" && !capabilitiesReady) {
+    return null;
+  }
+
+  if (
+    workflow === "departments" &&
+    !availableWorkflows.includes("departments")
+  ) {
     return <Navigate to="/admin/academic" replace />;
   }
 
@@ -181,6 +214,7 @@ export default function AcademicWorkflowPage() {
       currentSession={context.currentSession}
       currentTerm={context.currentTerm}
       loading={loadingContext}
+      availableWorkflows={availableWorkflows}
     >
       {renderWorkspace}
     </AcademicWorkflowShell>
