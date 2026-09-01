@@ -17,8 +17,9 @@ from app.modules.report_cards.schemas import (
 )
 from app.modules.report_cards.service import ReportCardService
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.students.models import StudentEnrollment
+from app.modules.students.models import Student, StudentEnrollment
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
+from app.modules.subjects.repository import SubjectRepository
 from app.modules.tenant_admins.models import TenantAdmin
 
 
@@ -254,14 +255,29 @@ class EnrollmentReportCardService:
         )
         cards_by_student = {card.student_id: card for card in cards}
 
+        student_ids = {enrollment.student_id for enrollment in enrollments}
+        students = (
+            list(
+                (
+                    await db.execute(
+                        select(Student).where(
+                            Student.tenant_id == actor.tenant_id,
+                            Student.id.in_(student_ids),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if student_ids
+            else []
+        )
+        students_by_id = {student.id: student for student in students}
+
         rows: list[ReportCardClassOverviewRow] = []
         expected_counts: list[int] = []
         for enrollment in enrollments:
-            student = await StudentRepository.get_student_by_id(
-                db,
-                actor.tenant_id,
-                enrollment.student_id,
-            )
+            student = students_by_id.get(enrollment.student_id)
             if student is None:
                 continue
             expected = await ReportCardService._expected_subject_offerings(
@@ -275,14 +291,27 @@ class EnrollmentReportCardService:
                 academic_session_id,
                 academic_term_id,
             )
-            missing = await ReportCardService._missing_subjects(
+            locked_curriculum_subject_ids = {
+                result.curriculum_subject_id for result in locked
+            }
+            missing_subject_ids = [
+                offering.subject_id
+                for offering in expected
+                if offering.curriculum_subject_id not in locked_curriculum_subject_ids
+            ]
+            missing_subjects = await SubjectRepository.get_subjects_by_id(
                 db,
                 actor.tenant_id,
-                class_id,
-                student.id,
-                academic_session_id,
-                academic_term_id,
+                missing_subject_ids,
             )
+            missing_names_by_id = {
+                subject.id: subject.name for subject in missing_subjects
+            }
+            missing = [
+                missing_names_by_id.get(subject_id, str(subject_id))
+                for subject_id in missing_subject_ids
+            ]
+
             card = cards_by_student.get(student.id)
             rows.append(
                 ReportCardClassOverviewRow(
