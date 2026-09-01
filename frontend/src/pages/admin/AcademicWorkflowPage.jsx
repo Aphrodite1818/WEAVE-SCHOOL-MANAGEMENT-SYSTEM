@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import AcademicLevelsWorkspace from "../../features/academic-admin/AcademicLevelsWorkspace";
 import AcademicPeriodsWorkspace from "../../features/academic-admin/AcademicPeriodsWorkspace";
-import AcademicSetupWorkspace from "../../features/academic-admin/AcademicSetupWorkspace";
 import AcademicWorkflowShell from "../../features/academic-admin/AcademicWorkflowShell";
 import ArmLabelsWorkspace from "../../features/academic-admin/ArmLabelsWorkspace";
 import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentConfigWorkspace";
@@ -15,6 +14,7 @@ import ProgressionWorkspace from "../../features/academic-admin/ProgressionWorks
 import ReportCardsWorkspace from "../../features/academic-admin/ReportCardsWorkspace";
 import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
+import SubjectsWorkspace from "../../features/academic-admin/SubjectsWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
 import { academicWorkflowConfig } from "../../features/academic-admin/academicWorkflowConfig";
 import SchoolCalendarEventsWorkspace from "../../features/schoolCalendar/components/SchoolCalendarEventsWorkspace";
@@ -108,14 +108,7 @@ export default function AcademicWorkflowPage() {
       );
     }
     if (workflow === "subjects") {
-      return (
-        <AcademicSetupWorkspace
-          key={key}
-          domain="subjects"
-          activeTab={activeTab}
-          onContextChange={updateContext}
-        />
-      );
+      return <SubjectsWorkspace key={key} activeTab={activeTab} />;
     }
     if (workflow === "levels") {
       return <AcademicLevelsWorkspace key={key} activeTab={activeTab} />;
