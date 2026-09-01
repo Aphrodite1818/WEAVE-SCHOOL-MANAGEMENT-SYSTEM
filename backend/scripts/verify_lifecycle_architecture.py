@@ -50,7 +50,6 @@ REQUIRED_ROUTES = {
     "/api/v1/subscriptions/terms/checkout",
     "/api/v1/subscriptions/terms/verify/{reference}",
     "/api/v1/tenant-admin/academic/report-cards/bulk/publish",
-    "/api/v1/tenant-admin/academics/results/bulk/submit",
     "/api/v1/tenant-admin/academics/results/bulk/transition",
 }
 
@@ -58,6 +57,7 @@ FORBIDDEN_LEGACY_ROUTES = {
     "/api/v1/subscriptions/plan-change",
     "/api/v1/subscriptions/cancel",
     "/api/v1/teachers/academics/results/bulk/submit",
+    "/api/v1/tenant-admin/academics/results/bulk/submit",
 }
 
 REQUIRED_INDEXES = {
