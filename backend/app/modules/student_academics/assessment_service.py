@@ -25,8 +25,14 @@ from app.modules.student_academics.models import (
 
 class AssessmentService:
     @staticmethod
-    async def response(db: AsyncSession, scheme: AssessmentScheme) -> AssessmentSchemeResponse:
-        components = await AssessmentRepository.list_components(db, scheme.tenant_id, scheme.id)
+    async def response(
+        db: AsyncSession,
+        scheme: AssessmentScheme,
+        *,
+        components: list[AssessmentComponent] | None = None,
+    ) -> AssessmentSchemeResponse:
+        if components is None:
+            components = await AssessmentRepository.list_components(db, scheme.tenant_id, scheme.id)
         total = sum((item.maximum_score for item in components), Decimal("0"))
         return AssessmentSchemeResponse(
             id=scheme.id,
