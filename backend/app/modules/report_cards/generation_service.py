@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from types import SimpleNamespace
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, NotFoundException
+from app.modules.report_cards.batch_generation import create_card_from_results_batched
 from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards.schemas import (
     ReportCardBulkGenerateResponse,
@@ -135,17 +135,14 @@ class EnrollmentReportCardService:
                 "A current report card already exists for this student and academic period."
             )
 
-        enrollment_student = SimpleNamespace(
-            id=student.id,
-            class_id=enrollment.class_id,
-        )
-        card = await ReportCardService._create_card_from_results(
+        card = await create_card_from_results_batched(
             db,
             actor,
-            enrollment_student,
-            academic_session_id,
-            academic_term_id,
-            results,
+            student_id=student.id,
+            enrollment=enrollment,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+            results=results,
             replace_existing=existing if existing is not None else None,
         )
         await ReportCardService._apply_class_positions(
