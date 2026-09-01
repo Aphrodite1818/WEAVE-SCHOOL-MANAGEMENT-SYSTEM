@@ -19,11 +19,7 @@ from app.modules.report_cards.models import (
 )
 from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards.service import ReportCardService
-from app.modules.student_academics.models import (
-    AcademicResultStatus,
-    GradingScale,
-    TeacherAssignment,
-)
+from app.modules.student_academics.models import AcademicResultStatus, TeacherAssignment
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import StudentEnrollment
 from app.modules.subjects.repository import SubjectRepository
@@ -118,9 +114,7 @@ async def create_card_from_results_batched(
         for result in results
         if result.teacher_membership_id is not None
     }
-    teacher_ids.update(
-        assignment.teacher_membership_id for assignment in assignments
-    )
+    teacher_ids.update(assignment.teacher_membership_id for assignment in assignments)
     teachers = (
         list(
             (
