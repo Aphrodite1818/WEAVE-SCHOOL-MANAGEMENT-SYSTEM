@@ -13,7 +13,11 @@ from app.modules.classes.models import AcademicLevel, ClassRoom
 from app.modules.parents.models import ParentMembership
 from app.modules.student_academics.models import AcademicSession
 from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.students.models import AcademicStatus, Student, StudentEnrollment, StudentParentLinkStatus
+from app.modules.students.models import (
+    AcademicStatus,
+    StudentEnrollment,
+    StudentParentLinkStatus,
+)
 from app.modules.students.repository import StudentParentLinkRepository, StudentRepository
 from app.modules.students.schemas import StudentDetailResponse, StudentResponse
 
@@ -168,7 +172,9 @@ class StudentReadService:
 
             student_data = StudentResponse.model_validate(student).model_dump()
             student_data["class_id"] = enrollment.class_id if enrollment else None
-            student_data["academic_level_id"] = enrollment.academic_level_id if enrollment else None
+            student_data["academic_level_id"] = (
+                enrollment.academic_level_id if enrollment else None
+            )
             items.append(
                 StudentDetailResponse(
                     **student_data,
@@ -180,7 +186,9 @@ class StudentReadService:
                     current_academic_session_name=session.name if session else None,
                     current_academic_term_id=current_term.id if current_term else None,
                     current_academic_term_name=(
-                        current_term.name.value if current_term and current_term.name else None
+                        current_term.name.value
+                        if current_term and current_term.name
+                        else None
                     ),
                 )
             )
