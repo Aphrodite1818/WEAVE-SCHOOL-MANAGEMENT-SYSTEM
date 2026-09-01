@@ -28,6 +28,7 @@ def _active_level(level_id, name="JSS1"):
     return SimpleNamespace(
         id=level_id,
         name=name,
+        normalized_name=name,
         status=AcademicLevelStatus.ACTIVE,
         archived_at=None,
     )
@@ -37,14 +38,17 @@ def _active_arm(arm_id, label="A"):
     return SimpleNamespace(
         id=arm_id,
         label=label,
+        normalized_label=label,
         is_active=True,
         archived_at=None,
     )
 
 
-def _active_class(class_id):
+def _active_class(class_id, level_id=None, arm_id=None):
     return SimpleNamespace(
         id=class_id,
+        academic_level_id=level_id,
+        arm_label_id=arm_id,
         is_active=True,
         archived_at=None,
     )
@@ -57,6 +61,44 @@ def _active_department(department_id, name="Science"):
         normalized_name=name.casefold(),
         is_active=True,
         archived_at=None,
+    )
+
+
+class _Result:
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+
+def _batch_db(levels, arms, classes, assignments=(), mappings=()):
+    return SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _Result(levels),
+                _Result(arms),
+                _Result(classes),
+                *([_Result(assignments)] if classes else []),
+                _Result(mappings),
+            ]
+        )
+    )
+
+
+def _mapping(link_id, level_id, department):
+    return (
+        SimpleNamespace(
+            id=link_id,
+            academic_level_id=level_id,
+            department_id=department.id,
+            is_active=True,
+            archived_at=None,
+        ),
+        department,
     )
 
 
@@ -163,7 +205,13 @@ async def test_student_import_resolves_level_and_arm_for_general_class(monkeypat
             "department": None,
         },
     )
-    db = SimpleNamespace()
+    db = _batch_db(
+        [_active_level(level_id)],
+        [_active_arm(arm_id)],
+        [_active_class(class_id, level_id, arm_id)],
+        [],
+        [],
+    )
 
     await BulkImportService.resolve_student_class_references(
         db=db,
@@ -176,12 +224,6 @@ async def test_student_import_resolves_level_and_arm_for_general_class(monkeypat
     assert row.normalized_row["class_id"] == str(class_id)
     assert row.normalized_row["arm"] == "A"
     assert row.normalized_row["department"] is None
-    ClassRoomRepository.get_by_level_arm_label.assert_awaited_once_with(
-        db=db,
-        tenant_id=tenant_id,
-        academic_level_id=level_id,
-        arm_label_id=arm_id,
-    )
 
 
 @pytest.mark.asyncio
@@ -240,7 +282,14 @@ async def test_student_import_requires_matching_current_term_department(monkeypa
             "department": "science",
         },
     )
-    db = SimpleNamespace()
+    assignment = SimpleNamespace(class_id=class_id, academic_level_department_id=department_id)
+    db = _batch_db(
+        [_active_level(level_id, "SS2")],
+        [_active_arm(arm_id)],
+        [_active_class(class_id, level_id, arm_id)],
+        [assignment],
+        [_mapping(department_id, level_id, department)],
+    )
 
     await BulkImportService.resolve_student_class_references(
         db=db,
@@ -251,12 +300,6 @@ async def test_student_import_requires_matching_current_term_department(monkeypa
     assert row.errors == []
     assert row.normalized_row["class_id"] == str(class_id)
     assert row.normalized_row["department"] == "Science"
-    DepartmentRepository.get_by_normalized_name.assert_awaited_once_with(
-        db,
-        tenant_id,
-        level_id,
-        "science",
-    )
 
 
 @pytest.mark.asyncio
@@ -306,8 +349,16 @@ async def test_student_import_requires_department_for_specialized_class(monkeypa
         normalized_row={"level": "SS2", "arm": "A", "department": None},
     )
 
+    department = _active_department(department_id)
+    assignment = SimpleNamespace(class_id=class_id, academic_level_department_id=department_id)
     await BulkImportService.resolve_student_class_references(
-        db=SimpleNamespace(),
+        db=_batch_db(
+            [_active_level(level_id, "SS2")],
+            [_active_arm(arm_id)],
+            [_active_class(class_id, level_id, arm_id)],
+            [assignment],
+            [_mapping(department_id, level_id, department)],
+        ),
         tenant_id=tenant_id,
         validation_results=[row],
     )
@@ -358,7 +409,13 @@ async def test_student_import_rejects_department_for_general_class(monkeypatch) 
     )
 
     await BulkImportService.resolve_student_class_references(
-        db=SimpleNamespace(),
+        db=_batch_db(
+            [_active_level(level_id, "SS2")],
+            [_active_arm(arm_id)],
+            [_active_class(class_id, level_id, arm_id)],
+            [],
+            [],
+        ),
         tenant_id=tenant_id,
         validation_results=[row],
     )
@@ -422,8 +479,18 @@ async def test_student_import_rejects_wrong_department_for_specialized_class(mon
         normalized_row={"level": "SS2", "arm": "A", "department": "Art"},
     )
 
+    assignment = SimpleNamespace(class_id=class_id, academic_level_department_id=science_id)
     await BulkImportService.resolve_student_class_references(
-        db=SimpleNamespace(),
+        db=_batch_db(
+            [_active_level(level_id, "SS2")],
+            [_active_arm(arm_id)],
+            [_active_class(class_id, level_id, arm_id)],
+            [assignment],
+            [
+                _mapping(science_id, level_id, science),
+                _mapping(art_id, level_id, art),
+            ],
+        ),
         tenant_id=tenant_id,
         validation_results=[row],
     )
@@ -460,7 +527,7 @@ async def test_student_import_cannot_invent_new_arm_label(monkeypatch) -> None:
     )
 
     await BulkImportService.resolve_student_class_references(
-        db=SimpleNamespace(),
+        db=_batch_db([_active_level(level_id, "SS2")], [], [], [], []),
         tenant_id=tenant_id,
         validation_results=[row],
     )

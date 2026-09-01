@@ -25,14 +25,14 @@ def change(cursor: int):
     )
 
 
-def test_mutation_uses_v3_and_requires_full_payload_for_upsert() -> None:
+def test_mutation_uses_v4_and_requires_full_payload_for_upsert() -> None:
     mutation = CBTSyncMutation(
         entity_type=CBTSyncEntityType.SUBJECT,
         entity_id=uuid4(),
         operation=CBTSyncOperation.UPDATED,
         payload={"name": "Mathematics"},
     )
-    assert mutation.schema_version == 3
+    assert mutation.schema_version == 4
 
     with pytest.raises(ValidationError, match="require a payload"):
         CBTSyncMutation(

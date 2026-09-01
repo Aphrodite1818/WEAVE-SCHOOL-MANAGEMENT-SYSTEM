@@ -18,11 +18,10 @@ test("CBT waiting flow confirms the exact setup challenge", async () => {
   assert.doesNotMatch(source, /existingServerIds/);
 });
 
-test("CBT inventory remains navigable when new pairing is unavailable", async () => {
+test("CBT management is protected by the current subscription feature guard", async () => {
   const provider = await readSource("src/features/subscriptions/SubscriptionProvider.jsx");
   const nav = await readSource("src/components/layout/navConfig.js");
 
-  assert.match(provider, /MANAGEMENT_VISIBLE_FEATURES = new Set\(\["cbt_pairing"\]\)/);
-  assert.match(nav, /\{ label: "CBT Servers", to: "\/admin\/cbt", icon: Cpu \}/);
-  assert.doesNotMatch(nav, /CBT Servers[^\n]*featureCode/);
+  assert.doesNotMatch(provider, /MANAGEMENT_VISIBLE_FEATURES/);
+  assert.match(nav, /label: "CBT Servers"[\s\S]*featureCode: FEATURE_CODES\.CBT_PAIRING/);
 });

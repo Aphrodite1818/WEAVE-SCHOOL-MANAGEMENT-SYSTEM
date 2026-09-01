@@ -37,8 +37,8 @@ async def test_general_and_department_offering_overlap_is_rejected():
         subject_id=uuid4(),
         is_elective=False,
     )
-    common = SimpleNamespace(id=uuid4(), department_id=None)
-    specialized = SimpleNamespace(id=uuid4(), department_id=department_id)
+    common = SimpleNamespace(id=uuid4(), academic_level_department_id=None)
+    specialized = SimpleNamespace(id=uuid4(), academic_level_department_id=department_id)
     db = SimpleNamespace(
         execute=AsyncMock(
             return_value=Result(
@@ -56,7 +56,7 @@ async def test_general_and_department_offering_overlap_is_rejected():
             tenant_id=tenant_id,
             academic_level_id=level_id,
             academic_term_id=term_id,
-            department_id=department_id,
+            academic_level_department_id=department_id,
         )
 
     statement = str(db.execute.await_args.args[0])
@@ -78,7 +78,7 @@ async def test_department_offering_resolves_when_it_is_the_only_applicable_scope
         subject_id=uuid4(),
         is_elective=False,
     )
-    specialized = SimpleNamespace(id=uuid4(), department_id=department_id)
+    specialized = SimpleNamespace(id=uuid4(), academic_level_department_id=department_id)
     db = SimpleNamespace(
         execute=AsyncMock(return_value=Result(rows=[(specialized, curriculum_subject)]))
     )
@@ -88,13 +88,13 @@ async def test_department_offering_resolves_when_it_is_the_only_applicable_scope
         tenant_id=tenant_id,
         academic_level_id=level_id,
         academic_term_id=term_id,
-        department_id=department_id,
+        academic_level_department_id=department_id,
     )
 
     assert len(resolved) == 1
     assert resolved[0].curriculum_subject_id == curriculum_subject.id
     assert resolved[0].curriculum_offering_id == specialized.id
-    assert resolved[0].department_id == department_id
+    assert resolved[0].academic_level_department_id == department_id
 
 
 @pytest.mark.asyncio
@@ -106,7 +106,7 @@ async def test_elective_requires_a_meaningful_assessment_score(monkeypatch, part
         curriculum_subject_id=uuid4(),
         subject_id=uuid4(),
         academic_term_id=term_id,
-        department_id=None,
+        academic_level_department_id=None,
         is_elective=False,
     )
     elective = ResolvedCurriculumOffering(
@@ -114,7 +114,7 @@ async def test_elective_requires_a_meaningful_assessment_score(monkeypatch, part
         curriculum_subject_id=uuid4(),
         subject_id=uuid4(),
         academic_term_id=term_id,
-        department_id=None,
+        academic_level_department_id=None,
         is_elective=True,
     )
     monkeypatch.setattr(
@@ -279,4 +279,6 @@ async def test_inactive_department_assignment_does_not_satisfy_specialization_bl
     )
 
     assert counts == {"students_missing_department": 1}
-    assert blockers == ["1 Stage Alpha students are in classes without a department for Second Term."]
+    assert blockers == [
+        "1 Stage Alpha students are in classes without a department for Second Term."
+    ]

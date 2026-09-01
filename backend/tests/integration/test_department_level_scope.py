@@ -1,4 +1,4 @@
-"""Database regression tests for level-owned departments."""
+"""Database regression tests for canonical departments and level mappings."""
 
 from datetime import date, datetime, timezone
 from uuid import uuid4
@@ -10,12 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.classes.models import (
     AcademicCategory,
     AcademicLevel,
+    AcademicLevelDepartment,
     AcademicLevelStatus,
     ArmLabel,
     ClassRoom,
     Department,
 )
-from app.modules.classes.repository import DepartmentRepository
+from app.modules.classes.department_repository import AcademicLevelDepartmentRepository
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
@@ -34,7 +35,7 @@ from app.tenant_management.models import Tenant
 
 
 @pytest.mark.asyncio
-async def test_same_department_name_is_allowed_on_different_levels(
+async def test_one_canonical_department_can_be_mapped_to_different_levels(
     db_session: AsyncSession,
     tenant: Tenant,
 ) -> None:
@@ -57,20 +58,26 @@ async def test_same_department_name_is_allowed_on_different_levels(
     db_session.add_all([first_level, second_level])
     await db_session.flush()
 
+    department = Department(
+        tenant_id=tenant.id,
+        name="Science",
+        normalized_name="science",
+        is_active=True,
+    )
+    db_session.add(department)
+    await db_session.flush()
     db_session.add_all(
         [
-            Department(
+            AcademicLevelDepartment(
                 tenant_id=tenant.id,
                 academic_level_id=first_level.id,
-                name="Science",
-                normalized_name="science",
+                department_id=department.id,
                 is_active=True,
             ),
-            Department(
+            AcademicLevelDepartment(
                 tenant_id=tenant.id,
                 academic_level_id=second_level.id,
-                name="Science",
-                normalized_name="science",
+                department_id=department.id,
                 is_active=True,
             ),
         ]
@@ -79,7 +86,7 @@ async def test_same_department_name_is_allowed_on_different_levels(
 
 
 @pytest.mark.asyncio
-async def test_same_department_name_is_rejected_twice_on_same_level(
+async def test_same_department_mapping_is_rejected_twice_on_same_level(
     db_session: AsyncSession,
     tenant: Tenant,
 ) -> None:
@@ -94,12 +101,20 @@ async def test_same_department_name_is_rejected_twice_on_same_level(
     db_session.add(level)
     await db_session.flush()
 
+    department = Department(
+        tenant_id=tenant.id,
+        name="Science",
+        normalized_name="science",
+        is_active=True,
+    )
+    db_session.add(department)
+    await db_session.flush()
+
     db_session.add(
-        Department(
+        AcademicLevelDepartment(
             tenant_id=tenant.id,
             academic_level_id=level.id,
-            name="Science",
-            normalized_name="science",
+            department_id=department.id,
             is_active=True,
         )
     )
@@ -108,11 +123,10 @@ async def test_same_department_name_is_rejected_twice_on_same_level(
     with pytest.raises(IntegrityError):
         async with db_session.begin_nested():
             db_session.add(
-                Department(
+                AcademicLevelDepartment(
                     tenant_id=tenant.id,
                     academic_level_id=level.id,
-                    name="SCIENCE",
-                    normalized_name="science",
+                    department_id=department.id,
                     is_active=True,
                 )
             )
@@ -126,6 +140,7 @@ async def test_department_dependency_snapshot_splits_live_and_historical_terms(
 ) -> None:
     level_id = uuid4()
     department_id = uuid4()
+    level_department_id = uuid4()
     arm_id = uuid4()
     subject_id = uuid4()
     level = AcademicLevel(
@@ -140,7 +155,6 @@ async def test_department_dependency_snapshot_splits_live_and_historical_terms(
     department = Department(
         id=department_id,
         tenant_id=tenant.id,
-        academic_level_id=level_id,
         name="Science",
         normalized_name="science",
         is_active=True,
@@ -162,6 +176,16 @@ async def test_department_dependency_snapshot_splits_live_and_historical_terms(
         is_active=True,
     )
     db_session.add_all([level, department, arm, subject])
+    await db_session.flush()
+
+    level_department = AcademicLevelDepartment(
+        id=level_department_id,
+        tenant_id=tenant.id,
+        academic_level_id=level_id,
+        department_id=department_id,
+        is_active=True,
+    )
+    db_session.add(level_department)
     await db_session.flush()
 
     classroom = ClassRoom(
@@ -195,7 +219,7 @@ async def test_department_dependency_snapshot_splits_live_and_historical_terms(
                 tenant_id=tenant.id,
                 class_id=classroom.id,
                 academic_term_id=term.id,
-                department_id=department_id,
+                academic_level_department_id=level_department_id,
             )
             for _, term in terms
         ]
@@ -204,17 +228,17 @@ async def test_department_dependency_snapshot_splits_live_and_historical_terms(
                 tenant_id=tenant.id,
                 curriculum_subject_id=curriculum_subject.id,
                 academic_term_id=term.id,
-                department_id=department_id,
+                academic_level_department_id=level_department_id,
             )
             for _, term in terms
         ]
     )
     await db_session.flush()
 
-    counts = await DepartmentRepository.count_dependencies(
+    counts = await AcademicLevelDepartmentRepository.count_dependencies(
         db_session,
         tenant.id,
-        department_id,
+        level_department_id,
     )
 
     assert counts == {

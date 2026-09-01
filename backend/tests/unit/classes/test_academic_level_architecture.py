@@ -389,20 +389,19 @@ async def test_archive_and_restore_keep_restored_level_inactive() -> None:
     assert restored.archived_at is None
 
 
-def test_department_name_uniqueness_is_scoped_to_academic_level() -> None:
+def test_department_name_uniqueness_is_scoped_to_tenant_pool() -> None:
     constraints = {
         constraint.name: tuple(column.name for column in constraint.columns)
         for constraint in Department.__table__.constraints
         if isinstance(constraint, sa.UniqueConstraint)
     }
 
-    assert constraints["uq_departments_tenant_level_name"] == (
+    assert constraints["uq_departments_tenant_name"] == (
         "tenant_id",
-        "academic_level_id",
         "normalized_name",
     )
-    assert "uq_departments_tenant_name" not in constraints
-    assert Department.__table__.columns.academic_level_id.nullable is False
+    assert "uq_departments_tenant_level_name" not in constraints
+    assert "academic_level_id" not in Department.__table__.columns
 
 
 @pytest.mark.asyncio

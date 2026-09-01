@@ -37,13 +37,13 @@ async def test_bulk_class_resolution_batches_repeated_references(monkeypatch) ->
     level = SimpleNamespace(
         id=level_id,
         name="JSS1",
-        normalized_name="jss1",
+        normalized_name="JSS1",
         status=AcademicLevelStatus.ACTIVE,
     )
     arm = SimpleNamespace(
         id=arm_id,
         label="A",
-        normalized_label="a",
+        normalized_label="A",
         is_active=True,
         archived_at=None,
     )
@@ -60,6 +60,7 @@ async def test_bulk_class_resolution_batches_repeated_references(monkeypatch) ->
                 _ScalarResult([level]),
                 _ScalarResult([arm]),
                 _ScalarResult([classroom]),
+                _ScalarResult([]),
             ]
         )
     )
@@ -83,7 +84,7 @@ async def test_bulk_class_resolution_batches_repeated_references(monkeypatch) ->
         validation_results=rows,
     )
 
-    assert db.execute.await_count == 3
+    assert db.execute.await_count == 4
     assert all(row.errors == [] for row in rows)
     assert all(row.normalized_row["class_id"] == str(class_id) for row in rows)
 

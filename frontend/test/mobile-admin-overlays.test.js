@@ -23,7 +23,7 @@ test("academic workflow navigation uses one labeled grid across breakpoints", as
   assert.match(navigator, /data-academic-workflow-navigator="true"/);
   assert.match(navigator, /data-academic-workflow-menu="true"/);
   assert.match(navigator, /grid grid-cols-3 gap-2/);
-  assert.match(navigator, /academicWorkflowOrder\.map/);
+  assert.match(navigator, /visibleWorkflows\.map/);
   assert.match(navigator, /config\.shortTitle \|\| config\.title/);
   assert.match(navigator, /Open academic navigation/);
   assert.doesNotMatch(navigator, /orbitPosition/);

@@ -154,9 +154,7 @@ class AcademicCurriculumService:
         ).scalar_one_or_none()
         if subject is None:
             raise NotFoundException("Subject not found.")
-        if require_active_subject and (
-            not subject.is_active or subject.archived_at is not None
-        ):
+        if require_active_subject and (not subject.is_active or subject.archived_at is not None):
             raise ConflictException(
                 "Subject must be active before this curriculum membership can be activated."
             )
@@ -167,11 +165,7 @@ class AcademicCurriculumService:
         dependencies: dict[str, int],
     ) -> dict[str, int]:
         keys = ("offerings_live", "teacher_assignments_active", "results_live")
-        return {
-            key: dependencies.get(key, 0)
-            for key in keys
-            if dependencies.get(key, 0) > 0
-        }
+        return {key: dependencies.get(key, 0) for key in keys if dependencies.get(key, 0) > 0}
 
     @staticmethod
     def _has_any_curriculum_subject_usage(dependencies: dict[str, int]) -> bool:
@@ -188,11 +182,7 @@ class AcademicCurriculumService:
         """Lock elective meaning once the membership reaches published/history use."""
 
         keys = ("offerings_published", "results_total")
-        return {
-            key: dependencies.get(key, 0)
-            for key in keys
-            if dependencies.get(key, 0) > 0
-        }
+        return {key: dependencies.get(key, 0) for key in keys if dependencies.get(key, 0) > 0}
 
     @staticmethod
     async def _term(
@@ -471,7 +461,7 @@ class AcademicCurriculumService:
                     ClassTermDepartmentAssignment.tenant_id == tenant_id,
                     ClassTermDepartmentAssignment.class_id == StudentSubjectResult.class_id,
                     ClassTermDepartmentAssignment.academic_term_id == term.id,
-                    ClassTermDepartmentAssignment.department_id == department_id,
+                    ClassTermDepartmentAssignment.academic_level_department_id == department_id,
                 ),
             )
             assignment_query = assignment_query.join(
@@ -480,7 +470,7 @@ class AcademicCurriculumService:
                     ClassTermDepartmentAssignment.tenant_id == tenant_id,
                     ClassTermDepartmentAssignment.class_id == TeacherAssignment.class_id,
                     ClassTermDepartmentAssignment.academic_term_id == term.id,
-                    ClassTermDepartmentAssignment.department_id == department_id,
+                    ClassTermDepartmentAssignment.academic_level_department_id == department_id,
                 ),
             )
 
@@ -765,15 +755,17 @@ class AcademicCurriculumService:
         payload: CurriculumOfferingCreate,
     ) -> CurriculumOfferingResponse:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
-        curriculum_subject, curriculum, _subject = (
-            await AcademicCurriculumService._curriculum_subject_context(
-                db,
-                tenant_id,
-                curriculum_subject_id,
-                lock=True,
-                require_active_level=True,
-                require_active_subject=True,
-            )
+        (
+            curriculum_subject,
+            curriculum,
+            _subject,
+        ) = await AcademicCurriculumService._curriculum_subject_context(
+            db,
+            tenant_id,
+            curriculum_subject_id,
+            lock=True,
+            require_active_level=True,
+            require_active_subject=True,
         )
         if not curriculum_subject.is_active:
             raise ConflictException(
@@ -972,9 +964,7 @@ class AcademicCurriculumService:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
         term = await AcademicCurriculumService._term(db, tenant_id, term_id, lock=True)
         classroom = await ClassRoomRepository.get_by_id(db, tenant_id, class_id, lock=True)
-        department = await DepartmentRepository.get_by_id(
-            db, tenant_id, department_id, lock=True
-        )
+        department = await DepartmentRepository.get_by_id(db, tenant_id, department_id, lock=True)
         if classroom is None or department is None:
             raise NotFoundException("Class or department not found.")
         if not classroom.is_active or classroom.archived_at is not None:
@@ -1003,13 +993,15 @@ class AcademicCurriculumService:
         if old_department_id == department_id:
             return ClassTermDepartmentResponse.model_validate(row)
 
-        affected_subject_ids = await AcademicCurriculumService._ensure_class_department_change_mutable(
-            db,
-            tenant_id=tenant_id,
-            classroom=classroom,
-            term=term,
-            old_department_id=old_department_id,
-            new_department_id=department_id,
+        affected_subject_ids = (
+            await AcademicCurriculumService._ensure_class_department_change_mutable(
+                db,
+                tenant_id=tenant_id,
+                classroom=classroom,
+                term=term,
+                old_department_id=old_department_id,
+                new_department_id=department_id,
+            )
         )
         if row is None:
             row = ClassTermDepartmentAssignment(
@@ -1075,13 +1067,15 @@ class AcademicCurriculumService:
             return
 
         old_department_id = row.department_id
-        affected_subject_ids = await AcademicCurriculumService._ensure_class_department_change_mutable(
-            db,
-            tenant_id=tenant_id,
-            classroom=classroom,
-            term=term,
-            old_department_id=old_department_id,
-            new_department_id=None,
+        affected_subject_ids = (
+            await AcademicCurriculumService._ensure_class_department_change_mutable(
+                db,
+                tenant_id=tenant_id,
+                classroom=classroom,
+                term=term,
+                old_department_id=old_department_id,
+                new_department_id=None,
+            )
         )
         if (
             term.status == AcademicTermStatus.OPEN

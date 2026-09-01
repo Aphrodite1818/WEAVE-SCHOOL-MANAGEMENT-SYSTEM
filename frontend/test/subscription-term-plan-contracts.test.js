@@ -30,13 +30,11 @@ test("public pricing explains permanent Free without rendering a Free pricing ca
   assert.doesNotMatch(pricing, /30-day free trial/i);
 });
 
-test("registration treats a public plan choice as a non-binding preference", async () => {
+test("registration stays independent from public pricing choices and payment", async () => {
   const source = await read("src/pages/public/RegisterPage.jsx");
 
-  assert.match(source, /First-term preference/);
-  assert.match(source, /No payment is collected during registration\./);
-  assert.match(source, /starts\s+on permanent Free/);
-  assert.match(source, /initial_plan_intent/);
+  assert.match(source, /tenantService\.registerTenant/);
+  assert.doesNotMatch(source, /selectedPlan|initial_plan_intent/);
   assert.doesNotMatch(source, /initializeTermCheckout/);
   assert.doesNotMatch(source, /Paystack/);
 });

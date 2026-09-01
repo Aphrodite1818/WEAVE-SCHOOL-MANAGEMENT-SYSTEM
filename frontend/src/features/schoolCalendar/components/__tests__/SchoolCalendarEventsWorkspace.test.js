@@ -11,13 +11,13 @@ const source = fs.readFileSync(
 
 test("uses an explicit event timing selector instead of an all-day checkbox", () => {
   assert.match(source, /label="Event timing"/);
-  assert.match(source, /Specific-time event — exact start and end times/);
-  assert.match(source, /Full-day event — occupies the whole selected day/);
+  assert.match(source, /Specific start and end time/);
+  assert.match(source, /Full-day event/);
   assert.doesNotMatch(source, /label="All-day event"/);
 });
 
 test("clearly separates one-day and multi-day full-day events", () => {
-  assert.match(source, /label="Full-day duration"/);
+  assert.match(source, /label="Duration"/);
   assert.match(source, /One full day/);
   assert.match(source, /Several full days/);
   assert.match(source, /label="Event date"/);
@@ -28,11 +28,10 @@ test("clearly separates one-day and multi-day full-day events", () => {
 test("uses exact datetime labels for specific-time events", () => {
   assert.match(source, /label="Starts at"/);
   assert.match(source, /label="Ends at"/);
-  assert.match(source, /including overnight events/);
+  assert.match(source, /type="datetime-local"/);
 });
 
 test("preserves the closed-day warning without reopening operational days", () => {
-  assert.match(source, /This event overlaps/);
-  assert.match(source, /will not reopen school/);
-  assert.match(source, /Create Event Only/);
+  assert.match(source, /Overlaps \{closedDays\.length\} closed calendar day/);
+  assert.match(source, /Saving this event will not reopen school or change attendance rules/);
 });

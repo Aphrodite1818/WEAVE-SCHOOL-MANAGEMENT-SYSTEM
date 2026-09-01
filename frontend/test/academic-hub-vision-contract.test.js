@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("Academic Hub is an entity directory with a selected inspector and orbit navigation", async () => {
+test("Academic Hub is an entity directory with a selected inspector and workflow navigation", async () => {
   const hub = await read("src/pages/admin/AcademicHubOverviewPage.jsx");
   const shell = await read("src/features/academic-admin/AcademicWorkflowShell.jsx");
   const orbit = await read("src/features/academic-admin/AcademicOrbitNavigator.jsx");
@@ -19,7 +19,7 @@ test("Academic Hub is an entity directory with a selected inspector and orbit na
 
   assert.doesNotMatch(shell, /SearchableSelect/);
   assert.match(shell, /AcademicOrbitNavigator/);
-  assert.match(orbit, /orbitPosition/);
+  assert.match(orbit, /visibleWorkflows\.map/);
   assert.match(orbit, /academicWorkflowOrder/);
 });
 
@@ -45,7 +45,7 @@ test("shared academic directories are list-first and keep editors secondary", as
   assert.match(arms, /Add arm label/);
   assert.match(arms, /showInspector={!showEditor}/);
   assert.match(departments, /Add department/);
-  assert.match(departments, /showInspector={!showEditor}/);
+  assert.match(departments, /showInspector={!editorOpen}/);
   assert.match(curriculum, /editorMode/);
   assert.match(curriculum, /Add subject/);
   assert.match(curriculum, /Configure offering/);

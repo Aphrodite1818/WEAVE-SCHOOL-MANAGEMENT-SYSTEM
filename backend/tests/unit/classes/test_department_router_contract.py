@@ -1,10 +1,7 @@
 from fastapi.routing import APIRoute
 from pydantic import ValidationError
 import pytest
-import uuid
-from types import SimpleNamespace
 
-from app.core.exceptions import NotFoundException
 from app.modules.classes.departments_router import router
 from app.modules.classes.schemas import (
     DepartmentActivateRequest,
@@ -12,7 +9,6 @@ from app.modules.classes.schemas import (
     DepartmentDeactivateRequest,
     DepartmentRestoreRequest,
 )
-from app.modules.classes.service import DepartmentService
 
 
 def test_department_lifecycle_routes_are_exposed() -> None:
@@ -23,12 +19,19 @@ def test_department_lifecycle_routes_are_exposed() -> None:
         for method in route.methods
     }
 
-    prefix = "/academic-levels/{academic_level_id}/departments/{department_id}"
-    assert (f"{prefix}/activate", "POST") in routes
-    assert (f"{prefix}/deactivate", "POST") in routes
-    assert (f"{prefix}/archive", "POST") in routes
-    assert (f"{prefix}/restore", "POST") in routes
-    assert (prefix, "PATCH") in routes
+    pool = "/tenant-admin/academics/departments/{department_id}"
+    assert (f"{pool}/activate", "POST") in routes
+    assert (f"{pool}/deactivate", "POST") in routes
+    assert (f"{pool}/archive", "POST") in routes
+    assert (f"{pool}/restore", "POST") in routes
+    assert (pool, "PATCH") in routes
+
+    mapping = "/tenant-admin/academics/academic-levels/{academic_level_id}/departments/{link_id}"
+    assert (f"{mapping}/activate", "POST") in routes
+    assert (f"{mapping}/deactivate", "POST") in routes
+    assert (f"{mapping}/archive", "POST") in routes
+    assert (f"{mapping}/restore", "POST") in routes
+    assert (mapping, "DELETE") in routes
 
 
 @pytest.mark.parametrize(
@@ -44,10 +47,3 @@ def test_department_lifecycle_requires_typed_confirmation(schema, confirmation) 
     assert schema(confirmation=confirmation).confirmation == confirmation
     with pytest.raises(ValidationError):
         schema(confirmation="CONFIRM")
-
-
-def test_department_lifecycle_hides_records_from_a_different_level() -> None:
-    department = SimpleNamespace(academic_level_id=uuid.uuid4())
-
-    with pytest.raises(NotFoundException, match="Department not found"):
-        DepartmentService._ensure_level_scope(department, uuid.uuid4())

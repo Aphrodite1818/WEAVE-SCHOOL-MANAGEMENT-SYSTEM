@@ -177,7 +177,7 @@ def test_prepare_commit_is_deferred_while_inside_savepoint() -> None:
     assert session.flush_count == 0
 
 
-def test_invisible_lifecycle_updates_become_explicit_v3_tombstones() -> None:
+def test_invisible_lifecycle_updates_become_explicit_v4_tombstones() -> None:
     tenant_id = uuid4()
     for entity_type in (
         CBTSyncEntityType.STUDENT_ENROLLMENT,
@@ -196,7 +196,7 @@ def test_invisible_lifecycle_updates_become_explicit_v3_tombstones() -> None:
         assert mutation.entity_type == entity_type
         assert mutation.operation == CBTSyncOperation.DELETED
         assert mutation.payload is None
-        assert mutation.schema_version == 3
+        assert mutation.schema_version == 4
 
 
 def test_replacement_tombstones_sort_before_new_live_rows() -> None:

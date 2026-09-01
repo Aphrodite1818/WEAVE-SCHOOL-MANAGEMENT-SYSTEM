@@ -15,7 +15,7 @@ from app.modules.cbt.sync.projectors.academics import (
     project_class_term_department,
     project_department,
 )
-from app.modules.cbt.sync.projectors.curriculum import project_curriculum_offering
+from app.modules.cbt.sync.projectors.curriculum import project_subject_offering
 from app.modules.cbt.sync.schemas import SYNC_SCHEMA_VERSION
 from app.modules.classes.models import AcademicLevelDepartment, Department
 from app.modules.student_academics.curriculum_models import (
@@ -96,13 +96,13 @@ def test_cbt_v4_projects_level_department_mapping_as_department_identity() -> No
 
     department_source = getsource(project_department)
     assignment_source = getsource(project_class_term_department)
-    offering_source = getsource(project_curriculum_offering)
+    offering_source = getsource(project_subject_offering)
 
     assert "AcademicLevelDepartment" in department_source
     assert "id=link.id" in department_source
     assert "academic_level_id=link.academic_level_id" in department_source
     assert "department_id=row.academic_level_department_id" in assignment_source
-    assert "department_id=row.academic_level_department_id" in offering_source
+    assert "department_id=offering.academic_level_department_id" in offering_source
 
 
 def test_bulk_import_resolves_human_department_name_through_level_mapping() -> None:
