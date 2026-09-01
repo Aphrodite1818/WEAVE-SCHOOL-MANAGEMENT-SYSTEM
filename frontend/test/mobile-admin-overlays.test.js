@@ -4,17 +4,25 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("academic workflow tabs use a readable mobile grid and retain desktop scrolling", async () => {
-  const source = await read(
+test("academic workflow navigation stays compact on mobile and uses the orbit launcher", async () => {
+  const shell = await read(
     "src/features/academic-admin/AcademicWorkflowShell.jsx",
   );
+  const orbit = await read(
+    "src/features/academic-admin/AcademicOrbitNavigator.jsx",
+  );
 
-  assert.match(source, /data-academic-workflow-switcher="true"/);
-  assert.match(source, /grid-cols-2/);
-  assert.match(source, /sm:flex/);
-  assert.match(source, /sm:overflow-x-auto/);
-  assert.match(source, /min-w-0 whitespace-normal break-words/);
-  assert.match(source, /sm:min-w-max sm:shrink-0 sm:whitespace-nowrap/);
+  assert.match(shell, /data-academic-workflow-switcher="true"/);
+  assert.match(shell, /overflow-x-auto/);
+  assert.match(shell, /min-w-max/);
+  assert.match(shell, /AcademicOrbitNavigator/);
+  assert.doesNotMatch(shell, /SearchableSelect/);
+
+  assert.match(orbit, /grid-cols-3/);
+  assert.match(orbit, /sm:hidden/);
+  assert.match(orbit, /hidden h-\[22rem\] w-\[22rem\].*sm:block/);
+  assert.match(orbit, /academicWorkflowOrder\.map/);
+  assert.match(orbit, /Open academic navigation/);
 });
 
 test("the shared modal stays centered inside the live visual viewport", async () => {
