@@ -134,19 +134,19 @@ function AcademicWorkflowShell({
         {visibleTabs.length > 1 ? (
           <div
             data-academic-workflow-switcher="true"
-            className="overflow-x-auto border-b border-border/70"
+            className="overflow-x-auto border-b border-border/70 pb-2 pt-0.5"
           >
-            <div className="flex min-w-max gap-5 px-1">
+            <div className="flex w-max min-w-full gap-2 px-1 sm:gap-3">
               {visibleTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => selectTab(tab.id)}
                   className={cn(
-                    "relative min-h-11 whitespace-nowrap px-1 pb-3 pt-1 text-sm font-semibold transition",
+                    "min-h-10 shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold transition sm:px-3.5",
                     activeTab === tab.id
-                      ? "text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary"
-                      : "text-text-muted hover:text-text",
+                      ? "border-primary/20 bg-primary-soft text-primary"
+                      : "border-transparent text-text-muted hover:bg-surface-muted hover:text-text",
                   )}
                 >
                   {tab.label}
