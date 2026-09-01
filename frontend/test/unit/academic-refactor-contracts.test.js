@@ -48,3 +48,46 @@ test("normal and guided level creation share the institution-scoped levels works
   assert.match(guideWorkspace, /kind === "levels".*<AcademicLevelsWorkspace/s);
   assert.match(levelsWorkspace, /academicLevelService\.getCategories\(\)/);
 });
+
+test("department client separates canonical pool from level availability", async () => {
+  const source = await read("src/services/departmentService.js");
+  const academicsSource = await read("src/services/academicsService.js");
+
+  assert.match(source, /\/tenant-admin\/academics\/departments/);
+  assert.match(source, /academic-levels\/\$\{levelId\}\/departments/);
+  assert.match(source, /department_id: departmentId/);
+  assert.match(source, /ACTIVATE_LEVEL_DEPARTMENT/);
+  assert.doesNotMatch(academicsSource, /export const departmentService/);
+});
+
+test("class specialization writes only the level-department mapping identity", async () => {
+  const service = await read("src/services/curriculumService.js");
+  const workspace = await read("src/features/academic-admin/DepartmentsWorkspace.jsx");
+
+  assert.match(service, /academic_level_department_id: academicLevelDepartmentId/);
+  assert.doesNotMatch(service, /department_id: departmentId/);
+  assert.match(workspace, /assignment\?\.academic_level_department_id/);
+  assert.match(workspace, /departmentService\.getLevelDepartments/);
+});
+
+test("curriculum offerings scope through active level-department mappings", async () => {
+  const workspace = await read("src/features/academic-admin/CurriculumWorkspace.jsx");
+
+  assert.match(workspace, /departmentService\.getLevelDepartments\(levelId, \{ activeOnly: true \}\)/);
+  assert.match(workspace, /academic_level_department_id: academicLevelDepartmentId \|\| null/);
+  assert.doesNotMatch(workspace, /department_id: departmentId \|\| null/);
+});
+
+test("department workflow exposes pool, availability and placements only", async () => {
+  const source = await read("src/features/academic-admin/academicWorkflowConfig.js");
+  const start = source.indexOf("departments: {");
+  const end = source.indexOf("subjects: {", start);
+  const departmentConfig = source.slice(start, end);
+
+  assert.match(departmentConfig, /defaultTab: "pool"/);
+  assert.match(departmentConfig, /id: "pool", label: "Department Pool"/);
+  assert.match(departmentConfig, /id: "availability", label: "Level Availability"/);
+  assert.match(departmentConfig, /id: "placements", label: "Class Placements"/);
+  assert.doesNotMatch(departmentConfig, /id: "create"/);
+  assert.doesNotMatch(departmentConfig, /id: "archived"/);
+});
