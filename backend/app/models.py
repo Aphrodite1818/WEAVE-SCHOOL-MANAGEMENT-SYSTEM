@@ -1,4 +1,4 @@
-"""Central registry for SQLAlchemy ORM models."""
+"""Central registry for SQLAlchemy ORM models and canonical pre-launch contracts."""
 
 import app.tenant_management.models
 import app.modules.communications.models
@@ -27,5 +27,10 @@ import app.modules.teachers.models
 import app.modules.tenant_admins.models
 import app.modules.tenant_branding.models
 import app.modules.user_guides.models
+
+# Install the canonical Department-pool cutover before request services execute.
+import app.modules.classes.academic_level_dependency_contract  # noqa: E402,F401
+import app.modules.bulk_imports.department_contract_v2  # noqa: E402,F401
+
 import app.modules.bulk_imports.model_events  # noqa: E402,F401
 import app.modules.cbt.sync.model_events_v4  # noqa: E402,F401

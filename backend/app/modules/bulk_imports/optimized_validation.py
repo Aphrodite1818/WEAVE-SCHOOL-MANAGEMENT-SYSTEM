@@ -18,6 +18,7 @@ from app.modules.bulk_imports.service import (
 from app.modules.bulk_imports.validators import ImportRowValidationResult
 from app.modules.classes.models import (
     AcademicLevel,
+    AcademicLevelDepartment,
     AcademicLevelStatus,
     ArmLabel,
     ClassRoom,
@@ -35,7 +36,12 @@ async def resolve_student_class_references_batch(
     tenant_id: UUID,
     validation_results: list[ImportRowValidationResult],
 ) -> None:
-    """Resolve all import hierarchy references with a bounded set of queries."""
+    """Resolve all student import hierarchy references with bounded queries.
+
+    The spreadsheet keeps a human-readable department name. The authoritative
+    specialization identity is the AcademicLevelDepartment mapping selected by the
+    current class-term assignment; no department identity is copied onto the student.
+    """
 
     current_term = await StudentAcademicRepository.get_current_term(db, tenant_id)
 
@@ -131,32 +137,41 @@ async def resolve_student_class_references_batch(
     else:
         assignments = []
 
-    assigned_department_ids = {assignment.department_id for assignment in assignments}
-    supplied_department_names = {
-        str(result.normalized_row.get("department")).strip().casefold()
-        for result in validation_results
-        if not _is_blank(result.normalized_row.get("department"))
-    }
-    department_filters = [Department.tenant_id == tenant_id]
-    if level_ids:
-        department_filters.append(Department.academic_level_id.in_(level_ids))
-    if assigned_department_ids or supplied_department_names:
-        department_filters.append(
-            (Department.id.in_(assigned_department_ids))
-            | (Department.normalized_name.in_(supplied_department_names))
+    # Load the level-specialization mappings once. Canonical Department provides
+    # only the reusable name/lifecycle; the mapping provides level availability.
+    mapping_rows = (
+        list(
+            (
+                await db.execute(
+                    select(AcademicLevelDepartment, Department)
+                    .join(
+                        Department,
+                        Department.id == AcademicLevelDepartment.department_id,
+                    )
+                    .where(
+                        AcademicLevelDepartment.tenant_id == tenant_id,
+                        AcademicLevelDepartment.academic_level_id.in_(level_ids),
+                        Department.tenant_id == tenant_id,
+                    )
+                )
+            ).all()
         )
-        departments = list(
-            (await db.execute(select(Department).where(*department_filters)))
-            .scalars()
-            .all()
-        )
-    else:
-        departments = []
-    departments_by_id = {department.id: department for department in departments}
-    departments_by_level_name = {
-        (department.academic_level_id, department.normalized_name): department
-        for department in departments
+        if level_ids
+        else []
+    )
+    mappings_by_id = {link.id: (link, department) for link, department in mapping_rows}
+    mappings_by_level_name = {
+        (link.academic_level_id, department.normalized_name): (link, department)
+        for link, department in mapping_rows
     }
+
+    def mapping_is_available(link: AcademicLevelDepartment, department: Department) -> bool:
+        return bool(
+            link.is_active
+            and link.archived_at is None
+            and department.is_active
+            and department.archived_at is None
+        )
 
     for validation_result in validation_results:
         normalized_row = validation_result.normalized_row
@@ -267,18 +282,29 @@ async def resolve_student_class_references_batch(
                 normalized_row["department"] = None
             continue
 
-        assigned_department = departments_by_id.get(assignment.department_id)
-        if (
-            assigned_department is None
-            or not assigned_department.is_active
-            or assigned_department.archived_at is not None
-        ):
+        assigned_pair = mappings_by_id.get(assignment.academic_level_department_id)
+        if assigned_pair is None:
             append_validation_error(
                 validation_result=validation_result,
                 field_name="department",
                 error_code="department_assignment_invalid",
                 error_message=(
                     f"Class {class_reference} has an invalid current-term department assignment. "
+                    "Fix the academic setup before importing students."
+                ),
+            )
+            continue
+        assigned_link, assigned_department = assigned_pair
+        if (
+            assigned_link.academic_level_id != level.id
+            or not mapping_is_available(assigned_link, assigned_department)
+        ):
+            append_validation_error(
+                validation_result=validation_result,
+                field_name="department",
+                error_code="department_assignment_invalid",
+                error_message=(
+                    f"Class {class_reference} has an unavailable current-term department assignment. "
                     "Fix the academic setup before importing students."
                 ),
             )
@@ -297,28 +323,29 @@ async def resolve_student_class_references_batch(
             continue
 
         supplied_key = str(department_name).strip().casefold()
-        supplied_department = departments_by_level_name.get((level.id, supplied_key))
-        if supplied_department is None:
+        supplied_pair = mappings_by_level_name.get((level.id, supplied_key))
+        if supplied_pair is None:
             append_validation_error(
                 validation_result=validation_result,
                 field_name="department",
                 error_code="department_not_found",
                 error_message=(
-                    f"Department {department_name} does not exist for academic level {level.name}."
+                    f"Department {department_name} is not available for academic level {level.name}."
                 ),
             )
             continue
-        if not supplied_department.is_active or supplied_department.archived_at is not None:
+        supplied_link, supplied_department = supplied_pair
+        if not mapping_is_available(supplied_link, supplied_department):
             append_validation_error(
                 validation_result=validation_result,
                 field_name="department",
                 error_code="department_inactive",
                 error_message=(
-                    f"Department {supplied_department.name} is inactive or archived."
+                    f"Department {supplied_department.name} is inactive for academic level {level.name}."
                 ),
             )
             continue
-        if supplied_department.id != assigned_department.id:
+        if supplied_link.id != assigned_link.id:
             append_validation_error(
                 validation_result=validation_result,
                 field_name="department",
