@@ -15,6 +15,7 @@ from app.core.dependencies.route_guards import (
 )
 from app.modules.parents.models import Parent
 from app.modules.students.models import AcademicStatus, Student
+from app.modules.students.read_service import StudentReadService
 from app.modules.students.schemas import (
     StudentChangePasswordRequest,
     StudentDetailResponse,
@@ -72,7 +73,7 @@ async def list_students(
 ) -> StudentListResponse:
     """List students visible to the current tenant actor."""
 
-    students, total = await StudentService.list_students(
+    students, total = await StudentReadService.list_students(
         db,
         current_user,
         skip=skip,
