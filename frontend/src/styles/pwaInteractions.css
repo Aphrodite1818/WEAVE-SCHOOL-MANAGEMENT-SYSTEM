@@ -14,6 +14,24 @@
     touch-action: manipulation !important;
   }
 
+  /* Keep floating academic controls clear of device safe areas in browser mode. */
+  [data-academic-workflow-navigator="true"] {
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  /* Installed PWA: reserve the fixed bottom navigation as well as the device safe area. */
+  html[data-standalone-pwa="true"] [data-academic-workflow-navigator="true"] {
+    bottom: calc(6.25rem + env(safe-area-inset-bottom));
+  }
+
+  html[data-standalone-pwa="true"] [data-academic-workflow-menu="true"] {
+    max-height: min(62dvh, 30rem);
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-content {
+    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom));
+  }
+
   /* Admin PWA navigation: Academics, Notices, Home, Calendar, Menu. */
   [data-mobile-bottom-nav="true"] a[href="/admin/messages"] {
     display: none !important;
