@@ -41,7 +41,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   const [classes, setClasses] = useState([]);
   const [terms, setTerms] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [levelDepartments, setLevelDepartments] = useState([]);
+  const [levelDepartmentsByLevel, setLevelDepartmentsByLevel] = useState({});
   const [levelId, setLevelId] = useState("");
 
   const [editorOpen, setEditorOpen] = useState(false);
@@ -99,28 +99,38 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     return levels.filter((row) => allowed.has(row.category));
   }, [categories, levels]);
 
+  const levelDepartments = useMemo(
+    () => (levelId ? levelDepartmentsByLevel[String(levelId)] || [] : []),
+    [levelDepartmentsByLevel, levelId],
+  );
+
   const levelClasses = useMemo(
     () => classes.filter((row) => row.academic_level_id === levelId),
     [classes, levelId],
   );
 
   const loadLevelDepartments = useCallback(async () => {
-    if (!levelId) {
-      setLevelDepartments([]);
+    if (!eligibleLevels.length) {
+      setLevelDepartmentsByLevel({});
       return;
     }
+
     try {
-      setLevelDepartments(
-        items(
-          await departmentService.getLevelDepartments(levelId, {
-            includeArchived: true,
-          }),
-        ),
+      const entries = await Promise.all(
+        eligibleLevels.map(async (level) => [
+          String(level.id),
+          items(
+            await departmentService.getLevelDepartments(level.id, {
+              includeArchived: true,
+            }),
+          ),
+        ]),
       );
+      setLevelDepartmentsByLevel(Object.fromEntries(entries));
     } catch (error) {
       showError(getErrorMessage(error, "Could not load level department availability."));
     }
-  }, [levelId, showError]);
+  }, [eligibleLevels, showError]);
 
   const loadCurrentAssignment = useCallback(async () => {
     if (!classId || !termId) {
@@ -240,7 +250,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
 
   const runLifecycle = async () => {
     if (!pendingAction) return;
-    const { scope, item, action } = pendingAction;
+    const { scope, item, action, academicLevelId } = pendingAction;
     setSaving(item.id);
     try {
       if (scope === "pool") {
@@ -253,15 +263,15 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
         await loadLevelDepartments();
       } else {
         if (action === "activate")
-          await departmentService.activateLevelDepartment(levelId, item.id);
+          await departmentService.activateLevelDepartment(academicLevelId, item.id);
         if (action === "deactivate")
-          await departmentService.deactivateLevelDepartment(levelId, item.id);
+          await departmentService.deactivateLevelDepartment(academicLevelId, item.id);
         if (action === "archive")
-          await departmentService.archiveLevelDepartment(levelId, item.id);
+          await departmentService.archiveLevelDepartment(academicLevelId, item.id);
         if (action === "restore")
-          await departmentService.restoreLevelDepartment(levelId, item.id);
+          await departmentService.restoreLevelDepartment(academicLevelId, item.id);
         if (action === "delete")
-          await departmentService.deleteLevelDepartment(levelId, item.id);
+          await departmentService.deleteLevelDepartment(academicLevelId, item.id);
         await loadLevelDepartments();
       }
       showSuccess(action === "delete" ? "Record permanently deleted." : `Department ${action}d.`);
@@ -319,15 +329,18 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
       ]
     : null;
 
-  const lifecycleButtons = (row, scope) => {
+  const lifecycleButtons = (row, scope, academicLevelId = null) => {
     const state = lifecycleStatus(row);
+    const queueAction = (action) =>
+      setPendingAction({ scope, item: row, action, academicLevelId });
+
     return (
       <>
         {state === "active" ? (
           <Button
             size="small"
             variant="outline"
-            onClick={() => setPendingAction({ scope, item: row, action: "deactivate" })}
+            onClick={() => queueAction("deactivate")}
           >
             Deactivate
           </Button>
@@ -336,7 +349,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
           <Button
             size="small"
             variant="outline"
-            onClick={() => setPendingAction({ scope, item: row, action: "activate" })}
+            onClick={() => queueAction("activate")}
           >
             Activate
           </Button>
@@ -345,7 +358,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
           <Button
             size="small"
             variant="outline"
-            onClick={() => setPendingAction({ scope, item: row, action: "archive" })}
+            onClick={() => queueAction("archive")}
           >
             Archive
           </Button>
@@ -354,7 +367,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
           <Button
             size="small"
             variant="outline"
-            onClick={() => setPendingAction({ scope, item: row, action: "restore" })}
+            onClick={() => queueAction("restore")}
           >
             Restore
           </Button>
@@ -363,7 +376,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
           <Button
             size="small"
             variant="danger"
-            onClick={() => setPendingAction({ scope, item: row, action: "delete" })}
+            onClick={() => queueAction("delete")}
           >
             Delete permanently
           </Button>
@@ -415,26 +428,47 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
         content={
           <RecordList
             title="Level availability"
-            description="A canonical department can be available in many academic levels without being duplicated."
-            actions={
-              <SelectControl
-                label="Academic level"
-                value={levelId}
-                onChange={setLevelId}
-                options={eligibleLevels.map((row) => ({ value: row.id, label: row.name }))}
-              />
-            }
-            items={levelDepartments}
+            description="Each department-enabled academic level shows its department mappings directly."
+            items={eligibleLevels}
             emptyIcon={Link2}
-            emptyTitle="No departments available"
-            emptyDescription="Attach an active department from the school-wide pool."
-            renderTitle={(row) => row.department_name || "Department"}
-            renderMeta={() => eligibleLevels.find((row) => row.id === levelId)?.name || "Academic level"}
-            renderDescription={() =>
-              "This mapping is the specialization identity used by term placements and scoped offerings."
-            }
-            renderStatus={lifecycleStatus}
-            renderActions={(row) => lifecycleButtons(row, "level")}
+            emptyTitle="No department-enabled levels"
+            emptyDescription="Configure a department-enabled academic category before assigning departments."
+            renderTitle={(row) => row.name}
+            renderMeta={(row) => {
+              const mappings = levelDepartmentsByLevel[String(row.id)] || [];
+              return `${mappings.length} department${mappings.length === 1 ? "" : "s"} assigned`;
+            }}
+            renderDescription={(row) => {
+              const mappings = levelDepartmentsByLevel[String(row.id)] || [];
+              if (!mappings.length) return "No departments assigned to this academic level.";
+              return mappings
+                .map((mapping) => {
+                  const status = lifecycleStatus(mapping);
+                  const label = mapping.department_name || "Department";
+                  return status === "active" ? label : `${label} (${status})`;
+                })
+                .join(" · ");
+            }}
+            renderActions={(row) => {
+              const mappings = levelDepartmentsByLevel[String(row.id)] || [];
+              if (!mappings.length) return null;
+              return (
+                <div className="grid gap-2">
+                  {mappings.map((mapping) => (
+                    <div
+                      key={mapping.id}
+                      className="flex flex-wrap items-center justify-end gap-2"
+                    >
+                      <span className="text-xs font-semibold text-text-muted">
+                        {mapping.department_name || "Department"}
+                      </span>
+                      {lifecycleButtons(mapping, "level", row.id)}
+                    </div>
+                  ))}
+                </div>
+              );
+            }}
+            showInspector={false}
           />
         }
       />
@@ -618,7 +652,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
         description={
           pendingAction?.scope === "pool"
             ? "Canonical department lifecycle changes apply everywhere this department is mapped. Active level mappings and historical usage remain protected by backend dependency checks."
-            : "This changes availability only for the selected academic level. Live term placements and offerings remain protected by backend dependency checks."
+            : "This changes availability only for this academic level. Live term placements and offerings remain protected by backend dependency checks."
         }
         confirmationText={actionConfig?.[1] || ""}
         confirmLabel={actionConfig?.[2]}
