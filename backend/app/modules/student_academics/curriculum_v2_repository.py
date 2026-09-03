@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.student_academics.curriculum_models import (
     Curriculum,
-    CurriculumOffering,
     CurriculumSubject,
+    CurriculumSubjectDepartment,
 )
 from app.modules.student_academics.models import (
     AcademicTerm,
@@ -28,11 +28,6 @@ class CurriculumSubjectRepository:
         AcademicTermStatus.DRAFT,
         AcademicTermStatus.OPEN,
         AcademicTermStatus.CLOSING,
-    )
-    PUBLISHED_TERM_STATUSES = (
-        AcademicTermStatus.OPEN,
-        AcademicTermStatus.CLOSING,
-        AcademicTermStatus.CLOSED,
     )
 
     @staticmethod
@@ -90,6 +85,22 @@ class CurriculumSubjectRepository:
         return (await db.execute(query)).first()
 
     @staticmethod
+    async def list_department_links(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        curriculum_subject_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> list[CurriculumSubjectDepartment]:
+        query = select(CurriculumSubjectDepartment).where(
+            CurriculumSubjectDepartment.tenant_id == tenant_id,
+            CurriculumSubjectDepartment.curriculum_subject_id == curriculum_subject_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return list((await db.execute(query)).scalars())
+
+    @staticmethod
     async def add(db: AsyncSession, row: CurriculumSubject) -> CurriculumSubject:
         db.add(row)
         await db.flush()
@@ -111,39 +122,15 @@ class CurriculumSubjectRepository:
         tenant_id: uuid.UUID,
         curriculum_subject_id: uuid.UUID,
     ) -> dict[str, int]:
-        """Return historical, live, and semantic-use references for one membership."""
+        """Return configuration, historical and live operational references."""
 
         def count_subquery(model, *conditions):
             return select(func.count()).select_from(model).where(*conditions).scalar_subquery()
 
-        offerings_total = count_subquery(
-            CurriculumOffering,
-            CurriculumOffering.tenant_id == tenant_id,
-            CurriculumOffering.curriculum_subject_id == curriculum_subject_id,
-        )
-        offerings_live = (
-            select(func.count())
-            .select_from(CurriculumOffering)
-            .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
-            .where(
-                CurriculumOffering.tenant_id == tenant_id,
-                CurriculumOffering.curriculum_subject_id == curriculum_subject_id,
-                AcademicTerm.tenant_id == tenant_id,
-                AcademicTerm.status.in_(CurriculumSubjectRepository.LIVE_TERM_STATUSES),
-            )
-            .scalar_subquery()
-        )
-        offerings_published = (
-            select(func.count())
-            .select_from(CurriculumOffering)
-            .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
-            .where(
-                CurriculumOffering.tenant_id == tenant_id,
-                CurriculumOffering.curriculum_subject_id == curriculum_subject_id,
-                AcademicTerm.tenant_id == tenant_id,
-                AcademicTerm.status.in_(CurriculumSubjectRepository.PUBLISHED_TERM_STATUSES),
-            )
-            .scalar_subquery()
+        department_links_total = count_subquery(
+            CurriculumSubjectDepartment,
+            CurriculumSubjectDepartment.tenant_id == tenant_id,
+            CurriculumSubjectDepartment.curriculum_subject_id == curriculum_subject_id,
         )
         teacher_assignments_total = count_subquery(
             TeacherAssignment,
@@ -182,9 +169,7 @@ class CurriculumSubjectRepository:
         row = (
             await db.execute(
                 select(
-                    offerings_total.label("offerings_total"),
-                    offerings_live.label("offerings_live"),
-                    offerings_published.label("offerings_published"),
+                    department_links_total.label("department_links_total"),
                     teacher_assignments_total.label("teacher_assignments_total"),
                     teacher_assignments_active.label("teacher_assignments_active"),
                     teacher_assignment_audits_total.label("teacher_assignment_audits_total"),
@@ -194,9 +179,7 @@ class CurriculumSubjectRepository:
             )
         ).one()
         return {
-            "offerings_total": int(row.offerings_total),
-            "offerings_live": int(row.offerings_live),
-            "offerings_published": int(row.offerings_published),
+            "department_links_total": int(row.department_links_total),
             "teacher_assignments_total": int(row.teacher_assignments_total),
             "teacher_assignments_active": int(row.teacher_assignments_active),
             "teacher_assignment_audits_total": int(row.teacher_assignment_audits_total),
