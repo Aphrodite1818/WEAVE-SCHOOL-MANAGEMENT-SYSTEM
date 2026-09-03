@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
 
-SYNC_SCHEMA_VERSION = 4
+SYNC_SCHEMA_VERSION = 5
 
 
 class CBTSyncMutation(BaseModel):
