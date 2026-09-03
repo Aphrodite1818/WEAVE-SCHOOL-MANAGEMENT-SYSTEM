@@ -11,7 +11,8 @@ from sqlalchemy.orm import joinedload
 from app.modules.classes.models import AcademicLevelDepartment, Department
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
-    CurriculumOffering,
+    CurriculumSubject,
+    CurriculumSubjectDepartment,
 )
 from app.modules.student_academics.models import AcademicTerm, AcademicTermStatus
 
@@ -233,24 +234,27 @@ class AcademicLevelDepartmentRepository:
             )
             .scalar_subquery()
         )
-        offerings_total = (
+        curriculum_links_total = (
             select(func.count())
-            .select_from(CurriculumOffering)
+            .select_from(CurriculumSubjectDepartment)
             .where(
-                CurriculumOffering.tenant_id == tenant_id,
-                CurriculumOffering.academic_level_department_id == link_id,
+                CurriculumSubjectDepartment.tenant_id == tenant_id,
+                CurriculumSubjectDepartment.academic_level_department_id == link_id,
             )
             .scalar_subquery()
         )
-        offerings_live = (
+        curriculum_links_live = (
             select(func.count())
-            .select_from(CurriculumOffering)
-            .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
+            .select_from(CurriculumSubjectDepartment)
+            .join(
+                CurriculumSubject,
+                CurriculumSubject.id == CurriculumSubjectDepartment.curriculum_subject_id,
+            )
             .where(
-                CurriculumOffering.tenant_id == tenant_id,
-                CurriculumOffering.academic_level_department_id == link_id,
-                AcademicTerm.tenant_id == tenant_id,
-                AcademicTerm.status.in_(live_statuses),
+                CurriculumSubjectDepartment.tenant_id == tenant_id,
+                CurriculumSubjectDepartment.academic_level_department_id == link_id,
+                CurriculumSubject.tenant_id == tenant_id,
+                CurriculumSubject.is_active.is_(True),
             )
             .scalar_subquery()
         )
@@ -259,14 +263,14 @@ class AcademicLevelDepartmentRepository:
                 select(
                     class_total.label("class_assignments_total"),
                     class_live.label("class_assignments_live"),
-                    offerings_total.label("offerings_total"),
-                    offerings_live.label("offerings_live"),
+                    curriculum_links_total.label("curriculum_subject_links_total"),
+                    curriculum_links_live.label("curriculum_subject_links_live"),
                 )
             )
         ).one()
         return {
             "class_assignments_total": int(row.class_assignments_total),
             "class_assignments_live": int(row.class_assignments_live),
-            "offerings_total": int(row.offerings_total),
-            "offerings_live": int(row.offerings_live),
+            "curriculum_subject_links_total": int(row.curriculum_subject_links_total),
+            "curriculum_subject_links_live": int(row.curriculum_subject_links_live),
         }
