@@ -105,6 +105,21 @@ class AcademicLevel(BaseModel):
             """,
             name="ck_academic_levels_specialization_term_position",
         ),
+        CheckConstraint(
+            """
+            (category <> 'SENIOR_SECONDARY'
+                AND specialization_required_from_term_position IS NULL)
+            OR
+            (category = 'SENIOR_SECONDARY' AND (
+                (position = 1
+                    AND specialization_required_from_term_position BETWEEN 1 AND 3)
+                OR
+                (position > 1
+                    AND specialization_required_from_term_position = 1)
+            ))
+            """,
+            name="ck_academic_levels_specialization_policy",
+        ),
         CheckConstraint("position > 0", name="ck_academic_levels_position_positive"),
         CheckConstraint(
             """
@@ -253,6 +268,17 @@ def _populate_academic_level_normalized_fields(
         return
     target.name = normalize_class_name(target.name) or target.name
     target.normalized_name = normalized_name
+
+    # Specialization is a senior-secondary curriculum policy, not an arbitrary
+    # per-level flag. The first senior position is configurable and defaults to
+    # Second Term; every later senior position specializes from First Term.
+    if target.category != AcademicCategory.SENIOR_SECONDARY:
+        target.specialization_required_from_term_position = None
+    elif target.position == 1:
+        if target.specialization_required_from_term_position is None:
+            target.specialization_required_from_term_position = 2
+    else:
+        target.specialization_required_from_term_position = 1
 
 
 event.listen(AcademicLevel, "before_insert", _populate_academic_level_normalized_fields)
