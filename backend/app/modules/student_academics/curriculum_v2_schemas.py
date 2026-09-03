@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -146,3 +146,25 @@ class EligibleTeacherAssignmentClassResponse(OutputBase):
     display_name: str
     department_name: str | None = None
     already_assigned: bool = False
+
+
+class TeacherAssignmentBulkCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    teacher_membership_id: uuid.UUID
+    curriculum_subject_id: uuid.UUID
+    academic_term_id: uuid.UUID
+    class_ids: list[uuid.UUID] = Field(min_length=1)
+    effective_from: date | None = None
+
+    @field_validator("class_ids")
+    @classmethod
+    def unique_classes(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("class selections must be unique")
+        return value
+
+
+class TeacherAssignmentBulkResponse(OutputBase):
+    created: int
+    assignment_ids: list[uuid.UUID] = Field(default_factory=list)
