@@ -22,7 +22,7 @@ class CBTSyncEntityType(str, PyEnum):
     SUBJECT = "subject"
     CURRICULUM = "curriculum"
     CURRICULUM_SUBJECT = "curriculum_subject"
-    SUBJECT_OFFERING = "subject_offering"
+    CURRICULUM_SUBJECT_DEPARTMENT = "curriculum_subject_department"
 
     ASSESSMENT_SCHEME = "assessment_scheme"
     ASSESSMENT_COMPONENT = "assessment_component"
