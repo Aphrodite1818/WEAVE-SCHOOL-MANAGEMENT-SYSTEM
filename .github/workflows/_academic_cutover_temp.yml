@@ -19,34 +19,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
+
           path = Path("backend/app/modules/student_academics/service.py")
           text = path.read_text()
 
-          old = """        class_department = (
-              await db.execute(
-                  select(ClassTermDepartmentAssignment).where(
-                      ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                      ClassTermDepartmentAssignment.class_id == class_id,
-                      ClassTermDepartmentAssignment.academic_term_id == term.id,
-                  )
+          if "resolve_curriculum_offerings" in text:
+              pattern = re.compile(
+                  r"        class_department = \(\n.*?"
+                  r"        offerings = await CurriculumResolutionService\.resolve_curriculum_offerings\(\n.*?"
+                  r"        return term\n",
+                  re.S,
               )
-          ).scalar_one_or_none()
-          offerings = await CurriculumResolutionService.resolve_curriculum_offerings(
-              db,
-              tenant_id=tenant_id,
-              academic_level_id=classroom.academic_level_id,
-              academic_term_id=term.id,
-              department_id=(
-                  class_department.department_id if class_department is not None else None
-              ),
-          )
-          if curriculum_subject.id not in {offering.curriculum_subject_id for offering in offerings}:
-              raise ConflictException(
-                  \"This curriculum subject is not offered to the class for the selected term.\"
-              )
-          return term
-          """
-          new = """        resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
+              replacement = '''        resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
               db,
               tenant_id=tenant_id,
               class_id=classroom.id,
@@ -56,26 +41,23 @@ jobs:
               item.curriculum_subject_id for item in resolved_subjects
           }:
               raise ConflictException(
-                  \"This curriculum subject is not available to the class for the selected term.\"
+                  "This curriculum subject is not available to the class for the selected term."
               )
           return term
-          """
-          if old not in text:
-              raise SystemExit("teacher-assignment offering block not found")
-          text = text.replace(old, new, 1)
+          '''
+              text, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit("could not replace teacher-assignment offering block")
 
-          old = """        offerings = await CurriculumResolutionService.resolve_student_offerings(
-              db,
-              tenant_id=tenant_id,
-              student_id=student.id,
-              academic_term_id=term.id,
-          )
-          if curriculum_subject.id not in {offering.curriculum_subject_id for offering in offerings}:
-              raise ForbiddenException(
-                  \"This subject is not offered to the student's class specialization for this term.\"
+          if "resolve_student_offerings" in text:
+              pattern = re.compile(
+                  r"        offerings = await CurriculumResolutionService\.resolve_student_offerings\(\n.*?"
+                  r"            raise ForbiddenException\(\n"
+                  r"                \"This subject is not offered to the student's class specialization for this term\.\"\n"
+                  r"            \)\n",
+                  re.S,
               )
-          """
-          new = """        resolved_subjects = await CurriculumResolutionService.resolve_student_subjects(
+              replacement = '''        resolved_subjects = await CurriculumResolutionService.resolve_student_subjects(
               db,
               tenant_id=tenant_id,
               student_id=student.id,
@@ -85,17 +67,19 @@ jobs:
               item.curriculum_subject_id for item in resolved_subjects
           }:
               raise ForbiddenException(
-                  \"This subject is not available to the student's class specialization for this term.\"
+                  "This subject is not available to the student's class specialization for this term."
               )
-          """
-          if old not in text:
-              raise SystemExit("student offering block not found")
-          text = text.replace(old, new, 1)
+          '''
+              text, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit("could not replace student offering block")
 
-          old = """        blockers: list[str] = []
-          if term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}:
-          """
-          new = """        blockers: list[str] = []
+          dep_start = text.index("    async def academic_term_dependency_preview(")
+          dep_end = text.index("    @staticmethod\n    async def create_academic_session(", dep_start)
+          dep = text[dep_start:dep_end]
+          if "specialization_readiness(" not in dep:
+              anchor = "        blockers: list[str] = []\n"
+              insertion = '''        blockers: list[str] = []
           if term.status == AcademicTermStatus.DRAFT:
               from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 
@@ -108,22 +92,25 @@ jobs:
               )
               counts.update(specialization_counts)
               blockers.extend(specialization_blockers)
-          if term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}:
-          """
-          if old not in text:
-              raise SystemExit("term dependency anchor not found")
-          text = text.replace(old, new, 1)
+          '''
+              if anchor not in dep:
+                  raise SystemExit("term dependency blocker anchor not found")
+              dep = dep.replace(anchor, insertion, 1)
+          dep = dep.replace(
+              "            can_open=term.status == AcademicTermStatus.DRAFT,\n",
+              "            can_open=term.status == AcademicTermStatus.DRAFT and not blockers,\n",
+              1,
+          )
+          text = text[:dep_start] + dep + text[dep_end:]
 
-          old = "            can_open=term.status == AcademicTermStatus.DRAFT,\n"
-          new = "            can_open=term.status == AcademicTermStatus.DRAFT and not blockers,\n"
-          if old not in text:
-              raise SystemExit("term can_open anchor not found")
-          text = text.replace(old, new, 1)
-
-          old = """        previous = term.status
+          open_start = text.index("    async def open_academic_term(")
+          open_end = text.index("    @staticmethod\n    async def start_academic_term_closure(", open_start)
+          section = text[open_start:open_end]
+          if "reconcile_teacher_assignments_for_term(" not in section:
+              anchor = '''        previous = term.status
           term.status = AcademicTermStatus.OPEN
-          """
-          new = """        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+          '''
+              insertion = '''        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 
           specialization_counts, specialization_blockers = (
               await AcademicCurriculumService.specialization_readiness(
@@ -134,10 +121,10 @@ jobs:
           )
           if specialization_blockers:
               raise ConflictException(
-                  \"Academic term cannot be opened until class specializations are ready.\",
+                  "Academic term cannot be opened until class specializations are ready.",
                   payload={
-                      \"blocker_messages\": specialization_blockers,
-                      \"dependency_counts\": specialization_counts,
+                      "blocker_messages": specialization_blockers,
+                      "dependency_counts": specialization_counts,
                   },
               )
           await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
@@ -149,10 +136,11 @@ jobs:
 
           previous = term.status
           term.status = AcademicTermStatus.OPEN
-          """
-          if old not in text:
-              raise SystemExit("term opening anchor not found")
-          text = text.replace(old, new, 1)
+          '''
+              if anchor not in section:
+                  raise SystemExit("term opening transition anchor not found")
+              section = section.replace(anchor, insertion, 1)
+          text = text[:open_start] + section + text[open_end:]
 
           for obsolete in (
               "resolve_curriculum_offerings",
@@ -161,6 +149,7 @@ jobs:
           ):
               if obsolete in text:
                   raise SystemExit(f"obsolete reference remains: {obsolete}")
+
           path.write_text(text)
           PY
       - name: Compile academic modules
