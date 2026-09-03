@@ -21,6 +21,9 @@ jobs:
           from pathlib import Path
           import re
 
+          def lines(*items):
+              return "\n".join(items) + "\n"
+
           path = Path("backend/app/modules/student_academics/service.py")
           text = path.read_text()
 
@@ -31,20 +34,21 @@ jobs:
                   r"        return term\n",
                   re.S,
               )
-              replacement = '''        resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
-              db,
-              tenant_id=tenant_id,
-              class_id=classroom.id,
-              academic_term_id=term.id,
-          )
-          if curriculum_subject.id not in {
-              item.curriculum_subject_id for item in resolved_subjects
-          }:
-              raise ConflictException(
-                  "This curriculum subject is not available to the class for the selected term."
+              replacement = lines(
+                  "        resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(",
+                  "            db,",
+                  "            tenant_id=tenant_id,",
+                  "            class_id=classroom.id,",
+                  "            academic_term_id=term.id,",
+                  "        )",
+                  "        if curriculum_subject.id not in {",
+                  "            item.curriculum_subject_id for item in resolved_subjects",
+                  "        }:",
+                  "            raise ConflictException(",
+                  "                \"This curriculum subject is not available to the class for the selected term.\"",
+                  "            )",
+                  "        return term",
               )
-          return term
-          '''
               text, count = pattern.subn(replacement, text, count=1)
               if count != 1:
                   raise SystemExit("could not replace teacher-assignment offering block")
@@ -57,19 +61,20 @@ jobs:
                   r"            \)\n",
                   re.S,
               )
-              replacement = '''        resolved_subjects = await CurriculumResolutionService.resolve_student_subjects(
-              db,
-              tenant_id=tenant_id,
-              student_id=student.id,
-              academic_term_id=term.id,
-          )
-          if curriculum_subject.id not in {
-              item.curriculum_subject_id for item in resolved_subjects
-          }:
-              raise ForbiddenException(
-                  "This subject is not available to the student's class specialization for this term."
+              replacement = lines(
+                  "        resolved_subjects = await CurriculumResolutionService.resolve_student_subjects(",
+                  "            db,",
+                  "            tenant_id=tenant_id,",
+                  "            student_id=student.id,",
+                  "            academic_term_id=term.id,",
+                  "        )",
+                  "        if curriculum_subject.id not in {",
+                  "            item.curriculum_subject_id for item in resolved_subjects",
+                  "        }:",
+                  "            raise ForbiddenException(",
+                  "                \"This subject is not available to the student's class specialization for this term.\"",
+                  "            )",
               )
-          '''
               text, count = pattern.subn(replacement, text, count=1)
               if count != 1:
                   raise SystemExit("could not replace student offering block")
@@ -79,20 +84,21 @@ jobs:
           dep = text[dep_start:dep_end]
           if "specialization_readiness(" not in dep:
               anchor = "        blockers: list[str] = []\n"
-              insertion = '''        blockers: list[str] = []
-          if term.status == AcademicTermStatus.DRAFT:
-              from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
-
-              specialization_counts, specialization_blockers = (
-                  await AcademicCurriculumService.specialization_readiness(
-                      db,
-                      tenant_id=tenant_id,
-                      term=term,
-                  )
+              insertion = lines(
+                  "        blockers: list[str] = []",
+                  "        if term.status == AcademicTermStatus.DRAFT:",
+                  "            from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService",
+                  "",
+                  "            specialization_counts, specialization_blockers = (",
+                  "                await AcademicCurriculumService.specialization_readiness(",
+                  "                    db,",
+                  "                    tenant_id=tenant_id,",
+                  "                    term=term,",
+                  "                )",
+                  "            )",
+                  "            counts.update(specialization_counts)",
+                  "            blockers.extend(specialization_blockers)",
               )
-              counts.update(specialization_counts)
-              blockers.extend(specialization_blockers)
-          '''
               if anchor not in dep:
                   raise SystemExit("term dependency blocker anchor not found")
               dep = dep.replace(anchor, insertion, 1)
@@ -107,39 +113,40 @@ jobs:
           open_end = text.index("    @staticmethod\n    async def start_academic_term_closure(", open_start)
           section = text[open_start:open_end]
           if "reconcile_teacher_assignments_for_term(" not in section:
-              anchor = '''        previous = term.status
-          term.status = AcademicTermStatus.OPEN
-          '''
-              insertion = '''        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
-
-          specialization_counts, specialization_blockers = (
-              await AcademicCurriculumService.specialization_readiness(
-                  db,
-                  tenant_id=tenant_id,
-                  term=term,
+              pattern = re.compile(
+                  r"        previous = term\.status\n        term\.status = AcademicTermStatus\.OPEN\n"
               )
-          )
-          if specialization_blockers:
-              raise ConflictException(
-                  "Academic term cannot be opened until class specializations are ready.",
-                  payload={
-                      "blocker_messages": specialization_blockers,
-                      "dependency_counts": specialization_counts,
-                  },
+              insertion = lines(
+                  "        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService",
+                  "",
+                  "        specialization_counts, specialization_blockers = (",
+                  "            await AcademicCurriculumService.specialization_readiness(",
+                  "                db,",
+                  "                tenant_id=tenant_id,",
+                  "                term=term,",
+                  "            )",
+                  "        )",
+                  "        if specialization_blockers:",
+                  "            raise ConflictException(",
+                  "                \"Academic term cannot be opened until class specializations are ready.\"",
+                  "                payload={",
+                  "                    \"blocker_messages\": specialization_blockers,",
+                  "                    \"dependency_counts\": specialization_counts,",
+                  "                },",
+                  "            )",
+                  "        await AcademicCurriculumService.reconcile_teacher_assignments_for_term(",
+                  "            db,",
+                  "            tenant_id=tenant_id,",
+                  "            term=term,",
+                  "            acting_admin_id=admin_id,",
+                  "        )",
+                  "",
+                  "        previous = term.status",
+                  "        term.status = AcademicTermStatus.OPEN",
               )
-          await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
-              db,
-              tenant_id=tenant_id,
-              term=term,
-              acting_admin_id=admin_id,
-          )
-
-          previous = term.status
-          term.status = AcademicTermStatus.OPEN
-          '''
-              if anchor not in section:
+              section, count = pattern.subn(insertion, section, count=1)
+              if count != 1:
                   raise SystemExit("term opening transition anchor not found")
-              section = section.replace(anchor, insertion, 1)
           text = text[:open_start] + section + text[open_end:]
 
           for obsolete in (
