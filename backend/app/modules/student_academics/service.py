@@ -505,6 +505,18 @@ class StudentAcademicService:
             ),
         }
         blockers: list[str] = []
+        if term.status == AcademicTermStatus.DRAFT:
+            from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+
+            specialization_counts, specialization_blockers = (
+                await AcademicCurriculumService.specialization_readiness(
+                    db,
+                    tenant_id=tenant_id,
+                    term=term,
+                )
+            )
+            counts.update(specialization_counts)
+            blockers.extend(specialization_blockers)
         if term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}:
             if counts["draft_results"]:
                 blockers.append(
@@ -548,7 +560,7 @@ class StudentAcademicService:
             term_id=term_id,
             dependency_counts=counts,
             blocker_messages=blockers,
-            can_open=term.status == AcademicTermStatus.DRAFT,
+            can_open=term.status == AcademicTermStatus.DRAFT and not blockers,
             can_close=can_close,
             can_start_closing=term.status == AcademicTermStatus.OPEN and can_close,
             can_finalize_close=term.status == AcademicTermStatus.CLOSING and can_close,
@@ -838,6 +850,30 @@ class StudentAcademicService:
                     "calendar_id": readiness.get("calendar_id"),
                 },
             )
+        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+
+        specialization_counts, specialization_blockers = (
+            await AcademicCurriculumService.specialization_readiness(
+                db,
+                tenant_id=tenant_id,
+                term=term,
+            )
+        )
+        if specialization_blockers:
+            raise ConflictException(
+                "Academic term cannot be opened until class specializations are ready.",
+                payload={
+                    "blocker_messages": specialization_blockers,
+                    "dependency_counts": specialization_counts,
+                },
+            )
+        await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
+            db,
+            tenant_id=tenant_id,
+            term=term,
+            acting_admin_id=admin_id,
+        )
+
         previous = term.status
         term.status = AcademicTermStatus.OPEN
         term.is_current = True
@@ -1305,27 +1341,17 @@ class StudentAcademicService:
             raise ConflictException(
                 "The selected curriculum subject does not belong to the class academic level."
             )
-        class_department = (
-            await db.execute(
-                select(ClassTermDepartmentAssignment).where(
-                    ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                    ClassTermDepartmentAssignment.class_id == class_id,
-                    ClassTermDepartmentAssignment.academic_term_id == term.id,
-                )
-            )
-        ).scalar_one_or_none()
-        offerings = await CurriculumResolutionService.resolve_curriculum_offerings(
+        resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
             db,
             tenant_id=tenant_id,
-            academic_level_id=classroom.academic_level_id,
+            class_id=classroom.id,
             academic_term_id=term.id,
-            department_id=(
-                class_department.department_id if class_department is not None else None
-            ),
         )
-        if curriculum_subject.id not in {offering.curriculum_subject_id for offering in offerings}:
+        if curriculum_subject.id not in {
+            item.curriculum_subject_id for item in resolved_subjects
+        }:
             raise ConflictException(
-                "This curriculum subject is not offered to the class for the selected term."
+                "This curriculum subject is not available to the class for the selected term."
             )
         return term
 
@@ -2139,15 +2165,17 @@ class StudentAcademicService:
             raise ForbiddenException(
                 "Student is not enrolled in the assigned class for this session."
             )
-        offerings = await CurriculumResolutionService.resolve_student_offerings(
+        resolved_subjects = await CurriculumResolutionService.resolve_student_subjects(
             db,
             tenant_id=tenant_id,
             student_id=student.id,
             academic_term_id=term.id,
         )
-        if curriculum_subject.id not in {offering.curriculum_subject_id for offering in offerings}:
+        if curriculum_subject.id not in {
+            item.curriculum_subject_id for item in resolved_subjects
+        }:
             raise ForbiddenException(
-                "This subject is not offered to the student's class specialization for this term."
+                "This subject is not available to the student's class specialization for this term."
             )
         if (
             assignment.effective_from
