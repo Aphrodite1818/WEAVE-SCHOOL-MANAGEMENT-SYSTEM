@@ -128,7 +128,7 @@ jobs:
                   "        )",
                   "        if specialization_blockers:",
                   "            raise ConflictException(",
-                  "                \"Academic term cannot be opened until class specializations are ready.\"",
+                  "                \"Academic term cannot be opened until class specializations are ready.\",",
                   "                payload={",
                   "                    \"blocker_messages\": specialization_blockers,",
                   "                    \"dependency_counts\": specialization_counts,",
