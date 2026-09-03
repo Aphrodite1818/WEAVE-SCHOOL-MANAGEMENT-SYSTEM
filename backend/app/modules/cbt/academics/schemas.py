@@ -1,4 +1,4 @@
-"""Stable v4 Cloud -> local CBT bootstrap contract."""
+"""Stable Cloud -> local CBT academic bootstrap contract."""
 
 from __future__ import annotations
 
@@ -54,6 +54,7 @@ class CBTAcademicLevelSnapshot(SnapshotBase):
     name: str
     category: str
     position: int
+    specialization_required_from_term_position: int | None = None
 
 
 class CBTArmLabelSnapshot(SnapshotBase):
@@ -62,11 +63,7 @@ class CBTArmLabelSnapshot(SnapshotBase):
 
 
 class CBTDepartmentSnapshot(SnapshotBase):
-    """Level-specific specialization identity consumed by CBT.
-
-    ``id`` is the AcademicLevelDepartment mapping UUID, while ``name`` comes from
-    the tenant-wide canonical Department pool.
-    """
+    """Level-specific specialization identity consumed by CBT."""
 
     id: uuid.UUID
     academic_level_id: uuid.UUID
@@ -108,11 +105,10 @@ class CBTCurriculumSubjectSnapshot(SnapshotBase):
     is_active: bool
 
 
-class CBTCurriculumOfferingSnapshot(SnapshotBase):
+class CBTCurriculumSubjectDepartmentSnapshot(SnapshotBase):
     id: uuid.UUID
     curriculum_subject_id: uuid.UUID
-    academic_term_id: uuid.UUID
-    department_id: uuid.UUID | None = None
+    department_id: uuid.UUID
 
 
 class CBTAssessmentSchemeSnapshot(SnapshotBase):
@@ -182,7 +178,7 @@ class CBTAcademicBootstrapResponse(SnapshotBase):
     subjects: list[CBTSubjectSnapshot]
     curricula: list[CBTCurriculumSnapshot]
     curriculum_subjects: list[CBTCurriculumSubjectSnapshot]
-    offerings: list[CBTCurriculumOfferingSnapshot]
+    curriculum_subject_departments: list[CBTCurriculumSubjectDepartmentSnapshot]
     assessment_schemes: list[CBTAssessmentSchemeSnapshot]
     assessment_components: list[CBTAssessmentComponentSnapshot]
     admins: list[CBTAdminSnapshot]
