@@ -1,4 +1,4 @@
-"""Bulk bootstrap projector for the canonical CBT v4 contract."""
+"""Bulk bootstrap projector for the canonical CBT v5 contract."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ from app.modules.cbt.academics.schemas import (
     CBTAssessmentSchemeSnapshot,
     CBTClassSnapshot,
     CBTClassTermDepartmentSnapshot,
-    CBTCurriculumOfferingSnapshot,
     CBTCurriculumSnapshot,
+    CBTCurriculumSubjectDepartmentSnapshot,
     CBTCurriculumSubjectSnapshot,
     CBTDepartmentSnapshot,
     CBTStudentEnrollmentSnapshot,
@@ -38,8 +38,8 @@ from app.modules.classes.models import (
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
-    CurriculumOffering,
     CurriculumSubject,
+    CurriculumSubjectDepartment,
 )
 from app.modules.student_academics.models import (
     AcademicSession,
@@ -72,7 +72,10 @@ def _visible(row: Any) -> bool:
     status = getattr(row, "status", None)
     if status is not None and _value(status) != "active":
         return False
-    return bool(getattr(row, "is_active", True) and getattr(row, "archived_at", None) is None)
+    return bool(
+        getattr(row, "is_active", True)
+        and getattr(row, "archived_at", None) is None
+    )
 
 
 def _ordered(items: list[BaseModel]) -> list[BaseModel]:
@@ -81,6 +84,19 @@ def _ordered(items: list[BaseModel]) -> list[BaseModel]:
 
 def _tenant_rows(session: Session, model: type[Any], tenant_id: uuid.UUID) -> list[Any]:
     return list(session.execute(select(model).where(model.tenant_id == tenant_id)).scalars())
+
+
+def _term_position(term: AcademicTerm) -> int:
+    return {
+        "first_term": 1,
+        "second_term": 2,
+        "third_term": 3,
+    }.get(str(_value(term.name)).lower(), 0)
+
+
+def _specialization_active(level: AcademicLevel, term: AcademicTerm) -> bool:
+    threshold = level.specialization_required_from_term_position
+    return threshold is not None and _term_position(term) >= threshold
 
 
 def build_bootstrap_sections(
@@ -98,7 +114,10 @@ def build_bootstrap_sections(
     sections["sessions"] = _ordered(
         [
             CBTAcademicSessionSnapshot(
-                id=row.id, name=row.name, status=_value(row.status), is_current=row.is_current
+                id=row.id,
+                name=row.name,
+                status=_value(row.status),
+                is_current=row.is_current,
             )
             for row in visible_sessions.values()
         ]
@@ -130,7 +149,13 @@ def build_bootstrap_sections(
     sections["levels"] = _ordered(
         [
             CBTAcademicLevelSnapshot(
-                id=row.id, name=row.name, category=_value(row.category), position=row.position
+                id=row.id,
+                name=row.name,
+                category=_value(row.category),
+                position=row.position,
+                specialization_required_from_term_position=(
+                    row.specialization_required_from_term_position
+                ),
             )
             for row in visible_levels.values()
         ]
@@ -179,7 +204,10 @@ def build_bootstrap_sections(
                 id=row.id,
                 academic_level_id=row.academic_level_id,
                 arm_label_id=row.arm_label_id,
-                display_name=f"{visible_levels[row.academic_level_id].name} {visible_arms[row.arm_label_id].label}".strip(),
+                display_name=(
+                    f"{visible_levels[row.academic_level_id].name} "
+                    f"{visible_arms[row.arm_label_id].label}"
+                ).strip(),
                 is_active=row.is_active,
             )
             for row in visible_classes.values()
@@ -221,18 +249,28 @@ def build_bootstrap_sections(
     visible_subjects = {row.id: row for row in subject_rows if _visible(row)}
     sections["subjects"] = _ordered(
         [
-            CBTSubjectSnapshot(id=row.id, name=row.name, code=row.code, is_active=row.is_active)
+            CBTSubjectSnapshot(
+                id=row.id,
+                name=row.name,
+                code=row.code,
+                is_active=row.is_active,
+            )
             for row in visible_subjects.values()
         ]
     )
 
     curriculum_rows = _tenant_rows(session, Curriculum, tenant_id)
     visible_curricula = {
-        row.id: row for row in curriculum_rows if row.academic_level_id in visible_levels
+        row.id: row
+        for row in curriculum_rows
+        if row.academic_level_id in visible_levels
     }
     sections["curricula"] = _ordered(
         [
-            CBTCurriculumSnapshot(id=row.id, academic_level_id=row.academic_level_id)
+            CBTCurriculumSnapshot(
+                id=row.id,
+                academic_level_id=row.academic_level_id,
+            )
             for row in visible_curricula.values()
         ]
     )
@@ -258,42 +296,48 @@ def build_bootstrap_sections(
         ]
     )
 
-    offering_rows = _tenant_rows(session, CurriculumOffering, tenant_id)
-    visible_offerings: dict[uuid.UUID, CurriculumOffering] = {}
-    offering_scopes: set[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]] = set()
-    for row in offering_rows:
-        curriculum_subject = visible_curriculum_subjects.get(row.curriculum_subject_id)
-        term = visible_terms.get(row.academic_term_id)
-        if curriculum_subject is None or term is None or term.status != AcademicTermStatus.OPEN:
-            continue
-        curriculum = visible_curricula[curriculum_subject.curriculum_id]
-        if row.academic_level_department_id is not None:
-            link = visible_level_departments.get(row.academic_level_department_id)
-            if link is None or link.academic_level_id != curriculum.academic_level_id:
-                continue
-        visible_offerings[row.id] = row
-        offering_scopes.add(
-            (row.curriculum_subject_id, row.academic_term_id, row.academic_level_department_id)
-        )
-    sections["offerings"] = _ordered(
+    scope_rows = _tenant_rows(session, CurriculumSubjectDepartment, tenant_id)
+    visible_scopes = {
+        row.id: row
+        for row in scope_rows
+        if row.curriculum_subject_id in visible_curriculum_subjects
+        and row.academic_level_department_id in visible_level_departments
+        and visible_level_departments[
+            row.academic_level_department_id
+        ].academic_level_id
+        == visible_curricula[
+            visible_curriculum_subjects[row.curriculum_subject_id].curriculum_id
+        ].academic_level_id
+    }
+    sections["curriculum_subject_departments"] = _ordered(
         [
-            CBTCurriculumOfferingSnapshot(
+            CBTCurriculumSubjectDepartmentSnapshot(
                 id=row.id,
                 curriculum_subject_id=row.curriculum_subject_id,
-                academic_term_id=row.academic_term_id,
                 department_id=row.academic_level_department_id,
             )
-            for row in visible_offerings.values()
+            for row in visible_scopes.values()
         ]
     )
+    scopes_by_subject: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for row in visible_scopes.values():
+        scopes_by_subject.setdefault(row.curriculum_subject_id, set()).add(
+            row.academic_level_department_id
+        )
 
     scheme_rows = _tenant_rows(session, AssessmentScheme, tenant_id)
     visible_schemes = {
-        row.id: row for row in scheme_rows if row.status == AssessmentSchemeStatus.ACTIVE
+        row.id: row
+        for row in scheme_rows
+        if row.status == AssessmentSchemeStatus.ACTIVE
     }
     sections["assessment_schemes"] = _ordered(
         [
-            CBTAssessmentSchemeSnapshot(id=row.id, name=row.name, status=_value(row.status))
+            CBTAssessmentSchemeSnapshot(
+                id=row.id,
+                name=row.name,
+                status=_value(row.status),
+            )
             for row in visible_schemes.values()
         ]
     )
@@ -318,9 +362,15 @@ def build_bootstrap_sections(
     admin_rows = _tenant_rows(session, TenantAdmin, tenant_id)
     sections["admins"] = _ordered(
         [
-            CBTAdminSnapshot(id=row.id, email=row.email, status=_value(row.account_status))
+            CBTAdminSnapshot(
+                id=row.id,
+                email=row.email,
+                status=_value(row.account_status),
+            )
             for row in admin_rows
-            if row.account_status == TenantAdminStatus.ACTIVE and row.is_active and row.is_verified
+            if row.account_status == TenantAdminStatus.ACTIVE
+            and row.is_active
+            and row.is_verified
         ]
     )
 
@@ -391,7 +441,9 @@ def build_bootstrap_sections(
         )
     sections["student_enrollments"] = _ordered(enrollment_snapshots)
 
-    open_terms = [row for row in visible_terms.values() if row.status == AcademicTermStatus.OPEN]
+    open_terms = [
+        row for row in visible_terms.values() if row.status == AcademicTermStatus.OPEN
+    ]
     if len(open_terms) > 1:
         raise RuntimeError("More than one current open academic term exists for the tenant.")
     current_open_term = open_terms[0] if open_terms else None
@@ -408,17 +460,24 @@ def build_bootstrap_sections(
             ):
                 continue
             classroom = visible_classes[assignment.class_id]
-            curriculum_subject = visible_curriculum_subjects[assignment.curriculum_subject_id]
+            level = visible_levels[classroom.academic_level_id]
+            curriculum_subject = visible_curriculum_subjects[
+                assignment.curriculum_subject_id
+            ]
             curriculum = visible_curricula[curriculum_subject.curriculum_id]
             if curriculum.academic_level_id != classroom.academic_level_id:
                 continue
-            department_id = class_term_department.get((assignment.class_id, current_open_term.id))
-            if not (
-                (assignment.curriculum_subject_id, current_open_term.id, None) in offering_scopes
-                or (assignment.curriculum_subject_id, current_open_term.id, department_id)
-                in offering_scopes
-            ):
-                continue
+
+            scopes = scopes_by_subject.get(assignment.curriculum_subject_id, set())
+            if _specialization_active(level, current_open_term):
+                department_id = class_term_department.get(
+                    (assignment.class_id, current_open_term.id)
+                )
+                if department_id is None:
+                    continue
+                if scopes and department_id not in scopes:
+                    continue
+            # Before specialization, every active curriculum subject is eligible.
             assignment_snapshots.append(
                 CBTTeacherAssignmentSnapshot(
                     id=assignment.id,
