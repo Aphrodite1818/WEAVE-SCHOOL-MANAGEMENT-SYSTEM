@@ -23,17 +23,32 @@ export const curriculumService = {
       `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/deactivate`,
       {},
     ),
-  listOfferings: (curriculumSubjectId) =>
+  deleteSubject: (curriculumSubjectId) =>
+    api.delete(
+      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}`,
+    ),
+  getEligibleClasses: (curriculumSubjectId, termId) =>
     api.get(
-      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/offerings`,
+      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/eligible-classes/${termId}`,
     ),
-  addOffering: (curriculumSubjectId, payload) =>
+  getResolvedClassSubjects: (classId, termId) =>
+    api.get(
+      `/tenant-admin/academics/classes/${classId}/terms/${termId}/subjects`,
+    ),
+  createTeacherAssignmentsBulk: (payload) =>
+    api.post("/tenant-admin/academics/teacher-assignments/bulk", payload),
+  updateSpecializationPolicy: (levelId, termPosition) =>
+    api.patch(
+      `/tenant-admin/academics/levels/${levelId}/specialization-policy`,
+      { specialization_required_from_term_position: termPosition },
+    ),
+  listClassDepartments: (termId) =>
+    api.get(`/tenant-admin/academics/terms/${termId}/class-departments`),
+  copyClassDepartments: (termId, sourceTermId) =>
     api.post(
-      `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/offerings`,
-      payload,
+      `/tenant-admin/academics/terms/${termId}/class-departments/copy`,
+      { source_academic_term_id: sourceTermId },
     ),
-  removeOffering: (offeringId) =>
-    api.delete(`/tenant-admin/academics/curriculum-offerings/${offeringId}`),
   getClassDepartment: (classId, termId) =>
     api.get(
       `/tenant-admin/academics/classes/${classId}/terms/${termId}/department`,
