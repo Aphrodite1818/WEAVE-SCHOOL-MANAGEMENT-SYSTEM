@@ -12,6 +12,7 @@ from app.modules.attendance.attendance_enums import StudentAttendanceSheetStatus
 from app.modules.attendance.models import StudentAttendanceSheet
 from app.modules.classes.models import (
     AcademicLevel,
+    AcademicLevelDepartment,
     AcademicLevelStatus,
     ArmLabel,
     ClassRoom,
@@ -22,7 +23,6 @@ from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
-    CurriculumOffering,
     CurriculumSubject,
 )
 from app.modules.student_academics.models import (
@@ -61,12 +61,7 @@ class AcademicLevelRepository:
                 )
             ).scalar_one_or_none()
             if curriculum is None:
-                db.add(
-                    Curriculum(
-                        tenant_id=level.tenant_id,
-                        academic_level_id=level.id,
-                    )
-                )
+                db.add(Curriculum(tenant_id=level.tenant_id, academic_level_id=level.id))
                 await db.flush()
         return level
 
@@ -76,17 +71,24 @@ class AcademicLevelRepository:
 
     @staticmethod
     async def get_by_id(
-        db: AsyncSession, tenant_id: uuid.UUID, level_id: uuid.UUID, *, lock: bool = False
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        level_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ):
         query = select(AcademicLevel).where(
-            AcademicLevel.tenant_id == tenant_id, AcademicLevel.id == level_id
+            AcademicLevel.tenant_id == tenant_id,
+            AcademicLevel.id == level_id,
         )
         if lock:
             query = query.with_for_update()
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_normalized_name(db: AsyncSession, tenant_id: uuid.UUID, name: str):
+    async def get_by_normalized_name(
+        db: AsyncSession, tenant_id: uuid.UUID, name: str
+    ):
         from app.core.utils.normalization import normalized_class_name_key
 
         normalized = normalized_class_name_key(name)
@@ -130,7 +132,11 @@ class AcademicLevelRepository:
             query = query.where(AcademicLevel.status == AcademicLevelStatus.ACTIVE)
         elif not include_archived:
             query = query.where(AcademicLevel.status != AcademicLevelStatus.ARCHIVED)
-        query = query.order_by(AcademicLevel.category, AcademicLevel.position, AcademicLevel.name)
+        query = query.order_by(
+            AcademicLevel.category,
+            AcademicLevel.position,
+            AcademicLevel.name,
+        )
         return list((await db.execute(query)).scalars().all())
 
     @staticmethod
@@ -146,56 +152,58 @@ class AcademicLevelRepository:
             Curriculum.tenant_id == tenant_id,
             Curriculum.academic_level_id == level_id,
         )
-
-        query = select(
-            count_subquery(
-                ClassRoom,
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.academic_level_id == level_id,
-            ).label("classes_total"),
-            count_subquery(
-                ClassRoom,
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.academic_level_id == level_id,
-                ClassRoom.is_active.is_(True),
-                ClassRoom.archived_at.is_(None),
-            ).label("classes_active"),
-            count_subquery(
-                Department,
-                Department.tenant_id == tenant_id,
-                Department.academic_level_id == level_id,
-            ).label("departments_total"),
-            count_subquery(
-                Department,
-                Department.tenant_id == tenant_id,
-                Department.academic_level_id == level_id,
-                Department.is_active.is_(True),
-                Department.archived_at.is_(None),
-            ).label("departments_active"),
-            count_subquery(
-                CurriculumSubject,
-                CurriculumSubject.tenant_id == tenant_id,
-                CurriculumSubject.curriculum_id.in_(curriculum_ids),
-            ).label("curriculum_subjects_total"),
-            count_subquery(
-                CurriculumSubject,
-                CurriculumSubject.tenant_id == tenant_id,
-                CurriculumSubject.curriculum_id.in_(curriculum_ids),
-                CurriculumSubject.is_active.is_(True),
-            ).label("curriculum_subjects_active"),
-            count_subquery(
-                StudentEnrollment,
-                StudentEnrollment.tenant_id == tenant_id,
-                StudentEnrollment.academic_level_id == level_id,
-            ).label("enrollments_total"),
-            count_subquery(
-                StudentEnrollment,
-                StudentEnrollment.tenant_id == tenant_id,
-                StudentEnrollment.academic_level_id == level_id,
-                StudentEnrollment.is_current.is_(True),
-            ).label("enrollments_current"),
-        )
-        row = (await db.execute(query)).one()
+        row = (
+            await db.execute(
+                select(
+                    count_subquery(
+                        ClassRoom,
+                        ClassRoom.tenant_id == tenant_id,
+                        ClassRoom.academic_level_id == level_id,
+                    ).label("classes_total"),
+                    count_subquery(
+                        ClassRoom,
+                        ClassRoom.tenant_id == tenant_id,
+                        ClassRoom.academic_level_id == level_id,
+                        ClassRoom.is_active.is_(True),
+                        ClassRoom.archived_at.is_(None),
+                    ).label("classes_active"),
+                    count_subquery(
+                        AcademicLevelDepartment,
+                        AcademicLevelDepartment.tenant_id == tenant_id,
+                        AcademicLevelDepartment.academic_level_id == level_id,
+                    ).label("departments_total"),
+                    count_subquery(
+                        AcademicLevelDepartment,
+                        AcademicLevelDepartment.tenant_id == tenant_id,
+                        AcademicLevelDepartment.academic_level_id == level_id,
+                        AcademicLevelDepartment.is_active.is_(True),
+                        AcademicLevelDepartment.archived_at.is_(None),
+                    ).label("departments_active"),
+                    count_subquery(
+                        CurriculumSubject,
+                        CurriculumSubject.tenant_id == tenant_id,
+                        CurriculumSubject.curriculum_id.in_(curriculum_ids),
+                    ).label("curriculum_subjects_total"),
+                    count_subquery(
+                        CurriculumSubject,
+                        CurriculumSubject.tenant_id == tenant_id,
+                        CurriculumSubject.curriculum_id.in_(curriculum_ids),
+                        CurriculumSubject.is_active.is_(True),
+                    ).label("curriculum_subjects_active"),
+                    count_subquery(
+                        StudentEnrollment,
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.academic_level_id == level_id,
+                    ).label("enrollments_total"),
+                    count_subquery(
+                        StudentEnrollment,
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.academic_level_id == level_id,
+                        StudentEnrollment.is_current.is_(True),
+                    ).label("enrollments_current"),
+                )
+            )
+        ).one()
         return {
             "classes_total": int(row.classes_total),
             "classes_active": int(row.classes_active),
@@ -209,6 +217,12 @@ class AcademicLevelRepository:
 
 
 class DepartmentRepository:
+    """Canonical department persistence retained for non-specialization callers.
+
+    Level availability is owned by AcademicLevelDepartment and must not be encoded
+    on Department itself.
+    """
+
     @staticmethod
     async def add(db: AsyncSession, department: Department) -> Department:
         db.add(department)
@@ -222,11 +236,20 @@ class DepartmentRepository:
         return department
 
     @staticmethod
+    async def delete(db: AsyncSession, department: Department) -> None:
+        await db.delete(department)
+
+    @staticmethod
     async def get_by_id(
-        db: AsyncSession, tenant_id: uuid.UUID, department_id: uuid.UUID, *, lock: bool = False
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        department_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ):
         query = select(Department).where(
-            Department.tenant_id == tenant_id, Department.id == department_id
+            Department.tenant_id == tenant_id,
+            Department.id == department_id,
         )
         if lock:
             query = query.with_for_update()
@@ -234,122 +257,33 @@ class DepartmentRepository:
 
     @staticmethod
     async def get_by_normalized_name(
-        db: AsyncSession, tenant_id: uuid.UUID, academic_level_id: uuid.UUID, normalized_name: str
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        normalized_name: str,
     ) -> Department | None:
         return (
             await db.execute(
                 select(Department).where(
                     Department.tenant_id == tenant_id,
-                    Department.academic_level_id == academic_level_id,
                     Department.normalized_name == normalized_name,
                 )
             )
         ).scalar_one_or_none()
 
     @staticmethod
-    async def list_for_level(
+    async def list_for_tenant(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        academic_level_id: uuid.UUID,
         *,
         active_only: bool = False,
-        include_archived: bool = False,
     ) -> list[Department]:
-        query = select(Department).where(
-            Department.tenant_id == tenant_id,
-            Department.academic_level_id == academic_level_id,
-        )
+        query = select(Department).where(Department.tenant_id == tenant_id)
         if active_only:
             query = query.where(
                 Department.is_active.is_(True),
                 Department.archived_at.is_(None),
             )
-        elif not include_archived:
-            query = query.where(Department.archived_at.is_(None))
-        query = query.order_by(Department.name)
-        return list((await db.execute(query)).scalars().all())
-
-    @staticmethod
-    async def list_for_tenant(db: AsyncSession, tenant_id: uuid.UUID, *, active_only: bool = False):
-        query = select(Department).where(Department.tenant_id == tenant_id)
-        if active_only:
-            query = query.where(Department.is_active.is_(True), Department.archived_at.is_(None))
-        return list(
-            (await db.execute(query.order_by(Department.academic_level_id, Department.name)))
-            .scalars()
-            .all()
-        )
-
-    @staticmethod
-    async def count_dependencies(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        department_id: uuid.UUID,
-    ) -> dict[str, int]:
-        live_term_statuses = (
-            AcademicTermStatus.DRAFT,
-            AcademicTermStatus.OPEN,
-            AcademicTermStatus.CLOSING,
-        )
-        class_assignments_total = (
-            select(func.count())
-            .select_from(ClassTermDepartmentAssignment)
-            .where(
-                ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                ClassTermDepartmentAssignment.department_id == department_id,
-            )
-            .scalar_subquery()
-        )
-        class_assignments_live = (
-            select(func.count())
-            .select_from(ClassTermDepartmentAssignment)
-            .join(AcademicTerm, AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id)
-            .where(
-                ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                ClassTermDepartmentAssignment.department_id == department_id,
-                AcademicTerm.tenant_id == tenant_id,
-                AcademicTerm.status.in_(live_term_statuses),
-            )
-            .scalar_subquery()
-        )
-        offerings_total = (
-            select(func.count())
-            .select_from(CurriculumOffering)
-            .where(
-                CurriculumOffering.tenant_id == tenant_id,
-                CurriculumOffering.department_id == department_id,
-            )
-            .scalar_subquery()
-        )
-        offerings_live = (
-            select(func.count())
-            .select_from(CurriculumOffering)
-            .join(AcademicTerm, AcademicTerm.id == CurriculumOffering.academic_term_id)
-            .where(
-                CurriculumOffering.tenant_id == tenant_id,
-                CurriculumOffering.department_id == department_id,
-                AcademicTerm.tenant_id == tenant_id,
-                AcademicTerm.status.in_(live_term_statuses),
-            )
-            .scalar_subquery()
-        )
-        query = select(
-            class_assignments_total.label("class_assignments_total"),
-            class_assignments_live.label("class_assignments_live"),
-            offerings_total.label("offerings_total"),
-            offerings_live.label("offerings_live"),
-        )
-        row = (await db.execute(query)).one()
-        return {
-            "class_assignments_total": int(row.class_assignments_total),
-            "class_assignments_live": int(row.class_assignments_live),
-            "offerings_total": int(row.offerings_total),
-            "offerings_live": int(row.offerings_live),
-        }
-
-    @staticmethod
-    async def delete(db: AsyncSession, department: Department) -> None:
-        await db.delete(department)
+        return list((await db.execute(query.order_by(Department.name))).scalars())
 
 
 class ArmLabelRepository:
@@ -371,21 +305,31 @@ class ArmLabelRepository:
 
     @staticmethod
     async def get_by_id(
-        db: AsyncSession, tenant_id: uuid.UUID, arm_label_id: uuid.UUID, *, lock: bool = False
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        arm_label_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ):
-        query = select(ArmLabel).where(ArmLabel.tenant_id == tenant_id, ArmLabel.id == arm_label_id)
+        query = select(ArmLabel).where(
+            ArmLabel.tenant_id == tenant_id,
+            ArmLabel.id == arm_label_id,
+        )
         if lock:
             query = query.with_for_update()
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def get_by_normalized_label(
-        db: AsyncSession, tenant_id: uuid.UUID, normalized_label: str
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        normalized_label: str,
     ):
         return (
             await db.execute(
                 select(ArmLabel).where(
-                    ArmLabel.tenant_id == tenant_id, ArmLabel.normalized_label == normalized_label
+                    ArmLabel.tenant_id == tenant_id,
+                    ArmLabel.normalized_label == normalized_label,
                 )
             )
         ).scalar_one_or_none()
@@ -400,7 +344,10 @@ class ArmLabelRepository:
     ):
         query = select(ArmLabel).where(ArmLabel.tenant_id == tenant_id)
         if active_only:
-            query = query.where(ArmLabel.is_active.is_(True), ArmLabel.archived_at.is_(None))
+            query = query.where(
+                ArmLabel.is_active.is_(True),
+                ArmLabel.archived_at.is_(None),
+            )
         elif not include_archived:
             query = query.where(ArmLabel.archived_at.is_(None))
         return list((await db.execute(query.order_by(ArmLabel.label))).scalars().all())
@@ -411,35 +358,38 @@ class ArmLabelRepository:
         tenant_id: uuid.UUID,
         arm_label_id: uuid.UUID,
     ) -> dict[str, int]:
-        query = select(
-            select(func.count())
-            .select_from(ClassRoom)
-            .where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.arm_label_id == arm_label_id,
+        row = (
+            await db.execute(
+                select(
+                    select(func.count())
+                    .select_from(ClassRoom)
+                    .where(
+                        ClassRoom.tenant_id == tenant_id,
+                        ClassRoom.arm_label_id == arm_label_id,
+                    )
+                    .scalar_subquery()
+                    .label("classes_total"),
+                    select(func.count())
+                    .select_from(ClassRoom)
+                    .where(
+                        ClassRoom.tenant_id == tenant_id,
+                        ClassRoom.arm_label_id == arm_label_id,
+                        ClassRoom.is_active.is_(True),
+                        ClassRoom.archived_at.is_(None),
+                    )
+                    .scalar_subquery()
+                    .label("classes_live"),
+                )
             )
-            .scalar_subquery()
-            .label("classes_total"),
-            select(func.count())
-            .select_from(ClassRoom)
-            .where(
-                ClassRoom.tenant_id == tenant_id,
-                ClassRoom.arm_label_id == arm_label_id,
-                ClassRoom.is_active.is_(True),
-                ClassRoom.archived_at.is_(None),
-            )
-            .scalar_subquery()
-            .label("classes_live"),
-        )
-        row = (await db.execute(query)).one()
-        return {
-            "classes_total": int(row.classes_total),
-            "classes_live": int(row.classes_live),
-        }
+        ).one()
+        return {"classes_total": int(row.classes_total), "classes_live": int(row.classes_live)}
 
 
 class ClassRoomRepository:
-    LOAD = (joinedload(ClassRoom.academic_level), joinedload(ClassRoom.arm_label_ref))
+    LOAD = (
+        joinedload(ClassRoom.academic_level),
+        joinedload(ClassRoom.arm_label_ref),
+    )
 
     @staticmethod
     async def add(db: AsyncSession, classroom: ClassRoom):
@@ -459,12 +409,19 @@ class ClassRoomRepository:
 
     @staticmethod
     async def get_by_id(
-        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID, *, lock: bool = False
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ):
         query = (
             select(ClassRoom)
             .options(*ClassRoomRepository.LOAD)
-            .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id == class_id)
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.id == class_id,
+            )
         )
         if lock:
             query = query.with_for_update(of=ClassRoom)
@@ -504,7 +461,11 @@ class ClassRoomRepository:
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
         return list(
-            (await db.execute(query.order_by(ClassRoom.created_at).offset(offset).limit(limit)))
+            (
+                await db.execute(
+                    query.order_by(ClassRoom.created_at).offset(offset).limit(limit)
+                )
+            )
             .scalars()
             .unique()
             .all()
@@ -512,7 +473,9 @@ class ClassRoomRepository:
 
     @staticmethod
     async def list_by_teacher_membership(
-        db: AsyncSession, tenant_id: uuid.UUID, teacher_membership_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        teacher_membership_id: uuid.UUID,
     ):
         query = (
             select(ClassRoom)
@@ -539,15 +502,24 @@ class ClassRoomRepository:
         query = (
             select(ClassRoom)
             .options(*ClassRoomRepository.LOAD)
-            .where(ClassRoom.tenant_id == tenant_id, ClassRoom.id.in_(class_ids))
+            .where(
+                ClassRoom.tenant_id == tenant_id,
+                ClassRoom.id.in_(class_ids),
+            )
         )
         if active_only:
-            query = query.where(ClassRoom.is_active.is_(True), ClassRoom.archived_at.is_(None))
+            query = query.where(
+                ClassRoom.is_active.is_(True),
+                ClassRoom.archived_at.is_(None),
+            )
         return list((await db.execute(query)).scalars().unique().all())
 
     @staticmethod
     async def count_assigned_students_by_status(
-        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID, status: AcademicStatus
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        status: AcademicStatus,
     ) -> int:
         return int(
             (
@@ -565,7 +537,9 @@ class ClassRoomRepository:
 
     @staticmethod
     async def count_current_enrollments(
-        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
     ) -> int:
         return int(
             (
@@ -583,7 +557,9 @@ class ClassRoomRepository:
 
     @staticmethod
     async def count_active_teacher_assignments(
-        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
     ) -> int:
         return int(
             (
@@ -601,10 +577,10 @@ class ClassRoomRepository:
 
     @staticmethod
     async def count_class_dependencies(
-        db: AsyncSession, tenant_id: uuid.UUID, class_id: uuid.UUID
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
     ) -> dict[str, int]:
-        """Return historical and live references to one concrete classroom."""
-
         live_term_statuses = (
             AcademicTermStatus.DRAFT,
             AcademicTermStatus.OPEN,
@@ -670,7 +646,10 @@ class ClassRoomRepository:
         department_assignments_live = (
             select(func.count())
             .select_from(ClassTermDepartmentAssignment)
-            .join(AcademicTerm, AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id)
+            .join(
+                AcademicTerm,
+                AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id,
+            )
             .where(
                 ClassTermDepartmentAssignment.tenant_id == tenant_id,
                 ClassTermDepartmentAssignment.class_id == class_id,
@@ -704,7 +683,10 @@ class ClassRoomRepository:
         attendance_sheets_live = (
             select(func.count())
             .select_from(StudentAttendanceSheet)
-            .outerjoin(AcademicTerm, AcademicTerm.id == StudentAttendanceSheet.academic_term_id)
+            .outerjoin(
+                AcademicTerm,
+                AcademicTerm.id == StudentAttendanceSheet.academic_term_id,
+            )
             .where(
                 StudentAttendanceSheet.tenant_id == tenant_id,
                 StudentAttendanceSheet.class_id == class_id,
@@ -763,27 +745,30 @@ class ClassRoomRepository:
             AnnouncementAudience.class_id == class_id,
         )
 
-        query = select(
-            students_assigned_total.label("students_assigned_total"),
-            students_assigned_live.label("students_assigned_live"),
-            enrollments_total.label("enrollments_total"),
-            enrollments_current.label("enrollments_current"),
-            teacher_assignments_total.label("teacher_assignments_total"),
-            teacher_assignments_active.label("teacher_assignments_active"),
-            teacher_assignment_audits_total.label("teacher_assignment_audits_total"),
-            department_assignments_total.label("department_assignments_total"),
-            department_assignments_live.label("department_assignments_live"),
-            results_total.label("results_total"),
-            results_live.label("results_live"),
-            attendance_sheets_total.label("attendance_sheets_total"),
-            attendance_sheets_live.label("attendance_sheets_live"),
-            report_cards_total.label("report_cards_total"),
-            report_cards_live.label("report_cards_live"),
-            progression_items_total.label("progression_items_total"),
-            progression_items_live.label("progression_items_live"),
-            announcement_audiences_total.label("announcement_audiences_total"),
-        )
-        row = (await db.execute(query)).one()
+        row = (
+            await db.execute(
+                select(
+                    students_assigned_total.label("students_assigned_total"),
+                    students_assigned_live.label("students_assigned_live"),
+                    enrollments_total.label("enrollments_total"),
+                    enrollments_current.label("enrollments_current"),
+                    teacher_assignments_total.label("teacher_assignments_total"),
+                    teacher_assignments_active.label("teacher_assignments_active"),
+                    teacher_assignment_audits_total.label("teacher_assignment_audits_total"),
+                    department_assignments_total.label("department_assignments_total"),
+                    department_assignments_live.label("department_assignments_live"),
+                    results_total.label("results_total"),
+                    results_live.label("results_live"),
+                    attendance_sheets_total.label("attendance_sheets_total"),
+                    attendance_sheets_live.label("attendance_sheets_live"),
+                    report_cards_total.label("report_cards_total"),
+                    report_cards_live.label("report_cards_live"),
+                    progression_items_total.label("progression_items_total"),
+                    progression_items_live.label("progression_items_live"),
+                    announcement_audiences_total.label("announcement_audiences_total"),
+                )
+            )
+        ).one()
         return {
             "students_assigned_total": int(row.students_assigned_total),
             "students_assigned_live": int(row.students_assigned_live),
