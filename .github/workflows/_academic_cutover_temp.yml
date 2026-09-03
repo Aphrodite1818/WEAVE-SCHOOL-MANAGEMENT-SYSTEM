@@ -1,32 +1,28 @@
-name: Academic cutover (temporary)
+name: Academic cutover temporary
 
 on:
   push:
-    branches:
-      - cbt-sync-module-structure
+    branches: [cbt-sync-module-structure]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'chore: retry academic cutover'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: cbt-sync-module-structure
           fetch-depth: 0
-
-      - name: Apply academic resolver and term-readiness cutover
-        shell: python {0}
+      - name: Apply backend cutover
         run: |
+          python - <<'PY'
           from pathlib import Path
-
-          path = Path('backend/app/modules/student_academics/service.py')
+          path = Path("backend/app/modules/student_academics/service.py")
           text = path.read_text()
 
-          old = '''        class_department = (
+          old = """        class_department = (
               await db.execute(
                   select(ClassTermDepartmentAssignment).where(
                       ClassTermDepartmentAssignment.tenant_id == tenant_id,
@@ -46,11 +42,11 @@ jobs:
           )
           if curriculum_subject.id not in {offering.curriculum_subject_id for offering in offerings}:
               raise ConflictException(
-                  "This curriculum subject is not offered to the class for the selected term."
+                  \"This curriculum subject is not offered to the class for the selected term.\"
               )
           return term
-          '''
-          new = '''        resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
+          """
+          new = """        resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
               db,
               tenant_id=tenant_id,
               class_id=classroom.id,
@@ -60,15 +56,15 @@ jobs:
               item.curriculum_subject_id for item in resolved_subjects
           }:
               raise ConflictException(
-                  "This curriculum subject is not available to the class for the selected term."
+                  \"This curriculum subject is not available to the class for the selected term.\"
               )
           return term
-          '''
+          """
           if old not in text:
-              raise SystemExit('old teacher-assignment offering block not found')
+              raise SystemExit("teacher-assignment offering block not found")
           text = text.replace(old, new, 1)
 
-          old = '''        offerings = await CurriculumResolutionService.resolve_student_offerings(
+          old = """        offerings = await CurriculumResolutionService.resolve_student_offerings(
               db,
               tenant_id=tenant_id,
               student_id=student.id,
@@ -76,10 +72,10 @@ jobs:
           )
           if curriculum_subject.id not in {offering.curriculum_subject_id for offering in offerings}:
               raise ForbiddenException(
-                  "This subject is not offered to the student's class specialization for this term."
+                  \"This subject is not offered to the student's class specialization for this term.\"
               )
-          '''
-          new = '''        resolved_subjects = await CurriculumResolutionService.resolve_student_subjects(
+          """
+          new = """        resolved_subjects = await CurriculumResolutionService.resolve_student_subjects(
               db,
               tenant_id=tenant_id,
               student_id=student.id,
@@ -89,17 +85,17 @@ jobs:
               item.curriculum_subject_id for item in resolved_subjects
           }:
               raise ForbiddenException(
-                  "This subject is not available to the student's class specialization for this term."
+                  \"This subject is not available to the student's class specialization for this term.\"
               )
-          '''
+          """
           if old not in text:
-              raise SystemExit('old student offering block not found')
+              raise SystemExit("student offering block not found")
           text = text.replace(old, new, 1)
 
-          old = '''        blockers: list[str] = []
+          old = """        blockers: list[str] = []
           if term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}:
-          '''
-          new = '''        blockers: list[str] = []
+          """
+          new = """        blockers: list[str] = []
           if term.status == AcademicTermStatus.DRAFT:
               from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 
@@ -113,21 +109,21 @@ jobs:
               counts.update(specialization_counts)
               blockers.extend(specialization_blockers)
           if term.status in {AcademicTermStatus.OPEN, AcademicTermStatus.CLOSING}:
-          '''
+          """
           if old not in text:
-              raise SystemExit('term dependency blocker anchor not found')
+              raise SystemExit("term dependency anchor not found")
           text = text.replace(old, new, 1)
 
-          old = '            can_open=term.status == AcademicTermStatus.DRAFT,\n'
-          new = '            can_open=term.status == AcademicTermStatus.DRAFT and not blockers,\n'
+          old = "            can_open=term.status == AcademicTermStatus.DRAFT,\n"
+          new = "            can_open=term.status == AcademicTermStatus.DRAFT and not blockers,\n"
           if old not in text:
-              raise SystemExit('term can_open anchor not found')
+              raise SystemExit("term can_open anchor not found")
           text = text.replace(old, new, 1)
 
-          old = '''        previous = term.status
+          old = """        previous = term.status
           term.status = AcademicTermStatus.OPEN
-          '''
-          new = '''        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+          """
+          new = """        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 
           specialization_counts, specialization_blockers = (
               await AcademicCurriculumService.specialization_readiness(
@@ -138,10 +134,10 @@ jobs:
           )
           if specialization_blockers:
               raise ConflictException(
-                  "Academic term cannot be opened until class specializations are ready.",
+                  \"Academic term cannot be opened until class specializations are ready.\",
                   payload={
-                      "blocker_messages": specialization_blockers,
-                      "dependency_counts": specialization_counts,
+                      \"blocker_messages\": specialization_blockers,
+                      \"dependency_counts\": specialization_counts,
                   },
               )
           await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
@@ -153,29 +149,30 @@ jobs:
 
           previous = term.status
           term.status = AcademicTermStatus.OPEN
-          '''
+          """
           if old not in text:
-              raise SystemExit('term opening transition anchor not found')
+              raise SystemExit("term opening anchor not found")
           text = text.replace(old, new, 1)
 
-          forbidden = [
-              'resolve_curriculum_offerings',
-              'resolve_student_offerings',
-              'class_department.department_id',
-          ]
-          remaining = [item for item in forbidden if item in text]
-          if remaining:
-              raise SystemExit(f'obsolete academic resolver references remain: {remaining}')
-
+          for obsolete in (
+              "resolve_curriculum_offerings",
+              "resolve_student_offerings",
+              "class_department.department_id",
+          ):
+              if obsolete in text:
+                  raise SystemExit(f"obsolete reference remains: {obsolete}")
           path.write_text(text)
-
+          PY
       - name: Compile academic modules
         run: python -m compileall backend/app/modules/student_academics
-
-      - name: Commit cutover
+      - name: Commit backend cutover
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backend/app/modules/student_academics/service.py
+          if git diff --cached --quiet; then
+            echo "No backend patch to commit"
+            exit 0
+          fi
           git commit -m "fix: complete academic resolver cutover"
           git push origin HEAD:cbt-sync-module-structure
