@@ -5,7 +5,7 @@ from sqlalchemy import UniqueConstraint
 from app.modules.cbt.sync.enums import CBTSyncEntityType
 from app.modules.cbt.sync.projectors.registry import PROJECTORS
 from app.modules.classes.models import AcademicLevel, AcademicLevelDepartment, Department
-from app.modules.student_academics.curriculum_models import CurriculumOffering
+from app.modules.student_academics.curriculum_models import CurriculumSubjectDepartment
 from app.modules.student_academics.models import StudentProgressionRun
 
 
@@ -45,29 +45,17 @@ def test_progression_run_persists_terminal_graduation_approval() -> None:
     assert str(column.server_default.arg).lower() == "false"
 
 
-def test_general_curriculum_offering_uniqueness_has_partial_index() -> None:
-    constraint = _constraint(CurriculumOffering.__table__, "uq_curriculum_offering_scope")
+def test_curriculum_subject_department_scope_is_persistent_and_unique() -> None:
+    constraint = _constraint(
+        CurriculumSubjectDepartment.__table__,
+        "uq_curriculum_subject_department_scope",
+    )
     assert [column.name for column in constraint.columns] == [
         "tenant_id",
         "curriculum_subject_id",
-        "academic_term_id",
         "academic_level_department_id",
     ]
-    general_index = next(
-        index
-        for index in CurriculumOffering.__table__.indexes
-        if index.name == "uq_curriculum_offering_general_scope"
-    )
-    assert general_index.unique is True
-    assert [column.name for column in general_index.columns] == [
-        "tenant_id",
-        "curriculum_subject_id",
-        "academic_term_id",
-    ]
-    assert (
-        str(general_index.dialect_options["postgresql"]["where"])
-        == "academic_level_department_id IS NULL"
-    )
+    assert "academic_term_id" not in CurriculumSubjectDepartment.__table__.c
 
 
 def test_cbt_sync_contract_includes_tenant_admins() -> None:

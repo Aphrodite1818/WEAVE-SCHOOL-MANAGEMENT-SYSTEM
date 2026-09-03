@@ -18,8 +18,11 @@ from app.modules.student_academics.curriculum_v2_schemas import (
     CurriculumSubjectUpdate,
     EligibleTeacherAssignmentClassResponse,
     ResolvedClassSubjectResponse,
+    TeacherAssignmentBulkCreate,
+    TeacherAssignmentBulkResponse,
 )
 from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(prefix="/tenant-admin/academics", tags=["Curriculum"])
@@ -143,6 +146,24 @@ async def resolved_class_subjects(
         tenant_id=current_admin.tenant_id,
         class_id=class_id,
         academic_term_id=academic_term_id,
+    )
+
+
+@router.post(
+    "/teacher-assignments/bulk",
+    response_model=TeacherAssignmentBulkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_teacher_assignments_bulk(
+    payload: TeacherAssignmentBulkCreate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await StudentAcademicService.create_teacher_assignments_bulk(
+        db,
+        current_admin.tenant_id,
+        payload,
+        acting_admin_id=current_admin.id,
     )
 
 

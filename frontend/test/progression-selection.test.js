@@ -49,9 +49,9 @@ test("frontend services use level enrollment, batch class assignment, and staged
   assert.match(students, /batch-class-assignment/);
   assert.doesNotMatch(students, /progression\/selection|progression\/placement/);
   assert.match(sessions, /start-closing/);
-  assert.match(curriculumService, /curriculum-subjects\/\$\{curriculumSubjectId\}\/offerings/);
+  assert.match(curriculumService, /getResolvedClassSubjects/);
   assert.match(curriculumService, /classes\/\$\{classId\}\/terms\/\$\{termId\}\/department/);
-  assert.match(curriculum, /academic_level_department_id: academicLevelDepartmentId \|\| null/);
+  assert.match(curriculum, /academic_level_department_ids: selectedDepartmentIds/);
   assert.match(directory, /department_name/);
   assert.match(directory, /effective_date/);
   assert.match(directory, /academic_session_id/);
@@ -81,10 +81,10 @@ test("Subjects by Level keeps separate assignment and lifecycle pages", async ()
   assert.match(config, /curriculum: \{/);
   assert.match(config, /Curriculum Subjects/);
   assert.match(source, /Add curriculum subject/);
-  assert.match(source, /Configure term offering/);
+  assert.match(source, /Subject applicability/);
   assert.match(source, /curriculumService\.addSubject/);
-  assert.match(source, /curriculumService\.addOffering/);
-  assert.match(source, /academic_level_department_id: academicLevelDepartmentId \|\| null/);
+  assert.match(source, /academic_level_department_ids/);
+  assert.match(source, /academic_level_department_ids/);
   assert.match(source, /is_elective: elective/);
   assert.doesNotMatch(source, /is_core/);
 });

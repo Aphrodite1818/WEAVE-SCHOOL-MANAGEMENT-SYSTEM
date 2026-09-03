@@ -20,8 +20,8 @@ from app.modules.classes.department_repository import AcademicLevelDepartmentRep
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
-    CurriculumOffering,
     CurriculumSubject,
+    CurriculumSubjectDepartment,
 )
 from app.modules.student_academics.models import (
     AcademicSession,
@@ -224,13 +224,11 @@ async def test_department_dependency_snapshot_splits_live_and_historical_terms(
             for _, term in terms
         ]
         + [
-            CurriculumOffering(
+            CurriculumSubjectDepartment(
                 tenant_id=tenant.id,
                 curriculum_subject_id=curriculum_subject.id,
-                academic_term_id=term.id,
                 academic_level_department_id=level_department_id,
             )
-            for _, term in terms
         ]
     )
     await db_session.flush()
@@ -244,8 +242,8 @@ async def test_department_dependency_snapshot_splits_live_and_historical_terms(
     assert counts == {
         "class_assignments_total": 4,
         "class_assignments_live": 3,
-        "offerings_total": 4,
-        "offerings_live": 3,
+        "curriculum_subject_links_total": 1,
+        "curriculum_subject_links_live": 1,
     }
 
 

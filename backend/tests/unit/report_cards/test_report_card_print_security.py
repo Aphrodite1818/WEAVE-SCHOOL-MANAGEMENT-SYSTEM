@@ -123,7 +123,7 @@ async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_ve
     )
     monkeypatch.setattr(
         ReportCardService,
-        "_expected_subject_offerings",
+        "_expected_curriculum_subjects",
         AsyncMock(return_value=[SimpleNamespace(curriculum_subject_id=result.curriculum_subject_id)]),
     )
     monkeypatch.setattr(

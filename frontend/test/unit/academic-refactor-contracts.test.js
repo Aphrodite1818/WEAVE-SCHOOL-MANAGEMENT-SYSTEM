@@ -35,8 +35,14 @@ test("teacher assignment class selector uses the backend 500-class contract", as
 
 test("teacher assignment payload is curriculum-subject only", async () => {
   const source = await read("src/services/academicService.js");
+  const curriculumService = await read("src/services/curriculumService.js");
+  const workspace = await read("src/features/academic-admin/TeacherAssignmentsWorkspace.jsx");
   assert.match(source, /curriculum_subject_id: payload\.curriculum_subject_id/);
   assert.doesNotMatch(source, /level_subject_id/);
+  assert.match(curriculumService, /getEligibleClasses/);
+  assert.match(curriculumService, /createTeacherAssignmentsBulk/);
+  assert.match(workspace, /class_ids: selectedClassIds/);
+  assert.match(workspace, /curriculumService\.getEligibleClasses/);
 });
 
 test("normal and guided level creation share the institution-scoped levels workspace", async () => {
@@ -70,12 +76,12 @@ test("class specialization writes only the level-department mapping identity", a
   assert.match(workspace, /departmentService\.getLevelDepartments/);
 });
 
-test("curriculum offerings scope through active level-department mappings", async () => {
+test("curriculum applicability uses active level-department mappings", async () => {
   const workspace = await read("src/features/academic-admin/CurriculumWorkspace.jsx");
 
   assert.match(workspace, /departmentService\.getLevelDepartments\(levelId, \{ activeOnly: true \}\)/);
-  assert.match(workspace, /academic_level_department_id: academicLevelDepartmentId \|\| null/);
-  assert.doesNotMatch(workspace, /department_id: departmentId \|\| null/);
+  assert.match(workspace, /academic_level_department_ids: selectedDepartmentIds/);
+  assert.doesNotMatch(workspace, /department_id:/);
 });
 
 test("department workflow exposes pool, availability and placements only", async () => {

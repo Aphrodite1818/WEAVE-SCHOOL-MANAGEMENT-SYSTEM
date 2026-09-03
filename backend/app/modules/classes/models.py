@@ -206,6 +206,7 @@ class AcademicLevelDepartment(BaseModel):
             "department_id",
             name="uq_academic_level_departments_scope",
         ),
+        UniqueConstraint("tenant_id", "id", name="uq_academic_level_departments_tenant_id"),
         CheckConstraint(
             """
             (archived_at IS NULL AND archived_by_admin_id IS NULL)

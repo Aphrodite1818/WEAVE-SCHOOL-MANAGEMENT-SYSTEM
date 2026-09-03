@@ -287,7 +287,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
         content={
           <RecordList
             title="Subject applicability"
-            description="Department scope is part of the level curriculum, not a per-term offering. Before specialization begins, every active curriculum subject remains available to every class."
+            description="Department scope is part of the level curriculum. Before specialization begins, every active curriculum subject remains available to every class."
             actions={<div className="min-w-[18rem]">{levelControl}</div>}
             items={curriculumSubjects}
             emptyTitle="No curriculum subjects"

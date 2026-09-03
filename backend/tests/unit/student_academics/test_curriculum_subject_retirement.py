@@ -9,7 +9,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.exceptions import ConflictException
-from app.modules.student_academics.curriculum_models import CurriculumOffering, CurriculumSubject
+from app.modules.student_academics.curriculum_models import (
+    CurriculumSubject,
+    CurriculumSubjectDepartment,
+)
 from app.modules.student_academics.curriculum_v2_repository import CurriculumSubjectRepository
 from app.modules.student_academics.curriculum_v2_schemas import (
     CurriculumSubjectResponse,
@@ -66,9 +69,6 @@ def _response(row):
 
 def _dependencies(**overrides):
     values = {
-        "offerings_total": 0,
-        "offerings_live": 0,
-        "offerings_published": 0,
         "teacher_assignments_total": 0,
         "teacher_assignments_active": 0,
         "teacher_assignment_audits_total": 0,
@@ -87,8 +87,12 @@ def test_curriculum_subject_patch_rejects_direct_lifecycle_changes() -> None:
 def test_curriculum_subject_history_fks_are_restrict() -> None:
     assert next(iter(CurriculumSubject.__table__.columns.curriculum_id.foreign_keys)).ondelete == "RESTRICT"
     assert (
-        next(iter(CurriculumOffering.__table__.columns.curriculum_subject_id.foreign_keys)).ondelete
-        == "RESTRICT"
+        next(
+            iter(
+                CurriculumSubjectDepartment.__table__.columns.curriculum_subject_id.foreign_keys
+            )
+        ).ondelete
+        == "CASCADE"
     )
     assert (
         next(iter(TeacherAssignment.__table__.columns.curriculum_subject_id.foreign_keys)).ondelete
@@ -127,7 +131,6 @@ async def test_live_dependencies_block_curriculum_subject_deactivation() -> None
             "count_dependencies",
             new=AsyncMock(
                 return_value=_dependencies(
-                    offerings_live=1,
                     teacher_assignments_active=2,
                     results_live=3,
                 )
@@ -140,7 +143,6 @@ async def test_live_dependencies_block_curriculum_subject_deactivation() -> None
 
     assert exc_info.value.payload == {
         "dependency_counts": {
-            "offerings_live": 1,
             "teacher_assignments_active": 2,
             "results_live": 3,
         }
@@ -169,7 +171,6 @@ async def test_historical_only_dependencies_allow_curriculum_subject_deactivatio
             "count_dependencies",
             new=AsyncMock(
                 return_value=_dependencies(
-                    offerings_total=2,
                     teacher_assignments_total=1,
                     teacher_assignment_audits_total=3,
                     results_total=5,
@@ -180,7 +181,7 @@ async def test_historical_only_dependencies_allow_curriculum_subject_deactivatio
         patch.object(
             AcademicCurriculumService,
             "_curriculum_subject_response",
-            new=AsyncMock(side_effect=lambda _db, value: _response(value)),
+            new=AsyncMock(side_effect=lambda _db, value, _subject=None: _response(value)),
         ),
     ):
         response = await AcademicCurriculumService.deactivate_subject(db, row.tenant_id, row.id)
@@ -211,7 +212,7 @@ async def test_activate_curriculum_subject_revalidates_parent_and_subject() -> N
         patch.object(
             AcademicCurriculumService,
             "_curriculum_subject_response",
-            new=AsyncMock(side_effect=lambda _db, value: _response(value)),
+            new=AsyncMock(side_effect=lambda _db, value, _subject=None: _response(value)),
         ),
     ):
         response = await AcademicCurriculumService.activate_subject(db, row.tenant_id, row.id)
@@ -223,7 +224,7 @@ async def test_activate_curriculum_subject_revalidates_parent_and_subject() -> N
 
 
 @pytest.mark.asyncio
-async def test_elective_setting_is_locked_after_published_offering() -> None:
+async def test_elective_setting_is_locked_after_results_exist() -> None:
     row = _row(elective=False)
     db = AsyncMock()
     with (
@@ -239,7 +240,7 @@ async def test_elective_setting_is_locked_after_published_offering() -> None:
         patch.object(
             CurriculumSubjectRepository,
             "count_dependencies",
-            new=AsyncMock(return_value=_dependencies(offerings_total=1, offerings_published=1)),
+            new=AsyncMock(return_value=_dependencies(results_total=1)),
         ),
     ):
         with pytest.raises(ConflictException, match="elective meaning is locked"):
@@ -271,13 +272,13 @@ async def test_elective_setting_can_change_while_usage_is_draft_only() -> None:
         patch.object(
             CurriculumSubjectRepository,
             "count_dependencies",
-            new=AsyncMock(return_value=_dependencies(offerings_total=1)),
+            new=AsyncMock(return_value=_dependencies()),
         ),
         patch.object(CurriculumSubjectRepository, "save", new=AsyncMock()),
         patch.object(
             AcademicCurriculumService,
             "_curriculum_subject_response",
-            new=AsyncMock(side_effect=lambda _db, value: _response(value)),
+            new=AsyncMock(side_effect=lambda _db, value, _subject=None: _response(value)),
         ),
     ):
         response = await AcademicCurriculumService.update_subject(
@@ -315,7 +316,7 @@ async def test_unused_curriculum_subject_can_be_hard_deleted() -> None:
         patch.object(
             AcademicCurriculumService,
             "_curriculum_subject_response",
-            new=AsyncMock(side_effect=lambda _db, value: _response(value)),
+            new=AsyncMock(side_effect=lambda _db, value, _subject=None: _response(value)),
         ),
     ):
         response = await AcademicCurriculumService.hard_delete_subject(db, row.tenant_id, row.id)

@@ -20,7 +20,13 @@ from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
 from app.modules.cbt.sync.projectors.registry import project_payload
 from app.modules.cbt.sync.recorder import CBTSyncRecorder
 from app.modules.cbt.sync.schemas import CBTSyncMutation, SYNC_SCHEMA_VERSION
-from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Department
+from app.modules.classes.models import (
+    AcademicLevel,
+    AcademicLevelDepartment,
+    ArmLabel,
+    ClassRoom,
+    Department,
+)
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
@@ -64,6 +70,7 @@ class _PendingIdentity:
 MODEL_ENTITY_TYPES: dict[type[Any], CBTSyncEntityType] = {
     AcademicLevel: CBTSyncEntityType.ACADEMIC_LEVEL,
     Department: CBTSyncEntityType.DEPARTMENT,
+    AcademicLevelDepartment: CBTSyncEntityType.DEPARTMENT,
     ArmLabel: CBTSyncEntityType.ARM_LABEL,
     ClassRoom: CBTSyncEntityType.CLASS,
     ClassTermDepartmentAssignment: CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
@@ -143,9 +150,7 @@ def _current_savepoint_journal(session: Session) -> _SavepointJournal | None:
     transaction = session.get_nested_transaction()
     if transaction is None:
         return None
-    journals: dict[Any, _SavepointJournal] = session.info.setdefault(
-        _SAVEPOINT_JOURNALS_KEY, {}
-    )
+    journals: dict[Any, _SavepointJournal] = session.info.setdefault(_SAVEPOINT_JOURNALS_KEY, {})
     return journals.setdefault(
         transaction,
         _SavepointJournal(
@@ -157,9 +162,7 @@ def _current_savepoint_journal(session: Session) -> _SavepointJournal | None:
 
 
 def _restore_savepoint_journal(session: Session, transaction: Any) -> None:
-    journals: dict[Any, _SavepointJournal] | None = session.info.get(
-        _SAVEPOINT_JOURNALS_KEY
-    )
+    journals: dict[Any, _SavepointJournal] | None = session.info.get(_SAVEPOINT_JOURNALS_KEY)
     if not journals:
         return
     journal = journals.pop(transaction, None)
@@ -216,9 +219,7 @@ def _collect_pending(session: Session) -> None:
             else:
                 pending[key] = _PendingObject(obj=obj, operation=merged)
         elif isinstance(obj, TeacherAccount) and obj.id:
-            teacher_accounts: set[uuid.UUID] = session.info.setdefault(
-                _TEACHER_ACCOUNT_KEY, set()
-            )
+            teacher_accounts: set[uuid.UUID] = session.info.setdefault(_TEACHER_ACCOUNT_KEY, set())
             if journal is not None and obj.id not in teacher_accounts:
                 journal.teacher_accounts_added.add(obj.id)
             teacher_accounts.add(obj.id)
@@ -231,6 +232,10 @@ def _collect_pending(session: Session) -> None:
 
 def _identity_from_object(pending: _PendingObject) -> _PendingIdentity | None:
     obj = pending.obj
+    # Canonical departments are a cloud-side pool. CBT consumes the exact
+    # AcademicLevelDepartment identity, so pool mutations only trigger refreshes.
+    if isinstance(obj, Department):
+        return None
     tenant_id = getattr(obj, "tenant_id", None)
     entity_id = getattr(obj, "id", None)
     entity_type = MODEL_ENTITY_TYPES.get(type(obj))
@@ -289,9 +294,7 @@ def _append_refreshes(
     entity_type: CBTSyncEntityType,
 ) -> None:
     model = ENTITY_MODELS[entity_type]
-    entity_ids = session.execute(
-        select(model.id).where(model.tenant_id == tenant_id)
-    ).scalars()
+    entity_ids = session.execute(select(model.id).where(model.tenant_id == tenant_id)).scalars()
     _append_refresh_ids(
         events,
         tenant_id=tenant_id,
@@ -304,9 +307,7 @@ def _expand_account_updates(
     session: Session,
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
 ) -> None:
-    account_ids = {
-        value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value
-    }
+    account_ids = {value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value}
     if not account_ids:
         return
     rows = session.execute(
@@ -444,6 +445,14 @@ def _expand_derived_contracts(
                 refreshes[entity_type].add(tenant_id)
         elif isinstance(obj, Department):
             for entity_type in (
+                CBTSyncEntityType.DEPARTMENT,
+                CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
+                CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
+                CBTSyncEntityType.TEACHER_ASSIGNMENT,
+            ):
+                refreshes[entity_type].add(tenant_id)
+        elif isinstance(obj, AcademicLevelDepartment):
+            for entity_type in (
                 CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
                 CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
@@ -540,12 +549,10 @@ def _expand_derived_contracts(
 
 
 def _materialize_events(session: Session) -> list[_PendingIdentity]:
-    events: OrderedDict[
-        tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity
-    ] = OrderedDict()
-    pending_objects = list(
-        session.info.get(_PENDING_KEY, OrderedDict()).values()
+    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity] = (
+        OrderedDict()
     )
+    pending_objects = list(session.info.get(_PENDING_KEY, OrderedDict()).values())
     for pending in pending_objects:
         identity = _identity_from_object(pending)
         if identity is not None:

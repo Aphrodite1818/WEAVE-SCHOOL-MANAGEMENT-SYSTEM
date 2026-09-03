@@ -15,17 +15,8 @@ from app.modules.cbt.academics.schemas import (
     CBTTeacherSnapshot,
 )
 from app.modules.classes.models import AcademicLevel, AcademicLevelStatus, ClassRoom
-from app.modules.student_academics.curriculum_models import (
-    ClassTermDepartmentAssignment,
-    Curriculum,
-    CurriculumSubject,
-    CurriculumSubjectDepartment,
-)
-from app.modules.student_academics.models import (
-    AcademicTerm,
-    AcademicTermStatus,
-    TeacherAssignment,
-)
+from app.modules.student_academics.curriculum_models import Curriculum, CurriculumSubject
+from app.modules.student_academics.models import TeacherAssignment
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.teachers.models import (
     TeacherAccount,
@@ -37,14 +28,6 @@ from app.modules.teachers.models import (
 
 def _value(value: Any) -> Any:
     return getattr(value, "value", value)
-
-
-def _term_position(term: AcademicTerm) -> int:
-    return {
-        "first_term": 1,
-        "second_term": 2,
-        "third_term": 3,
-    }.get(str(_value(term.name)).lower(), 0)
 
 
 def project_admin(
@@ -103,7 +86,11 @@ def project_teacher(
 def project_teacher_assignment(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Project assignments that are eligible in the current open academic term."""
+    """Project the persistent class-subject teacher relationship.
+
+    Curriculum eligibility is resolved and reconciled by the academic domain.
+    Synchronization must not independently infer a term or specialization.
+    """
 
     assignment_row = session.execute(
         select(TeacherAssignment, TeacherMembership, TeacherAccount)
@@ -128,16 +115,6 @@ def project_teacher_assignment(
     ):
         return None
 
-    term = session.execute(
-        select(AcademicTerm).where(
-            AcademicTerm.tenant_id == tenant_id,
-            AcademicTerm.is_current.is_(True),
-            AcademicTerm.status == AcademicTermStatus.OPEN,
-        )
-    ).scalar_one_or_none()
-    if term is None:
-        return None
-
     context = session.execute(
         select(ClassRoom, CurriculumSubject, Curriculum, AcademicLevel)
         .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
@@ -159,31 +136,9 @@ def project_teacher_assignment(
     if context is None:
         return None
 
-    classroom, curriculum_subject, _curriculum, level = context
-    threshold = level.specialization_required_from_term_position
-    specialization_active = threshold is not None and _term_position(term) >= threshold
-    if specialization_active:
-        academic_level_department_id = session.execute(
-            select(ClassTermDepartmentAssignment.academic_level_department_id).where(
-                ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                ClassTermDepartmentAssignment.class_id == classroom.id,
-                ClassTermDepartmentAssignment.academic_term_id == term.id,
-            )
-        ).scalar_one_or_none()
-        if academic_level_department_id is None:
-            return None
-        scopes = set(
-            session.execute(
-                select(CurriculumSubjectDepartment.academic_level_department_id).where(
-                    CurriculumSubjectDepartment.tenant_id == tenant_id,
-                    CurriculumSubjectDepartment.curriculum_subject_id
-                    == curriculum_subject.id,
-                )
-            ).scalars()
-        )
-        if scopes and academic_level_department_id not in scopes:
-            return None
-    # Before specialization department scope is deliberately ignored.
+    classroom, curriculum_subject, curriculum, _level = context
+    if curriculum.academic_level_id != classroom.academic_level_id:
+        return None
     return CBTTeacherAssignmentSnapshot(
         id=assignment.id,
         teacher_membership_id=assignment.teacher_membership_id,

@@ -26,6 +26,10 @@ const termName = (value) =>
   String(value || "Term")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+const termPosition = (value) =>
+  ({ first_term: 1, second_term: 2, third_term: 3 })[
+    String(value || "").toLowerCase()
+  ] || 0;
 const lifecycleStatus = (row) =>
   row.archived_at ? "archived" : row.is_active ? "active" : "inactive";
 const normalizeName = (value) =>
@@ -52,6 +56,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   const [classId, setClassId] = useState("");
   const [termId, setTermId] = useState("");
   const [academicLevelDepartmentId, setAcademicLevelDepartmentId] = useState("");
+  const [sourceTermId, setSourceTermId] = useState("");
   const [currentAssignment, setCurrentAssignment] = useState(null);
 
   const [pendingAction, setPendingAction] = useState(null);
@@ -207,6 +212,30 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     () => levelDepartments.filter((row) => lifecycleStatus(row) === "active"),
     [levelDepartments],
   );
+  const selectedLevel = levels.find((row) => row.id === levelId) || null;
+  const selectedTerm = terms.find((row) => row.id === termId) || null;
+  const specializationActive = Boolean(
+    selectedLevel?.specialization_required_from_term_position != null &&
+      termPosition(selectedTerm?.name) >=
+        Number(selectedLevel.specialization_required_from_term_position),
+  );
+  const previousTerms = useMemo(
+    () =>
+      terms.filter(
+        (row) =>
+          row.id !== termId &&
+          row.academic_session_id === selectedTerm?.academic_session_id &&
+          termPosition(row.name) < termPosition(selectedTerm?.name),
+      ),
+    [selectedTerm?.academic_session_id, selectedTerm?.name, termId, terms],
+  );
+
+  useEffect(() => {
+    const nearest = [...previousTerms].sort(
+      (left, right) => termPosition(right.name) - termPosition(left.name),
+    )[0];
+    setSourceTermId(nearest?.id || "");
+  }, [previousTerms]);
 
   const saveDepartment = async (event) => {
     event.preventDefault();
@@ -285,25 +314,42 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
 
   const saveClassSpecialization = async (event) => {
     event.preventDefault();
-    if (!classId || !termId) return;
+    if (!classId || !termId || !specializationActive || !academicLevelDepartmentId)
+      return;
     setSaving("placement");
     try {
-      if (academicLevelDepartmentId) {
-        const assignment = await curriculumService.setClassDepartment(
-          classId,
-          termId,
-          academicLevelDepartmentId,
-        );
-        setCurrentAssignment(assignment);
-        showSuccess("Class specialization set for this term.");
-      } else {
-        await curriculumService.clearClassDepartment(classId, termId);
-        setCurrentAssignment(null);
-        showSuccess("Class returned to general level placement for this term.");
-      }
+      const assignment = await curriculumService.setClassDepartment(
+        classId,
+        termId,
+        academicLevelDepartmentId,
+      );
+      setCurrentAssignment(assignment);
+      showSuccess("Class specialization set for this term.");
     } catch (error) {
       showError(getErrorMessage(error, "Could not update class specialization."));
       await loadCurrentAssignment();
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const copyPreviousSpecializations = async () => {
+    if (!termId || !sourceTermId) return;
+    setSaving("copy");
+    try {
+      const result = await curriculumService.copyClassDepartments(
+        termId,
+        sourceTermId,
+      );
+      await loadCurrentAssignment();
+      const copied = Number(result?.copied || 0);
+      showSuccess(
+        `${copied} class specialization${copied === 1 ? "" : "s"} copied.`,
+      );
+    } catch (error) {
+      showError(
+        getErrorMessage(error, "Could not copy previous term specializations."),
+      );
     } finally {
       setSaving("");
     }
@@ -492,12 +538,17 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
                 {classLabel(levelClasses.find((row) => row.id === classId))}
               </p>
               <p className="mt-1 text-lg font-semibold text-text">
-                {currentName || "General level placement"}
+                {currentName ||
+                  (specializationActive
+                    ? "Not assigned"
+                    : "Specialization not active")}
               </p>
               <p className="mt-1 text-sm text-text-muted">
                 {currentName
-                  ? "This class receives general subjects plus offerings for this specialization."
-                  : "This class receives general level offerings for the selected term."}
+                  ? "This class receives general subjects plus subjects for this specialization."
+                  : specializationActive
+                    ? "Choose an exact department for this class and term."
+                    : "Before specialization begins, every active curriculum subject is eligible."}
               </p>
             </div>
           </WorkspacePanel>
@@ -533,6 +584,8 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
                 }))}
                 required
               />
+              {specializationActive ? (
+                <>
               <SelectControl
                 label="Department"
                 value={academicLevelDepartmentId}
@@ -543,14 +596,49 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
                     value: row.id,
                     label: row.department_name || "Department",
                   })),
-                ]}
+                ].filter((option) => option.value)}
               />
               <Button
                 type="submit"
-                disabled={saving === "placement" || !classId || !termId}
+                disabled={
+                  saving === "placement" ||
+                  !classId ||
+                  !termId ||
+                  !academicLevelDepartmentId
+                }
               >
                 {saving === "placement" ? "Saving…" : "Save term placement"}
               </Button>
+                  {previousTerms.length ? (
+                    <div className="space-y-2 border-t border-border/70 pt-3">
+                      <SelectControl
+                        label="Copy from term"
+                        value={sourceTermId}
+                        onChange={setSourceTermId}
+                        options={previousTerms.map((row) => ({
+                          value: row.id,
+                          label: termName(row.name),
+                        }))}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={saving === "copy" || !sourceTermId}
+                        onClick={copyPreviousSpecializations}
+                      >
+                        {saving === "copy"
+                          ? "Copying..."
+                          : "Copy previous term specializations"}
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <p className="rounded-lg border border-border/70 px-3 py-3 text-sm text-text-muted">
+                  Specialization is not active for this level in the selected
+                  term, so no department assignment is required.
+                </p>
+              )}
             </form>
           </WorkspacePanel>
         }
@@ -652,7 +740,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
         description={
           pendingAction?.scope === "pool"
             ? "Canonical department lifecycle changes apply everywhere this department is mapped. Active level mappings and historical usage remain protected by backend dependency checks."
-            : "This changes availability only for this academic level. Live term placements and offerings remain protected by backend dependency checks."
+            : "This changes availability only for this academic level. Term placements and curriculum applicability remain protected by backend dependency checks."
         }
         confirmationText={actionConfig?.[1] || ""}
         confirmLabel={actionConfig?.[2]}

@@ -282,7 +282,7 @@ class EnrollmentReportCardService:
             student = students_by_id.get(enrollment.student_id)
             if student is None:
                 continue
-            expected = await ReportCardService._expected_subject_offerings(
+            expected = await ReportCardService._expected_curriculum_subjects(
                 db, actor.tenant_id, student.id, academic_term_id
             )
             expected_counts.append(len(expected))
@@ -297,9 +297,9 @@ class EnrollmentReportCardService:
                 result.curriculum_subject_id for result in locked
             }
             missing_subject_ids = [
-                offering.subject_id
-                for offering in expected
-                if offering.curriculum_subject_id not in locked_curriculum_subject_ids
+                item.subject_id
+                for item in expected
+                if item.curriculum_subject_id not in locked_curriculum_subject_ids
             ]
             missing_subjects = await SubjectRepository.get_subjects_by_id(
                 db,

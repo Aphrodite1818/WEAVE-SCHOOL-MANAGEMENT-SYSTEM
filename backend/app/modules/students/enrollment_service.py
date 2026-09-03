@@ -145,10 +145,7 @@ class StudentEnrollmentService:
                 AcademicTerm.id == StudentSubjectResult.academic_term_id,
             ).where(
                 AcademicTerm.tenant_id == tenant_id,
-                (
-                    AcademicTerm.end_date.is_(None)
-                    | (AcademicTerm.end_date >= on_or_after)
-                ),
+                (AcademicTerm.end_date.is_(None) | (AcademicTerm.end_date >= on_or_after)),
             )
 
         attendance = int((await db.execute(attendance_query)).scalar_one() or 0)
@@ -249,22 +246,20 @@ class StudentEnrollmentService:
         if old_department == new_department:
             return
 
-        old_offerings = await CurriculumResolutionService.resolve_curriculum_offerings(
+        old_subjects = await CurriculumResolutionService.resolve_class_subjects(
             db,
             tenant_id=tenant_id,
-            academic_level_id=enrollment.academic_level_id,
+            class_id=enrollment.class_id,
             academic_term_id=term.id,
-            department_id=old_department,
         )
-        new_offerings = await CurriculumResolutionService.resolve_curriculum_offerings(
+        new_subjects = await CurriculumResolutionService.resolve_class_subjects(
             db,
             tenant_id=tenant_id,
-            academic_level_id=enrollment.academic_level_id,
+            class_id=target_class.id,
             academic_term_id=term.id,
-            department_id=new_department,
         )
-        old_ids = {row.curriculum_subject_id for row in old_offerings}
-        new_ids = {row.curriculum_subject_id for row in new_offerings}
+        old_ids = {row.curriculum_subject_id for row in old_subjects}
+        new_ids = {row.curriculum_subject_id for row in new_subjects}
         affected = old_ids.symmetric_difference(new_ids)
         if not affected:
             return
@@ -369,7 +364,11 @@ class StudentEnrollmentService:
             payload.target_class_id,
             lock=True,
         )
-        if target_class is None or not target_class.is_active or target_class.archived_at is not None:
+        if (
+            target_class is None
+            or not target_class.is_active
+            or target_class.archived_at is not None
+        ):
             raise NotFoundException("Target class not found.")
 
         session = await AcademicSessionLifecycleRepository.get_by_id(
@@ -478,7 +477,11 @@ class StudentEnrollmentService:
             payload.target_class_id,
             lock=True,
         )
-        if target_class is None or not target_class.is_active or target_class.archived_at is not None:
+        if (
+            target_class is None
+            or not target_class.is_active
+            or target_class.archived_at is not None
+        ):
             raise NotFoundException("Target class not found.")
 
         session = await AcademicSessionLifecycleRepository.get_current_open(

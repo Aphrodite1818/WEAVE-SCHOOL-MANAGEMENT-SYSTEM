@@ -11,7 +11,7 @@ export const buildAcademicHubDirectory = (stats = {}) => [
   { key: "classes", scope: numberLabel(stats.total_classes, "classes"), state: Number(stats.total_classes) > 0 ? "Operational" : "Needs setup", lifecycle: "Active → Inactive → Archived" },
   { key: "departments", scope: "Specializations by level", state: "Lifecycle enabled", lifecycle: "Active → Inactive → Archived" },
   { key: "subjects", scope: numberLabel(stats.total_subjects, "subjects"), state: Number(stats.total_subjects) > 0 ? "Operational" : "Needs setup", lifecycle: "Active → Inactive → Archived" },
-  { key: "curriculum", scope: "Subjects and offerings by level", state: Number(stats.total_subjects) > 0 ? "Ready to configure" : "Needs subjects", lifecycle: "Compulsory / Elective · Active / Inactive" },
+  { key: "curriculum", scope: "Subjects and applicability by level", state: Number(stats.total_subjects) > 0 ? "Ready to configure" : "Needs subjects", lifecycle: "Compulsory / Elective · Active / Inactive" },
   { key: "assignments", scope: "Class · Subject · Term", state: Number(stats.total_teachers) > 0 ? "Ready to assign" : "Needs teachers", lifecycle: "Scheduled → Active → Ended" },
   { key: "school-calendar", scope: "School days and events by term", state: stats.active_academic_term ? "Ready to configure" : "Needs open term", lifecycle: "Draft → Active → Archived" },
   { key: "grading", scope: "Assessment schemes and scales", state: "Configuration", lifecycle: "Draft → Active → Inactive" },

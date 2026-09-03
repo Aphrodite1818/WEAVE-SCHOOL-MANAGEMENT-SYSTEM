@@ -116,6 +116,15 @@ class DepartmentPoolService:
         if not name:
             raise BadRequestException("Department name is required")
         normalized = name.casefold()
+        if normalized != row.normalized_name:
+            counts = await CanonicalDepartmentRepository.count_level_links(
+                db, actor.tenant_id, row.id
+            )
+            if counts["level_links_total"]:
+                raise ConflictException(
+                    "A department that has academic history cannot be semantically renamed. Create or use the correct canonical department for future terms.",
+                    payload={"dependency_counts": counts},
+                )
         duplicate = await CanonicalDepartmentRepository.get_by_normalized_name(
             db, actor.tenant_id, normalized
         )

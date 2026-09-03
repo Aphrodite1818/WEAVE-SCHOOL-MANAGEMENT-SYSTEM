@@ -23,6 +23,18 @@ SCHEMA = "public"
 
 
 def upgrade() -> None:
+    op.create_unique_constraint(
+        "uq_curriculum_subjects_tenant_id",
+        "curriculum_subjects",
+        ["tenant_id", "id"],
+        schema=SCHEMA,
+    )
+    op.create_unique_constraint(
+        "uq_academic_level_departments_tenant_id",
+        "academic_level_departments",
+        ["tenant_id", "id"],
+        schema=SCHEMA,
+    )
     op.create_table(
         "curriculum_subject_departments",
         sa.Column("curriculum_subject_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -42,13 +54,18 @@ def upgrade() -> None:
         ),
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["curriculum_subject_id"],
-            [f"{SCHEMA}.curriculum_subjects.id"],
+            ["tenant_id", "curriculum_subject_id"],
+            [f"{SCHEMA}.curriculum_subjects.tenant_id", f"{SCHEMA}.curriculum_subjects.id"],
+            name="fk_curriculum_subject_department_tenant_subject",
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["academic_level_department_id"],
-            [f"{SCHEMA}.academic_level_departments.id"],
+            ["tenant_id", "academic_level_department_id"],
+            [
+                f"{SCHEMA}.academic_level_departments.tenant_id",
+                f"{SCHEMA}.academic_level_departments.id",
+            ],
+            name="fk_curriculum_subject_department_tenant_level_department",
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(["tenant_id"], [f"{SCHEMA}.tenants.id"]),
@@ -108,6 +125,48 @@ def upgrade() -> None:
     )
 
     op.drop_table("curriculum_offerings", schema=SCHEMA)
+
+    # Queued events for the removed term-owned entity cannot be replayed under
+    # the persistent structure. They are transport state, not CBT attempt/result
+    # evidence, so remove them before replacing the PostgreSQL enum.
+    op.execute(
+        sa.text(
+            f"""
+            DELETE FROM {SCHEMA}.cbt_sync_changes
+            WHERE entity_type = 'subject_offering'
+            """
+        )
+    )
+    op.execute(f"ALTER TYPE {SCHEMA}.cbt_sync_entity_type RENAME TO cbt_sync_entity_type_old")
+    postgresql.ENUM(
+        "academic_level",
+        "department",
+        "arm_label",
+        "class",
+        "class_term_department",
+        "academic_session",
+        "academic_term",
+        "subject",
+        "curriculum",
+        "curriculum_subject",
+        "curriculum_subject_department",
+        "assessment_scheme",
+        "assessment_component",
+        "admin",
+        "teacher",
+        "teacher_assignment",
+        "student_enrollment",
+        name="cbt_sync_entity_type",
+        schema=SCHEMA,
+    ).create(op.get_bind())
+    op.execute(
+        f"""
+        ALTER TABLE {SCHEMA}.cbt_sync_changes
+        ALTER COLUMN entity_type TYPE {SCHEMA}.cbt_sync_entity_type
+        USING entity_type::text::{SCHEMA}.cbt_sync_entity_type
+        """
+    )
+    op.execute(f"DROP TYPE {SCHEMA}.cbt_sync_entity_type_old")
 
     # Normalize the specialization policy before enforcing the new invariant.
     op.execute(

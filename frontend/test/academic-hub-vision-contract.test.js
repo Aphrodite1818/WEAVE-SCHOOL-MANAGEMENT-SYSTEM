@@ -48,7 +48,7 @@ test("shared academic directories are list-first and keep editors secondary", as
   assert.match(departments, /showInspector={!editorOpen}/);
   assert.match(curriculum, /editorMode/);
   assert.match(curriculum, /Add subject/);
-  assert.match(curriculum, /Configure offering/);
+  assert.match(curriculum, /Subject applicability/);
 });
 
 test("academic level confirmations mirror the backend contract instead of inventing typed phrases", async () => {

@@ -2,7 +2,7 @@
 
 Curriculum membership is persistent. Department applicability is also persistent
 and is expressed through CurriculumSubjectDepartment. Academic terms do not own
-subject offerings; they only determine when specialization filtering is active
+subject applicability; they only determine when specialization filtering is active
 and which specialization a class uses for that exact term.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, ForeignKeyConstraint, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -68,6 +68,7 @@ class CurriculumSubject(BaseModel):
             "subject_id",
             name="uq_curriculum_subject_tenant_curriculum_subject",
         ),
+        UniqueConstraint("tenant_id", "id", name="uq_curriculum_subjects_tenant_id"),
         Index(
             "ix_curriculum_subjects_tenant_curriculum",
             "tenant_id",
@@ -88,16 +89,26 @@ class CurriculumSubjectDepartment(BaseModel):
 
     curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("curriculum_subjects.id", ondelete="CASCADE"),
         nullable=False,
     )
     academic_level_department_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("academic_level_departments.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "curriculum_subject_id"],
+            ["curriculum_subjects.tenant_id", "curriculum_subjects.id"],
+            name="fk_curriculum_subject_department_tenant_subject",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "academic_level_department_id"],
+            ["academic_level_departments.tenant_id", "academic_level_departments.id"],
+            name="fk_curriculum_subject_department_tenant_level_department",
+            ondelete="RESTRICT",
+        ),
         UniqueConstraint(
             "tenant_id",
             "curriculum_subject_id",

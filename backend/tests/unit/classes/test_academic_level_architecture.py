@@ -17,19 +17,19 @@ from app.modules.classes.models import (
     ClassRoom,
     Department,
 )
+from app.modules.classes.department_service import DepartmentPoolService
 from app.modules.classes.schemas import (
+    AcademicLevelDepartmentCreate,
     AcademicLevelCreate,
     AcademicLevelUpdate,
     ArmLabelCreate,
     ClassRoomCreate,
     ClassRoomUpdate,
-    DepartmentCreate,
 )
 from app.modules.classes.service import (
     AcademicLevelService,
     ArmLabelService,
     ClassRoomService,
-    DepartmentService,
 )
 from app.modules.student_academics.curriculum_models import CurriculumSubject
 from app.modules.student_academics.models import TeacherAssignment
@@ -179,13 +179,13 @@ async def test_draft_academic_level_allows_structural_edit() -> None:
             payload=AcademicLevelUpdate(
                 category=AcademicCategory.SENIOR_SECONDARY,
                 position=2,
-                specialization_required_from_term_position=2,
+                specialization_required_from_term_position=1,
             ),
         )
 
     assert response.category == AcademicCategory.SENIOR_SECONDARY
     assert response.position == 2
-    assert response.specialization_required_from_term_position == 2
+    assert response.specialization_required_from_term_position == 1
 
 
 @pytest.mark.asyncio
@@ -262,20 +262,26 @@ async def test_draft_academic_level_can_be_hard_deleted_without_usage() -> None:
 
 
 @pytest.mark.asyncio
-async def test_draft_level_cannot_create_department() -> None:
+async def test_draft_level_cannot_attach_department() -> None:
     tenant_id = uuid.uuid4()
     level = _academic_level(tenant_id, status=AcademicLevelStatus.DRAFT)
 
-    with patch(
-        "app.modules.classes.service.AcademicLevelRepository.get_by_id",
-        new=AsyncMock(return_value=level),
+    with (
+        patch(
+            "app.modules.classes.department_service.AcademicLevelRepository.get_by_id",
+            new=AsyncMock(return_value=level),
+        ),
+        patch(
+            "app.modules.classes.department_service.ensure_academic_write_window",
+            new=AsyncMock(),
+        ),
     ):
-        with pytest.raises(NotFoundException, match="Active academic level not found"):
-            await DepartmentService.create(
+        with pytest.raises(ConflictException, match="must be active"):
+            await DepartmentPoolService.attach_to_level(
                 db=AsyncMock(),
                 actor=_admin(tenant_id),
                 academic_level_id=level.id,
-                payload=DepartmentCreate(name="Science"),
+                payload=AcademicLevelDepartmentCreate(department_id=uuid.uuid4()),
             )
 
 

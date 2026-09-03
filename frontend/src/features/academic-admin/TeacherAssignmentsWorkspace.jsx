@@ -62,6 +62,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const [teachers, setTeachers] = useState([]);
   const [currentTerm, setCurrentTerm] = useState(null);
   const [curriculumSubjects, setCurriculumSubjects] = useState([]);
+  const [eligibleClasses, setEligibleClasses] = useState([]);
+  const [selectedClassIds, setSelectedClassIds] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [form, setForm] = useState({
     class_id: "",
@@ -163,32 +165,14 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       return;
     }
     try {
-      const classroom = classes.find((item) => item.id === form.class_id);
-      if (!classroom?.academic_level_id) {
-        setCurriculumSubjects([]);
-        return;
-      }
-
-      const [curriculum, classDepartment, assignmentsResponse] =
-        await Promise.all([
-          curriculumService.getCurriculum(classroom.academic_level_id),
-          curriculumService.getClassDepartment(form.class_id, currentTermId),
-          academicService.listTeacherAssignments({
-            class_id: form.class_id,
-            status: "active",
-            limit: 100,
-          }),
-        ]);
-      const subjects = (curriculum?.subjects || []).filter(
-        (item) => item.is_active !== false,
-      );
-      const scoped = await Promise.all(
-        subjects.map(async (subject) => ({
-          subject,
-          offerings: asItems(await curriculumService.listOfferings(subject.id)),
-        })),
-      );
-      const departmentId = classDepartment?.department_id || null;
+      const [resolvedSubjects, assignmentsResponse] = await Promise.all([
+        curriculumService.getResolvedClassSubjects(form.class_id, currentTermId),
+        academicService.listTeacherAssignments({
+          class_id: form.class_id,
+          status: "active",
+          limit: 100,
+        }),
+      ]);
       const activeAssignments = asItems(assignmentsResponse);
       const assignedSubjectIds = new Set(
         activeAssignments
@@ -197,20 +181,17 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       );
 
       setCurriculumSubjects(
-        scoped
-          .filter(({ subject, offerings }) => {
-            const offered = offerings.some(
-              (offering) =>
-                offering.academic_term_id === currentTermId &&
-                (!offering.department_id ||
-                  offering.department_id === departmentId),
-            );
+        asItems(resolvedSubjects)
+          .filter((subject) => {
             const available =
-              !assignedSubjectIds.has(subject.id) ||
-              subject.id === form.curriculum_subject_id;
-            return offered && available;
+              !assignedSubjectIds.has(subject.curriculum_subject_id) ||
+              subject.curriculum_subject_id === form.curriculum_subject_id;
+            return available;
           })
-          .map(({ subject }) => subject),
+          .map((subject) => ({
+            ...subject,
+            id: subject.curriculum_subject_id,
+          })),
       );
     } catch (err) {
       setCurriculumSubjects([]);
@@ -222,7 +203,6 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       );
     }
   }, [
-    classes,
     currentTermId,
     form.class_id,
     form.curriculum_subject_id,
@@ -240,6 +220,43 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   useEffect(() => {
     loadClassSubjects();
   }, [loadClassSubjects]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadEligibleClasses = async () => {
+      if (!form.curriculum_subject_id || !currentTermId || editingAssignmentId) {
+        setEligibleClasses([]);
+        setSelectedClassIds([]);
+        return;
+      }
+      try {
+        const response = await curriculumService.getEligibleClasses(
+          form.curriculum_subject_id,
+          currentTermId,
+        );
+        if (cancelled) return;
+        const rows = asItems(response);
+        setEligibleClasses(rows);
+        setSelectedClassIds((current) => {
+          const selectable = new Set(
+            rows.filter((item) => !item.already_assigned).map((item) => item.class_id),
+          );
+          const retained = current.filter((id) => selectable.has(id));
+          if (retained.length) return retained;
+          return selectable.has(form.class_id) ? [form.class_id] : [];
+        });
+      } catch (err) {
+        if (cancelled) return;
+        setEligibleClasses([]);
+        setSelectedClassIds([]);
+        showError(getErrorMessage(err, "Could not load eligible classes for this subject."));
+      }
+    };
+    loadEligibleClasses();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTermId, editingAssignmentId, form.class_id, form.curriculum_subject_id, showError]);
 
   useEffect(() => {
     const nextStatus =
@@ -277,6 +294,20 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       })),
     [curriculumSubjects],
   );
+  const eligibleClassGroups = useMemo(() => {
+    const groups = new Map();
+    eligibleClasses.forEach((item) => {
+      const key = item.academic_level_id;
+      const group = groups.get(key) || {
+        id: key,
+        label: item.academic_level_name,
+        items: [],
+      };
+      group.items.push(item);
+      groups.set(key, group);
+    });
+    return Array.from(groups.values());
+  }, [eligibleClasses]);
 
   const resetForm = () => {
     setEditingAssignmentId("");
@@ -286,6 +317,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       teacher_membership_id: "",
       effective_from: today(),
     }));
+    setSelectedClassIds([]);
   };
 
   const openAssignmentEditor = (item) => {
@@ -312,6 +344,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       showWarning("Select a class subject in the current open term.");
       return;
     }
+    if (!editingAssignmentId && selectedClassIds.length === 0) {
+      showWarning("Select at least one eligible class.");
+      return;
+    }
 
     setSaving("assignment");
     try {
@@ -321,8 +357,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           effective_from: form.effective_from,
         });
       } else {
-        await academicService.createTeacherAssignment({
-          class_id: form.class_id,
+        await curriculumService.createTeacherAssignmentsBulk({
+          class_ids: selectedClassIds,
           curriculum_subject_id: form.curriculum_subject_id,
           academic_term_id: currentTerm.id,
           teacher_membership_id: form.teacher_membership_id,
@@ -332,7 +368,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       showSuccess(
         editingAssignmentId
           ? "Teacher assignment updated."
-          : "Teacher assigned to class subject.",
+          : `Teacher assigned to ${selectedClassIds.length} class${selectedClassIds.length === 1 ? "" : "es"}.`,
       );
       resetForm();
       await loadAssignments();
@@ -441,26 +477,74 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           disabled={Boolean(editingAssignmentId)}
         />
         {!editingAssignmentId ? (
-          <SelectControl
-            label="Subject"
-            value={form.curriculum_subject_id}
-            onChange={(value) =>
-              setForm((current) => ({
-                ...current,
-                curriculum_subject_id: value,
-              }))
-            }
-            options={subjectOptions}
-            placeholder={
-              !currentTerm
-                ? "No current open term"
-                : subjectOptions.length === 0
-                  ? "No unassigned subjects available to this class"
-                  : "Select subject"
-            }
-            required
-            disabled={!currentTerm || subjectOptions.length === 0}
-          />
+          <>
+            <SelectControl
+              label="Subject"
+              value={form.curriculum_subject_id}
+              onChange={(value) => {
+                setForm((current) => ({
+                  ...current,
+                  curriculum_subject_id: value,
+                }));
+                setSelectedClassIds([]);
+              }}
+              options={subjectOptions}
+              placeholder={
+                !currentTerm
+                  ? "No current open term"
+                  : subjectOptions.length === 0
+                    ? "No unassigned subjects available to this class"
+                    : "Select subject"
+              }
+              required
+              disabled={!currentTerm || subjectOptions.length === 0}
+            />
+            {form.curriculum_subject_id ? (
+              <fieldset className="space-y-3 rounded-xl border border-border p-3">
+                <legend className="px-1 text-sm font-medium text-text">
+                  Eligible classes
+                </legend>
+                {eligibleClassGroups.length ? (
+                  eligibleClassGroups.map((group) => (
+                    <div key={group.id} className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                        {group.label}
+                      </p>
+                      {group.items.map((item) => {
+                        const disabled = item.already_assigned;
+                        return (
+                          <label
+                            key={item.class_id}
+                            className="flex items-center gap-2 text-sm text-text"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedClassIds.includes(item.class_id)}
+                              disabled={disabled}
+                              onChange={(event) =>
+                                setSelectedClassIds((current) =>
+                                  event.target.checked
+                                    ? [...current, item.class_id]
+                                    : current.filter((id) => id !== item.class_id),
+                                )
+                              }
+                            />
+                            <span>
+                              {item.display_name}
+                              {item.department_name ? ` · ${item.department_name}` : ""}
+                              {disabled ? " · already assigned" : ""}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-text-muted">No eligible classes.</p>
+                )}
+              </fieldset>
+            ) : null}
+          </>
         ) : null}
         <SelectControl
           label="Teacher"
@@ -494,14 +578,14 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             disabled={
               saving === "assignment" ||
               (!editingAssignmentId &&
-                (!currentTerm || subjectOptions.length === 0))
+                (!currentTerm || subjectOptions.length === 0 || selectedClassIds.length === 0))
             }
           >
             {saving === "assignment"
               ? "Saving..."
               : editingAssignmentId
                 ? "Reassign teacher"
-                : "Create assignment"}
+                : `Create ${selectedClassIds.length || ""} assignment${selectedClassIds.length === 1 ? "" : "s"}`}
           </Button>
           {editingAssignmentId ? (
             <Button type="button" variant="outline" onClick={resetForm}>

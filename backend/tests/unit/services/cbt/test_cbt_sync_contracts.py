@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from app.modules.cbt.sync.enums import CBTSyncEntityType, CBTSyncOperation
 from app.modules.cbt.sync.repository import CBTSyncRepository
-from app.modules.cbt.sync.schemas import CBTSyncMutation
+from app.modules.cbt.sync.schemas import CBTSyncMutation, SYNC_SCHEMA_VERSION
 from app.modules.cbt.sync.service import CBTSyncService
 
 
@@ -25,14 +25,14 @@ def change(cursor: int):
     )
 
 
-def test_mutation_uses_v4_and_requires_full_payload_for_upsert() -> None:
+def test_mutation_uses_current_schema_and_requires_full_payload_for_upsert() -> None:
     mutation = CBTSyncMutation(
         entity_type=CBTSyncEntityType.SUBJECT,
         entity_id=uuid4(),
         operation=CBTSyncOperation.UPDATED,
         payload={"name": "Mathematics"},
     )
-    assert mutation.schema_version == 4
+    assert mutation.schema_version == SYNC_SCHEMA_VERSION
 
     with pytest.raises(ValidationError, match="require a payload"):
         CBTSyncMutation(

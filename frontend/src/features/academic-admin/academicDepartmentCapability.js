@@ -17,10 +17,15 @@ export const filterDepartmentWorkflow = (workflows, categoryOptions) => {
 export const normalizeSpecializationTermPosition = (
   categoryOptions,
   category,
+  levelPosition,
   value,
 ) => {
   if (!categorySupportsDepartments(categoryOptions, category)) return null;
-  if (value === "" || value === null || value === undefined) return null;
+  if (category !== "SENIOR_SECONDARY") return null;
+
+  const numericLevelPosition = Number(levelPosition);
+  if (Number.isInteger(numericLevelPosition) && numericLevelPosition > 1) return 1;
+  if (value === "" || value === null || value === undefined) return 1;
 
   const position = Number(value);
   return Number.isInteger(position) && position >= 1 && position <= 3

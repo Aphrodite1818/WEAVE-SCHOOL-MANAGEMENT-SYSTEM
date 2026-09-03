@@ -92,7 +92,7 @@ class CBTAcademicSyncService:
             subjects=sections["subjects"],
             curricula=sections["curricula"],
             curriculum_subjects=sections["curriculum_subjects"],
-            offerings=sections["offerings"],
+            curriculum_subject_departments=sections["curriculum_subject_departments"],
             assessment_schemes=sections["assessment_schemes"],
             assessment_components=sections["assessment_components"],
             admins=sections["admins"],

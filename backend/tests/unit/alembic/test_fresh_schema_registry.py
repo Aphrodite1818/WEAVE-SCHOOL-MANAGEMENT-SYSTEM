@@ -29,7 +29,7 @@ CRITICAL_TABLES = {
     "classes",
     "curricula",
     "curriculum_subjects",
-    "curriculum_offerings",
+    "curriculum_subject_departments",
     "class_term_department_assignments",
     "teacher_assignments",
     "academic_sessions",
@@ -49,8 +49,8 @@ CRITICAL_TABLES = {
 }
 
 OBSOLETE_ACADEMIC_TABLES = {
+    "curriculum_offerings",
     "level_subjects",
-    "subject_offerings",
     "student_department_assignments",
 }
 
@@ -81,6 +81,21 @@ def test_model_registry_has_unique_table_keys() -> None:
     configure_mappers()
     table_keys = list(Base.metadata.tables)
     assert len(table_keys) == len(set(table_keys))
+
+
+def test_curriculum_department_scope_foreign_keys_are_tenant_aware() -> None:
+    table = next(
+        table
+        for table in Base.metadata.tables.values()
+        if table.name == "curriculum_subject_departments"
+    )
+    foreign_key_columns = {
+        tuple(element.parent.name for element in constraint.elements)
+        for constraint in table.foreign_key_constraints
+    }
+
+    assert ("tenant_id", "curriculum_subject_id") in foreign_key_columns
+    assert ("tenant_id", "academic_level_department_id") in foreign_key_columns
 
 
 def test_progression_run_count_constraints_match_v2_contract() -> None:

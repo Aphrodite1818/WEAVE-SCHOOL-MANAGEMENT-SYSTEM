@@ -4,7 +4,7 @@ Revision ID: 20260817_curriculum_cutover
 Revises: 20260817_curriculum_v2
 
 This is intentionally a destructive pre-launch cutover. The application contract
-moves fully to CurriculumSubject/CurriculumOffering and does not retain legacy
+moves fully to the then-current curriculum subject contract and does not retain legacy
 columns or tables for compatibility.
 """
 

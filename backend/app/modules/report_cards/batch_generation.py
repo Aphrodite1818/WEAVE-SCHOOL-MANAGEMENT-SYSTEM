@@ -40,14 +40,14 @@ async def create_card_from_results_batched(
 ) -> ReportCard:
     """Create one card while resolving result metadata in bounded batch queries."""
 
-    expected_offerings = await ReportCardService._expected_subject_offerings(
+    expected_curriculum_subjects = await ReportCardService._expected_curriculum_subjects(
         db,
         actor.tenant_id,
         student_id,
         academic_term_id,
     )
     eligible_curriculum_subject_ids = {
-        offering.curriculum_subject_id for offering in expected_offerings
+        item.curriculum_subject_id for item in expected_curriculum_subjects
     }
     results = [
         result
@@ -61,9 +61,9 @@ async def create_card_from_results_batched(
         result.curriculum_subject_id for result in results
     }
     missing_subject_ids = [
-        offering.subject_id
-        for offering in expected_offerings
-        if offering.curriculum_subject_id not in submitted_curriculum_subject_ids
+        item.subject_id
+        for item in expected_curriculum_subjects
+        if item.curriculum_subject_id not in submitted_curriculum_subject_ids
     ]
 
     subject_ids = {result.subject_id for result in results}

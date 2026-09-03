@@ -28,7 +28,6 @@ const emptyLevelForm = {
   specialization_required_from_term_position: "",
 };
 const specializationOptions = [
-  { value: "", label: "Optional — classes may remain general" },
   { value: "1", label: "Required from First Term" },
   { value: "2", label: "Required from Second Term" },
   { value: "3", label: "Required from Third Term" },
@@ -109,6 +108,7 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   );
   const activeForm = editingLevelId ? editingLevelForm : levelForm;
   const activeCategory = activeForm?.category || "";
+  const activePosition = Number(activeForm?.position);
   const selectedCategorySupportsDepartments = categorySupportsDepartments(
     categoryOptions,
     activeCategory,
@@ -116,6 +116,8 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   const structuralFieldsLocked = Boolean(
     editingLevel && editingLevel.status !== "draft",
   );
+  const isSeniorSecondary = activeCategory === "SENIOR_SECONDARY";
+  const isLaterSeniorLevel = isSeniorSecondary && activePosition > 1;
 
   const selectView = (view) => {
     const next = new URLSearchParams(searchParams);
@@ -138,12 +140,12 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     const update = (current) => ({
       ...current,
       category: value,
-      specialization_required_from_term_position: categorySupportsDepartments(
-        categoryOptions,
-        value,
-      )
-        ? current.specialization_required_from_term_position
-        : "",
+      specialization_required_from_term_position:
+        value === "SENIOR_SECONDARY"
+          ? Number(current.position) > 1
+            ? "1"
+            : current.specialization_required_from_term_position || "1"
+          : "",
     });
     if (editingLevelId) {
       setEditingLevelForm(update);
@@ -165,6 +167,7 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
           normalizeSpecializationTermPosition(
             categoryOptions,
             levelForm.category,
+            levelForm.position,
             levelForm.specialization_required_from_term_position,
           ),
       });
@@ -195,6 +198,7 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
               normalizeSpecializationTermPosition(
                 categoryOptions,
                 editingLevelForm.category,
+                editingLevelForm.position,
                 editingLevelForm.specialization_required_from_term_position,
               ),
           };
@@ -282,42 +286,62 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                       ? setEditingLevelForm((current) => ({
                           ...current,
                           position: event.target.value,
+                          specialization_required_from_term_position:
+                            current.category === "SENIOR_SECONDARY" &&
+                            Number(event.target.value) > 1
+                              ? "1"
+                              : current.specialization_required_from_term_position,
                         }))
                       : setLevelForm((current) => ({
                           ...current,
                           position: event.target.value,
+                          specialization_required_from_term_position:
+                            current.category === "SENIOR_SECONDARY" &&
+                            Number(event.target.value) > 1
+                              ? "1"
+                              : current.specialization_required_from_term_position,
                         }))
                   }
                   disabled={structuralFieldsLocked}
                   required
                 />
-                {selectedCategorySupportsDepartments ? (
+                {selectedCategorySupportsDepartments && isSeniorSecondary ? (
                   <div className="space-y-1.5">
-                    <SelectControl
-                      label="Department specialization"
-                      value={
-                        editingLevelId
-                          ? editingLevelForm?.specialization_required_from_term_position || ""
-                          : levelForm.specialization_required_from_term_position
-                      }
-                      onChange={(value) =>
-                        editingLevelId
-                          ? setEditingLevelForm((current) => ({
-                              ...current,
-                              specialization_required_from_term_position: value,
-                            }))
-                          : setLevelForm((current) => ({
-                              ...current,
-                              specialization_required_from_term_position: value,
-                            }))
-                      }
-                      options={specializationOptions}
-                      disabled={structuralFieldsLocked}
-                      searchable={false}
-                    />
+                    {isLaterSeniorLevel ? (
+                      <Input
+                        label="Department specialization"
+                        value="Required from First Term"
+                        disabled
+                      />
+                    ) : (
+                      <SelectControl
+                        label="Department specialization"
+                        value={
+                          editingLevelId
+                            ? editingLevelForm?.specialization_required_from_term_position || "1"
+                            : levelForm.specialization_required_from_term_position || "1"
+                        }
+                        onChange={(value) =>
+                          editingLevelId
+                            ? setEditingLevelForm((current) => ({
+                                ...current,
+                                specialization_required_from_term_position: value,
+                              }))
+                            : setLevelForm((current) => ({
+                                ...current,
+                                specialization_required_from_term_position: value,
+                              }))
+                        }
+                        options={specializationOptions}
+                        disabled={structuralFieldsLocked}
+                        searchable={false}
+                        required
+                      />
+                    )}
                     <p className="text-xs leading-5 text-text-muted">
-                      Choose when every class in this level must have a department
-                      placement. Leave it optional when classes may remain general.
+                      {isLaterSeniorLevel
+                        ? "Later Senior Secondary levels always require a department from First Term."
+                        : "Choose the term when the first Senior Secondary level begins requiring a department."}
                     </p>
                   </div>
                 ) : null}

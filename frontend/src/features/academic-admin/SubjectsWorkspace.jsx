@@ -1,5 +1,5 @@
 import { BookOpen, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
@@ -65,7 +65,7 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
   const [confirmation, setConfirmation] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const response = await subjectService.getSubjects({
@@ -78,11 +78,11 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showError]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const rows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -273,7 +273,7 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
         content={
           <RecordList
             title={`Subjects${loading ? "" : ` (${rows.length})`}`}
-            description="The tenant-wide subject catalogue. Curriculum placement and term offerings are configured separately."
+            description="The tenant-wide subject catalogue. Curriculum placement and department applicability are configured separately."
             actions={
               !showEditor ? (
                 <Button type="button" onClick={() => selectView("create")}>

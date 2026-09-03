@@ -127,7 +127,7 @@ export const academicWorkflowConfig = {
     defaultTab: "subjects",
     tabs: [
       { id: "subjects", label: "Curriculum Subjects" },
-      { id: "offerings", label: "Term Offerings" },
+      { id: "applicability", label: "Subject Applicability" },
     ],
   },
   assignments: {

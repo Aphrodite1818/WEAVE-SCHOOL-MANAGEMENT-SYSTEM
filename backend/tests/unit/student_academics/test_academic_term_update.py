@@ -81,6 +81,14 @@ async def test_create_academic_term_is_always_draft() -> None:
             "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
             new=AsyncMock(),
         ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.specialization_readiness",
+            new=AsyncMock(return_value=({"classes_missing_department": 0}, [])),
+        ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.reconcile_teacher_assignments_for_term",
+            new=AsyncMock(return_value={"ended": 0, "deleted_scheduled": 0}),
+        ),
     ):
         created = await StudentAcademicService.create_academic_term(
             db=db,
@@ -230,6 +238,14 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
             new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.specialization_readiness",
+            new=AsyncMock(return_value=({"classes_missing_department": 0}, [])),
+        ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.reconcile_teacher_assignments_for_term",
+            new=AsyncMock(return_value={"ended": 0, "deleted_scheduled": 0}),
         ),
     ):
         opened = await StudentAcademicService.open_academic_term(

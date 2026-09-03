@@ -18,5 +18,6 @@ def test_cbt_v3_academic_level_snapshot_does_not_expose_lifecycle_status() -> No
         "name": "SS1",
         "category": "SENIOR_SECONDARY",
         "position": 1,
+        "specialization_required_from_term_position": None,
     }
     assert "status" not in payload

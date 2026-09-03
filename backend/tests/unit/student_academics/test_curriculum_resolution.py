@@ -1,284 +1,135 @@
+from __future__ import annotations
+
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
-from app.core.exceptions import ConflictException
-from app.modules.classes.repository import AcademicLevelRepository
-from app.modules.student_academics.curriculum_service import (
-    CurriculumResolutionService,
-    ResolvedCurriculumOffering,
-)
+from app.modules.classes.models import AcademicLevelStatus
+from app.modules.student_academics.curriculum_service import CurriculumResolutionService
 from app.modules.student_academics.models import AcademicTermName
-from app.modules.student_academics.service import StudentAcademicService
 
 
-class Result:
-    def __init__(self, *, rows=(), scalars=()):
-        self._rows = list(rows)
-        self._scalars = list(scalars)
-
-    def all(self):
-        return self._rows
-
-    def scalars(self):
-        return self._scalars
+def _scalar(value):
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = value
+    return result
 
 
-@pytest.mark.asyncio
-async def test_general_and_department_offering_overlap_is_rejected():
-    tenant_id = uuid4()
-    level_id = uuid4()
-    term_id = uuid4()
-    department_id = uuid4()
-    curriculum_subject = SimpleNamespace(
-        id=uuid4(),
-        subject_id=uuid4(),
-        is_elective=False,
-    )
-    common = SimpleNamespace(id=uuid4(), academic_level_department_id=None)
-    specialized = SimpleNamespace(id=uuid4(), academic_level_department_id=department_id)
-    db = SimpleNamespace(
-        execute=AsyncMock(
-            return_value=Result(
-                rows=[
-                    (common, curriculum_subject),
-                    (specialized, curriculum_subject),
-                ]
-            )
-        )
-    )
+def _rows(values):
+    result = MagicMock()
+    result.all.return_value = values
+    return result
 
-    with pytest.raises(ConflictException, match="scope is ambiguous"):
-        await CurriculumResolutionService.resolve_curriculum_offerings(
-            db,
-            tenant_id=tenant_id,
-            academic_level_id=level_id,
-            academic_term_id=term_id,
-            academic_level_department_id=department_id,
-        )
 
-    statement = str(db.execute.await_args.args[0])
-    assert "curriculum_offerings.tenant_id" in statement
-    assert "curriculum_subjects.tenant_id" in statement
-    assert "curricula.academic_level_id" in statement
-    assert "subject_offerings" not in statement
-    assert "level_subjects" not in statement
+def _scalars(values):
+    result = MagicMock()
+    result.scalars.return_value = values
+    return result
+
+
+def _subject(row_id):
+    return SimpleNamespace(id=row_id, subject_id=uuid4(), is_elective=False)
 
 
 @pytest.mark.asyncio
-async def test_department_offering_resolves_when_it_is_the_only_applicable_scope():
-    tenant_id = uuid4()
-    level_id = uuid4()
-    term_id = uuid4()
-    department_id = uuid4()
-    curriculum_subject = SimpleNamespace(
-        id=uuid4(),
-        subject_id=uuid4(),
-        is_elective=False,
-    )
-    specialized = SimpleNamespace(id=uuid4(), academic_level_department_id=department_id)
-    db = SimpleNamespace(
-        execute=AsyncMock(return_value=Result(rows=[(specialized, curriculum_subject)]))
-    )
-
-    resolved = await CurriculumResolutionService.resolve_curriculum_offerings(
-        db,
-        tenant_id=tenant_id,
-        academic_level_id=level_id,
-        academic_term_id=term_id,
-        academic_level_department_id=department_id,
-    )
-
-    assert len(resolved) == 1
-    assert resolved[0].curriculum_subject_id == curriculum_subject.id
-    assert resolved[0].curriculum_offering_id == specialized.id
-    assert resolved[0].academic_level_department_id == department_id
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("participating", [False, True])
-async def test_elective_requires_a_meaningful_assessment_score(monkeypatch, participating):
-    term_id = uuid4()
-    normal = ResolvedCurriculumOffering(
-        curriculum_offering_id=uuid4(),
-        curriculum_subject_id=uuid4(),
-        subject_id=uuid4(),
-        academic_term_id=term_id,
-        academic_level_department_id=None,
-        is_elective=False,
-    )
-    elective = ResolvedCurriculumOffering(
-        curriculum_offering_id=uuid4(),
-        curriculum_subject_id=uuid4(),
-        subject_id=uuid4(),
-        academic_term_id=term_id,
-        academic_level_department_id=None,
-        is_elective=True,
-    )
-    monkeypatch.setattr(
-        CurriculumResolutionService,
-        "resolve_student_offerings",
-        AsyncMock(return_value=[normal, elective]),
-    )
-    scalar_rows = [elective.curriculum_subject_id] if participating else []
-    db = SimpleNamespace(execute=AsyncMock(return_value=Result(scalars=scalar_rows)))
-
-    resolved = await CurriculumResolutionService.resolve_student_curriculum(
-        db,
-        tenant_id=uuid4(),
-        student_id=uuid4(),
-        academic_term_id=term_id,
-    )
-
-    assert normal in resolved
-    assert (elective in resolved) is participating
-    statement = str(db.execute.await_args.args[0])
-    assert "student_assessment_scores" in statement
-    assert "curriculum_subject_id" in statement
-
-
-@pytest.mark.asyncio
-async def test_specialization_blocks_only_when_next_term_requires_it(monkeypatch):
-    tenant_id = uuid4()
-    session_id = uuid4()
-    level_id = uuid4()
-    current = SimpleNamespace(
-        academic_session_id=session_id,
-        name=AcademicTermName.FIRST_TERM,
-    )
-    next_term = SimpleNamespace(
-        id=uuid4(),
-        academic_session_id=session_id,
-        name=AcademicTermName.SECOND_TERM,
-    )
-    enrollment = SimpleNamespace(
-        id=uuid4(),
-        academic_level_id=level_id,
-        class_id=None,
-    )
-    level = SimpleNamespace(
-        id=level_id,
-        name="Custom Foundation Stage",
-        specialization_required_from_term_position=2,
-    )
-    monkeypatch.setattr(
-        AcademicLevelRepository,
-        "list_for_tenant",
-        AsyncMock(return_value=[level]),
-    )
-    db = SimpleNamespace(
-        execute=AsyncMock(
-            side_effect=[
-                Result(scalars=[current, next_term]),
-                Result(scalars=[enrollment]),
-                Result(rows=[]),
-            ]
-        )
-    )
-
-    counts, blockers = await StudentAcademicService._specialization_blockers_for_next_term(
-        db,
-        tenant_id=tenant_id,
-        term=current,
-    )
-
-    assert counts == {"students_missing_department": 1}
-    assert blockers == [
-        "1 Custom Foundation Stage students are in classes without a department for Second Term."
+async def test_pre_specialization_includes_general_science_and_arts() -> None:
+    tenant_id, level_id, class_id, term_id = uuid4(), uuid4(), uuid4(), uuid4()
+    general_id, science_id, arts_id = uuid4(), uuid4(), uuid4()
+    science_department_id, arts_department_id = uuid4(), uuid4()
+    subjects = [
+        (_subject(general_id), SimpleNamespace()),
+        (_subject(science_id), SimpleNamespace()),
+        (_subject(arts_id), SimpleNamespace()),
     ]
-
-
-@pytest.mark.asyncio
-async def test_class_department_assignment_satisfies_specialization_blocker(monkeypatch):
-    tenant_id = uuid4()
-    session_id = uuid4()
-    level_id = uuid4()
-    class_id = uuid4()
-    current = SimpleNamespace(
-        academic_session_id=session_id,
-        name=AcademicTermName.FIRST_TERM,
-    )
-    next_term = SimpleNamespace(
-        id=uuid4(),
-        academic_session_id=session_id,
-        name=AcademicTermName.SECOND_TERM,
-    )
-    enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=class_id)
-    level = SimpleNamespace(
-        id=level_id,
-        name="Stage Alpha",
-        specialization_required_from_term_position=2,
-    )
-    monkeypatch.setattr(
-        AcademicLevelRepository,
-        "list_for_tenant",
-        AsyncMock(return_value=[level]),
-    )
-    db = SimpleNamespace(
-        execute=AsyncMock(
-            side_effect=[
-                Result(scalars=[current, next_term]),
-                Result(scalars=[enrollment]),
-                Result(scalars=[class_id]),
-            ]
-        )
-    )
-
-    counts, blockers = await StudentAcademicService._specialization_blockers_for_next_term(
-        db,
-        tenant_id=tenant_id,
-        term=current,
-    )
-
-    assert counts == {"students_missing_department": 0}
-    assert blockers == []
-
-
-@pytest.mark.asyncio
-async def test_inactive_department_assignment_does_not_satisfy_specialization_blocker(
-    monkeypatch,
-):
-    tenant_id = uuid4()
-    session_id = uuid4()
-    level_id = uuid4()
-    current = SimpleNamespace(
-        academic_session_id=session_id,
-        name=AcademicTermName.FIRST_TERM,
-    )
-    next_term = SimpleNamespace(
-        academic_session_id=session_id,
-        name=AcademicTermName.SECOND_TERM,
-    )
-    enrollment = SimpleNamespace(id=uuid4(), academic_level_id=level_id, class_id=None)
-    level = SimpleNamespace(
-        id=level_id,
-        name="Stage Alpha",
-        specialization_required_from_term_position=2,
-    )
-    monkeypatch.setattr(
-        AcademicLevelRepository,
-        "list_for_tenant",
-        AsyncMock(return_value=[level]),
-    )
-    db = SimpleNamespace(
-        execute=AsyncMock(
-            side_effect=[
-                Result(scalars=[current, next_term]),
-                Result(scalars=[enrollment]),
-                Result(rows=[]),
-            ]
-        )
-    )
-
-    counts, blockers = await StudentAcademicService._specialization_blockers_for_next_term(
-        db,
-        tenant_id=tenant_id,
-        term=current,
-    )
-
-    assert counts == {"students_missing_department": 1}
-    assert blockers == [
-        "1 Stage Alpha students are in classes without a department for Second Term."
+    links = [
+        SimpleNamespace(
+            curriculum_subject_id=science_id, academic_level_department_id=science_department_id
+        ),
+        SimpleNamespace(
+            curriculum_subject_id=arts_id, academic_level_department_id=arts_department_id
+        ),
     ]
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _scalar(SimpleNamespace(id=class_id, academic_level_id=level_id)),
+                _scalar(SimpleNamespace(id=term_id, name=AcademicTermName.FIRST_TERM)),
+                _scalar(
+                    SimpleNamespace(
+                        id=level_id,
+                        status=AcademicLevelStatus.ACTIVE,
+                        specialization_required_from_term_position=2,
+                    )
+                ),
+                _rows(subjects),
+                _scalars(links),
+            ]
+        )
+    )
+
+    resolved = await CurriculumResolutionService.resolve_class_subjects(
+        db, tenant_id=tenant_id, class_id=class_id, academic_term_id=term_id
+    )
+
+    assert {item.curriculum_subject_id for item in resolved} == {general_id, science_id, arts_id}
+    assert next(item for item in resolved if item.curriculum_subject_id == general_id).is_general
+    assert all(item.academic_level_department_id is None for item in resolved)
+
+
+@pytest.mark.asyncio
+async def test_post_specialization_includes_general_and_matching_department_only() -> None:
+    tenant_id, level_id, class_id, term_id = uuid4(), uuid4(), uuid4(), uuid4()
+    general_id, science_id, arts_id = uuid4(), uuid4(), uuid4()
+    science_department_id, arts_department_id = uuid4(), uuid4()
+    subjects = [
+        (_subject(general_id), SimpleNamespace()),
+        (_subject(science_id), SimpleNamespace()),
+        (_subject(arts_id), SimpleNamespace()),
+    ]
+    links = [
+        SimpleNamespace(
+            curriculum_subject_id=science_id, academic_level_department_id=science_department_id
+        ),
+        SimpleNamespace(
+            curriculum_subject_id=arts_id, academic_level_department_id=arts_department_id
+        ),
+    ]
+    exact = MagicMock()
+    exact.first.return_value = (
+        SimpleNamespace(academic_level_department_id=science_department_id),
+        SimpleNamespace(
+            id=science_department_id, academic_level_id=level_id, is_active=True, archived_at=None
+        ),
+        SimpleNamespace(is_active=True, archived_at=None),
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _scalar(SimpleNamespace(id=class_id, academic_level_id=level_id)),
+                _scalar(SimpleNamespace(id=term_id, name=AcademicTermName.SECOND_TERM)),
+                _scalar(
+                    SimpleNamespace(
+                        id=level_id,
+                        status=AcademicLevelStatus.ACTIVE,
+                        specialization_required_from_term_position=2,
+                    )
+                ),
+                exact,
+                _rows(subjects),
+                _scalars(links),
+            ]
+        )
+    )
+
+    resolved = await CurriculumResolutionService.resolve_class_subjects(
+        db, tenant_id=tenant_id, class_id=class_id, academic_term_id=term_id
+    )
+
+    assert {item.curriculum_subject_id for item in resolved} == {general_id, science_id}
+    matching = next(item for item in resolved if item.curriculum_subject_id == science_id)
+    assert matching.academic_level_department_id == science_department_id
+    assert "class_term_department_assignments.academic_term_id" in str(
+        db.execute.await_args_list[3].args[0]
+    )

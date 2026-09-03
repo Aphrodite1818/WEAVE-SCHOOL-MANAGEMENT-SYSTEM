@@ -56,6 +56,7 @@ test("specialization requirement is normalized only for department-enabled categ
     normalizeSpecializationTermPosition(
       secondaryCategories,
       "SENIOR_SECONDARY",
+      "1",
       "2",
     ),
     2,
@@ -64,14 +65,25 @@ test("specialization requirement is normalized only for department-enabled categ
     normalizeSpecializationTermPosition(
       secondaryCategories,
       "SENIOR_SECONDARY",
+      "1",
       "",
     ),
-    null,
+    1,
+  );
+  assert.equal(
+    normalizeSpecializationTermPosition(
+      secondaryCategories,
+      "SENIOR_SECONDARY",
+      "2",
+      "3",
+    ),
+    1,
   );
   assert.equal(
     normalizeSpecializationTermPosition(
       secondaryCategories,
       "JUNIOR_SECONDARY",
+      "1",
       "1",
     ),
     null,

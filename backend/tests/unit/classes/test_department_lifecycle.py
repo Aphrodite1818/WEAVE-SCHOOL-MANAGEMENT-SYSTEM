@@ -95,6 +95,10 @@ async def test_update_duplicate_lookup_remains_tenant_scoped() -> None:
             "app.modules.classes.department_service.CanonicalDepartmentRepository.get_by_normalized_name",
             new=lookup,
         ),
+        patch(
+            "app.modules.classes.department_service.CanonicalDepartmentRepository.count_level_links",
+            new=AsyncMock(return_value={"level_links_total": 0, "level_links_active": 0}),
+        ),
     ):
         with pytest.raises(ConflictException, match="already exists"):
             await DepartmentPoolService.update_department(
@@ -264,7 +268,12 @@ async def test_live_mapping_dependencies_block_deactivation_but_history_only_all
         patch.object(DepartmentPoolService, "_link", new=AsyncMock(return_value=row)),
         patch(
             "app.modules.classes.department_service.AcademicLevelDepartmentRepository.count_dependencies",
-            new=AsyncMock(return_value=_counts(class_assignments_total=1, offerings_total=1)),
+            new=AsyncMock(
+                return_value=_counts(
+                    class_assignments_total=1,
+                    curriculum_subject_links_total=1,
+                )
+            ),
         ),
         patch(
             "app.modules.classes.department_service.AcademicLevelDepartmentRepository.save",
@@ -291,7 +300,7 @@ async def test_mapping_delete_blocks_history_and_allows_a_truly_unused_link() ->
         patch.object(DepartmentPoolService, "_link", new=AsyncMock(return_value=row)),
         patch(
             "app.modules.classes.department_service.AcademicLevelDepartmentRepository.count_dependencies",
-            new=AsyncMock(return_value=_counts(offerings_total=1)),
+            new=AsyncMock(return_value=_counts(curriculum_subject_links_total=1)),
         ),
         patch(
             "app.modules.classes.department_service.AcademicLevelDepartmentRepository.delete",
@@ -393,12 +402,12 @@ def _counts(
     *,
     class_assignments_total: int = 0,
     class_assignments_live: int = 0,
-    offerings_total: int = 0,
-    offerings_live: int = 0,
+    curriculum_subject_links_total: int = 0,
+    curriculum_subject_links_live: int = 0,
 ) -> dict[str, int]:
     return {
         "class_assignments_total": class_assignments_total,
         "class_assignments_live": class_assignments_live,
-        "offerings_total": offerings_total,
-        "offerings_live": offerings_live,
+        "curriculum_subject_links_total": curriculum_subject_links_total,
+        "curriculum_subject_links_live": curriculum_subject_links_live,
     }

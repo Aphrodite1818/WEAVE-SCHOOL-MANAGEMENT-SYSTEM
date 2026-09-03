@@ -78,7 +78,10 @@ from app.modules.classes.repository import (
     AcademicLevelRepository,
     ArmLabelRepository,
     ClassRoomRepository,
-    DepartmentRepository,
+)
+from app.modules.classes.department_repository import (
+    AcademicLevelDepartmentRepository,
+    CanonicalDepartmentRepository,
 )
 from app.modules.classes.models import AcademicLevelStatus
 from app.modules.parents.repository import ParentAccountRepository
@@ -624,15 +627,18 @@ class BulkImportService:
                     normalized_row["department"] = None
                 continue
 
-            assigned_department = await DepartmentRepository.get_by_id(
+            assigned_link = await AcademicLevelDepartmentRepository.get_by_id(
                 db,
                 tenant_id,
-                assignment.department_id,
+                assignment.academic_level_department_id,
             )
             if (
-                assigned_department is None
-                or not assigned_department.is_active
-                or assigned_department.archived_at is not None
+                assigned_link is None
+                or assigned_link.academic_level_id != level.id
+                or not assigned_link.is_active
+                or assigned_link.archived_at is not None
+                or not assigned_link.department.is_active
+                or assigned_link.department.archived_at is not None
             ):
                 append_validation_error(
                     validation_result=validation_result,
@@ -644,6 +650,7 @@ class BulkImportService:
                     ),
                 )
                 continue
+            assigned_department = assigned_link.department
 
             if _is_blank(department_name):
                 append_validation_error(
@@ -657,10 +664,9 @@ class BulkImportService:
                 )
                 continue
 
-            supplied_department = await DepartmentRepository.get_by_normalized_name(
+            supplied_department = await CanonicalDepartmentRepository.get_by_normalized_name(
                 db,
                 tenant_id,
-                level.id,
                 str(department_name).strip().casefold(),
             )
             if supplied_department is None:
@@ -673,7 +679,24 @@ class BulkImportService:
                     ),
                 )
                 continue
-            if not supplied_department.is_active or supplied_department.archived_at is not None:
+            supplied_link = (
+                await AcademicLevelDepartmentRepository.get_for_level_department(
+                    db,
+                    tenant_id,
+                    level.id,
+                    supplied_department.id,
+                )
+                if supplied_department is not None
+                else None
+            )
+            if (
+                supplied_department is None
+                or supplied_link is None
+                or not supplied_link.is_active
+                or supplied_link.archived_at is not None
+                or not supplied_department.is_active
+                or supplied_department.archived_at is not None
+            ):
                 append_validation_error(
                     validation_result=validation_result,
                     field_name="department",
@@ -681,7 +704,7 @@ class BulkImportService:
                     error_message=f"Department {supplied_department.name} is inactive or archived.",
                 )
                 continue
-            if supplied_department.id != assigned_department.id:
+            if supplied_link.id != assigned_link.id:
                 append_validation_error(
                     validation_result=validation_result,
                     field_name="department",

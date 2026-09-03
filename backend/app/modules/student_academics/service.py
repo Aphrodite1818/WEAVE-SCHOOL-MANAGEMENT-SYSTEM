@@ -27,6 +27,10 @@ from app.modules.student_academics.curriculum_models import (
     CurriculumSubject,
 )
 from app.modules.student_academics.curriculum_service import CurriculumResolutionService
+from app.modules.student_academics.curriculum_v2_schemas import (
+    TeacherAssignmentBulkCreate,
+    TeacherAssignmentBulkResponse,
+)
 from app.modules.student_academics.models import (
     AcademicLifecycleAudit,
     AcademicResultStatus,
@@ -506,14 +510,17 @@ class StudentAcademicService:
         }
         blockers: list[str] = []
         if term.status == AcademicTermStatus.DRAFT:
-            from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+            from app.modules.student_academics.curriculum_v2_service import (
+                AcademicCurriculumService,
+            )
 
-            specialization_counts, specialization_blockers = (
-                await AcademicCurriculumService.specialization_readiness(
-                    db,
-                    tenant_id=tenant_id,
-                    term=term,
-                )
+            (
+                specialization_counts,
+                specialization_blockers,
+            ) = await AcademicCurriculumService.specialization_readiness(
+                db,
+                tenant_id=tenant_id,
+                term=term,
             )
             counts.update(specialization_counts)
             blockers.extend(specialization_blockers)
@@ -852,12 +859,13 @@ class StudentAcademicService:
             )
         from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 
-        specialization_counts, specialization_blockers = (
-            await AcademicCurriculumService.specialization_readiness(
-                db,
-                tenant_id=tenant_id,
-                term=term,
-            )
+        (
+            specialization_counts,
+            specialization_blockers,
+        ) = await AcademicCurriculumService.specialization_readiness(
+            db,
+            tenant_id=tenant_id,
+            term=term,
         )
         if specialization_blockers:
             raise ConflictException(
@@ -1315,7 +1323,7 @@ class StudentAcademicService:
         return term
 
     @staticmethod
-    async def _ensure_curriculum_subject_offered_to_class(
+    async def _ensure_curriculum_subject_available_to_class(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
@@ -1347,9 +1355,7 @@ class StudentAcademicService:
             class_id=classroom.id,
             academic_term_id=term.id,
         )
-        if curriculum_subject.id not in {
-            item.curriculum_subject_id for item in resolved_subjects
-        }:
+        if curriculum_subject.id not in {item.curriculum_subject_id for item in resolved_subjects}:
             raise ConflictException(
                 "This curriculum subject is not available to the class for the selected term."
             )
@@ -1539,17 +1545,20 @@ class StudentAcademicService:
         tenant_id: uuid.UUID,
         payload: TeacherAssignmentCreate,
         acting_admin_id: uuid.UUID | None = None,
+        *,
+        commit: bool = True,
     ) -> TeacherAssignmentResponse:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
-        curriculum_subject, curriculum = (
-            await StudentAcademicService._load_curriculum_subject_context(
-                db,
-                tenant_id=tenant_id,
-                curriculum_subject_id=payload.curriculum_subject_id,
-                lock=True,
-            )
+        (
+            curriculum_subject,
+            curriculum,
+        ) = await StudentAcademicService._load_curriculum_subject_context(
+            db,
+            tenant_id=tenant_id,
+            curriculum_subject_id=payload.curriculum_subject_id,
+            lock=True,
         )
-        term = await StudentAcademicService._ensure_curriculum_subject_offered_to_class(
+        term = await StudentAcademicService._ensure_curriculum_subject_available_to_class(
             db,
             tenant_id=tenant_id,
             class_id=payload.class_id,
@@ -1567,7 +1576,14 @@ class StudentAcademicService:
             tenant_id=tenant_id,
             teacher_membership_id=payload.teacher_membership_id,
         )
-        effective_from = payload.effective_from or date.today()
+        today = date.today()
+        effective_from = payload.effective_from or (
+            term.start_date if term.start_date is not None and term.start_date > today else today
+        )
+        if term.start_date is not None and effective_from < term.start_date:
+            raise ConflictException(
+                "Teacher assignment cannot start before the selected term begins."
+            )
         if term.end_date is not None and effective_from > term.end_date:
             raise ConflictException("Teacher assignment starts after the selected term ends.")
         history = await StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject(
@@ -1611,8 +1627,45 @@ class StudentAcademicService:
             new_effective_from=assignment.effective_from,
             acting_admin_id=acting_admin_id,
         )
-        await db.commit()
+        await db.flush()
+        if commit:
+            await db.commit()
         return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
+
+    @staticmethod
+    async def create_teacher_assignments_bulk(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        payload: TeacherAssignmentBulkCreate,
+        acting_admin_id: uuid.UUID | None = None,
+    ) -> TeacherAssignmentBulkResponse:
+        """Create explicit class-subject assignments as one atomic operation."""
+
+        assignment_ids: list[uuid.UUID] = []
+        try:
+            for class_id in payload.class_ids:
+                response = await StudentAcademicService.create_teacher_assignment(
+                    db,
+                    tenant_id,
+                    TeacherAssignmentCreate(
+                        teacher_membership_id=payload.teacher_membership_id,
+                        class_id=class_id,
+                        curriculum_subject_id=payload.curriculum_subject_id,
+                        academic_term_id=payload.academic_term_id,
+                        effective_from=payload.effective_from,
+                    ),
+                    acting_admin_id=acting_admin_id,
+                    commit=False,
+                )
+                assignment_ids.append(response.id)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        return TeacherAssignmentBulkResponse(
+            created=len(assignment_ids),
+            assignment_ids=assignment_ids,
+        )
 
     @staticmethod
     async def teacher_assignment_dependency_preview(
@@ -1684,10 +1737,10 @@ class StudentAcademicService:
             return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
         if assignment.effective_to is not None:
             if payload.effective_to is None or payload.effective_to == assignment.effective_to:
-                return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
-            raise ConflictException(
-                "Teacher assignment already has a scheduled end date."
-            )
+                return await StudentAcademicService._build_teacher_assignment_response(
+                    db, assignment
+                )
+            raise ConflictException("Teacher assignment already has a scheduled end date.")
         effective_to = payload.effective_to or date.today()
         if effective_to < assignment.effective_from:
             raise ConflictException("Assignment end date cannot be before its start date.")
@@ -1739,15 +1792,16 @@ class StudentAcademicService:
             raise ConflictException(
                 "Only the current assignment without a scheduled end can be reassigned."
             )
-        curriculum_subject, curriculum = (
-            await StudentAcademicService._load_curriculum_subject_context(
-                db,
-                tenant_id=tenant_id,
-                curriculum_subject_id=current.curriculum_subject_id,
-                lock=True,
-            )
+        (
+            curriculum_subject,
+            curriculum,
+        ) = await StudentAcademicService._load_curriculum_subject_context(
+            db,
+            tenant_id=tenant_id,
+            curriculum_subject_id=current.curriculum_subject_id,
+            lock=True,
         )
-        term = await StudentAcademicService._ensure_curriculum_subject_offered_to_class(
+        term = await StudentAcademicService._ensure_curriculum_subject_available_to_class(
             db,
             tenant_id=tenant_id,
             class_id=current.class_id,
@@ -1762,7 +1816,12 @@ class StudentAcademicService:
         )
         if current.teacher_membership_id == payload.teacher_membership_id:
             raise ConflictException("This teacher is already assigned.")
-        effective_from = payload.effective_from or date.today()
+        today = date.today()
+        effective_from = payload.effective_from or (
+            term.start_date if term.start_date is not None and term.start_date > today else today
+        )
+        if term.start_date is not None and effective_from < term.start_date:
+            raise ConflictException("Replacement cannot start before the selected term begins.")
         if effective_from <= current.effective_from:
             raise ConflictException(
                 "Replacement effective date must be after the current assignment start date."
@@ -1873,8 +1932,7 @@ class StudentAcademicService:
                     .where(
                         TeacherAssignment.tenant_id == tenant_id,
                         TeacherAssignment.class_id == assignment.class_id,
-                        TeacherAssignment.curriculum_subject_id
-                        == assignment.curriculum_subject_id,
+                        TeacherAssignment.curriculum_subject_id == assignment.curriculum_subject_id,
                         TeacherAssignment.teacher_membership_id
                         == replacement_audit.previous_teacher_membership_id,
                         TeacherAssignment.effective_to
@@ -2171,9 +2229,7 @@ class StudentAcademicService:
             student_id=student.id,
             academic_term_id=term.id,
         )
-        if curriculum_subject.id not in {
-            item.curriculum_subject_id for item in resolved_subjects
-        }:
+        if curriculum_subject.id not in {item.curriculum_subject_id for item in resolved_subjects}:
             raise ForbiddenException(
                 "This subject is not available to the student's class specialization for this term."
             )
@@ -2554,15 +2610,15 @@ class StudentAcademicService:
             else []
         )
         cards: list[StudentSubjectCardResponse] = []
-        for offering in curriculum:
+        for curriculum_subject in curriculum:
             subject = await SubjectRepository.get_subject_by_id(
-                db, actor.tenant_id, offering.subject_id
+                db, actor.tenant_id, curriculum_subject.subject_id
             )
             assignment = (
                 await StudentAcademicRepository.get_active_teacher_assignment_for_curriculum_subject(
                     db,
                     actor.tenant_id,
-                    offering.curriculum_subject_id,
+                    curriculum_subject.curriculum_subject_id,
                     classroom.id,
                 )
                 if classroom is not None
@@ -2576,7 +2632,7 @@ class StudentAcademicService:
                             StudentSubjectResult.tenant_id == actor.tenant_id,
                             StudentSubjectResult.student_id == student.id,
                             StudentSubjectResult.curriculum_subject_id
-                            == offering.curriculum_subject_id,
+                            == curriculum_subject.curriculum_subject_id,
                             StudentSubjectResult.academic_session_id == session.id,
                             StudentSubjectResult.academic_term_id == term.id,
                         )
@@ -2614,13 +2670,13 @@ class StudentAcademicService:
             )
             cards.append(
                 StudentSubjectCardResponse(
-                    id=offering.curriculum_subject_id,
+                    id=curriculum_subject.curriculum_subject_id,
                     result_id=result.id if locked else None,
-                    curriculum_subject_id=offering.curriculum_subject_id,
+                    curriculum_subject_id=curriculum_subject.curriculum_subject_id,
                     class_id=classroom.id if classroom else None,
                     class_name=classroom.academic_level_name if classroom else None,
                     class_arm=classroom.arm if classroom else None,
-                    subject_id=offering.subject_id,
+                    subject_id=curriculum_subject.subject_id,
                     subject_name=subject.name if subject else None,
                     subject_code=subject.code if subject else None,
                     teacher_membership_id=(
