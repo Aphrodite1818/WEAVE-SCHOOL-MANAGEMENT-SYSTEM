@@ -1,4 +1,4 @@
-"""Stable CBT projections for admins, teachers, and current class-subject assignments."""
+"""Stable CBT projections for admins, teachers, and class-subject assignments."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.cbt.academics.schemas import (
@@ -18,8 +18,8 @@ from app.modules.classes.models import AcademicLevel, AcademicLevelStatus, Class
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
-    CurriculumOffering,
     CurriculumSubject,
+    CurriculumSubjectDepartment,
 )
 from app.modules.student_academics.models import (
     AcademicTerm,
@@ -37,6 +37,14 @@ from app.modules.teachers.models import (
 
 def _value(value: Any) -> Any:
     return getattr(value, "value", value)
+
+
+def _term_position(term: AcademicTerm) -> int:
+    return {
+        "first_term": 1,
+        "second_term": 2,
+        "third_term": 3,
+    }.get(str(_value(term.name)).lower(), 0)
 
 
 def project_admin(
@@ -95,7 +103,7 @@ def project_teacher(
 def project_teacher_assignment(
     session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
 ) -> dict[str, Any] | None:
-    """Project current and scheduled assignment structure for local date evaluation."""
+    """Project assignments that are eligible in the current open academic term."""
 
     assignment_row = session.execute(
         select(TeacherAssignment, TeacherMembership, TeacherAccount)
@@ -133,14 +141,8 @@ def project_teacher_assignment(
     context = session.execute(
         select(ClassRoom, CurriculumSubject, Curriculum, AcademicLevel)
         .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
-        .join(
-            Curriculum,
-            Curriculum.academic_level_id == ClassRoom.academic_level_id,
-        )
-        .join(
-            CurriculumSubject,
-            CurriculumSubject.curriculum_id == Curriculum.id,
-        )
+        .join(Curriculum, Curriculum.academic_level_id == ClassRoom.academic_level_id)
+        .join(CurriculumSubject, CurriculumSubject.curriculum_id == Curriculum.id)
         .where(
             ClassRoom.tenant_id == tenant_id,
             ClassRoom.id == assignment.class_id,
@@ -157,31 +159,31 @@ def project_teacher_assignment(
     if context is None:
         return None
 
-    classroom, curriculum_subject, _curriculum, _level = context
-    academic_level_department_id = session.execute(
-        select(ClassTermDepartmentAssignment.academic_level_department_id).where(
-            ClassTermDepartmentAssignment.tenant_id == tenant_id,
-            ClassTermDepartmentAssignment.class_id == classroom.id,
-            ClassTermDepartmentAssignment.academic_term_id == term.id,
+    classroom, curriculum_subject, _curriculum, level = context
+    threshold = level.specialization_required_from_term_position
+    specialization_active = threshold is not None and _term_position(term) >= threshold
+    if specialization_active:
+        academic_level_department_id = session.execute(
+            select(ClassTermDepartmentAssignment.academic_level_department_id).where(
+                ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                ClassTermDepartmentAssignment.class_id == classroom.id,
+                ClassTermDepartmentAssignment.academic_term_id == term.id,
+            )
+        ).scalar_one_or_none()
+        if academic_level_department_id is None:
+            return None
+        scopes = set(
+            session.execute(
+                select(CurriculumSubjectDepartment.academic_level_department_id).where(
+                    CurriculumSubjectDepartment.tenant_id == tenant_id,
+                    CurriculumSubjectDepartment.curriculum_subject_id
+                    == curriculum_subject.id,
+                )
+            ).scalars()
         )
-    ).scalar_one_or_none()
-
-    offering_id = session.execute(
-        select(CurriculumOffering.id)
-        .where(
-            CurriculumOffering.tenant_id == tenant_id,
-            CurriculumOffering.curriculum_subject_id == curriculum_subject.id,
-            CurriculumOffering.academic_term_id == term.id,
-            or_(
-                CurriculumOffering.academic_level_department_id.is_(None),
-                CurriculumOffering.academic_level_department_id == academic_level_department_id,
-            ),
-        )
-        .limit(1)
-    ).scalar_one_or_none()
-    if offering_id is None:
-        return None
-
+        if scopes and academic_level_department_id not in scopes:
+            return None
+    # Before specialization department scope is deliberately ignored.
     return CBTTeacherAssignmentSnapshot(
         id=assignment.id,
         teacher_membership_id=assignment.teacher_membership_id,
