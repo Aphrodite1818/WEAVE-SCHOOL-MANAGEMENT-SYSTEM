@@ -1,4 +1,4 @@
-"""Registry for the canonical v3 Cloud -> CBT projection contract."""
+"""Registry for the canonical Cloud -> CBT projection contract."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ from app.modules.cbt.sync.projectors.assessments import (
 from app.modules.cbt.sync.projectors.curriculum import (
     project_curriculum,
     project_curriculum_subject,
+    project_curriculum_subject_department,
     project_subject,
-    project_subject_offering,
 )
 from app.modules.cbt.sync.projectors.staff import (
     project_admin,
@@ -48,7 +48,7 @@ PROJECTORS: dict[CBTSyncEntityType, Projector] = {
     CBTSyncEntityType.SUBJECT: project_subject,
     CBTSyncEntityType.CURRICULUM: project_curriculum,
     CBTSyncEntityType.CURRICULUM_SUBJECT: project_curriculum_subject,
-    CBTSyncEntityType.SUBJECT_OFFERING: project_subject_offering,
+    CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT: project_curriculum_subject_department,
     CBTSyncEntityType.ASSESSMENT_SCHEME: project_assessment_scheme,
     CBTSyncEntityType.ASSESSMENT_COMPONENT: project_assessment_component,
     CBTSyncEntityType.ADMIN: project_admin,
