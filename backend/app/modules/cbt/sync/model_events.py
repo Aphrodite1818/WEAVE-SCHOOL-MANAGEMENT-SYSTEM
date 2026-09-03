@@ -24,8 +24,8 @@ from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom, Depar
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
-    CurriculumOffering,
     CurriculumSubject,
+    CurriculumSubjectDepartment,
 )
 from app.modules.student_academics.models import (
     AcademicSession,
@@ -72,7 +72,7 @@ MODEL_ENTITY_TYPES: dict[type[Any], CBTSyncEntityType] = {
     Subject: CBTSyncEntityType.SUBJECT,
     Curriculum: CBTSyncEntityType.CURRICULUM,
     CurriculumSubject: CBTSyncEntityType.CURRICULUM_SUBJECT,
-    CurriculumOffering: CBTSyncEntityType.SUBJECT_OFFERING,
+    CurriculumSubjectDepartment: CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
     AssessmentScheme: CBTSyncEntityType.ASSESSMENT_SCHEME,
     AssessmentComponent: CBTSyncEntityType.ASSESSMENT_COMPONENT,
     TenantAdmin: CBTSyncEntityType.ADMIN,
@@ -84,9 +84,7 @@ ENTITY_MODELS: dict[CBTSyncEntityType, type[Any]] = {
     entity_type: model for model, entity_type in MODEL_ENTITY_TYPES.items()
 }
 
-# Upserts are parent-first. Tombstones use the reverse order and are always
-# emitted before upserts so partial unique indexes are released before a
-# replacement row is installed on CBT.
+# Upserts are parent-first. Tombstones use reverse dependency order.
 _UPSERT_ORDER = (
     CBTSyncEntityType.ACADEMIC_SESSION,
     CBTSyncEntityType.ACADEMIC_TERM,
@@ -98,12 +96,12 @@ _UPSERT_ORDER = (
     CBTSyncEntityType.SUBJECT,
     CBTSyncEntityType.CURRICULUM,
     CBTSyncEntityType.CURRICULUM_SUBJECT,
+    CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
     CBTSyncEntityType.ASSESSMENT_SCHEME,
     CBTSyncEntityType.ASSESSMENT_COMPONENT,
     CBTSyncEntityType.ADMIN,
     CBTSyncEntityType.TEACHER,
     CBTSyncEntityType.STUDENT_ENROLLMENT,
-    CBTSyncEntityType.SUBJECT_OFFERING,
     CBTSyncEntityType.TEACHER_ASSIGNMENT,
 )
 _ORDER_RANK = {entity_type: index for index, entity_type in enumerate(_UPSERT_ORDER)}
@@ -146,8 +144,7 @@ def _current_savepoint_journal(session: Session) -> _SavepointJournal | None:
     if transaction is None:
         return None
     journals: dict[Any, _SavepointJournal] = session.info.setdefault(
-        _SAVEPOINT_JOURNALS_KEY,
-        {},
+        _SAVEPOINT_JOURNALS_KEY, {}
     )
     return journals.setdefault(
         transaction,
@@ -160,7 +157,9 @@ def _current_savepoint_journal(session: Session) -> _SavepointJournal | None:
 
 
 def _restore_savepoint_journal(session: Session, transaction: Any) -> None:
-    journals: dict[Any, _SavepointJournal] | None = session.info.get(_SAVEPOINT_JOURNALS_KEY)
+    journals: dict[Any, _SavepointJournal] | None = session.info.get(
+        _SAVEPOINT_JOURNALS_KEY
+    )
     if not journals:
         return
     journal = journals.pop(transaction, None)
@@ -168,8 +167,7 @@ def _restore_savepoint_journal(session: Session, transaction: Any) -> None:
         return
 
     pending: OrderedDict[tuple[type[Any], int], _PendingObject] = session.info.setdefault(
-        _PENDING_KEY,
-        OrderedDict(),
+        _PENDING_KEY, OrderedDict()
     )
     for key, previous in journal.pending_before.items():
         if previous is None:
@@ -199,8 +197,7 @@ def _collect_pending(session: Session) -> None:
     if session.info.get(_INTERNAL_KEY):
         return
     pending: OrderedDict[tuple[type[Any], int], _PendingObject] = session.info.setdefault(
-        _PENDING_KEY,
-        OrderedDict(),
+        _PENDING_KEY, OrderedDict()
     )
     journal = _current_savepoint_journal(session)
     candidates = list(session.new) + list(session.dirty) + list(session.deleted)
@@ -220,8 +217,7 @@ def _collect_pending(session: Session) -> None:
                 pending[key] = _PendingObject(obj=obj, operation=merged)
         elif isinstance(obj, TeacherAccount) and obj.id:
             teacher_accounts: set[uuid.UUID] = session.info.setdefault(
-                _TEACHER_ACCOUNT_KEY,
-                set(),
+                _TEACHER_ACCOUNT_KEY, set()
             )
             if journal is not None and obj.id not in teacher_accounts:
                 journal.teacher_accounts_added.add(obj.id)
@@ -293,7 +289,9 @@ def _append_refreshes(
     entity_type: CBTSyncEntityType,
 ) -> None:
     model = ENTITY_MODELS[entity_type]
-    entity_ids = session.execute(select(model.id).where(model.tenant_id == tenant_id)).scalars()
+    entity_ids = session.execute(
+        select(model.id).where(model.tenant_id == tenant_id)
+    ).scalars()
     _append_refresh_ids(
         events,
         tenant_id=tenant_id,
@@ -306,10 +304,11 @@ def _expand_account_updates(
     session: Session,
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
 ) -> None:
-    account_ids = {value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value}
+    account_ids = {
+        value for value in session.info.get(_TEACHER_ACCOUNT_KEY, set()) if value
+    }
     if not account_ids:
         return
-
     rows = session.execute(
         select(TeacherMembership.tenant_id, TeacherMembership.id).where(
             TeacherMembership.teacher_account_id.in_(account_ids)
@@ -329,7 +328,6 @@ def _expand_account_updates(
         )
     if not membership_ids:
         return
-
     assignment_rows = session.execute(
         select(TeacherAssignment.tenant_id, TeacherAssignment.id).where(
             TeacherAssignment.teacher_membership_id.in_(membership_ids)
@@ -390,20 +388,20 @@ def _refresh_assignments_for_membership(
     )
 
 
-def _refresh_assignments_for_offering(
+def _refresh_assignments_for_scope(
     session: Session,
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
-    offering: CurriculumOffering,
+    scope: CurriculumSubjectDepartment,
 ) -> None:
     ids = session.execute(
         select(TeacherAssignment.id).where(
-            TeacherAssignment.tenant_id == offering.tenant_id,
-            TeacherAssignment.curriculum_subject_id == offering.curriculum_subject_id,
+            TeacherAssignment.tenant_id == scope.tenant_id,
+            TeacherAssignment.curriculum_subject_id == scope.curriculum_subject_id,
         )
     ).scalars()
     _append_refresh_ids(
         events,
-        tenant_id=offering.tenant_id,
+        tenant_id=scope.tenant_id,
         entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
         entity_ids=ids,
     )
@@ -414,12 +412,7 @@ def _expand_derived_contracts(
     pending_objects: list[_PendingObject],
     events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity],
 ) -> None:
-    """Refresh projections whose visible state is derived from another model.
-
-    High-frequency student and teacher changes are targeted. Tenant-wide refreshes
-    remain only for low-frequency academic-structure changes where old/new foreign
-    key paths cannot be reconstructed safely from final ORM state.
-    """
+    """Refresh projections whose visible state is derived from another model."""
 
     refreshes: dict[CBTSyncEntityType, set[uuid.UUID]] = defaultdict(set)
 
@@ -436,7 +429,7 @@ def _expand_derived_contracts(
                 CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
                 CBTSyncEntityType.CURRICULUM,
                 CBTSyncEntityType.CURRICULUM_SUBJECT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
+                CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
                 CBTSyncEntityType.STUDENT_ENROLLMENT,
             ):
@@ -452,7 +445,7 @@ def _expand_derived_contracts(
         elif isinstance(obj, Department):
             for entity_type in (
                 CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
+                CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
             ):
                 refreshes[entity_type].add(tenant_id)
@@ -480,7 +473,6 @@ def _expand_derived_contracts(
             for entity_type in (
                 CBTSyncEntityType.ACADEMIC_TERM,
                 CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
                 CBTSyncEntityType.STUDENT_ENROLLMENT,
             ):
@@ -488,36 +480,35 @@ def _expand_derived_contracts(
         elif isinstance(obj, AcademicTerm):
             for entity_type in (
                 CBTSyncEntityType.CLASS_TERM_DEPARTMENT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
             ):
                 refreshes[entity_type].add(tenant_id)
         elif isinstance(obj, Subject):
             for entity_type in (
                 CBTSyncEntityType.CURRICULUM_SUBJECT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
+                CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
             ):
                 refreshes[entity_type].add(tenant_id)
         elif isinstance(obj, Curriculum):
             for entity_type in (
                 CBTSyncEntityType.CURRICULUM_SUBJECT,
-                CBTSyncEntityType.SUBJECT_OFFERING,
+                CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
                 CBTSyncEntityType.TEACHER_ASSIGNMENT,
             ):
                 refreshes[entity_type].add(tenant_id)
         elif isinstance(obj, CurriculumSubject):
-            offering_ids = session.execute(
-                select(CurriculumOffering.id).where(
-                    CurriculumOffering.tenant_id == tenant_id,
-                    CurriculumOffering.curriculum_subject_id == obj.id,
+            scope_ids = session.execute(
+                select(CurriculumSubjectDepartment.id).where(
+                    CurriculumSubjectDepartment.tenant_id == tenant_id,
+                    CurriculumSubjectDepartment.curriculum_subject_id == obj.id,
                 )
             ).scalars()
             _append_refresh_ids(
                 events,
                 tenant_id=tenant_id,
-                entity_type=CBTSyncEntityType.SUBJECT_OFFERING,
-                entity_ids=offering_ids,
+                entity_type=CBTSyncEntityType.CURRICULUM_SUBJECT_DEPARTMENT,
+                entity_ids=scope_ids,
             )
             assignment_ids = session.execute(
                 select(TeacherAssignment.id).where(
@@ -531,8 +522,8 @@ def _expand_derived_contracts(
                 entity_type=CBTSyncEntityType.TEACHER_ASSIGNMENT,
                 entity_ids=assignment_ids,
             )
-        elif isinstance(obj, CurriculumOffering):
-            _refresh_assignments_for_offering(session, events, obj)
+        elif isinstance(obj, CurriculumSubjectDepartment):
+            _refresh_assignments_for_scope(session, events, obj)
         elif isinstance(obj, AssessmentScheme):
             refreshes[CBTSyncEntityType.ASSESSMENT_COMPONENT].add(tenant_id)
         elif isinstance(obj, TeacherMembership):
@@ -549,10 +540,12 @@ def _expand_derived_contracts(
 
 
 def _materialize_events(session: Session) -> list[_PendingIdentity]:
-    events: OrderedDict[tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity] = (
-        OrderedDict()
+    events: OrderedDict[
+        tuple[uuid.UUID, CBTSyncEntityType, uuid.UUID], _PendingIdentity
+    ] = OrderedDict()
+    pending_objects = list(
+        session.info.get(_PENDING_KEY, OrderedDict()).values()
     )
-    pending_objects = list(session.info.get(_PENDING_KEY, OrderedDict()).values())
     for pending in pending_objects:
         identity = _identity_from_object(pending)
         if identity is not None:
