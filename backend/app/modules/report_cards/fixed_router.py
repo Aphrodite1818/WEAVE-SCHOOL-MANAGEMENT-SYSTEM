@@ -5,6 +5,9 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
+from app.core.exceptions import BadRequestException
+from app.modules.report_cards.comment_service import ReportCommentService
+from app.modules.report_cards.principal_comment_policy import require_admin_template_for_grade
 from app.modules.report_cards.schemas import (
     ReportCardBulkGenerateResponse,
     ReportCardClassOverviewResponse,
@@ -39,6 +42,24 @@ async def generate_report_card(
         tenant_id=current_admin.tenant_id,
         feature=feature,
     )
+    if payload.student_id is not None and payload.principal_template_id is not None:
+        ready, _, grading_scale = await ReportCommentService._academic_readiness(
+            db,
+            tenant_id=current_admin.tenant_id,
+            student_id=payload.student_id,
+            academic_session_id=payload.academic_session_id,
+            academic_term_id=payload.academic_term_id,
+        )
+        if not ready or grading_scale is None:
+            raise BadRequestException(
+                "Principal comments can be selected after the student's final grade is resolved."
+            )
+        await require_admin_template_for_grade(
+            db,
+            admin=current_admin,
+            template_id=payload.principal_template_id,
+            grading_scale_id=grading_scale.id,
+        )
     return await ReportCardService.generate(db, current_admin, payload)
 
 
