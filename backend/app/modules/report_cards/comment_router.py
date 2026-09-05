@@ -15,6 +15,7 @@ from app.modules.report_cards.comment_schemas import (
     CommentTemplateResponse,
     CommentTemplateUpdate,
     CommentTemplateWrite,
+    TeacherCommentDashboardSummary,
     TeacherCommentOverrideRequest,
     TeacherCommentOverrideResponse,
     TeacherCommentResponse,
@@ -22,6 +23,7 @@ from app.modules.report_cards.comment_schemas import (
     TeacherStudentCommentListResponse,
 )
 from app.modules.report_cards.comment_service import ReportCommentService
+from app.modules.report_cards.comment_summary_service import TeacherCommentSummaryService
 from app.modules.teachers.models import TeacherMembership
 from app.modules.tenant_admins.models import TenantAdmin
 
@@ -156,6 +158,17 @@ async def delete_teacher_comment_template(
         db, actor=current_teacher, template_id=template_id
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@teacher_comment_router.get(
+    "/summary",
+    response_model=TeacherCommentDashboardSummary,
+)
+async def teacher_comment_summary(
+    db: DbSession,
+    current_teacher: CurrentTeacher,
+) -> TeacherCommentDashboardSummary:
+    return await TeacherCommentSummaryService.build(db, teacher=current_teacher)
 
 
 @teacher_comment_router.get("", response_model=TeacherStudentCommentListResponse)
