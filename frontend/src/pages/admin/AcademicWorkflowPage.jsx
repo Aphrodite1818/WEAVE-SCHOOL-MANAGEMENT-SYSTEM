@@ -17,6 +17,7 @@ import ResultsWorkspace from "../../features/academic-admin/ResultsWorkspace";
 import SessionLifecycleWorkspace from "../../features/academic-admin/SessionLifecycleWorkspace";
 import SubjectsWorkspace from "../../features/academic-admin/SubjectsWorkspace";
 import TeacherAssignmentsWorkspace from "../../features/academic-admin/TeacherAssignmentsWorkspace";
+import TeacherCommentOverrideAuditWorkspace from "../../features/academic-admin/TeacherCommentOverrideAuditWorkspace";
 import { filterDepartmentWorkflow } from "../../features/academic-admin/academicDepartmentCapability";
 import {
   academicWorkflowConfig,
@@ -186,6 +187,14 @@ export default function AcademicWorkflowPage() {
         <ResultsWorkspace
           key="results"
           activeTab={activeTab}
+          onContextChange={updateContext}
+        />
+      );
+    }
+    if (workflow === "report-cards" && activeTab === "override-audit") {
+      return (
+        <TeacherCommentOverrideAuditWorkspace
+          key="report-card-override-audit"
           onContextChange={updateContext}
         />
       );
