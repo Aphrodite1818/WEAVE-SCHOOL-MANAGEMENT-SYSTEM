@@ -32,6 +32,9 @@ const ParentsPage = lazy(() => import("../pages/admin/ParentsPage"));
 const ResponsiveSubscriptionOptionsPage = lazy(
   () => import("../pages/admin/ResponsiveSubscriptionOptionsPage"),
 );
+const StudentClassPlacementPage = lazy(
+  () => import("../pages/admin/StudentClassPlacementPage"),
+);
 const StudentCreatePage = lazy(
   () => import("../pages/admin/StudentCreatePage"),
 );
@@ -113,6 +116,10 @@ export const adminRoutes = (
       <Route
         path="/admin/students/create"
         element={protectedWorkflow(<StudentCreatePage />)}
+      />
+      <Route
+        path="/admin/students/class-placement"
+        element={protectedWorkflow(<StudentClassPlacementPage />)}
       />
       <Route
         path="/admin/parents"
