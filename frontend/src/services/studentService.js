@@ -71,6 +71,8 @@ export const studentService = {
     const response = await api.get("/students/me", requestOptions);
     return rememberRecord(studentSelfById, response);
   },
+  getMyAcademicContext: (requestOptions) =>
+    api.get("/students/me/academic-context", requestOptions),
 
   updateMyStudentProfile: async (payload) => {
     const current = [...studentSelfById.values()][0] || null;
