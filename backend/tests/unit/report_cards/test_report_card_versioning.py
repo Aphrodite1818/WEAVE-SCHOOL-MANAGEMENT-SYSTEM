@@ -42,6 +42,30 @@ def test_generate_request_requires_exactly_one_target():
         )
 
 
+def test_class_generation_cannot_apply_one_principal_comment_to_every_student():
+    base = {
+        "class_id": uuid4(),
+        "academic_session_id": uuid4(),
+        "academic_term_id": uuid4(),
+    }
+    with pytest.raises(ValueError, match="grade defaults"):
+        ReportCardGenerateRequest(
+            **base,
+            principal_comment="The same comment for everyone.",
+        )
+    with pytest.raises(ValueError, match="grade defaults"):
+        ReportCardGenerateRequest(
+            **base,
+            principal_template_id=uuid4(),
+        )
+
+    payload = ReportCardGenerateRequest(
+        **base,
+        apply_default_principal_template=True,
+    )
+    assert payload.apply_default_principal_template is True
+
+
 @pytest.mark.asyncio
 async def test_generation_does_not_replace_current_authoritative_published_report(monkeypatch):
     tenant_id = uuid4()
