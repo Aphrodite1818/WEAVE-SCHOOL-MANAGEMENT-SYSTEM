@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 
@@ -41,7 +41,7 @@ async def test_single_generate_dispatches_to_authoritative_student_path(monkeypa
 
     assert result is expected
     generate_one.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         actor,
         student_id=student_id,
         academic_session_id=session_id,
