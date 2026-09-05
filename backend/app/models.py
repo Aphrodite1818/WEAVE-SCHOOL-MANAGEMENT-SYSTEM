@@ -15,6 +15,7 @@ import app.modules.legal_compliance.models
 import app.modules.media.models
 import app.modules.parents.models
 import app.modules.report_cards.models
+import app.modules.report_cards.comment_models
 import app.modules.results.models
 import app.modules.school_calendar.models
 import app.modules.students.models
