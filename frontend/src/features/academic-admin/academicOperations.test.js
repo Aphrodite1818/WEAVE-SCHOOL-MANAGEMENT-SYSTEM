@@ -47,22 +47,31 @@ test("specialization UI uses exact-term backend readiness and guards copying to 
   assert.match(text, /setClassDepartment\(id, termId, linkId\)/);
 });
 
-test("availability matrix and department table use one bulk read and guarded lifecycle actions", async () => {
+test("availability matrix and department catalog use one bulk read and only specialization-capable levels", async () => {
   const text = await source("DepartmentsWorkspace.jsx");
   assert.match(text, /departmentService\.getLevelAvailability\(\)/);
   assert.doesNotMatch(text, /getLevelDepartments\(/);
   assert.match(text, /Department availability by level/);
-  assert.match(text, /detailsLabel="Available levels"/);
+  assert.match(text, /Department catalog/);
+  assert.match(text, /Available in/);
+  assert.match(text, /levelSupportsSpecialization\(row\)/);
+  assert.doesNotMatch(text, /title="Level availability"/);
   assert.match(text, /TypedConfirmationDialog open=\{Boolean\(pendingAction\)\}/);
 });
 
-test("curriculum batch requires review and sends elective and multiple department scopes together", async () => {
+test("curriculum batch requires review and scopes departments only for specialization-capable levels", async () => {
   const text = await source("CurriculumWorkspace.jsx");
   assert.match(text, /\|\| !reviewing/);
   assert.match(text, /curriculumService\.addSubjects/);
   assert.match(text, /selectedSubjectIds\.map/);
   assert.match(text, /is_elective: elective/);
-  assert.match(text, /academic_level_department_ids: addDepartmentIds/);
+  assert.match(
+    text,
+    /academic_level_department_ids: specializationEnabled\s*\? addDepartmentIds\s*: \[\]/,
+  );
+  assert.match(text, /specializationEnabled && levelDepartments\.length/);
+  assert.match(text, /if \(!specializationEnabled \|\| !scopeSubjectId \|\| saving\) return/);
+  assert.match(text, /This level does not specialize\. Every curriculum subject is General/);
   assert.match(text, /Already added/);
   assert.match(text, /Select all matching available subjects/);
 });
