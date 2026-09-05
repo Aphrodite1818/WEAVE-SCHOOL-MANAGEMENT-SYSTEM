@@ -1,3 +1,4 @@
+# one-shot retry after runner allocation failure
 name: Remove calendar history placeholder once
 
 on:
