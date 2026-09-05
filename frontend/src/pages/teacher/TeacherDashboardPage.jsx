@@ -1,4 +1,13 @@
-import { BarChart3, BookOpen, CheckSquare, Send, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  BookOpen,
+  CheckCircle2,
+  CheckSquare,
+  FilePenLine,
+  MessageSquareText,
+  Users,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import AnalyticsBarChart from "../../components/charts/AnalyticsBarChart";
@@ -16,9 +25,9 @@ import {
 import DashboardCalendarPanel from "../../features/schoolCalendar/components/DashboardCalendarPanel";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { academicService } from "../../services/academicService";
-import { classService } from "../../services/academicsService";
 import { authSession, getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
+import { reportCommentService } from "../../services/reportCommentService";
 import { teacherService } from "../../services/teacherService";
 import { cleanText } from "../../utils/academicDashboard";
 
@@ -28,7 +37,7 @@ const assignmentClassLabel = (item) =>
 function TeacherDashboardPage() {
   const [teacher, setTeacher] = useState(null);
   const [assignments, setAssignments] = useState([]);
-  const [classTeacherClasses, setClassTeacherClasses] = useState([]);
+  const [commentSummary, setCommentSummary] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -46,23 +55,19 @@ function TeacherDashboardPage() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const [profile, assignmentResponse, classResponse, metricsResponse] =
+        const [profile, assignmentResponse, summaryResponse, metricsResponse] =
           await Promise.all([
             teacherService.getMyTeacher({ signal: controller.signal }),
             academicService.listMyTeacherAssignments({
               signal: controller.signal,
             }),
-            classService.getClasses({
-              limit: 100,
-              active_only: true,
-              signal: controller.signal,
-            }),
+            reportCommentService.getTeacherCommentSummary(),
             dashboardService.getTeacherAnalytics({ signal: controller.signal }),
           ]);
         if (!mounted || controller.signal.aborted) return;
         setTeacher(profile);
         setAssignments(assignmentResponse?.items || []);
-        setClassTeacherClasses(classResponse?.items || []);
+        setCommentSummary(summaryResponse);
         setMetrics(metricsResponse);
       } catch (error) {
         if (mounted && !isAbortError(error)) {
@@ -86,7 +91,6 @@ function TeacherDashboardPage() {
     };
   }, []);
 
-  const stats = metrics?.stats || {};
   const charts = metrics?.charts || {};
   const subjectClasses = useMemo(
     () => [...new Set(assignments.map(assignmentClassLabel))].filter(Boolean),
@@ -103,11 +107,13 @@ function TeacherDashboardPage() {
     [assignments],
   );
   const hasSubjectAssignments = assignments.length > 0;
-  const hasClassTeacherClasses = classTeacherClasses.length > 0;
-  const submittedScores = Number(
-    stats.result_rows_submitted || stats.results_submitted || 0,
-  );
-  const completion = Number(stats.result_completion_percent || 0);
+  const classTeacherCount = Number(commentSummary?.class_teacher_class_count || 0);
+  const hasClassTeacherClasses = classTeacherCount > 0;
+  const requiringComments = Number(commentSummary?.students_requiring_comments || 0);
+  const draftComments = Number(commentSummary?.draft_comments || 0);
+  const submittedComments = Number(commentSummary?.submitted_comments || 0);
+  const needsReview = Number(commentSummary?.needs_review_comments || 0);
+  const completion = Number(commentSummary?.comment_completion_percent || 0);
 
   if (isLoading) {
     return (
@@ -117,7 +123,28 @@ function TeacherDashboardPage() {
     );
   }
 
-  const attentionItems = [];
+  const attentionItems = [
+    needsReview > 0
+      ? {
+          key: "comment-review",
+          title: "Submitted comments need review",
+          description: `${needsReview} comment${needsReview === 1 ? "" : "s"} became stale after an academic or placement change.`,
+          icon: AlertTriangle,
+          tone: "warning",
+          to: "/teacher/student-comments",
+        }
+      : null,
+    requiringComments > 0
+      ? {
+          key: "comments-required",
+          title: "Students ready for comments",
+          description: `${requiringComments} student${requiringComments === 1 ? " is" : "s are"} academically ready and still need a submitted class-teacher comment.`,
+          icon: MessageSquareText,
+          tone: "primary",
+          to: "/teacher/student-comments",
+        }
+      : null,
+  ].filter(Boolean);
 
   return (
     <DashboardLayout role="teacher" title={`${firstName}'s Workspace`}>
@@ -133,7 +160,7 @@ function TeacherDashboardPage() {
             variant="blue"
             eyebrow="Teacher dashboard"
             title={`Good day, ${teacher?.first_name || firstName}`}
-            description="Review assigned subjects, teaching rosters, and class-teacher work."
+            description="Review assigned subjects, teaching rosters, and class-teacher report comments. Scores are managed by school admins."
             profileCompletion={teacher?.profile_completed}
             chips={[
               {
@@ -159,50 +186,50 @@ function TeacherDashboardPage() {
 
           <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
-              label="Subject classes"
-              value={subjectClasses.length}
-              description="Active class and level-subject assignments"
-              icon={Users}
-              tone={hasSubjectAssignments ? "primary" : "warning"}
-              to={hasSubjectAssignments ? "/teacher/students" : undefined}
-            />
-            <DashboardMetricCard
               label="Class teacher classes"
-              value={classTeacherClasses.length}
-              description="Classes assigned to your care"
+              value={classTeacherCount}
+              description="Classes explicitly assigned to your care"
               icon={CheckSquare}
               tone={hasClassTeacherClasses ? "success" : "warning"}
               to={hasClassTeacherClasses ? "/teacher/classes" : undefined}
             />
             <DashboardMetricCard
-              label="Assigned subjects"
-              value={subjectNames.length}
-              description="Read-only teaching scope"
-              icon={BookOpen}
-              tone="success"
-              to={hasSubjectAssignments ? "/teacher/subjects" : undefined}
+              label="Require comments"
+              value={requiringComments}
+              description="Academically ready students"
+              icon={MessageSquareText}
+              tone={requiringComments > 0 ? "warning" : "success"}
+              to={hasClassTeacherClasses ? "/teacher/student-comments" : undefined}
             />
             <DashboardMetricCard
-              label="Submitted scores"
-              value={submittedScores}
-              description={`${completion}% submission completion`}
-              icon={Send}
+              label="Draft comments"
+              value={draftComments}
+              description="Saved but not submitted"
+              icon={FilePenLine}
+              tone={draftComments > 0 ? "warning" : "primary"}
+              to={hasClassTeacherClasses ? "/teacher/student-comments" : undefined}
+            />
+            <DashboardMetricCard
+              label="Submitted comments"
+              value={submittedComments}
+              description={`${completion.toFixed(0)}% comment completion`}
+              icon={CheckCircle2}
               tone="success"
-              to={hasSubjectAssignments ? "/teacher/analytics" : undefined}
+              to={hasClassTeacherClasses ? "/teacher/student-comments" : undefined}
             />
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
             <DashboardFocusCard
               title="Teaching focus"
-              description="Only actions supported by your current assignments are enabled."
+              description="Comment actions appear only for explicit class-teacher assignments. Subject results remain read-only."
               icon={BookOpen}
               tone="primary"
               primaryAction={{
-                to: "/teacher/students",
-                label: "View rosters",
-                icon: Users,
-                disabled: !hasSubjectAssignments,
+                to: "/teacher/student-comments",
+                label: "Student comments",
+                icon: MessageSquareText,
+                disabled: !hasClassTeacherClasses,
               }}
               secondaryAction={
                 attendanceEnabled
@@ -216,25 +243,23 @@ function TeacherDashboardPage() {
               }
             >
               <div className="grid grid-cols-2 gap-3">
-                <InfoTile
-                  label="Assigned subjects"
-                  value={subjectNames.length}
-                />
-                <InfoTile
-                  label="Subject classes"
-                  value={subjectClasses.length}
-                />
-                <InfoTile label="Submitted results" value={submittedScores} />
-                <InfoTile label="Completion" value={`${completion}%`} />
+                <InfoTile label="Assigned subjects" value={subjectNames.length} />
+                <InfoTile label="Subject classes" value={subjectClasses.length} />
+                <InfoTile label="Needs review" value={needsReview} />
+                <InfoTile label="Comment completion" value={`${completion.toFixed(0)}%`} />
               </div>
             </DashboardFocusCard>
 
             <DashboardListCard
               title="Needs attention"
-              description="Academic alerts from the school administration."
+              description="Class-teacher report-comment work that needs action."
               items={attentionItems}
-              emptyTitle="No academic alert needs attention"
-              emptyDescription="Teachers have read-only result access; score entry is managed by tenant admins."
+              emptyTitle="No report comment needs attention"
+              emptyDescription={
+                hasClassTeacherClasses
+                  ? "No ready student is waiting for a class-teacher comment right now."
+                  : "You are not currently assigned as a class teacher. Subject teaching assignments do not grant report-comment access."
+              }
             />
           </section>
 
@@ -257,7 +282,7 @@ function TeacherDashboardPage() {
           <section className="space-y-4">
             <DashboardSectionHeader
               title="Teaching snapshot"
-              description="Current teaching assignments and class sizes."
+              description="Current subject assignments and class sizes."
             />
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
               <AnalyticsBarChart
@@ -269,7 +294,7 @@ function TeacherDashboardPage() {
               <Card className="p-4 sm:p-6">
                 <h3 className="section-title">Assigned subjects</h3>
                 <p className="mt-1 text-sm text-text-muted">
-                  Subjects from your active class and level-subject assignments.
+                  These assignments provide teaching/read access, not score-entry or class-teacher comment authority.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {subjectNames.length ? (
@@ -282,9 +307,7 @@ function TeacherDashboardPage() {
                       </span>
                     ))
                   ) : (
-                    <p className="text-sm text-text-muted">
-                      No subject assignment is active.
-                    </p>
+                    <p className="text-sm text-text-muted">No subject assignment is active.</p>
                   )}
                 </div>
               </Card>
@@ -296,24 +319,32 @@ function TeacherDashboardPage() {
             description="Assignment-scoped teacher workflows."
             actions={[
               {
-                label: "Teaching rosters",
-                description: "Students in assigned subject classes",
-                to: "/teacher/students",
-                icon: Users,
+                label: "Student comments",
+                description: "Review finalized performance and submit comments",
+                to: "/teacher/student-comments",
+                icon: MessageSquareText,
                 tone: "success",
-                disabled: !hasSubjectAssignments,
+                disabled: !hasClassTeacherClasses,
               },
               {
-                label: "My classes",
-                description: "Class-teacher classes",
-                to: "/teacher/classes",
-                icon: CheckSquare,
+                label: "My comment templates",
+                description: "Manage personal class-teacher wording",
+                to: "/teacher/comment-templates",
+                icon: FilePenLine,
                 tone: "warning",
                 disabled: !hasClassTeacherClasses,
               },
               {
+                label: "Teaching rosters",
+                description: "Students in assigned subject classes",
+                to: "/teacher/students",
+                icon: Users,
+                tone: "primary",
+                disabled: !hasSubjectAssignments,
+              },
+              {
                 label: "Analytics",
-                description: "Submission and class performance",
+                description: "Read-only class and performance analytics",
                 to: "/teacher/analytics",
                 icon: BarChart3,
                 tone: "accent",
