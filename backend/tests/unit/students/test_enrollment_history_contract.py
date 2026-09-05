@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.modules.students.enrollment_service import StudentEnrollmentService
 from app.modules.students.models import StudentEnrollmentOutcome
+from app.modules.students.placement_service import StudentPlacementService
 from app.modules.students.repository import StudentRepository
 
 
@@ -53,10 +53,14 @@ async def test_history_uses_joined_display_rows_without_class_relationship_lazy_
     ]
     db = SimpleNamespace(execute=AsyncMock(return_value=rows))
     with patch.object(
-        StudentRepository, "get_by_id", new=AsyncMock(return_value=SimpleNamespace(id=student_id))
+        StudentRepository,
+        "get_by_id",
+        new=AsyncMock(return_value=SimpleNamespace(id=student_id)),
     ):
-        history = await StudentEnrollmentService.list_history(
-            db, tenant_id=tenant_id, student_id=student_id
+        history = await StudentPlacementService.list_history(
+            db,
+            tenant_id=tenant_id,
+            student_id=student_id,
         )
 
     assert history[0].class_name == "SS1"
@@ -65,14 +69,21 @@ async def test_history_uses_joined_display_rows_without_class_relationship_lazy_
 
 
 @pytest.mark.asyncio
-async def test_class_department_lookup_uses_level_department_identity():
-    tenant_id, class_id, term_id, link_id = [uuid4() for _ in range(4)]
+async def test_class_department_lookup_uses_term_level_department_identity():
+    tenant_id, class_id, term_id = [uuid4() for _ in range(3)]
     result = MagicMock()
-    result.scalar_one_or_none.return_value = link_id
+    result.scalar_one_or_none.return_value = "Science"
     db = SimpleNamespace(execute=AsyncMock(return_value=result))
-    resolved = await StudentEnrollmentService._department_for_class(
-        db, tenant_id=tenant_id, class_id=class_id, academic_term_id=term_id
+
+    resolved = await StudentPlacementService._department_name(
+        db,
+        tenant_id=tenant_id,
+        class_id=class_id,
+        academic_term_id=term_id,
     )
-    assert resolved == link_id
+
+    assert resolved == "Science"
     statement = str(db.execute.call_args.args[0])
-    assert "academic_level_department_id" in statement
+    assert "class_term_department_assignments" in statement
+    assert "academic_level_departments" in statement
+    assert "departments" in statement
