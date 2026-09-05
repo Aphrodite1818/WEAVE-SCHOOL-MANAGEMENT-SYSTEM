@@ -1,0 +1,120 @@
+name: Fix department applicability once
+
+on:
+  push:
+    branches: [cbt-sync-module-structure]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    if: contains(github.event.head_commit.message, '[fix-department-applicability]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cbt-sync-module-structure
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Apply reviewed fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, got {count}")
+              return text.replace(old, new, 1)
+
+          path = Path('frontend/src/features/academic-admin/DepartmentsWorkspace.jsx')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              'import { curriculumService } from "../../services/curriculumService";\n',
+              '',
+              'curriculum service import',
+          )
+          text = replace_once(
+              text,
+              '''  const [levelCurriculum, setLevelCurriculum] = useState(null);\n  const [curriculumLoading, setCurriculumLoading] = useState(false);\n  const [curriculumError, setCurriculumError] = useState("");\n''',
+              '',
+              'curriculum state',
+          )
+
+          start = text.find('  const loadLevelCurriculum = useCallback(async () => {\n')
+          end_marker = '  }, [activeTab, levelId]);\n\n'
+          end = text.find(end_marker, start)
+          if start == -1 or end == -1:
+              raise SystemExit('loadLevelCurriculum block not found')
+          text = text[:start] + text[end + len(end_marker):]
+
+          text = replace_once(
+              text,
+              '''  useEffect(() => {\n    loadLevelCurriculum();\n  }, [loadLevelCurriculum]);\n\n''',
+              '',
+              'curriculum load effect',
+          )
+          text = replace_once(
+              text,
+              '''  const activeLevelDepartments = useMemo(\n    () => levelDepartments.filter((row) => lifecycleStatus(row) === "active"),\n    [levelDepartments],\n  );\n  const selectedLevel = eligibleLevels.find((row) => row.id === levelId) || null;\n  const curriculumSubjects = levelCurriculum?.subjects || [];\n''',
+              '',
+              'subject applicability derived state',
+          )
+
+          start = text.find('  const toggleSubjectDepartment = async (subject, levelDepartmentId) => {\n')
+          end = text.find('  const runLifecycle = async () => {\n', start)
+          if start == -1 or end == -1:
+              raise SystemExit('toggleSubjectDepartment block not found')
+          text = text[:start] + text[end:]
+
+          start = text.find('''          <WorkspacePanel\n            title="Subjects using this level's departments"''')
+          end = text.find('          <TypedConfirmationDialog ', start)
+          if start == -1 or end == -1:
+              raise SystemExit('duplicate subject applicability panel not found')
+          text = text[:start] + text[end:]
+          path.write_text(text)
+
+          migration = Path('backend/alembic/versions/20260905_cbt_sync_entity_enum_repair.py')
+          migration.write_text('''"""Repair durable CBT sync entity enum drift.\n\nRevision ID: 20260905_cbt_sync_enum_repair\nRevises: 20260903_curriculum_scopes\nCreate Date: 2026-09-05\n\nThe September curriculum cutover defines this complete enum contract. This\nrepair is intentionally idempotent so databases that were stamped or otherwise\ndrifted can converge on the runtime wire contract safely.\n"""\n\nfrom typing import Sequence, Union\n\nfrom alembic import op\n\nrevision: str = "20260905_cbt_sync_enum_repair"\ndown_revision: Union[str, Sequence[str], None] = "20260903_curriculum_scopes"\nbranch_labels: Union[str, Sequence[str], None] = None\ndepends_on: Union[str, Sequence[str], None] = None\n\nSCHEMA = "public"\nCBT_SYNC_ENTITY_VALUES = (\n    "academic_level",\n    "department",\n    "arm_label",\n    "class",\n    "class_term_department",\n    "academic_session",\n    "academic_term",\n    "subject",\n    "curriculum",\n    "curriculum_subject",\n    "curriculum_subject_department",\n    "assessment_scheme",\n    "assessment_component",\n    "admin",\n    "teacher",\n    "teacher_assignment",\n    "student_enrollment",\n)\n\n\ndef upgrade() -> None:\n    # PostgreSQL enum additions are append-only here. Autocommit keeps the\n    # repair valid across supported PostgreSQL versions and makes each value\n    # immediately available to subsequent application transactions.\n    with op.get_context().autocommit_block():\n        for value in CBT_SYNC_ENTITY_VALUES:\n            op.execute(\n                f"ALTER TYPE {SCHEMA}.cbt_sync_entity_type "\n                f"ADD VALUE IF NOT EXISTS '{value}'"\n            )\n\n\ndef downgrade() -> None:\n    raise RuntimeError(\n        "CBT sync entity enum repair is intentionally irreversible before launch."\n    )\n''')
+
+          frontend_test = Path('frontend/test/department-applicability-ownership.test.js')
+          frontend_test.write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs";\nimport test from "node:test";\n\nconst departmentsWorkspace = fs.readFileSync(\n  new URL("../src/features/academic-admin/DepartmentsWorkspace.jsx", import.meta.url),\n  "utf8",\n);\nconst curriculumWorkspace = fs.readFileSync(\n  new URL("../src/features/academic-admin/CurriculumWorkspace.jsx", import.meta.url),\n  "utf8",\n);\n\ntest("department availability does not own curriculum subject applicability", () => {\n  assert.doesNotMatch(departmentsWorkspace, /Subjects using this level's departments/);\n  assert.doesNotMatch(departmentsWorkspace, /curriculumService/);\n  assert.doesNotMatch(departmentsWorkspace, /toggleSubjectDepartment/);\n\n  assert.match(curriculumWorkspace, /title="Subject applicability"/);\n  assert.match(curriculumWorkspace, /curriculumService\\.updateSubject/);\n  assert.match(curriculumWorkspace, /academic_level_department_ids/);\n});\n''')
+
+          backend_test = Path('backend/tests/regression/test_cbt_sync_entity_enum_contract.py')
+          backend_test.write_text('''from __future__ import annotations\n\nimport ast\nfrom pathlib import Path\n\nfrom app.modules.cbt.sync.enums import CBTSyncEntityType\n\nMIGRATION_PATH = (\n    Path(__file__).resolve().parents[2]\n    / "alembic"\n    / "versions"\n    / "20260905_cbt_sync_entity_enum_repair.py"\n)\n\n\ndef _migration_values() -> tuple[str, ...]:\n    tree = ast.parse(MIGRATION_PATH.read_text(encoding="utf-8"))\n    for node in tree.body:\n        if isinstance(node, ast.Assign):\n            names = [target.id for target in node.targets if isinstance(target, ast.Name)]\n            if "CBT_SYNC_ENTITY_VALUES" in names:\n                return tuple(ast.literal_eval(node.value))\n    raise AssertionError("CBT_SYNC_ENTITY_VALUES is missing from enum repair migration")\n\n\ndef test_cbt_sync_enum_repair_tracks_runtime_entity_contract() -> None:\n    assert set(_migration_values()) == {item.value for item in CBTSyncEntityType}\n\n\ndef test_cbt_sync_enum_repair_is_idempotent_and_forward_only() -> None:\n    source = MIGRATION_PATH.read_text(encoding="utf-8")\n    assert "ADD VALUE IF NOT EXISTS" in source\n    assert "autocommit_block" in source\n    assert "intentionally irreversible" in source\n''')
+          PY
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Validate frontend
+        working-directory: frontend
+        run: npm run check
+      - name: Install backend
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
+      - name: Validate migration graph
+        working-directory: backend
+        run: |
+          python -m alembic heads
+          python -m pytest tests/regression/test_cbt_sync_entity_enum_contract.py -q
+          python -m compileall -q app
+      - name: Commit fixes
+        run: |
+          rm -f .github/workflows/fix-department-applicability-once.yml
+          git config user.name "weave-review-bot"
+          git config user.email "weave-review-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: centralize subject applicability and repair CBT sync enum"
+          git push origin HEAD:cbt-sync-module-structure
