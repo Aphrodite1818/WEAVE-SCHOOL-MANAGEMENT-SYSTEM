@@ -57,7 +57,6 @@ const STUDENT_STATUSES = [
   "expelled",
 ];
 const GENDER_OPTIONS = ["male", "female"];
-
 const EMPTY_FILTERS = {
   search: "",
   classId: "",
@@ -82,14 +81,12 @@ const titleCase = (value) =>
 const formatDate = (value) => {
   if (!value) return "Not set";
   const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
-  return Number.isNaN(date.getTime())
-    ? String(value)
-    : date.toLocaleDateString();
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
 };
 
 const classLabel = (item) =>
   item?.display_name ||
-  [item?.academic_level_name, item?.department_name, item?.arm_label]
+  [item?.academic_level_name, item?.arm_label || item?.arm]
     .filter(Boolean)
     .join(" ") ||
   item?.id ||
@@ -97,7 +94,7 @@ const classLabel = (item) =>
 
 const studentClassLabel = (student) =>
   [student?.class_name, student?.class_arm].filter(Boolean).join(" ") ||
-  "Not assigned";
+  "Unassigned";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -111,20 +108,17 @@ const lifecycleConfig = {
     label: "Suspend",
     icon: Ban,
     method: "suspendStudent",
-    variant: "outline",
     usesPromotionHold: true,
   },
   reinstate: {
     label: "Reinstate",
     icon: UserCheck,
     method: "reinstateStudent",
-    variant: "success",
   },
   reinstateExpelled: {
     label: "Reinstate expelled",
     icon: UserCheck,
     method: "reinstateExpelledStudent",
-    variant: "success",
     usesClassSession: true,
     usesEffectiveDate: true,
   },
@@ -132,98 +126,81 @@ const lifecycleConfig = {
     label: "Withdraw",
     icon: UserMinus,
     method: "withdrawStudent",
-    variant: "outline",
     usesEffectiveDate: true,
   },
   expel: {
     label: "Expel",
     icon: ShieldOff,
     method: "expelStudent",
-    variant: "danger",
     usesEffectiveDate: true,
   },
   graduate: {
     label: "Graduate",
     icon: GraduationCap,
     method: "graduateStudent",
-    variant: "outline",
     usesGraduationDate: true,
   },
   archive: {
     label: "Archive",
     icon: Archive,
     method: "archiveStudent",
-    variant: "danger",
   },
   restore: {
     label: "Restore",
     icon: Undo2,
     method: "restoreStudent",
-    variant: "success",
   },
 };
 
 const actionsForStudent = (student) => {
   if (student.is_archived) return ["restore"];
   const status = String(student.status || "").toLowerCase();
-  if (status === "active")
+  if (status === "active") {
     return ["suspend", "withdraw", "expel", "graduate", "archive"];
-  if (status === "suspended")
+  }
+  if (status === "suspended") {
     return ["reinstate", "withdraw", "expel", "archive"];
+  }
   if (status === "expelled") return ["reinstateExpelled", "archive"];
   return ["archive"];
 };
 
 function SelectField({
   label,
-  name,
   value,
   onChange,
   options,
   placeholder,
   error,
   required,
-  searchable = true,
+  disabled,
 }) {
   return (
     <SearchableSelect
       label={label}
-      name={name}
       value={value || ""}
       options={options}
       placeholder={placeholder || "Select"}
       searchPlaceholder={`Search ${String(label || "options").toLowerCase()}`}
-      searchable={searchable}
       clearable={!required}
       required={required}
+      disabled={disabled}
       error={error}
-      onChange={(nextValue) =>
-        onChange({
-          target: {
-            name,
-            value: nextValue,
-          },
-        })
-      }
+      onChange={onChange}
     />
   );
 }
 
-function StudentFilterFields({
-  filters,
-  setFilters,
-  levelOptions,
-  classOptions,
-}) {
+function StudentFilterFields({ filters, setFilters, levelOptions, classOptions }) {
   return (
     <>
       <SelectField
         label="Academic level"
         value={filters.academicLevelId}
-        onChange={(event) =>
+        onChange={(value) =>
           setFilters((current) => ({
             ...current,
-            academicLevelId: event.target.value,
+            academicLevelId: value,
             classId: "",
           }))
         }
@@ -233,11 +210,8 @@ function StudentFilterFields({
       <SelectField
         label="Class"
         value={filters.classId}
-        onChange={(event) =>
-          setFilters((current) => ({
-            ...current,
-            classId: event.target.value,
-          }))
+        onChange={(value) =>
+          setFilters((current) => ({ ...current, classId: value }))
         }
         options={classOptions}
         placeholder="All classes"
@@ -245,11 +219,8 @@ function StudentFilterFields({
       <SelectField
         label="Status"
         value={filters.status}
-        onChange={(event) =>
-          setFilters((current) => ({
-            ...current,
-            status: event.target.value,
-          }))
+        onChange={(value) =>
+          setFilters((current) => ({ ...current, status: value }))
         }
         options={STUDENT_STATUSES.map((value) => ({
           value,
@@ -308,12 +279,21 @@ function StudentActions({
   busy,
   onEdit,
   onReset,
-  onHistory,
+  onPlacementHistory,
+  onReassignClass,
+  onReassignLevel,
   onLifecycle,
   onHardDelete,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const actions = actionsForStudent(student);
+  const placementDisabled =
+    student.is_archived || !["active", "suspended"].includes(String(student.status || "").toLowerCase());
+
+  const choose = (handler) => {
+    setMenuOpen(false);
+    handler(student);
+  };
 
   return (
     <div className="flex items-center justify-end gap-2">
@@ -349,25 +329,34 @@ function StudentActions({
           <button
             type="button"
             className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted"
-            onClick={() => {
-              setMenuOpen(false);
-              onHistory(student);
-            }}
+            onClick={() => choose(onPlacementHistory)}
           >
-            <BookOpen className="h-4 w-4" />
-            Class history
+            <BookOpen className="h-4 w-4" /> Placement History
           </button>
+          <button
+            type="button"
+            disabled={placementDisabled || !student.class_id}
+            className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted disabled:opacity-50"
+            onClick={() => choose(onReassignClass)}
+          >
+            <School className="h-4 w-4" /> Reassign Class
+          </button>
+          <button
+            type="button"
+            disabled={placementDisabled}
+            className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted disabled:opacity-50"
+            onClick={() => choose(onReassignLevel)}
+          >
+            <GraduationCap className="h-4 w-4" /> Reassign Academic Level
+          </button>
+          <div className="my-1 border-t border-border/70" />
           <button
             type="button"
             disabled={student.is_archived}
             className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-text-soft transition hover:bg-surface-muted disabled:opacity-50"
-            onClick={() => {
-              setMenuOpen(false);
-              onReset(student);
-            }}
+            onClick={() => choose(onReset)}
           >
-            <RotateCcw className="h-4 w-4" />
-            Reset access code
+            <RotateCcw className="h-4 w-4" /> Reset access code
           </button>
           <div className="my-1 border-t border-border/70" />
           {actions.map((key) => {
@@ -383,21 +372,16 @@ function StudentActions({
                   onLifecycle(student, key);
                 }}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <Icon className="h-4 w-4" /> {item.label}
               </button>
             );
           })}
           <button
             type="button"
             className="flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-error-soft"
-            onClick={() => {
-              setMenuOpen(false);
-              onHardDelete(student);
-            }}
+            onClick={() => choose(onHardDelete)}
           >
-            <Trash2 className="h-4 w-4" />
-            Hard-delete check
+            <Trash2 className="h-4 w-4" /> Hard-delete check
           </button>
         </div>
       </Dropdown>
@@ -405,18 +389,12 @@ function StudentActions({
   );
 }
 
-function StudentCard({
-  student,
-  selected,
-  onSelectedChange,
-  ...actions
-}) {
+function StudentCard({ student, ...actions }) {
   const tone = student.is_archived
     ? "error"
     : student.status === "active"
       ? "success"
       : "warning";
-
   return (
     <MobilePersonCard tone={tone}>
       <div className="flex items-start justify-between gap-3">
@@ -431,52 +409,79 @@ function StudentCard({
           {student.is_archived ? <Badge variant="error">Archived</Badge> : null}
         </div>
       </div>
-
       <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-surface-muted/35 px-3 py-3 text-sm">
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">
-            Class
-          </p>
+          <p className="text-xs font-semibold uppercase text-text-muted">Class</p>
           <p className="mt-1 text-text-soft">{studentClassLabel(student)}</p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">
-            Admission
-          </p>
-          <p className="mt-1 text-text-soft">
-            {formatDate(student.admission_date)}
-          </p>
+          <p className="text-xs font-semibold uppercase text-text-muted">Admission</p>
+          <p className="mt-1 text-text-soft">{formatDate(student.admission_date)}</p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">
-            Profile
-          </p>
-          <p className="mt-1 text-text-soft">
-            {titleCase(student.profile_status)}
-          </p>
+          <p className="text-xs font-semibold uppercase text-text-muted">Profile</p>
+          <p className="mt-1 text-text-soft">{titleCase(student.profile_status)}</p>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase text-text-muted">
-            Credentials
-          </p>
+          <p className="text-xs font-semibold uppercase text-text-muted">Credentials</p>
           <p className="mt-1 text-text-soft">
             {student.password_reset_required ? "Setup required" : "Configured"}
           </p>
         </div>
       </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/70 pt-3">
-        <label className="flex items-center gap-2 text-xs font-semibold text-text-muted">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={(event) => onSelectedChange(event.target.checked)}
-          />
-          Select
-        </label>
+      <div className="mt-4 flex justify-end border-t border-border/70 pt-3">
         <StudentActions student={student} {...actions} />
       </div>
     </MobilePersonCard>
+  );
+}
+
+function ImpactPreview({ preview }) {
+  if (!preview) return null;
+  const subjectNames = (items) =>
+    items?.length ? items.map((item) => item.subject_name).join(", ") : "None";
+  return (
+    <div className="space-y-3 rounded-xl border border-warning/30 bg-warning-soft/40 p-4 text-sm">
+      <p className="font-semibold text-text">Placement impact preview</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-semibold uppercase text-text-muted">Department / specialization</p>
+          <p className="mt-1 text-text-soft">
+            {preview.current_department || "None"} → {preview.destination_department || "None"}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase text-text-muted">Ranking context</p>
+          <p className="mt-1 text-text-soft">
+            {preview.ranking_context_affected ? "Affected; replacement reporting may be required" : "Unchanged"}
+          </p>
+        </div>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase text-text-muted">Remain applicable</p>
+        <p className="mt-1 text-text-soft">{subjectNames(preview.subjects_remaining_applicable)}</p>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase text-text-muted">Become historical-only in destination</p>
+        <p className="mt-1 text-text-soft">{subjectNames(preview.subjects_becoming_historical_only)}</p>
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase text-text-muted">Destination subjects without scores</p>
+        <p className="mt-1 text-text-soft">{subjectNames(preview.destination_subjects_without_scores)}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {preview.teacher_comment_requires_review ? <Badge variant="warning">Teacher comment needs review</Badge> : null}
+        {preview.report_card_affected ? <Badge variant="warning">Report card affected</Badge> : null}
+      </div>
+      {preview.warnings?.length ? (
+        <ul className="list-disc space-y-1 pl-5 text-text-soft">
+          {preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+        </ul>
+      ) : null}
+      <p className="text-xs text-text-muted">
+        These warnings are informational. Existing results, attendance, CBT attempts and published report evidence are preserved and do not block reassignment.
+      </p>
+    </div>
   );
 }
 
@@ -487,6 +492,7 @@ function StudentDirectoryPage() {
   const [classes, setClasses] = useState([]);
   const [levels, setLevels] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [terms, setTerms] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [draftFilters, setDraftFilters] = useState(EMPTY_FILTERS);
@@ -499,48 +505,42 @@ function StudentDirectoryPage() {
   const [accessNotice, setAccessNotice] = useState(null);
   const [editState, setEditState] = useState(null);
   const [lifecycleState, setLifecycleState] = useState(null);
-  const [historyState, setHistoryState] = useState(null);
+  const [placementState, setPlacementState] = useState(null);
   const [hardDeleteState, setHardDeleteState] = useState(null);
   const [accessCodeConfirmation, setAccessCodeConfirmation] = useState(null);
-  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
-  const [batchClassId, setBatchClassId] = useState("");
 
-  const classOptions = useMemo(
-    () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
-    [classes],
-  );
-  const classChangeOptions = useMemo(() => {
-    const student = historyState?.student;
-    if (!student) return classOptions;
-    return classes
-      .filter(
-        (item) =>
-          item.id !== student.class_id &&
-          (!student.academic_level_id ||
-            item.academic_level_id === student.academic_level_id),
-      )
-      .map((item) => ({ value: item.id, label: classLabel(item) }));
-  }, [classes, classOptions, historyState?.student]);
   const levelOptions = useMemo(
     () => levels.map((item) => ({ value: item.id, label: item.name })),
     [levels],
   );
+  const classOptions = useMemo(
+    () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
+    [classes],
+  );
   const sessionOptions = useMemo(
-    () =>
-      sessions.map((item) => ({ value: item.id, label: item.name || item.id })),
+    () => sessions.map((item) => ({ value: item.id, label: item.name || item.id })),
     [sessions],
   );
+  const currentSession = sessions.find((item) => item.is_current) || sessions[0] || null;
+  const currentTerm =
+    terms.find(
+      (item) =>
+        item.is_current &&
+        (!currentSession || item.academic_session_id === currentSession.id),
+    ) || terms.find((item) => !currentSession || item.academic_session_id === currentSession.id) || null;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const loadReferenceData = useCallback(async () => {
-    const [levelResult, classResult, sessionResult] = await Promise.all([
+    const [levelResult, classResult, sessionResult, termResult] = await Promise.all([
       academicLevelService.getLevels({ activeOnly: true }),
       classService.getClasses({ limit: 100 }),
       academicService.listSessions({ limit: 100 }),
+      academicService.listTerms({ limit: 100 }),
     ]);
-    setClasses(asItems(classResult));
     setLevels(asItems(levelResult));
+    setClasses(asItems(classResult));
     setSessions(asItems(sessionResult));
+    setTerms(asItems(termResult));
   }, []);
 
   const loadStudents = useCallback(async () => {
@@ -558,7 +558,6 @@ function StudentDirectoryPage() {
         includeArchived: appliedFilters.includeArchived,
       });
       setStudents(asItems(response));
-      setSelectedStudentIds([]);
       setTotal(Number(response?.total || 0));
     } catch (requestError) {
       setError(parseApiError(requestError, "Failed to load students.").message);
@@ -569,10 +568,7 @@ function StudentDirectoryPage() {
 
   useEffect(() => {
     loadReferenceData().catch((requestError) => {
-      setError(
-        parseApiError(requestError, "Failed to load classes and sessions.")
-          .message,
-      );
+      setError(parseApiError(requestError, "Failed to load academic references.").message);
     });
   }, [loadReferenceData]);
 
@@ -581,43 +577,14 @@ function StudentDirectoryPage() {
   }, [loadStudents]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(
-      () => {
-        setPage(1);
-        setAppliedFilters({ ...draftFilters });
-      },
-      draftFilters.search.trim() ? 250 : 0,
-    );
-
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setAppliedFilters({ ...draftFilters });
+    }, draftFilters.search.trim() ? 250 : 0);
     return () => window.clearTimeout(timeoutId);
   }, [draftFilters]);
 
-  const refresh = async () => {
-    await loadStudents();
-  };
-
-  const assignSelectedClass = async () => {
-    if (!batchClassId || selectedStudentIds.length === 0) return;
-    setBusyId("batch");
-    try {
-      const result = await studentService.assignClassBatch({
-        student_ids: selectedStudentIds,
-        target_class_id: batchClassId,
-        reason: "Batch organizational class placement",
-      });
-      showSuccess(`${result.updated_count} students assigned to class.`);
-      setSelectedStudentIds([]);
-      setBatchClassId("");
-      await refresh();
-    } catch (requestError) {
-      showError(
-        parseApiError(requestError, "Failed to assign the selected students.")
-          .message,
-      );
-    } finally {
-      setBusyId("");
-    }
-  };
+  const refresh = () => loadStudents();
 
   const openEdit = (student) => {
     setFieldErrors({});
@@ -639,10 +606,7 @@ function StudentDirectoryPage() {
     setBusyId(editState.student.id);
     setFieldErrors({});
     const payload = Object.fromEntries(
-      Object.entries(editState.form).map(([key, value]) => [
-        key,
-        value === "" ? null : value,
-      ]),
+      Object.entries(editState.form).map(([key, value]) => [key, value === "" ? null : value]),
     );
     try {
       await studentService.updateAdminStudent(editState.student.id, payload);
@@ -659,8 +623,6 @@ function StudentDirectoryPage() {
   };
 
   const openLifecycle = (student, actionKey) => {
-    const currentSession =
-      sessions.find((item) => item.is_current) || sessions[0];
     setFieldErrors({});
     setLifecycleState({
       student,
@@ -683,32 +645,24 @@ function StudentDirectoryPage() {
     const config = lifecycleConfig[actionKey];
     const reason = form.reason.trim();
     if (reason.length < 3) {
-      setFieldErrors({
-        reason: "Enter a reason with at least three characters.",
-      });
+      setFieldErrors({ reason: "Enter a reason with at least three characters." });
       return;
     }
     const payload = { reason };
     if (config.usesPromotionHold) payload.promotion_hold = form.promotion_hold;
     if (config.usesEffectiveDate) payload.effective_date = form.effective_date;
-    if (config.usesGraduationDate)
-      payload.graduation_date = form.graduation_date;
+    if (config.usesGraduationDate) payload.graduation_date = form.graduation_date;
     if (config.usesClassSession) {
       payload.target_class_id = form.target_class_id;
       payload.academic_session_id = form.academic_session_id;
       if (!payload.target_class_id || !payload.academic_session_id) {
         setFieldErrors({
-          target_class_id: payload.target_class_id
-            ? undefined
-            : "Choose a class.",
-          academic_session_id: payload.academic_session_id
-            ? undefined
-            : "Choose a session.",
+          target_class_id: payload.target_class_id ? undefined : "Choose a class.",
+          academic_session_id: payload.academic_session_id ? undefined : "Choose a session.",
         });
         return;
       }
     }
-
     setBusyId(student.id);
     try {
       const response = await studentService[config.method](student.id, payload);
@@ -719,9 +673,7 @@ function StudentDirectoryPage() {
         ["restore", "reinstate", "reinstateExpelled"].includes(actionKey) &&
         updatedStudent?.password_reset_required
       ) {
-        showWarning(
-          "Student access is restored, but a new access code is still required.",
-        );
+        showWarning("Student access is restored, but a new access code is still required.");
       }
       await refresh();
     } catch (requestError) {
@@ -741,99 +693,140 @@ function StudentDirectoryPage() {
     try {
       const result = await studentService.resetStudentAccessCode(student.id);
       setAccessNotice(buildAccessNotice(result));
-      showSuccess("New student access code generated.");
       setAccessCodeConfirmation(null);
+      showSuccess("New student access code generated.");
       await refresh();
     } catch (requestError) {
-      showError(
-        parseApiError(requestError, "Failed to generate access code.").message,
-      );
+      showError(parseApiError(requestError, "Failed to generate access code.").message);
     } finally {
       setBusyId("");
     }
   };
 
-  const openHistory = async (student) => {
-    setHistoryState({
-      student,
-      loading: true,
-      items: [],
-      mode: "history",
-      form: null,
-    });
+  const openPlacementHistory = async (student) => {
+    setPlacementState({ type: "history", student, loading: true, items: [] });
     try {
-      const response = await studentService.getEnrollmentHistory(student.id);
-      setHistoryState({
+      const response = await studentService.getPlacementHistory(student.id);
+      setPlacementState({
+        type: "history",
         student,
         loading: false,
         items: asItems(response),
-        mode: "history",
-        form: null,
       });
     } catch (requestError) {
-      showError(
-        parseApiError(requestError, "Failed to load class history.").message,
-      );
-      setHistoryState(null);
+      showError(parseApiError(requestError, "Failed to load placement history.").message);
+      setPlacementState(null);
     }
   };
 
-  const startClassChange = () => {
-    if (!historyState) return;
-    const currentSession =
-      sessions.find((item) => item.is_current) || sessions[0];
+  const openReassign = (student, type) => {
     setFieldErrors({});
-    setHistoryState((current) => ({
-      ...current,
-      mode: "change",
+    setPlacementState({
+      type,
+      student,
+      preview: null,
+      previewLoading: false,
       form: {
+        target_academic_level_id:
+          type === "class" ? student.academic_level_id || "" : "",
         target_class_id: "",
-        academic_session_id: currentSession?.id || "",
+        academic_session_id: currentSession?.id || student.academic_session_id || "",
+        academic_term_id: currentTerm?.id || "",
         effective_date: localDateInputValue(),
         reason: "",
+      },
+    });
+  };
+
+  const placementClassOptions = useMemo(() => {
+    if (!placementState?.form) return [];
+    const targetLevelId = placementState.form.target_academic_level_id;
+    return classes
+      .filter(
+        (item) =>
+          (!targetLevelId || item.academic_level_id === targetLevelId) &&
+          item.id !== placementState.student?.class_id &&
+          item.is_active !== false,
+      )
+      .map((item) => ({ value: item.id, label: classLabel(item) }));
+  }, [classes, placementState]);
+
+  const updatePlacementForm = (field, value) => {
+    setPlacementState((current) => ({
+      ...current,
+      preview: null,
+      form: {
+        ...current.form,
+        [field]: value,
+        ...(field === "target_academic_level_id" ? { target_class_id: "" } : {}),
       },
     }));
   };
 
-  const submitClassChange = async (event) => {
-    event.preventDefault();
-    if (!historyState?.form) return;
-    const { student, form } = historyState;
+  const previewPlacement = async () => {
+    if (!placementState?.form) return;
+    const { student, form } = placementState;
     if (
+      !form.target_academic_level_id ||
       !form.target_class_id ||
       !form.academic_session_id ||
-      form.reason.trim().length < 3
+      !form.academic_term_id ||
+      !form.effective_date
     ) {
-      setFieldErrors({
-        target_class_id: form.target_class_id ? undefined : "Choose a class.",
-        academic_session_id: form.academic_session_id
-          ? undefined
-          : "Choose a session.",
-        reason: form.reason.trim().length >= 3 ? undefined : "Enter a reason.",
+      showWarning("Choose the destination, session, term and effective date before previewing impact.");
+      return;
+    }
+    setPlacementState((current) => ({ ...current, previewLoading: true }));
+    try {
+      const preview = await studentService.previewPlacementImpact(student.id, {
+        target_academic_level_id: form.target_academic_level_id,
+        target_class_id: form.target_class_id,
+        academic_session_id: form.academic_session_id,
+        academic_term_id: form.academic_term_id,
+        effective_date: form.effective_date,
       });
+      setPlacementState((current) => ({ ...current, preview, previewLoading: false }));
+    } catch (requestError) {
+      showError(parseApiError(requestError, "Failed to preview placement impact.").message);
+      setPlacementState((current) => ({ ...current, previewLoading: false }));
+    }
+  };
+
+  const submitReassignment = async (event) => {
+    event.preventDefault();
+    if (!placementState?.form || !placementState.preview) {
+      showWarning("Review the placement impact preview before confirming reassignment.");
+      return;
+    }
+    const { type, student, form } = placementState;
+    if (form.reason.trim().length < 3) {
+      setFieldErrors({ reason: "Enter a reason with at least three characters." });
       return;
     }
     setBusyId(student.id);
     try {
-      await studentService.changeStudentClass(student.id, {
-        ...form,
-        reason: form.reason.trim(),
-      });
-      const response = await studentService.getEnrollmentHistory(student.id);
-      setHistoryState({
-        student,
-        loading: false,
-        items: asItems(response),
-        mode: "history",
-        form: null,
-      });
-      showSuccess("Student class changed and enrollment history updated.");
+      if (type === "class") {
+        await studentService.reassignStudentClass(student.id, {
+          target_class_id: form.target_class_id,
+          academic_session_id: form.academic_session_id,
+          effective_date: form.effective_date,
+          reason: form.reason.trim(),
+        });
+        showSuccess("Class reassignment recorded as a new placement segment.");
+      } else {
+        await studentService.reassignStudentAcademicLevel(student.id, {
+          target_academic_level_id: form.target_academic_level_id,
+          target_class_id: form.target_class_id,
+          academic_session_id: form.academic_session_id,
+          effective_date: form.effective_date,
+          reason: form.reason.trim(),
+        });
+        showSuccess("Academic-level reassignment recorded as a new placement segment.");
+      }
+      setPlacementState(null);
       await refresh();
     } catch (requestError) {
-      const parsed = parseApiError(
-        requestError,
-        "Failed to change student class.",
-      );
+      const parsed = parseApiError(requestError, "Failed to reassign student placement.");
       setFieldErrors(parsed.fieldErrors || {});
       showError(parsed.message);
     } finally {
@@ -842,29 +835,12 @@ function StudentDirectoryPage() {
   };
 
   const inspectHardDelete = async (student) => {
-    setHardDeleteState({
-      student,
-      loading: true,
-      eligibility: null,
-      reason: "",
-      confirmation: "",
-    });
+    setHardDeleteState({ student, loading: true, eligibility: null, reason: "", confirmation: "" });
     try {
-      const eligibility = await studentService.getHardDeleteEligibility(
-        student.id,
-      );
-      setHardDeleteState({
-        student,
-        loading: false,
-        eligibility,
-        reason: "",
-        confirmation: "",
-      });
+      const eligibility = await studentService.getHardDeleteEligibility(student.id);
+      setHardDeleteState({ student, loading: false, eligibility, reason: "", confirmation: "" });
     } catch (requestError) {
-      showError(
-        parseApiError(requestError, "Failed to inspect delete eligibility.")
-          .message,
-      );
+      showError(parseApiError(requestError, "Failed to inspect delete eligibility.").message);
       setHardDeleteState(null);
     }
   };
@@ -889,9 +865,7 @@ function StudentDirectoryPage() {
       setHardDeleteState(null);
       await refresh();
     } catch (requestError) {
-      showError(
-        parseApiError(requestError, "Failed to hard-delete student.").message,
-      );
+      showError(parseApiError(requestError, "Failed to hard-delete student.").message);
     } finally {
       setBusyId("");
     }
@@ -901,14 +875,6 @@ function StudentDirectoryPage() {
     setDraftFilters(EMPTY_FILTERS);
     setAppliedFilters(EMPTY_FILTERS);
     setPage(1);
-  };
-
-  const setStudentSelected = (studentId, selected) => {
-    setSelectedStudentIds((current) =>
-      selected
-        ? [...new Set([...current, studentId])]
-        : current.filter((id) => id !== studentId),
-    );
   };
 
   if (loading && students.length === 0 && !error) {
@@ -929,9 +895,6 @@ function StudentDirectoryPage() {
     draftFilters.includeArchived,
     draftFilters.unassignedClass,
   ].filter(Boolean).length;
-  const allPageSelected =
-    students.length > 0 &&
-    students.every((student) => selectedStudentIds.includes(student.id));
 
   return (
     <div className="space-y-5">
@@ -949,55 +912,47 @@ function StudentDirectoryPage() {
         </div>
       ) : null}
 
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-text sm:text-[1.65rem]">
             Student Directory
           </h1>
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted sm:text-sm">
-            Search, filter, create, and maintain student records across classes.
+            Search and maintain student profiles, placement history, lifecycle and access.
           </p>
         </div>
-        <Button
-          type="button"
-          size="small"
-          className="min-h-10 shrink-0 justify-center rounded-lg px-3 sm:min-w-[210px] sm:px-4"
-          onClick={() => navigate("/admin/students/create")}
-        >
-          <Plus className="h-4 w-4" />
-          Add student
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="small"
+            variant="outline"
+            className="min-h-10"
+            onClick={() => navigate("/admin/students/class-placement")}
+          >
+            <School className="h-4 w-4" /> Class Placement
+          </Button>
+          <Button
+            type="button"
+            size="small"
+            className="min-h-10"
+            onClick={() => navigate("/admin/students/create")}
+          >
+            <Plus className="h-4 w-4" /> Add Student
+          </Button>
+        </div>
       </div>
 
       <DirectorySummary
         items={[
-          {
-            label: "Matching records",
-            value: total,
-            detail: "all pages",
-            icon: Users,
-            tone: "primary",
-          },
-          {
-            label: "Active",
-            value: activeCount,
-            detail: "this page",
-            icon: UserCheck,
-            tone: "success",
-          },
-          {
-            label: "Class placed",
-            value: placedCount,
-            detail: `${students.length - placedCount} unassigned`,
-            icon: School,
-          },
+          { label: "Matching records", value: total, detail: "all pages", icon: Users, tone: "primary" },
+          { label: "Active", value: activeCount, detail: "this page", icon: UserCheck, tone: "success" },
+          { label: "Class placed", value: placedCount, detail: `${students.length - placedCount} unassigned`, icon: School },
           {
             label: "Access ready",
             value: credentialsReadyCount,
             detail: `${students.length - credentialsReadyCount} need setup`,
             icon: KeyRound,
-            tone:
-              credentialsReadyCount === students.length ? "success" : "warning",
+            tone: credentialsReadyCount === students.length ? "success" : "warning",
           },
         ]}
       />
@@ -1013,10 +968,7 @@ function StudentDirectoryPage() {
               value={draftFilters.search}
               placeholder="Name or admission number"
               onChange={(event) =>
-                setDraftFilters((current) => ({
-                  ...current,
-                  search: event.target.value,
-                }))
+                setDraftFilters((current) => ({ ...current, search: event.target.value }))
               }
             />
           </div>
@@ -1028,8 +980,7 @@ function StudentDirectoryPage() {
             aria-expanded={mobileFiltersOpen}
             onClick={() => setMobileFiltersOpen(true)}
           >
-            <SlidersHorizontal className="h-4 w-4" />
-            Filters
+            <SlidersHorizontal className="h-4 w-4" /> Filters
             {activeFilterCount ? (
               <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[0.65rem] text-primary-foreground">
                 {activeFilterCount}
@@ -1044,12 +995,7 @@ function StudentDirectoryPage() {
               classOptions={classOptions}
             />
             <div className="grid gap-2 self-end">
-              <Button
-                type="button"
-                size="small"
-                variant="outline"
-                onClick={clearFilters}
-              >
+              <Button type="button" size="small" variant="outline" onClick={clearFilters}>
                 Clear
               </Button>
             </div>
@@ -1066,12 +1012,8 @@ function StudentDirectoryPage() {
         onClose={() => setMobileFiltersOpen(false)}
         footer={
           <div className="grid grid-cols-2 gap-2">
-            <Button type="button" variant="outline" onClick={clearFilters}>
-              Clear filters
-            </Button>
-            <Button type="button" onClick={() => setMobileFiltersOpen(false)}>
-              View results
-            </Button>
+            <Button type="button" variant="outline" onClick={clearFilters}>Clear filters</Button>
+            <Button type="button" onClick={() => setMobileFiltersOpen(false)}>View results</Button>
           </div>
         }
       >
@@ -1090,33 +1032,8 @@ function StudentDirectoryPage() {
           Showing <span className="font-semibold text-text">{students.length}</span> of{" "}
           <span className="font-semibold text-text">{total}</span> students
         </p>
-        <p className="text-sm text-text-muted">
-          Page {page} of {pageCount}
-        </p>
+        <p className="text-sm text-text-muted">Page {page} of {pageCount}</p>
       </div>
-
-      {selectedStudentIds.length > 0 ? (
-        <Card className="space-y-4 p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <SelectField
-                label={`Assign ${selectedStudentIds.length} selected students to class`}
-                value={batchClassId}
-                onChange={(event) => setBatchClassId(event.target.value)}
-                options={classOptions}
-                placeholder="Choose target class"
-              />
-            </div>
-            <Button
-              type="button"
-              disabled={!batchClassId || busyId === "batch"}
-              onClick={assignSelectedClass}
-            >
-              {busyId === "batch" ? "Assigning..." : "Assign class"}
-            </Button>
-          </div>
-        </Card>
-      ) : null}
 
       {students.length === 0 ? (
         <Card className="p-6">
@@ -1132,24 +1049,6 @@ function StudentDirectoryPage() {
           <DirectoryTable
             label="Student directory"
             columns={[
-              {
-                key: "select",
-                label: (
-                  <input
-                    type="checkbox"
-                    aria-label="Select all students on this page"
-                    checked={allPageSelected}
-                    onChange={(event) =>
-                      setSelectedStudentIds(
-                        event.target.checked
-                          ? students.map((student) => student.id)
-                          : [],
-                      )
-                    }
-                  />
-                ),
-                className: "w-12",
-              },
               { key: "student", label: "Student" },
               { key: "class", label: "Class placement" },
               { key: "status", label: "Status" },
@@ -1160,51 +1059,29 @@ function StudentDirectoryPage() {
             {students.map((student) => (
               <tr key={student.id} className="transition hover:bg-surface-muted/25">
                 <td className="px-4 py-3.5 align-middle">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${displayName(student)} for batch class placement`}
-                    checked={selectedStudentIds.includes(student.id)}
-                    onChange={(event) =>
-                      setStudentSelected(student.id, event.target.checked)
-                    }
-                  />
-                </td>
-                <td className="px-4 py-3.5 align-middle">
                   <PersonIdentity
                     name={displayName(student)}
                     meta={student.admission_number || "No admission number"}
                   />
                 </td>
                 <td className="px-4 py-3.5 align-middle">
-                  <p className="text-sm font-medium text-text-soft">
-                    {studentClassLabel(student)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-text-muted">
-                    Admitted {formatDate(student.admission_date)}
-                  </p>
+                  <p className="text-sm font-medium text-text-soft">{studentClassLabel(student)}</p>
+                  <p className="mt-0.5 text-xs text-text-muted">Admitted {formatDate(student.admission_date)}</p>
                 </td>
                 <td className="px-4 py-3.5 align-middle">
                   <div className="flex flex-wrap gap-1.5">
-                    <Badge
-                      variant={student.status === "active" ? "success" : "default"}
-                    >
+                    <Badge variant={student.status === "active" ? "success" : "default"}>
                       {titleCase(student.status)}
                     </Badge>
-                    {student.is_archived ? (
-                      <Badge variant="error">Archived</Badge>
-                    ) : null}
+                    {student.is_archived ? <Badge variant="error">Archived</Badge> : null}
                   </div>
                 </td>
                 <td className="px-4 py-3.5 align-middle">
                   <p className="text-sm font-medium text-text-soft">
                     {titleCase(student.profile_status) || "Not set"}
                   </p>
-                  <p
-                    className={`mt-0.5 text-xs ${student.password_reset_required ? "text-warning" : "text-success"}`}
-                  >
-                    {student.password_reset_required
-                      ? "Access setup required"
-                      : "Access configured"}
+                  <p className={`mt-0.5 text-xs ${student.password_reset_required ? "text-warning" : "text-success"}`}>
+                    {student.password_reset_required ? "Access setup required" : "Access configured"}
                   </p>
                 </td>
                 <td className="px-4 py-3.5 align-middle">
@@ -1213,7 +1090,9 @@ function StudentDirectoryPage() {
                     busy={busyId === student.id}
                     onEdit={openEdit}
                     onReset={setAccessCodeConfirmation}
-                    onHistory={openHistory}
+                    onPlacementHistory={openPlacementHistory}
+                    onReassignClass={(item) => openReassign(item, "class")}
+                    onReassignLevel={(item) => openReassign(item, "level")}
                     onLifecycle={openLifecycle}
                     onHardDelete={inspectHardDelete}
                   />
@@ -1227,14 +1106,12 @@ function StudentDirectoryPage() {
               <StudentCard
                 key={student.id}
                 student={student}
-                selected={selectedStudentIds.includes(student.id)}
-                onSelectedChange={(selected) =>
-                  setStudentSelected(student.id, selected)
-                }
                 busy={busyId === student.id}
                 onEdit={openEdit}
                 onReset={setAccessCodeConfirmation}
-                onHistory={openHistory}
+                onPlacementHistory={openPlacementHistory}
+                onReassignClass={(item) => openReassign(item, "class")}
+                onReassignLevel={(item) => openReassign(item, "level")}
                 onLifecycle={openLifecycle}
                 onHardDelete={inspectHardDelete}
               />
@@ -1244,9 +1121,7 @@ function StudentDirectoryPage() {
       )}
 
       <div className="mobile-list-pagination flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-text-muted sm:hidden">
-          Page {page}/{pageCount}
-        </span>
+        <span className="text-xs font-semibold text-text-muted sm:hidden">Page {page}/{pageCount}</span>
         <div className="ml-auto grid grid-cols-2 gap-2 sm:flex">
           <Button
             type="button"
@@ -1255,20 +1130,16 @@ function StudentDirectoryPage() {
             disabled={page <= 1 || loading}
             onClick={() => setPage((current) => Math.max(1, current - 1))}
           >
-            <ChevronLeft className="h-4 w-4" />
-            Previous
+            <ChevronLeft className="h-4 w-4" /> Previous
           </Button>
           <Button
             type="button"
             variant="outline"
             size="small"
             disabled={page >= pageCount || loading}
-            onClick={() =>
-              setPage((current) => Math.min(pageCount, current + 1))
-            }
+            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
           >
-            Next
-            <ChevronRight className="h-4 w-4" />
+            Next <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -1276,7 +1147,7 @@ function StudentDirectoryPage() {
       <Modal
         open={Boolean(editState)}
         title="Edit student profile"
-        description="Update profile fields. Empty optional fields are cleared explicitly."
+        description="Update profile fields. Placement changes are managed separately so history remains immutable."
         onClose={() => !busyId && setEditState(null)}
         closeOnOverlay={!busyId}
       >
@@ -1289,10 +1160,7 @@ function StudentDirectoryPage() {
                 required
                 error={fieldErrors.first_name}
                 onChange={(event) =>
-                  setEditState((current) => ({
-                    ...current,
-                    form: { ...current.form, first_name: event.target.value },
-                  }))
+                  setEditState((current) => ({ ...current, form: { ...current.form, first_name: event.target.value } }))
                 }
               />
               <Input
@@ -1301,25 +1169,16 @@ function StudentDirectoryPage() {
                 required
                 error={fieldErrors.last_name}
                 onChange={(event) =>
-                  setEditState((current) => ({
-                    ...current,
-                    form: { ...current.form, last_name: event.target.value },
-                  }))
+                  setEditState((current) => ({ ...current, form: { ...current.form, last_name: event.target.value } }))
                 }
               />
               <SelectField
                 label="Gender"
                 value={editState.form.gender}
-                options={GENDER_OPTIONS.map((value) => ({
-                  value,
-                  label: titleCase(value),
-                }))}
+                options={GENDER_OPTIONS.map((value) => ({ value, label: titleCase(value) }))}
                 error={fieldErrors.gender}
-                onChange={(event) =>
-                  setEditState((current) => ({
-                    ...current,
-                    form: { ...current.form, gender: event.target.value },
-                  }))
+                onChange={(value) =>
+                  setEditState((current) => ({ ...current, form: { ...current.form, gender: value } }))
                 }
               />
               <Input
@@ -1329,13 +1188,7 @@ function StudentDirectoryPage() {
                 required
                 error={fieldErrors.date_of_birth}
                 onChange={(event) =>
-                  setEditState((current) => ({
-                    ...current,
-                    form: {
-                      ...current.form,
-                      date_of_birth: event.target.value,
-                    },
-                  }))
+                  setEditState((current) => ({ ...current, form: { ...current.form, date_of_birth: event.target.value } }))
                 }
               />
               <Input
@@ -1343,32 +1196,15 @@ function StudentDirectoryPage() {
                 value={editState.form.state_of_origin}
                 error={fieldErrors.state_of_origin}
                 onChange={(event) =>
-                  setEditState((current) => ({
-                    ...current,
-                    form: {
-                      ...current.form,
-                      state_of_origin: event.target.value,
-                    },
-                  }))
+                  setEditState((current) => ({ ...current, form: { ...current.form, state_of_origin: event.target.value } }))
                 }
               />
             </div>
-            <p className="rounded-2xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
-              To change this student's class, open Class history and use Change
-              class so the placement history is updated.
-            </p>
             <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={Boolean(busyId)}
-                onClick={() => setEditState(null)}
-              >
+              <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setEditState(null)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={Boolean(busyId)}>
-                {busyId ? "Saving..." : "Save changes"}
-              </Button>
+              <Button type="submit" disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Save changes"}</Button>
             </div>
           </form>
         ) : null}
@@ -1377,46 +1213,26 @@ function StudentDirectoryPage() {
       <Modal
         open={Boolean(accessCodeConfirmation)}
         title="Generate new access code"
-        description={
-          accessCodeConfirmation
-            ? `Generate a new one-time access code for ${displayName(accessCodeConfirmation)}.`
-            : ""
-        }
+        description={accessCodeConfirmation ? `Generate a new one-time access code for ${displayName(accessCodeConfirmation)}.` : ""}
         onClose={() => !busyId && setAccessCodeConfirmation(null)}
         closeOnOverlay={!busyId}
         footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={Boolean(busyId)}
-              onClick={() => setAccessCodeConfirmation(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={Boolean(busyId)}
-              onClick={() => resetAccessCode(accessCodeConfirmation)}
-            >
+            <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setAccessCodeConfirmation(null)}>Cancel</Button>
+            <Button type="button" disabled={Boolean(busyId)} onClick={() => resetAccessCode(accessCodeConfirmation)}>
               {busyId ? "Generating..." : "Generate code"}
             </Button>
           </div>
         }
       >
         <p className="text-sm leading-6 text-text-muted">
-          The old reset code will no longer be useful once a new one is
-          generated. The student's records and class history are not changed.
+          The student's academic history and placement records are not changed by credential reset.
         </p>
       </Modal>
 
       <Modal
         open={Boolean(lifecycleState)}
-        title={
-          lifecycleState
-            ? lifecycleConfig[lifecycleState.actionKey].label
-            : "Student lifecycle"
-        }
+        title={lifecycleState ? lifecycleConfig[lifecycleState.actionKey].label : "Student lifecycle"}
         description="This action is recorded against the student lifecycle."
         onClose={() => !busyId && setLifecycleState(null)}
         closeOnOverlay={!busyId}
@@ -1424,12 +1240,8 @@ function StudentDirectoryPage() {
         {lifecycleState ? (
           <form onSubmit={submitLifecycle} className="space-y-4">
             <div className="rounded-xl bg-surface-muted/40 px-4 py-3 text-sm">
-              <p className="font-semibold text-text">
-                {displayName(lifecycleState.student)}
-              </p>
-              <p className="mt-1 text-text-muted">
-                {lifecycleState.student.admission_number}
-              </p>
+              <p className="font-semibold text-text">{displayName(lifecycleState.student)}</p>
+              <p className="mt-1 text-text-muted">{lifecycleState.student.admission_number}</p>
             </div>
             {lifecycleConfig[lifecycleState.actionKey].usesEffectiveDate ? (
               <Input
@@ -1439,13 +1251,7 @@ function StudentDirectoryPage() {
                 required
                 error={fieldErrors.effective_date}
                 onChange={(event) =>
-                  setLifecycleState((current) => ({
-                    ...current,
-                    form: {
-                      ...current.form,
-                      effective_date: event.target.value,
-                    },
-                  }))
+                  setLifecycleState((current) => ({ ...current, form: { ...current.form, effective_date: event.target.value } }))
                 }
               />
             ) : null}
@@ -1457,13 +1263,7 @@ function StudentDirectoryPage() {
                 required
                 error={fieldErrors.graduation_date}
                 onChange={(event) =>
-                  setLifecycleState((current) => ({
-                    ...current,
-                    form: {
-                      ...current.form,
-                      graduation_date: event.target.value,
-                    },
-                  }))
+                  setLifecycleState((current) => ({ ...current, form: { ...current.form, graduation_date: event.target.value } }))
                 }
               />
             ) : null}
@@ -1475,14 +1275,8 @@ function StudentDirectoryPage() {
                   options={classOptions}
                   required
                   error={fieldErrors.target_class_id}
-                  onChange={(event) =>
-                    setLifecycleState((current) => ({
-                      ...current,
-                      form: {
-                        ...current.form,
-                        target_class_id: event.target.value,
-                      },
-                    }))
+                  onChange={(value) =>
+                    setLifecycleState((current) => ({ ...current, form: { ...current.form, target_class_id: value } }))
                   }
                 />
                 <SelectField
@@ -1491,297 +1285,194 @@ function StudentDirectoryPage() {
                   options={sessionOptions}
                   required
                   error={fieldErrors.academic_session_id}
-                  onChange={(event) =>
-                    setLifecycleState((current) => ({
-                      ...current,
-                      form: {
-                        ...current.form,
-                        academic_session_id: event.target.value,
-                      },
-                    }))
+                  onChange={(value) =>
+                    setLifecycleState((current) => ({ ...current, form: { ...current.form, academic_session_id: value } }))
                   }
                 />
               </div>
             ) : null}
             {lifecycleConfig[lifecycleState.actionKey].usesPromotionHold ? (
-              <label className="flex items-center gap-2 rounded-xl border border-border px-3 py-3 text-sm text-text-soft">
+              <label className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-text-soft">
                 <input
                   type="checkbox"
                   checked={lifecycleState.form.promotion_hold}
                   onChange={(event) =>
-                    setLifecycleState((current) => ({
-                      ...current,
-                      form: {
-                        ...current.form,
-                        promotion_hold: event.target.checked,
-                      },
-                    }))
+                    setLifecycleState((current) => ({ ...current, form: { ...current.form, promotion_hold: event.target.checked } }))
                   }
                 />
-                Keep the student on promotion hold while suspended
+                Hold automatic progression while suspended
               </label>
             ) : null}
             <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
-                Reason
-              </span>
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Reason</span>
               <textarea
-                className="input-base min-h-28"
-                value={lifecycleState.form.reason}
+                className="input-base min-h-24"
                 maxLength={500}
+                required
+                value={lifecycleState.form.reason}
                 onChange={(event) =>
-                  setLifecycleState((current) => ({
-                    ...current,
-                    form: { ...current.form, reason: event.target.value },
-                  }))
+                  setLifecycleState((current) => ({ ...current, form: { ...current.form, reason: event.target.value } }))
                 }
               />
-              {fieldErrors.reason ? (
-                <span className="mt-1 block text-xs text-error">
-                  {fieldErrors.reason}
-                </span>
-              ) : null}
+              {fieldErrors.reason ? <p className="mt-1 text-xs text-error">{fieldErrors.reason}</p> : null}
             </label>
             <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={Boolean(busyId)}
-                onClick={() => setLifecycleState(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant={lifecycleConfig[lifecycleState.actionKey].variant}
-                disabled={Boolean(busyId)}
-              >
-                {busyId ? "Saving..." : "Confirm"}
-              </Button>
+              <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setLifecycleState(null)}>Cancel</Button>
+              <Button type="submit" disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Confirm action"}</Button>
             </div>
           </form>
         ) : null}
       </Modal>
 
       <Modal
-        open={Boolean(historyState)}
-        title="Class placement history"
-        description={
-          historyState
-            ? `${displayName(historyState.student)} · ${historyState.student.admission_number}`
-            : ""
-        }
-        onClose={() => !busyId && setHistoryState(null)}
+        open={placementState?.type === "history"}
+        title="Placement History"
+        description={placementState?.student ? `Immutable enrollment segments for ${displayName(placementState.student)}.` : ""}
+        onClose={() => setPlacementState(null)}
+      >
+        {placementState?.loading ? (
+          <LoadingState label="Loading placement history..." />
+        ) : placementState?.items?.length ? (
+          <div className="space-y-3">
+            {placementState.items.map((item) => (
+              <div key={item.id} className="rounded-xl border border-border/70 bg-surface-muted/25 px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-text">
+                      {[item.academic_level_name, item.class_arm].filter(Boolean).join(" ") || item.academic_level_name || "Unassigned"}
+                    </p>
+                    <p className="mt-1 text-sm text-text-muted">
+                      {item.class_id ? item.class_name || "Class assigned" : "Class: Unassigned"}
+                    </p>
+                  </div>
+                  <Badge variant={item.ended_on ? "default" : "success"}>
+                    {item.ended_on ? `${formatDate(item.started_on)} – ${formatDate(item.ended_on)}` : `${formatDate(item.started_on)} – Current`}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-xs text-text-muted">
+                  Entry: {titleCase(item.entry_outcome)}{item.entry_reason ? ` · ${item.entry_reason}` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No placement history" description="No enrollment segments are available for this student." />
+        )}
+      </Modal>
+
+      <Modal
+        open={placementState?.type === "class" || placementState?.type === "level"}
+        title={placementState?.type === "class" ? "Reassign Class" : "Reassign Academic Level"}
+        description="Reassignment remains allowed when academic evidence exists. Review the impact before confirming."
+        onClose={() => !busyId && setPlacementState(null)}
         closeOnOverlay={!busyId}
       >
-        {historyState?.loading ? (
-          <LoadingState label="Loading enrollment history..." />
-        ) : historyState?.mode === "change" ? (
-          <form onSubmit={submitClassChange} className="space-y-4">
+        {placementState?.form ? (
+          <form onSubmit={submitReassignment} className="space-y-4">
+            <div className="rounded-xl bg-surface-muted/35 px-4 py-3 text-sm">
+              <p className="font-semibold text-text">{displayName(placementState.student)}</p>
+              <p className="mt-1 text-text-muted">Current placement: {studentClassLabel(placementState.student)}</p>
+            </div>
+            {placementState.type === "level" ? (
+              <SelectField
+                label="Destination academic level"
+                value={placementState.form.target_academic_level_id}
+                options={levelOptions.filter((item) => item.value !== placementState.student.academic_level_id)}
+                required
+                onChange={(value) => updatePlacementForm("target_academic_level_id", value)}
+              />
+            ) : null}
+            <SelectField
+              label="Destination class"
+              value={placementState.form.target_class_id}
+              options={placementClassOptions}
+              required
+              disabled={!placementState.form.target_academic_level_id}
+              onChange={(value) => updatePlacementForm("target_class_id", value)}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectField
-                label="Target class"
-                value={historyState.form.target_class_id}
-                options={classChangeOptions}
-                required
-                error={fieldErrors.target_class_id}
-                onChange={(event) =>
-                  setHistoryState((current) => ({
-                    ...current,
-                    form: {
-                      ...current.form,
-                      target_class_id: event.target.value,
-                    },
-                  }))
-                }
-              />
-              <SelectField
                 label="Academic session"
-                value={historyState.form.academic_session_id}
+                value={placementState.form.academic_session_id}
                 options={sessionOptions}
                 required
-                error={fieldErrors.academic_session_id}
-                onChange={(event) =>
-                  setHistoryState((current) => ({
-                    ...current,
-                    form: {
-                      ...current.form,
-                      academic_session_id: event.target.value,
-                    },
-                  }))
-                }
+                onChange={(value) => updatePlacementForm("academic_session_id", value)}
               />
               <Input
                 label="Effective date"
                 type="date"
-                value={historyState.form.effective_date}
+                max={localDateInputValue()}
+                value={placementState.form.effective_date}
                 required
-                onChange={(event) =>
-                  setHistoryState((current) => ({
-                    ...current,
-                    form: {
-                      ...current.form,
-                      effective_date: event.target.value,
-                    },
-                  }))
-                }
+                onChange={(event) => updatePlacementForm("effective_date", event.target.value)}
               />
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={placementState.previewLoading}
+              onClick={previewPlacement}
+            >
+              {placementState.previewLoading ? "Previewing..." : "Preview placement impact"}
+            </Button>
+            <ImpactPreview preview={placementState.preview} />
             <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
-                Reason
-              </span>
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Mandatory reason</span>
               <textarea
                 className="input-base min-h-24"
-                value={historyState.form.reason}
-                onChange={(event) =>
-                  setHistoryState((current) => ({
-                    ...current,
-                    form: { ...current.form, reason: event.target.value },
-                  }))
-                }
+                maxLength={500}
+                required
+                value={placementState.form.reason}
+                onChange={(event) => updatePlacementForm("reason", event.target.value)}
               />
-              {fieldErrors.reason ? (
-                <span className="mt-1 block text-xs text-error">
-                  {fieldErrors.reason}
-                </span>
-              ) : null}
+              {fieldErrors.reason ? <p className="mt-1 text-xs text-error">{fieldErrors.reason}</p> : null}
             </label>
             <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setHistoryState((current) => ({
-                    ...current,
-                    mode: "history",
-                    form: null,
-                  }))
-                }
-              >
-                Back
-              </Button>
-              <Button type="submit" disabled={Boolean(busyId)}>
-                {busyId ? "Saving..." : "Change class"}
+              <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setPlacementState(null)}>Cancel</Button>
+              <Button type="submit" disabled={Boolean(busyId) || !placementState.preview}>
+                {busyId ? "Reassigning..." : "Confirm reassignment"}
               </Button>
             </div>
           </form>
-        ) : historyState ? (
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button type="button" size="small" onClick={startClassChange}>
-                Change class
-              </Button>
-            </div>
-            {historyState.items.length === 0 ? (
-              <EmptyState
-                title="No enrollment history"
-                description="No class-placement records were returned."
-              />
-            ) : (
-              <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
-                {historyState.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto]"
-                  >
-                    <div>
-                      <p className="font-semibold text-text">
-                        {[item.class_name, item.class_arm]
-                          .filter(Boolean)
-                          .join(" ") || item.class_id}
-                      </p>
-                      <p className="mt-1 text-xs text-text-muted">
-                        {item.academic_session_name || item.academic_session_id}{" "}
-                        · {titleCase(item.entry_outcome)}
-                      </p>
-                    </div>
-                    <div className="text-sm text-text-muted sm:text-right">
-                      <p>
-                        {formatDate(item.started_on)} –{" "}
-                        {item.ended_on
-                          ? formatDate(item.ended_on)
-                          : "Current"}
-                      </p>
-                      {item.entry_reason || item.exit_reason ? (
-                        <p className="mt-1 text-xs">
-                          {item.entry_reason || item.exit_reason}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         ) : null}
       </Modal>
 
       <Modal
         open={Boolean(hardDeleteState)}
         title="Hard-delete eligibility"
-        description="Permanent deletion is only allowed for accidental records with no historical dependencies."
+        description="Permanent deletion is allowed only for an unused accidental record. Historical academic evidence prevents deletion."
         onClose={() => !busyId && setHardDeleteState(null)}
         closeOnOverlay={!busyId}
       >
         {hardDeleteState?.loading ? (
-          <LoadingState label="Checking dependencies..." />
+          <LoadingState label="Checking historical dependencies..." />
         ) : hardDeleteState ? (
           <form onSubmit={submitHardDelete} className="space-y-4">
-            {hardDeleteState.eligibility?.eligible ? (
-              <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-800">
-                This record has no protected dependencies and is eligible for
-                permanent deletion.
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">
-                Permanent deletion is blocked by:{" "}
-                {(
-                  hardDeleteState.eligibility?.blocking_dependencies || []
-                ).join(", ") || "historical dependencies"}
-                . Archive the record instead.
-              </div>
-            )}
+            <div className={`rounded-xl border px-4 py-3 text-sm ${hardDeleteState.eligibility?.eligible ? "border-success/30 bg-success-soft text-success" : "border-error/30 bg-error-soft text-error"}`}>
+              {hardDeleteState.eligibility?.eligible
+                ? "This unused record is eligible for permanent deletion."
+                : hardDeleteState.eligibility?.reason || "This record has dependencies and cannot be hard-deleted."}
+            </div>
             {hardDeleteState.eligibility?.eligible ? (
               <>
                 <Input
-                  label="Type DELETE_UNUSED_STUDENT"
+                  label="Confirmation"
                   value={hardDeleteState.confirmation}
-                  onChange={(event) =>
-                    setHardDeleteState((current) => ({
-                      ...current,
-                      confirmation: event.target.value,
-                    }))
-                  }
+                  placeholder="DELETE_UNUSED_STUDENT"
+                  onChange={(event) => setHardDeleteState((current) => ({ ...current, confirmation: event.target.value }))}
                 />
                 <label className="block">
-                  <span className="mb-1.5 block text-sm font-semibold text-text-soft">
-                    Reason
-                  </span>
+                  <span className="mb-1.5 block text-sm font-semibold text-text-soft">Reason</span>
                   <textarea
                     className="input-base min-h-24"
+                    maxLength={500}
                     value={hardDeleteState.reason}
-                    onChange={(event) =>
-                      setHardDeleteState((current) => ({
-                        ...current,
-                        reason: event.target.value,
-                      }))
-                    }
+                    onChange={(event) => setHardDeleteState((current) => ({ ...current, reason: event.target.value }))}
                   />
                 </label>
                 <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setHardDeleteState(null)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="danger"
-                    disabled={Boolean(busyId)}
-                  >
+                  <Button type="button" variant="outline" onClick={() => setHardDeleteState(null)} disabled={Boolean(busyId)}>Cancel</Button>
+                  <Button type="submit" variant="danger" disabled={Boolean(busyId)}>
                     {busyId ? "Deleting..." : "Permanently delete"}
                   </Button>
                 </div>
