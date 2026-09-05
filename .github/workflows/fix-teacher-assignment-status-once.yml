@@ -1,0 +1,94 @@
+name: Fix teacher assignment status once
+
+on:
+  push:
+    branches: [cbt-sync-module-structure]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    if: contains(github.event.head_commit.message, '[fix-teacher-status]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cbt-sync-module-structure
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply teacher assignment contract repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/features/academic-admin/TeacherAssignmentsWorkspace.jsx')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''    status:\n      activeTab === "reassign" || activeTab === "end"\n        ? "active"\n        : activeTab === "history"\n          ? "ended"\n          : "",''',
+                  '''    status:\n      activeTab === "reassign" || activeTab === "end"\n        ? "current"\n        : activeTab === "history"\n          ? "ended"\n          : "",''',
+                  'initial tab status',
+              ),
+              (
+                  '''      const [resolvedSubjects, assignmentsResponse] = await Promise.all([\n        curriculumService.getResolvedClassSubjects(form.class_id, currentTermId),\n        academicService.listTeacherAssignments({\n          class_id: form.class_id,\n          status: "active",\n          limit: 100,\n        }),\n      ]);\n      const activeAssignments = asItems(assignmentsResponse);\n      const assignedSubjectIds = new Set(\n        activeAssignments\n          .map((item) => item.curriculum_subject_id)\n          .filter(Boolean),\n      );''',
+                  '''      const [resolvedSubjects, currentResponse, scheduledResponse] =\n        await Promise.all([\n          curriculumService.getResolvedClassSubjects(form.class_id, currentTermId),\n          academicService.listTeacherAssignments({\n            class_id: form.class_id,\n            status: "current",\n            limit: 100,\n          }),\n          academicService.listTeacherAssignments({\n            class_id: form.class_id,\n            status: "scheduled",\n            limit: 100,\n          }),\n        ]);\n      const protectedAssignments = [\n        ...asItems(currentResponse),\n        ...asItems(scheduledResponse),\n      ];\n      const assignedSubjectIds = new Set(\n        protectedAssignments\n          .map((item) => item.curriculum_subject_id)\n          .filter(Boolean),\n      );''',
+                  'current and scheduled subject coverage',
+              ),
+              (
+                  '''    const nextStatus =\n      activeTab === "reassign" || activeTab === "end"\n        ? "active"\n        : activeTab === "history"\n          ? "ended"\n          : "";''',
+                  '''    const nextStatus =\n      activeTab === "reassign" || activeTab === "end"\n        ? "current"\n        : activeTab === "history"\n          ? "ended"\n          : "";''',
+                  'tab transition status',
+              ),
+              (
+                  '''          options={[\n            { value: "active", label: "Active" },\n            { value: "ended", label: "Ended" },\n          ]}''',
+                  '''          options={[\n            { value: "scheduled", label: "Scheduled" },\n            { value: "current", label: "Current" },\n            { value: "ended", label: "Ended" },\n          ]}''',
+                  'status filter options',
+              ),
+              (
+                  '''          ? "Select an active assignment, then choose the replacement teacher and effective date."\n          : activeTab === "end"\n            ? "Select an active assignment and record its effective end date."''',
+                  '''          ? "Select a current assignment, then choose the replacement teacher and effective date."\n          : activeTab === "end"\n            ? "Select a current assignment and record its effective end date."''',
+                  'status descriptions',
+              ),
+          ]
+
+          for old, new, label in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          if 'status: "active"' in text:
+              raise SystemExit('stale teacher-assignment status=active remains in workspace')
+
+          path.write_text(text, encoding='utf-8')
+
+          test_path = Path('frontend/test/teacher-assignment-status-contract.test.js')
+          test_path.write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs";\nimport test from "node:test";\n\nconst source = fs.readFileSync(\n  new URL("../src/features/academic-admin/TeacherAssignmentsWorkspace.jsx", import.meta.url),\n  "utf8",\n);\n\ntest("teacher assignment requests use the canonical lifecycle statuses", () => {\n  assert.doesNotMatch(source, /status:\\s*["']active["']/);\n  assert.match(source, /status:\\s*["']current["']/);\n  assert.match(source, /status:\\s*["']scheduled["']/);\n  assert.match(source, /value:\\s*["']scheduled["'], label:\\s*["']Scheduled["']/);\n  assert.match(source, /value:\\s*["']current["'], label:\\s*["']Current["']/);\n  assert.match(source, /value:\\s*["']ended["'], label:\\s*["']Ended["']/);\n});\n\ntest("class subject availability protects both current and scheduled assignments", () => {\n  assert.match(source, /const \\[resolvedSubjects, currentResponse, scheduledResponse\\]/);\n  assert.match(source, /\\.\\.\\.asItems\\(currentResponse\\)/);\n  assert.match(source, /\\.\\.\\.asItems\\(scheduledResponse\\)/);\n  assert.match(source, /protectedAssignments/);\n});\n''', encoding='utf-8')
+          PY
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Validate frontend
+        working-directory: frontend
+        run: npm run check
+      - name: Verify stale query contract is absent
+        run: |
+          if grep -R --line-number --fixed-string 'status: "active"' frontend/src/features/academic-admin/TeacherAssignmentsWorkspace.jsx; then
+            echo 'Stale teacher assignment status contract remains'
+            exit 1
+          fi
+      - name: Commit teacher assignment repair
+        run: |
+          rm -f .github/workflows/fix-teacher-assignment-status-once.yml
+          git config user.name "weave-review-bot"
+          git config user.email "weave-review-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: align teacher assignment status contract"
+          git push origin HEAD:cbt-sync-module-structure
