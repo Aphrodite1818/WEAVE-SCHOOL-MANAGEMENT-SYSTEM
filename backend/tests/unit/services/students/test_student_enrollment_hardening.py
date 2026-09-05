@@ -8,15 +8,13 @@ from unittest.mock import ANY, AsyncMock
 import pytest
 
 from app.core.exceptions import ConflictException
-from app.modules.classes.repository import ClassRoomRepository
-from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
-from app.modules.students.enrollment_schemas import StudentBatchClassAssignmentRequest
-from app.modules.students.enrollment_service import StudentEnrollmentService
+from app.modules.students.enrollment_schemas import StudentClassPlacementRequest
 from app.modules.students.lifecycle_service import (
     LegacyStudentLifecycleService,
     StudentLifecycleService,
 )
 from app.modules.students.models import AcademicStatus
+from app.modules.students.placement_service import StudentPlacementService
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.students.schemas import StudentHardDeleteEligibilityResponse
 from app.modules.subscriptions.service import SubscriptionFeatureService
@@ -24,29 +22,7 @@ from app.modules.subscriptions.subscription_enums import ResourceLimitCode
 
 
 @pytest.mark.asyncio
-async def test_split_effective_today_checks_same_day_academic_evidence(monkeypatch) -> None:
-    tenant_id = uuid.uuid4()
-    enrollment = SimpleNamespace(id=uuid.uuid4())
-    dependency_counts = AsyncMock(return_value={"attendance": 1, "results": 0})
-    monkeypatch.setattr(
-        StudentEnrollmentService,
-        "_segment_dependency_counts",
-        dependency_counts,
-    )
-
-    with pytest.raises(ConflictException, match="preserved academic evidence"):
-        await StudentEnrollmentService._ensure_backdated_split_safe(
-            SimpleNamespace(),
-            tenant_id=tenant_id,
-            enrollment=enrollment,
-            effective_date=date.today(),
-        )
-
-    assert dependency_counts.await_args.kwargs["on_or_after"] == date.today()
-
-
-@pytest.mark.asyncio
-async def test_batch_placement_locks_students_in_deterministic_uuid_order(monkeypatch) -> None:
+async def test_bulk_placement_locks_students_in_deterministic_uuid_order(monkeypatch) -> None:
     tenant_id = uuid.uuid4()
     admin_id = uuid.uuid4()
     session_id = uuid.uuid4()
@@ -56,18 +32,8 @@ async def test_batch_placement_locks_students_in_deterministic_uuid_order(monkey
     higher_id = uuid.UUID(int=2)
 
     students = {
-        lower_id: SimpleNamespace(
-            id=lower_id,
-            admission_number="STD-LOW",
-            is_archived=False,
-            status=AcademicStatus.ACTIVE,
-        ),
-        higher_id: SimpleNamespace(
-            id=higher_id,
-            admission_number="STD-HIGH",
-            is_archived=False,
-            status=AcademicStatus.ACTIVE,
-        ),
+        lower_id: SimpleNamespace(id=lower_id, status=AcademicStatus.ACTIVE),
+        higher_id: SimpleNamespace(id=higher_id, status=AcademicStatus.ACTIVE),
     }
     enrollments = {
         student_id: SimpleNamespace(
@@ -78,18 +44,10 @@ async def test_batch_placement_locks_students_in_deterministic_uuid_order(monkey
             class_id=None,
             started_on=date.today(),
             entry_outcome=None,
-            entry_reason=None,
-            created_by_admin_id=None,
         )
         for student_id in students
     }
-    target_class = SimpleNamespace(
-        id=target_class_id,
-        academic_level_id=level_id,
-        is_active=True,
-        archived_at=None,
-    )
-    session = SimpleNamespace(id=session_id)
+    target_class = SimpleNamespace(id=target_class_id, academic_level_id=level_id)
     lock_order: list[uuid.UUID] = []
 
     async def get_student(_db, _tenant_id, student_id, *, lock=False, **_kwargs):
@@ -102,14 +60,18 @@ async def test_batch_placement_locks_students_in_deterministic_uuid_order(monkey
         return enrollments[student_id]
 
     monkeypatch.setattr(
-        "app.modules.students.enrollment_service.ensure_academic_write_window",
+        "app.modules.students.placement_service.ensure_academic_write_window",
         AsyncMock(),
     )
-    monkeypatch.setattr(ClassRoomRepository, "get_by_id", AsyncMock(return_value=target_class))
     monkeypatch.setattr(
-        AcademicSessionLifecycleRepository,
-        "get_current_open",
-        AsyncMock(return_value=session),
+        StudentPlacementService,
+        "_require_open_session",
+        AsyncMock(return_value=SimpleNamespace(id=session_id)),
+    )
+    monkeypatch.setattr(
+        StudentPlacementService,
+        "_require_target_class",
+        AsyncMock(return_value=target_class),
     )
     monkeypatch.setattr(StudentRepository, "get_by_id", AsyncMock(side_effect=get_student))
     monkeypatch.setattr(
@@ -117,28 +79,28 @@ async def test_batch_placement_locks_students_in_deterministic_uuid_order(monkey
         "get_current",
         AsyncMock(side_effect=get_enrollment),
     )
-    monkeypatch.setattr(
-        StudentEnrollmentService,
-        "_segment_dependency_counts",
-        AsyncMock(return_value={"attendance": 0, "results": 0}),
-    )
     monkeypatch.setattr(StudentEnrollmentRepository, "save", AsyncMock())
 
     db = SimpleNamespace(commit=AsyncMock())
-    response = await StudentEnrollmentService.assign_class_batch(
+    payload = StudentClassPlacementRequest(
+        student_ids=[higher_id, lower_id],
+        academic_session_id=session_id,
+        academic_level_id=level_id,
+        target_class_id=target_class_id,
+    )
+
+    # Request normalization establishes the lock order before the service iterates.
+    assert payload.student_ids == [lower_id, higher_id]
+
+    response = await StudentPlacementService.place_class(
         db,
         actor=SimpleNamespace(id=admin_id, tenant_id=tenant_id),
-        payload=StudentBatchClassAssignmentRequest(
-            student_ids=[higher_id, lower_id],
-            target_class_id=target_class_id,
-            effective_date=date.today(),
-            reason="Initial arm placement",
-        ),
+        payload=payload,
     )
 
     assert lock_order == [lower_id, higher_id]
-    assert response.updated_student_ids == [lower_id, higher_id]
-    assert response.updated_count == 2
+    assert response.placed_student_ids == [lower_id, higher_id]
+    assert response.placed_count == 2
     db.commit.assert_awaited_once()
 
 
@@ -202,10 +164,7 @@ async def test_hard_delete_eligibility_blocks_student_with_login_history(monkeyp
         blocking_dependencies=[],
         recommendation="hard_delete",
     )
-    student = SimpleNamespace(
-        id=student_id,
-        last_login_at=datetime.now(timezone.utc),
-    )
+    student = SimpleNamespace(id=student_id, last_login_at=datetime.now(timezone.utc))
 
     monkeypatch.setattr(
         LegacyStudentLifecycleService,
@@ -230,10 +189,7 @@ async def test_hard_delete_execution_rejects_student_with_login_history(monkeypa
     tenant_id = uuid.uuid4()
     student_id = uuid.uuid4()
     actor = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id)
-    student = SimpleNamespace(
-        id=student_id,
-        last_login_at=datetime.now(timezone.utc),
-    )
+    student = SimpleNamespace(id=student_id, last_login_at=datetime.now(timezone.utc))
     legacy_delete = AsyncMock()
 
     monkeypatch.setattr(
