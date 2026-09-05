@@ -50,6 +50,13 @@ class ReportCardGenerateRequest(InputBase):
             raise ValueError(
                 "Choose an explicit principal template or grade defaults, not both."
             )
+        if self.class_id is not None and (
+            self.principal_template_id is not None or self.principal_comment is not None
+        ):
+            raise ValueError(
+                "Class-wide generation cannot apply one principal comment to every student. "
+                "Use personal grade defaults for bulk generation or generate one student at a time."
+            )
         return self
 
 
