@@ -1,5 +1,5 @@
 import { History, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
@@ -124,7 +124,7 @@ export default function TeacherCommentOverrideAuditWorkspace({ onContextChange }
       }));
   }, [search, students]);
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     if (!filters.student_id || !filters.academic_session_id || !filters.academic_term_id) {
       setItems([]);
       return;
@@ -139,13 +139,11 @@ export default function TeacherCommentOverrideAuditWorkspace({ onContextChange }
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, [filters, showError]);
 
   useEffect(() => {
     loadHistory();
-    // The selected student/session/term is the complete audit query key.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.student_id, filters.academic_session_id, filters.academic_term_id]);
+  }, [loadHistory]);
 
   return (
     <div className="space-y-4">
