@@ -8,7 +8,6 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus
-from app.modules.students.enrollment_service import StudentEnrollmentService
 from app.modules.students.models import (
     AcademicStatus,
     Student,
@@ -17,6 +16,8 @@ from app.modules.students.models import (
     StudentEnrollmentOutcome,
     StudentProfileStatus,
 )
+from app.modules.students.placement_service import StudentPlacementService
+from app.modules.students.repository import StudentRepository
 from app.modules.students.schemas import (
     StudentAdminProfileUpdate,
     StudentEnrollmentDetailResponse,
@@ -52,7 +53,7 @@ def test_admin_profile_update_rejects_class_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enrollment_history_returns_canonical_segment_with_display_labels() -> None:
+async def test_placement_history_returns_canonical_segment_with_display_labels() -> None:
     tenant_id = uuid.uuid4()
     student_id = uuid.uuid4()
     class_id = uuid.uuid4()
@@ -72,7 +73,7 @@ async def test_enrollment_history_returns_canonical_segment_with_display_labels(
         created_at=now,
         updated_at=now,
     )
-    classroom = type("Classroom", (), {"academic_level_name": "JSS 1", "arm": "Blue"})()
+    classroom = type("Classroom", (), {"id": class_id})()
     level = type("Level", (), {"name": "JSS 1"})()
     session = AcademicSession(
         id=session_id,
@@ -81,16 +82,18 @@ async def test_enrollment_history_returns_canonical_segment_with_display_labels(
         status=AcademicSessionStatus.OPEN,
         is_current=True,
     )
+    arm = type("Arm", (), {"label": "Blue"})()
     db = AsyncMock()
     result = MagicMock()
-    result.all.return_value = [(enrollment, classroom, level, session)]
+    result.all.return_value = [(enrollment, classroom, level, session, arm)]
     db.execute.return_value = result
 
-    with patch(
-        "app.modules.students.enrollment_service.StudentRepository.get_by_id",
+    with patch.object(
+        StudentRepository,
+        "get_by_id",
         new=AsyncMock(return_value=_student(tenant_id)),
     ):
-        rows = await StudentEnrollmentService.list_history(
+        rows = await StudentPlacementService.list_history(
             db,
             tenant_id=tenant_id,
             student_id=student_id,
