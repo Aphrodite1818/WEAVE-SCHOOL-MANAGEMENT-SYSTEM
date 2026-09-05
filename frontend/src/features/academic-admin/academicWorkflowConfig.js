@@ -245,7 +245,6 @@ export const academicWorkflowConfig = {
       { id: "calendar", label: "Calendar" },
       { id: "events", label: "Events" },
       { id: "closures", label: "Closures" },
-      { id: "history", label: "History" },
     ],
   },
 };
