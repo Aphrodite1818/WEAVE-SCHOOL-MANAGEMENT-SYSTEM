@@ -136,6 +136,24 @@ class TeacherStudentCommentListResponse(OutputBase):
     items: list[TeacherStudentCommentRow]
 
 
+class TeacherCommentClassScope(OutputBase):
+    class_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    class_name: str
+
+
+class TeacherCommentDashboardSummary(OutputBase):
+    classes: list[TeacherCommentClassScope] = Field(default_factory=list)
+    class_teacher_class_count: int = 0
+    students_requiring_comments: int = 0
+    draft_comments: int = 0
+    submitted_comments: int = 0
+    needs_review_comments: int = 0
+    comment_completion_percent: Decimal = Decimal("0")
+    academic_session_id: uuid.UUID | None = None
+    academic_term_id: uuid.UUID | None = None
+
+
 class TeacherCommentOverrideRequest(InputBase):
     student_id: uuid.UUID
     academic_session_id: uuid.UUID
