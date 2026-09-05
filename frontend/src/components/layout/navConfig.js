@@ -172,6 +172,16 @@ export const navGroups = {
       items: [
         { label: "My Class", to: "/teacher/classes", icon: Library },
         {
+          label: "Student Comments",
+          to: "/teacher/student-comments",
+          icon: ClipboardList,
+        },
+        {
+          label: "My Comment Templates",
+          to: "/teacher/comment-templates",
+          icon: FileText,
+        },
+        {
           label: "Class Attendance",
           to: "/teacher/attendance",
           icon: CheckSquare,
