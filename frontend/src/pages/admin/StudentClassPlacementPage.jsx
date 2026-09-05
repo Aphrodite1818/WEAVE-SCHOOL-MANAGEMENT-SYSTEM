@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, Search, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
@@ -138,7 +137,8 @@ function StudentClassPlacementPage() {
         .map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes, levelId],
   );
-  const allSelected = students.length > 0 && students.every((item) => selectedIds.includes(item.id));
+  const allSelected =
+    students.length > 0 && students.every((item) => selectedIds.includes(item.id));
 
   const toggleStudent = (studentId, checked) => {
     setSelectedIds((current) =>
@@ -158,8 +158,10 @@ function StudentClassPlacementPage() {
         target_class_id: targetClassId,
         student_ids: selectedIds,
       });
-      showSuccess(`${result.updated_count || selectedIds.length} students placed successfully.`);
-      setStudents((current) => current.filter((student) => !selectedIds.includes(student.id)));
+      showSuccess(`${result.placed_count ?? selectedIds.length} students placed successfully.`);
+      setStudents((current) =>
+        current.filter((student) => !selectedIds.includes(student.id)),
+      );
       setSelectedIds([]);
     } catch (requestError) {
       showError(parseApiError(requestError, "Failed to place selected students.").message);
@@ -169,140 +171,162 @@ function StudentClassPlacementPage() {
   };
 
   return (
-    <DashboardLayout role="admin">
-      <div className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <Button type="button" size="small" variant="ghost" onClick={() => navigate("/admin/students")}>
-              <ArrowLeft className="h-4 w-4" />
-              Student directory
-            </Button>
-            <h1 className="mt-3 text-xl font-semibold tracking-tight text-text sm:text-[1.65rem]">
-              Class Placement
-            </h1>
-            <p className="mt-1 text-sm text-text-muted">
-              Place students who already have a level enrollment but do not yet have a class.
-            </p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Button
+            type="button"
+            size="small"
+            variant="ghost"
+            onClick={() => navigate("/admin/students")}
+          >
+            <ArrowLeft className="h-4 w-4" /> Student directory
+          </Button>
+          <h1 className="mt-3 text-xl font-semibold tracking-tight text-text sm:text-[1.65rem]">
+            Class Placement
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Place students who already have a level enrollment but do not yet have a class.
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
+          <span className="font-semibold text-text">{selectedIds.length}</span> selected
+        </div>
+      </div>
+
+      {error ? (
+        <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">
+          {error}
+        </div>
+      ) : null}
+
+      <Card className="p-4 sm:p-5">
+        <div className="grid gap-4 lg:grid-cols-4">
+          <SelectField
+            label="Academic session"
+            value={sessionId}
+            options={sessionOptions}
+            onChange={setSessionId}
+            placeholder="Choose session"
+          />
+          <SelectField
+            label="Academic level"
+            value={levelId}
+            options={levelOptions}
+            onChange={setLevelId}
+            placeholder="Choose level"
+          />
+          <SelectField
+            label="Target class"
+            value={targetClassId}
+            options={classOptions}
+            onChange={setTargetClassId}
+            placeholder={levelId ? "Choose class" : "Choose a level first"}
+            disabled={!levelId}
+          />
+          <Input
+            label="Search unassigned students"
+            value={search}
+            placeholder="Name or admission number"
+            onChange={(event) => setSearch(event.target.value)}
+            icon={Search}
+          />
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary" />
+            <div>
+              <p className="font-semibold text-text">Unassigned students</p>
+              <p className="text-xs text-text-muted">
+                Only students in the selected academic level with no class are shown.
+              </p>
+            </div>
           </div>
-          <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
-            <span className="font-semibold text-text">{selectedIds.length}</span> selected
-          </div>
+          <Button
+            type="button"
+            disabled={!targetClassId || selectedIds.length === 0 || placing}
+            onClick={placeStudents}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            {placing ? "Placing..." : `Place ${selectedIds.length || ""} students`.trim()}
+          </Button>
         </div>
 
-        {error ? (
-          <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">
-            {error}
-          </div>
-        ) : null}
-
-        <Card className="p-4 sm:p-5">
-          <div className="grid gap-4 lg:grid-cols-4">
-            <SelectField
-              label="Academic session"
-              value={sessionId}
-              options={sessionOptions}
-              onChange={setSessionId}
-              placeholder="Choose session"
-            />
-            <SelectField
-              label="Academic level"
-              value={levelId}
-              options={levelOptions}
-              onChange={setLevelId}
-              placeholder="Choose level"
-            />
-            <SelectField
-              label="Target class"
-              value={targetClassId}
-              options={classOptions}
-              onChange={setTargetClassId}
-              placeholder={levelId ? "Choose class" : "Choose a level first"}
-              disabled={!levelId}
-            />
-            <Input
-              label="Search unassigned students"
-              value={search}
-              placeholder="Name or admission number"
-              onChange={(event) => setSearch(event.target.value)}
-              icon={Search}
+        {loading ? (
+          <div className="p-6"><LoadingState label="Loading placement roster..." /></div>
+        ) : !levelId ? (
+          <div className="p-6">
+            <EmptyState
+              title="Choose an academic level"
+              description="The unassigned roster appears after you select a level."
             />
           </div>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              <div>
-                <p className="font-semibold text-text">Unassigned students</p>
-                <p className="text-xs text-text-muted">Only the selected academic level is shown.</p>
-              </div>
-            </div>
-            <Button
-              type="button"
-              disabled={!targetClassId || selectedIds.length === 0 || placing}
-              onClick={placeStudents}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              {placing ? "Placing..." : `Place ${selectedIds.length || ""} students`.trim()}
-            </Button>
+        ) : students.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              title="No unassigned students"
+              description="Every matching student currently has a class placement."
+            />
           </div>
-
-          {loading ? (
-            <div className="p-6"><LoadingState label="Loading placement roster..." /></div>
-          ) : !levelId ? (
-            <div className="p-6">
-              <EmptyState title="Choose an academic level" description="The unassigned roster appears after you select a level." />
-            </div>
-          ) : students.length === 0 ? (
-            <div className="p-6">
-              <EmptyState title="No unassigned students" description="Every matching student currently has a class placement." />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
-                <thead className="bg-surface-muted/40 text-left text-xs uppercase tracking-wide text-text-muted">
-                  <tr>
-                    <th className="w-12 px-4 py-3">
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="bg-surface-muted/40 text-left text-xs uppercase tracking-wide text-text-muted">
+                <tr>
+                  <th className="w-12 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all unassigned students"
+                      checked={allSelected}
+                      onChange={(event) =>
+                        setSelectedIds(
+                          event.target.checked ? students.map((item) => item.id) : [],
+                        )
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-3">Student</th>
+                  <th className="px-4 py-3">Admission number</th>
+                  <th className="px-4 py-3">Academic level</th>
+                  <th className="px-4 py-3">Current class</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {students.map((student) => (
+                  <tr key={student.id}>
+                    <td className="px-4 py-3">
                       <input
                         type="checkbox"
-                        aria-label="Select all unassigned students"
-                        checked={allSelected}
+                        checked={selectedIds.includes(student.id)}
+                        aria-label={`Select ${displayName(student)}`}
                         onChange={(event) =>
-                          setSelectedIds(event.target.checked ? students.map((item) => item.id) : [])
+                          toggleStudent(student.id, event.target.checked)
                         }
                       />
-                    </th>
-                    <th className="px-4 py-3">Student</th>
-                    <th className="px-4 py-3">Admission number</th>
-                    <th className="px-4 py-3">Academic level</th>
-                    <th className="px-4 py-3">Current class</th>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-text">
+                      {displayName(student)}
+                    </td>
+                    <td className="px-4 py-3 text-text-muted">
+                      {student.admission_number || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-text-muted">
+                      {student.academic_level_name ||
+                        levelOptions.find((item) => item.value === levelId)?.label ||
+                        "—"}
+                    </td>
+                    <td className="px-4 py-3 text-text-muted">Unassigned</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {students.map((student) => (
-                    <tr key={student.id}>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(student.id)}
-                          aria-label={`Select ${displayName(student)}`}
-                          onChange={(event) => toggleStudent(student.id, event.target.checked)}
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-text">{displayName(student)}</td>
-                      <td className="px-4 py-3 text-text-muted">{student.admission_number || "—"}</td>
-                      <td className="px-4 py-3 text-text-muted">{student.academic_level_name || levelOptions.find((item) => item.value === levelId)?.label || "—"}</td>
-                      <td className="px-4 py-3 text-text-muted">Unassigned</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </div>
-    </DashboardLayout>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
