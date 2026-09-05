@@ -113,14 +113,26 @@ export const studentService = {
 
   updateAdminStudent: patchAdminStudent,
 
-  getEnrollmentHistory: (studentId) =>
-    api.get(`/tenant-admin/students/${studentId}/enrollments`),
+  getPlacementHistory: (studentId) =>
+    api.get(`/tenant-admin/students/${studentId}/placement-history`),
 
-  changeStudentClass: (studentId, payload) =>
-    api.post(`/tenant-admin/students/${studentId}/class-change`, payload),
+  placeStudents: (payload) =>
+    api.post("/tenant-admin/students/class-placement", payload),
 
-  assignClassBatch: (payload) =>
-    api.post("/tenant-admin/students/batch-class-assignment", payload),
+  previewPlacementImpact: (studentId, payload) =>
+    api.post(
+      `/tenant-admin/students/${studentId}/placement-impact-preview`,
+      payload,
+    ),
+
+  reassignStudentClass: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/reassign-class`, payload),
+
+  reassignStudentAcademicLevel: (studentId, payload) =>
+    api.post(
+      `/tenant-admin/students/${studentId}/reassign-academic-level`,
+      payload,
+    ),
 
   suspendStudent: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/suspend`, payload),
