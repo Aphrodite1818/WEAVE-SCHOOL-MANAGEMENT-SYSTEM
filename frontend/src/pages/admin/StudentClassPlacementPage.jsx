@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Search, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Users,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import EmptyState from "../../components/shared/EmptyState";
@@ -17,6 +24,8 @@ import {
 import { parseApiError } from "../../services/api";
 import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
+
+const PAGE_SIZE = 100;
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -52,6 +61,8 @@ function StudentClassPlacementPage() {
   const [levels, setLevels] = useState([]);
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [sessionId, setSessionId] = useState("");
   const [levelId, setLevelId] = useState("");
   const [targetClassId, setTargetClassId] = useState("");
@@ -92,10 +103,15 @@ function StudentClassPlacementPage() {
   }, []);
 
   useEffect(() => {
+    setPage(1);
+  }, [levelId, search, sessionId]);
+
+  useEffect(() => {
     setSelectedIds([]);
-    setTargetClassId("");
+    setTargetClassId((current) => (page === 1 ? "" : current));
     if (!sessionId || !levelId) {
       setStudents([]);
+      setTotal(0);
       return;
     }
     let active = true;
@@ -106,10 +122,13 @@ function StudentClassPlacementPage() {
         unassignedClass: true,
         status: "active",
         search: search.trim() || undefined,
-        limit: 100,
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
       })
       .then((response) => {
-        if (active) setStudents(asItems(response).filter((student) => !student.class_id));
+        if (!active) return;
+        setStudents(asItems(response).filter((student) => !student.class_id));
+        setTotal(Number(response?.total || 0));
       })
       .catch((requestError) => {
         if (active) {
@@ -122,7 +141,7 @@ function StudentClassPlacementPage() {
     return () => {
       active = false;
     };
-  }, [levelId, search, sessionId]);
+  }, [levelId, page, search, sessionId]);
 
   const levelOptions = useMemo(
     () => levels.map((item) => ({ value: item.id, label: item.name })),
@@ -139,6 +158,7 @@ function StudentClassPlacementPage() {
         .map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes, levelId],
   );
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const allSelected =
     students.length > 0 && students.every((item) => selectedIds.includes(item.id));
 
@@ -160,11 +180,18 @@ function StudentClassPlacementPage() {
         target_class_id: targetClassId,
         student_ids: selectedIds,
       });
-      showSuccess(`${result.placed_count ?? selectedIds.length} students placed successfully.`);
-      setStudents((current) =>
-        current.filter((student) => !selectedIds.includes(student.id)),
-      );
+      const placedCount = Number(result.placed_count ?? selectedIds.length);
+      showSuccess(`${placedCount} students placed successfully.`);
+      const entirePagePlaced = selectedIds.length >= students.length && students.length > 0;
+      setTotal((current) => Math.max(0, current - placedCount));
       setSelectedIds([]);
+      if (entirePagePlaced && page > 1) {
+        setPage((current) => Math.max(1, current - 1));
+      } else {
+        setStudents((current) =>
+          current.filter((student) => !selectedIds.includes(student.id)),
+        );
+      }
     } catch (requestError) {
       showError(parseApiError(requestError, "Failed to place selected students.").message);
     } finally {
@@ -245,13 +272,13 @@ function StudentClassPlacementPage() {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-primary" />
             <div>
               <p className="font-semibold text-text">Unassigned students</p>
               <p className="text-xs text-text-muted">
-                Only students in the selected academic level with no class are shown.
+                {total} matching student{total === 1 ? "" : "s"}. Select students on this page and place them into one class.
               </p>
             </div>
           </div>
@@ -296,7 +323,7 @@ function StudentClassPlacementPage() {
                   <th className="w-12 px-4 py-3">
                     <input
                       type="checkbox"
-                      aria-label="Select all unassigned students"
+                      aria-label="Select all unassigned students on this page"
                       checked={allSelected}
                       onChange={(event) =>
                         setSelectedIds(
@@ -342,6 +369,32 @@ function StudentClassPlacementPage() {
             </table>
           </div>
         )}
+
+        {total > PAGE_SIZE ? (
+          <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-text-muted sm:px-5">
+            <span>Page {page} of {pageCount}</span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="small"
+                variant="outline"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                <ChevronLeft className="h-4 w-4" /> Previous
+              </Button>
+              <Button
+                type="button"
+                size="small"
+                variant="outline"
+                disabled={page >= pageCount || loading}
+                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+              >
+                Next <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Card>
     </div>
   );
