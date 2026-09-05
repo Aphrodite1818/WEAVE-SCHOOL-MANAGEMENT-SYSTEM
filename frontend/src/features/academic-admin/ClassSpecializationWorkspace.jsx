@@ -61,7 +61,12 @@ export default function ClassSpecializationWorkspace({ levels, availability }) {
   useEffect(() => { load(); return () => { generation.current += 1; }; }, [load]);
   useEffect(() => { setSelected([]); setDepartmentId(""); setFeedback(""); }, [termId, levelId]);
   const term = terms.find((row) => row.id === termId);
-  const visible = rows.filter((row) => !levelId || row.academic_level_id === levelId);
+  const specializationLevelIds = new Set(levels.map((row) => row.id));
+  const visible = rows.filter(
+    (row) =>
+      specializationLevelIds.has(row.academic_level_id) &&
+      (!levelId || row.academic_level_id === levelId),
+  );
   const editable = ["draft", "open"].includes(String(term?.status).toLowerCase());
   const optionsFor = (id) => (availability[String(id)] || []).filter((row) => row.is_active && !row.archived_at).map((row) => ({ value: row.id, label: row.department_name }));
   // Term names order the copy choices even before draft dates are configured.
@@ -110,7 +115,7 @@ export default function ClassSpecializationWorkspace({ levels, availability }) {
       <div className="grid gap-3 sm:grid-cols-3">
         <SelectControl label="Academic session" value={sessionId} options={sessions.map((row) => ({ value: row.id, label: row.name }))} onChange={(id) => { setSessionId(id); setTermId(terms.find((row) => row.academic_session_id === id)?.id || ""); setSourceId(""); }} />
         <SelectControl label="Academic term" value={termId} options={terms.filter((row) => row.academic_session_id === sessionId).map((row) => ({ value: row.id, label: `${row.name.replaceAll("_", " ")} · ${row.status}` }))} onChange={(id) => { setTermId(id); setSourceId(""); }} />
-        <SelectControl label="Academic level" value={levelId} options={levels.map((row) => ({ value: row.id, label: row.name }))} onChange={setLevelId} placeholder="All levels" clearable />
+        <SelectControl label="Academic level" value={levelId} options={levels.map((row) => ({ value: row.id, label: row.name }))} onChange={setLevelId} placeholder="All specialization levels" clearable />
       </div>
       {error ? <div role="alert" className="whitespace-pre-line text-sm text-error">{error}<Button type="button" variant="outline" onClick={load}>Refresh state</Button></div> : null}
       {contextError ? <div role="alert" className="text-sm text-error">{contextError}<Button type="button" variant="outline" onClick={() => setContextAttempt((value) => value + 1)}>Retry sessions and terms</Button></div> : null}

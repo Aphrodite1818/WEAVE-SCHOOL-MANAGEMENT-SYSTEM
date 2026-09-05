@@ -5,6 +5,11 @@ export const categorySupportsDepartments = (categoryOptions, category) =>
     (option) => option?.value === category && Boolean(option?.supports_departments),
   );
 
+export const levelSupportsSpecialization = (level) => {
+  const position = Number(level?.specialization_required_from_term_position);
+  return Number.isInteger(position) && position >= 1 && position <= 3;
+};
+
 export const supportsDepartmentWorkflow = (categoryOptions) =>
   asArray(categoryOptions).some((option) => Boolean(option?.supports_departments));
 

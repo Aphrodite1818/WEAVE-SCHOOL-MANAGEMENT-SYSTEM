@@ -1,6 +1,5 @@
 import ClassSpecializationWorkspace from "./ClassSpecializationWorkspace";
 import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
-import { Building2, Link2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
@@ -12,11 +11,11 @@ import { departmentService } from "../../services/departmentService";
 import {
   FormActions,
   Input,
-  RecordList,
   SelectControl,
   WorkspaceGrid,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
+import { levelSupportsSpecialization } from "./academicDepartmentCapability";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
 const items = (value) => (Array.isArray(value) ? value : value?.items || []);
@@ -85,7 +84,9 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     const allowed = new Set(
       categories.filter((row) => row.supports_departments).map((row) => row.value),
     );
-    return levels.filter((row) => allowed.has(row.category));
+    return levels.filter(
+      (row) => allowed.has(row.category) && levelSupportsSpecialization(row),
+    );
   }, [categories, levels]);
 
   const levelDepartments = useMemo(
@@ -185,7 +186,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     () => levelDepartments.filter((row) => lifecycleStatus(row) === "active"),
     [levelDepartments],
   );
-  const selectedLevel = levels.find((row) => row.id === levelId) || null;
+  const selectedLevel = eligibleLevels.find((row) => row.id === levelId) || null;
   const curriculumSubjects = levelCurriculum?.subjects || [];
   const saveDepartment = async (event) => {
     event.preventDefault();
@@ -498,50 +499,6 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
               </div>
             )}
           </WorkspacePanel>
-          <RecordList
-            title="Level availability"
-            description="Each department-enabled academic level shows its department mappings directly."
-            items={eligibleLevels}
-            emptyIcon={Link2}
-            emptyTitle="No department-enabled levels"
-            emptyDescription="Configure a department-enabled academic category before assigning departments."
-            renderTitle={(row) => row.name}
-            renderMeta={(row) => {
-              const mappings = levelDepartmentsByLevel[String(row.id)] || [];
-              return `${mappings.length} department${mappings.length === 1 ? "" : "s"} assigned`;
-            }}
-            renderDescription={(row) => {
-              const mappings = levelDepartmentsByLevel[String(row.id)] || [];
-              if (!mappings.length) return "No departments assigned to this academic level.";
-              return mappings
-                .map((mapping) => {
-                  const status = lifecycleStatus(mapping);
-                  const label = mapping.department_name || "Department";
-                  return status === "active" ? label : `${label} (${status})`;
-                })
-                .join(" · ");
-            }}
-            renderActions={(row) => {
-              const mappings = levelDepartmentsByLevel[String(row.id)] || [];
-              if (!mappings.length) return null;
-              return (
-                <div className="grid gap-2">
-                  {mappings.map((mapping) => (
-                    <div
-                      key={mapping.id}
-                      className="flex flex-wrap items-center justify-end gap-2"
-                    >
-                      <span className="text-xs font-semibold text-text-muted">
-                        {mapping.department_name || "Department"}
-                      </span>
-                      {lifecycleButtons(mapping, "level", row.id)}
-                    </div>
-                  ))}
-                </div>
-              );
-            }}
-            showInspector={false}
-          />
           <TypedConfirmationDialog open={Boolean(pendingAction)} title={actionConfig?.[0]} description="Existing curriculum and term references are protected. Resolve any blockers before changing availability." confirmationText={actionConfig?.[1] || ""} confirmLabel={actionConfig?.[2]} isLoading={Boolean(saving)} onConfirm={runLifecycle} onCancel={() => setPendingAction(null)} />
         </div>}
       />
@@ -549,7 +506,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   }
 
   if (activeTab === "placements") {
-    return <div className="space-y-4">{loadFeedback}<ClassSpecializationWorkspace levels={levels} availability={levelDepartmentsByLevel} /></div>;
+    return <div className="space-y-4">{loadFeedback}<ClassSpecializationWorkspace levels={eligibleLevels} availability={levelDepartmentsByLevel} /></div>;
   }
 
   return (
@@ -582,9 +539,9 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
           ) : null
         }
         content={
-          <RecordList
-            title="Department pool"
-            description="Create each specialization once for the school, then make it available to the academic levels that use it."
+          <WorkspacePanel
+            title="Department catalog"
+            description="Create each specialization once for the school, then make it available only to levels that actually specialize."
             actions={
               !editorOpen ? (
                 <Button
@@ -599,28 +556,71 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
                 </Button>
               ) : null
             }
-            items={departments}
-            loading={loading}
-            error={loadError}
-            onRetry={retryLoading}
-            emptyIcon={Building2}
-            emptyTitle="No departments"
-            emptyDescription="Create the first school-wide department definition."
-            renderTitle={(row) => row.name}
-            renderMeta={() => "School-wide department"}
-            recordLabel="Department"
-            detailsLabel="Available levels"
-            renderDescription={(row) => eligibleLevels.filter((level) => (levelDepartmentsByLevel[String(level.id)] || []).some((link) => link.department_id === row.id && link.is_active && !link.archived_at)).map((level) => level.name).join(", ") || "No levels configured"}
-            renderStatus={lifecycleStatus}
-            showInspector={!editorOpen}
-            onEdit={(row) => {
-              setEditing(row);
-              setName(row.name);
-              setEditorOpen(true);
-            }}
-            canEdit={(row) => !row.archived_at}
-            renderActions={(row) => lifecycleButtons(row, "pool")}
-          />
+          >
+            {loadFeedback}
+            {!loading && !loadError && departments.length === 0 ? (
+              <p className="text-sm text-text-muted">
+                No departments yet. Create the first school-wide specialization.
+              </p>
+            ) : null}
+            {departments.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="p-3">Department</th>
+                      <th className="p-3">Available in</th>
+                      <th className="p-3">Status</th>
+                      <th className="p-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {departments.map((row) => {
+                      const availableIn = eligibleLevels
+                        .filter((level) =>
+                          (levelDepartmentsByLevel[String(level.id)] || []).some(
+                            (link) =>
+                              link.department_id === row.id &&
+                              link.is_active &&
+                              !link.archived_at,
+                          ),
+                        )
+                        .map((level) => level.name);
+                      const status = lifecycleStatus(row);
+                      return (
+                        <tr key={row.id} className="border-b border-border/70 last:border-b-0">
+                          <td className="p-3 font-semibold text-text">{row.name}</td>
+                          <td className="p-3 text-text-muted">
+                            {availableIn.length ? availableIn.join(", ") : "No specialization levels"}
+                          </td>
+                          <td className="p-3 capitalize text-text-muted">{status}</td>
+                          <td className="p-3">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {!row.archived_at ? (
+                                <Button
+                                  type="button"
+                                  size="small"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditing(row);
+                                    setName(row.name);
+                                    setEditorOpen(true);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              ) : null}
+                              {lifecycleButtons(row, "pool")}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </WorkspacePanel>
         }
       />
       <TypedConfirmationDialog
