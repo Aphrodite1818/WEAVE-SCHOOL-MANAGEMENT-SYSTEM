@@ -1,3 +1,4 @@
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -6,19 +7,24 @@ import pytest
 
 from app.core.exceptions import BadRequestException
 from app.modules.report_cards.models import ReportCardStatus
+from app.modules.report_cards.ranking_policy import _dense_rank
 from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards.schemas import ReportCardGenerateRequest
 from app.modules.report_cards.service import ReportCardService
 from app.modules.students.repository import StudentRepository
 
 
-def test_dense_rank_preserves_ties_without_mutating_published_snapshots():
+def test_dense_rank_preserves_ties_without_touching_published_snapshots():
     first = uuid4()
     second = uuid4()
     third = uuid4()
 
-    ranks = ReportCardService._dense_rank(
-        [(first, 90), (second, 90), (third, 75)]
+    ranks = _dense_rank(
+        [
+            (first, Decimal("90")),
+            (second, Decimal("90")),
+            (third, Decimal("75")),
+        ]
     )
 
     assert ranks[first] == 1
@@ -115,9 +121,7 @@ async def test_archived_report_version_cannot_be_regenerated(monkeypatch):
     )
 
     with pytest.raises(BadRequestException, match="Archived report cards cannot be regenerated"):
-        await ReportCardService.regenerate(
-            SimpleNamespace(), actor, archived.id
-        )
+        await ReportCardService.regenerate(SimpleNamespace(), actor, archived.id)
 
 
 @pytest.mark.asyncio
