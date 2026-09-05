@@ -43,6 +43,20 @@ test("student directory keeps placement and reassignment responsibilities separa
   assert.match(placementPage, /placeStudents/);
 });
 
+test("class placement UI exposes only the current open session and paginates the unassigned roster", () => {
+  const source = readSource("pages", "admin", "StudentClassPlacementPage.jsx");
+
+  assert.match(source, /item\.is_current/);
+  assert.match(source, /toLowerCase\(\) === "open"/);
+  assert.match(source, /const PAGE_SIZE = 100/);
+  assert.match(source, /skip:\s*\(page - 1\) \* PAGE_SIZE/);
+  assert.match(source, /limit:\s*PAGE_SIZE/);
+  assert.match(source, /setPage\(1\)/);
+  assert.match(source, /setTargetClassId\(""\)/);
+  assert.match(source, /\[levelId, sessionId\]/);
+  assert.match(source, /\[search\]/);
+});
+
 test("report-card workspace uses authoritative readiness and audited teacher overrides", () => {
   const workspace = readSource(
     "features",
@@ -58,6 +72,33 @@ test("report-card workspace uses authoritative readiness and audited teacher ove
   assert.match(workspace, /principal_template_id/);
   assert.match(workspace, /Create replacement v/);
   assert.doesNotMatch(workspace, /generate_for_class/);
+});
+
+test("class report generation always uses the admins per-grade principal defaults", () => {
+  const workspace = readSource(
+    "features",
+    "academic-admin",
+    "ReportCardsWorkspace.jsx",
+  );
+
+  assert.match(workspace, /if \(generationTarget === "class"\)/);
+  assert.match(workspace, /payload\.apply_default_principal_template = true/);
+  assert.match(workspace, /Each ready student uses your default principal comment for their own calculated grade/);
+});
+
+test("individual principal comment choices are scoped to the students calculated grade", () => {
+  const workspace = readSource(
+    "features",
+    "academic-admin",
+    "ReportCardsWorkspace.jsx",
+  );
+
+  assert.match(workspace, /scaleIdByGrade/);
+  assert.match(workspace, /optionsForGradeId/);
+  assert.match(workspace, /grading_scale_ids/);
+  assert.match(workspace, /selectedStudentGradeId/);
+  assert.match(workspace, /principalEditorGradeId/);
+  assert.match(workspace, /Default for this grade/);
 });
 
 test("teacher navigation and guide expose comments but no score-entry authority", () => {
@@ -93,6 +134,7 @@ test("personal comment editors ask for text and one grade, never a template name
     assert.match(source, /is_default/);
     assert.match(source, /New comment/);
     assert.match(source, /Make default/);
+    assert.match(source, /default for this grade/i);
   }
 });
 
@@ -107,5 +149,19 @@ test("teacher student-comment picker is scoped to the calculated grade", () => {
   assert.match(source, /overall_grade/);
   assert.match(source, /grading_scale_ids/);
   assert.match(source, /Default suggestion/);
+  assert.match(source, /My Grade \$\{editor\.row\.overall_grade/);
   assert.doesNotMatch(source, /suggested_template\.name/);
+});
+
+test("teacher comment editor is read-only until academic results are ready", () => {
+  const source = readSource(
+    "pages",
+    "teacher",
+    "TeacherStudentCommentsPage.jsx",
+  );
+
+  assert.match(source, /disabled=\{!editor\.row\.academic_ready\}/);
+  assert.match(source, /older draft is preserved for review but remains read-only/);
+  assert.match(source, /!editor\.row\.academic_ready/);
+  assert.match(source, /finalized and locked/);
 });
