@@ -15,24 +15,14 @@ from app.config.logging import get_logger, resolve_log_level
 from app.config.sentry import flush_sentry, initialize_sentry
 from app.config.settings import settings
 from app.core.cache.redis import close_redis, connect_redis, redis_health_check
-from app.core.exception_handlers import register_exception_handlers
 from app.core.dependencies.route_guards import get_current_superadmin
-from app.modules.superadmin.models import SuperAdmin
-from app.core.middleware.cookie_request_protection import (
-    CookieRequestProtectionMiddleware,
-)
+from app.core.exception_handlers import register_exception_handlers
+from app.core.middleware.cookie_request_protection import CookieRequestProtectionMiddleware
 from app.core.middleware.platform_lockdown import PlatformLockdownMiddleware
 from app.core.middleware.request_timing import RequestTimingMiddleware
 from app.core.middleware.security_headers import SecurityHeadersMiddleware
 from app.core.middleware.trusted_proxy import TrustedProxyHeadersMiddleware
 from app.core.runtime_config import router as runtime_config_router
-from app.modules.communications.router import (
-    messages_router,
-    notifications_router,
-    router as communication_router,
-    superadmin_announcement_router,
-    tenant_admin_announcement_router,
-)
 from app.modules.attendance.router import (
     parent_router as parent_attendance_router,
     student_router as student_attendance_router,
@@ -41,9 +31,22 @@ from app.modules.attendance.router import (
 )
 from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
+from app.modules.cbt.academics.router import router as cbt_academics_router
+from app.modules.cbt.auth.router import router as cbt_auth_router
+from app.modules.cbt.pairing.router import router as cbt_pairing_router
+from app.modules.cbt.sync.listener import cbt_sync_listener
+from app.modules.cbt.sync.router import router as cbt_sync_router
+from app.modules.cbt.sync.websocket_router import router as cbt_sync_websocket_router
 from app.modules.classes.academic_levels_router import router as academic_levels_router
 from app.modules.classes.departments_router import router as departments_router
 from app.modules.classes.router import router as class_router
+from app.modules.communications.router import (
+    messages_router,
+    notifications_router,
+    router as communication_router,
+    superadmin_announcement_router,
+    tenant_admin_announcement_router,
+)
 from app.modules.email_outbox.router import router as email_outbox_router
 from app.modules.legal_compliance.router import router as legal_compliance_router
 from app.modules.media.router import router as media_router
@@ -53,18 +56,20 @@ from app.modules.parents.router import router as parent_router
 from app.modules.realtime.broker import realtime_broker
 from app.modules.realtime.router import router as realtime_router
 from app.modules.report_cards.bulk_router import router as bulk_report_card_router
+from app.modules.report_cards.comment_router import (
+    admin_override_router as admin_teacher_comment_override_router,
+    admin_template_router as admin_comment_template_router,
+    teacher_comment_router,
+    teacher_template_router as teacher_comment_template_router,
+)
 from app.modules.report_cards.fixed_router import router as fixed_report_card_router
 from app.modules.report_cards.router import (
     parent_router as parent_report_card_router,
     student_router as student_report_card_router,
     tenant_admin_router as tenant_admin_report_card_router,
 )
-from app.modules.school_calendar.admin_router import (
-    router as school_calendar_admin_router,
-)
-from app.modules.school_calendar.shared_router import (
-    router as school_calendar_shared_router,
-)
+from app.modules.school_calendar.admin_router import router as school_calendar_admin_router
+from app.modules.school_calendar.shared_router import router as school_calendar_shared_router
 from app.modules.search.router import router as tenant_search_router
 from app.modules.setup_assistant.router import router as setup_assistant_router
 from app.modules.student_academics.assessment_config_router import (
@@ -72,53 +77,38 @@ from app.modules.student_academics.assessment_config_router import (
     student_router as assessment_student_router,
     teacher_router as assessment_teacher_router,
 )
+from app.modules.student_academics.bulk_results_router import admin_router as bulk_results_admin_router
 from app.modules.student_academics.curriculum_router import router as curriculum_router
-from app.modules.student_academics.bulk_results_router import (
-    admin_router as bulk_results_admin_router,
-)
-from app.modules.student_academics.grading_readiness_router import (
-    router as grading_readiness_router,
-)
+from app.modules.student_academics.grading_readiness_router import router as grading_readiness_router
 from app.modules.student_academics.grading_scale_lifecycle_router import (
     router as grading_scale_lifecycle_router,
 )
-from app.modules.student_academics.open_session_config_router import (
-    router as open_session_config_router,
-)
+from app.modules.student_academics.open_session_config_router import router as open_session_config_router
 from app.modules.student_academics.router import (
     parent_router as parent_academic_router,
     student_router as student_academic_router,
     teacher_router as teacher_academic_router,
     tenant_admin_router as tenant_admin_academic_router,
 )
-from app.modules.student_academics.session_closure_router import (
-    router as session_closure_router,
-)
-from app.modules.student_academics.write_guard import (
-    ensure_admin_academic_write_window,
-)
+from app.modules.student_academics.session_closure_router import router as session_closure_router
+from app.modules.student_academics.write_guard import ensure_admin_academic_write_window
+from app.modules.students.placement_router import router as student_placement_router
 from app.modules.students.router import router as student_router
 from app.modules.subjects.router import router as subject_router
 from app.modules.subscriptions.router import router as subscriptions_router
-from app.modules.user_guides.router import router as user_guides_router
-from app.modules.superadmin.router import router as superadmin_router
 from app.modules.superadmin.bootstrap import SuperadminBootstrapService
+from app.modules.superadmin.models import SuperAdmin
+from app.modules.superadmin.router import router as superadmin_router
 from app.modules.teachers.router import router as teacher_router
 from app.modules.tenant_admins.router import router as tenant_admin_router
 from app.modules.tenant_branding.router import (
     router as tenant_branding_router,
     workspace_router as workspace_branding_router,
 )
+from app.modules.user_guides.router import router as user_guides_router
 from app.tenant_management.router import router as tenant_router
-from app.modules.cbt.pairing.router import router as cbt_pairing_router
-from app.modules.cbt.auth.router import router as cbt_auth_router
-from app.modules.cbt.academics.router import router as cbt_academics_router
-from app.modules.cbt.sync.listener import cbt_sync_listener
-from app.modules.cbt.sync.router import router as cbt_sync_router
-from app.modules.cbt.sync.websocket_router import router as cbt_sync_websocket_router
 
 logger = get_logger(__name__)
-
 RouteKey = tuple[str, str]
 API_V1_PREFIX = settings.API_V1_PREFIX
 _TENANT_ADMIN_ACADEMIC_OVERRIDES: set[RouteKey] = {
@@ -145,24 +135,13 @@ def _exclude_overridden_routes(router: APIRouter, overrides: set[RouteKey]) -> N
 def _prepare_academic_routers() -> None:
     """Ensure aggregate academic routers do not duplicate canonical handlers."""
 
-    _exclude_overridden_routes(
-        tenant_admin_academic_router,
-        _TENANT_ADMIN_ACADEMIC_OVERRIDES,
-    )
-    _exclude_overridden_routes(
-        teacher_academic_router,
-        _TEACHER_ACADEMIC_OVERRIDES,
-    )
-    _exclude_overridden_routes(
-        student_academic_router,
-        _STUDENT_ACADEMIC_OVERRIDES,
-    )
+    _exclude_overridden_routes(tenant_admin_academic_router, _TENANT_ADMIN_ACADEMIC_OVERRIDES)
+    _exclude_overridden_routes(teacher_academic_router, _TEACHER_ACADEMIC_OVERRIDES)
+    _exclude_overridden_routes(student_academic_router, _STUDENT_ACADEMIC_OVERRIDES)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Manage shared application resources."""
-
     _ = app
     logger.info("Starting Weave API")
     await connect_redis()
@@ -197,7 +176,6 @@ async def _database_health_check() -> bool:
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
     initialize_sentry(service="api")
     register_metrics_cache_invalidation_events()
     _prepare_academic_routers()
@@ -211,7 +189,6 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.is_development else None,
         openapi_url="/openapi.json" if settings.is_development else None,
     )
-
     middleware_options: dict[str, Any] = {
         "allow_origins": settings.ALLOWED_ORIGINS,
         "allow_credentials": True,
@@ -220,7 +197,6 @@ def create_app() -> FastAPI:
     }
     if settings.is_development:
         middleware_options["allow_origin_regex"] = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
-
     app.add_middleware(PlatformLockdownMiddleware)
     app.add_middleware(CookieRequestProtectionMiddleware)
     app.add_middleware(RequestTimingMiddleware)
@@ -230,7 +206,6 @@ def create_app() -> FastAPI:
         strict_transport_security=settings.is_production_like,
     )
     app.add_middleware(CORSMiddleware, **middleware_options)
-    # Added last so forwarding headers are normalized before every other middleware.
     app.add_middleware(TrustedProxyHeadersMiddleware)
     register_exception_handlers(app)
 
@@ -242,6 +217,7 @@ def create_app() -> FastAPI:
         prefix=f"{API_V1_PREFIX}/tenant-admin",
         tags=["Tenant Admin"],
     )
+    app.include_router(student_placement_router, prefix=API_V1_PREFIX)
     app.include_router(media_router, prefix=f"{API_V1_PREFIX}/tenant-admin")
     app.include_router(tenant_branding_router, prefix=f"{API_V1_PREFIX}/tenant-admin")
     app.include_router(workspace_branding_router, prefix=API_V1_PREFIX)
@@ -264,7 +240,6 @@ def create_app() -> FastAPI:
     app.include_router(superadmin_announcement_router, prefix=API_V1_PREFIX)
     app.include_router(tenant_admin_announcement_router, prefix=API_V1_PREFIX)
     app.include_router(metrics_router, prefix=API_V1_PREFIX)
-
     app.include_router(assessment_teacher_router, prefix=API_V1_PREFIX)
     app.include_router(curriculum_router, prefix=API_V1_PREFIX)
     app.include_router(assessment_student_router, prefix=API_V1_PREFIX)
@@ -284,7 +259,6 @@ def create_app() -> FastAPI:
     app.include_router(cbt_sync_websocket_router, prefix=f"{API_V1_PREFIX}/cbt")
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
-
     app.include_router(
         tenant_admin_academic_router,
         prefix=API_V1_PREFIX,
@@ -296,19 +270,30 @@ def create_app() -> FastAPI:
         dependencies=admin_write_guard,
     )
     app.include_router(
-        assessment_config_router, prefix=API_V1_PREFIX, dependencies=admin_write_guard
+        assessment_config_router,
+        prefix=API_V1_PREFIX,
+        dependencies=admin_write_guard,
     )
     app.include_router(
         grading_scale_lifecycle_router,
         prefix=API_V1_PREFIX,
         dependencies=admin_write_guard,
     )
-    app.include_router(
-        teacher_academic_router,
-        prefix=API_V1_PREFIX,
-    )
+    app.include_router(teacher_academic_router, prefix=API_V1_PREFIX)
     app.include_router(student_academic_router, prefix=API_V1_PREFIX)
     app.include_router(parent_academic_router, prefix=API_V1_PREFIX)
+    app.include_router(teacher_comment_router, prefix=API_V1_PREFIX)
+    app.include_router(teacher_comment_template_router, prefix=API_V1_PREFIX)
+    app.include_router(
+        admin_comment_template_router,
+        prefix=API_V1_PREFIX,
+        dependencies=admin_write_guard,
+    )
+    app.include_router(
+        admin_teacher_comment_override_router,
+        prefix=API_V1_PREFIX,
+        dependencies=admin_write_guard,
+    )
     app.include_router(fixed_report_card_router, prefix=API_V1_PREFIX)
     app.include_router(
         bulk_report_card_router,
