@@ -461,6 +461,7 @@ class AcademicCurriculumService:
                     tenant_id=tenant_id,
                     term=current_term,
                     acting_admin_id=None,
+                    transition_boundary=date.today(),
                 )
         await db.commit()
         await db.refresh(row)
@@ -786,6 +787,7 @@ class AcademicCurriculumService:
                 term=term,
                 acting_admin_id=admin_id,
                 class_ids={class_id},
+                transition_boundary=date.today(),
             )
         await db.commit()
         await db.refresh(row)
@@ -849,8 +851,10 @@ class AcademicCurriculumService:
             raise ConflictException(
                 "Specializations can only be copied within one academic session."
             )
-        if target.status in {AcademicTermStatus.CLOSING, AcademicTermStatus.CLOSED}:
-            raise ConflictException("Cannot copy specialization into a closing or closed term.")
+        if target.status != AcademicTermStatus.DRAFT:
+            raise ConflictException(
+                "Specializations can only be copied into a draft academic term."
+            )
         source_rows = list(
             (
                 await db.execute(
@@ -1092,6 +1096,7 @@ class AcademicCurriculumService:
                 tenant_id=tenant_id,
                 term=current_term,
                 acting_admin_id=admin_id,
+                transition_boundary=date.today(),
             )
         db.add(
             AcademicLifecycleAudit(
@@ -1249,13 +1254,9 @@ class AcademicCurriculumService:
         term: AcademicTerm,
         acting_admin_id: uuid.UUID | None,
         class_ids: set[uuid.UUID] | None = None,
+        transition_boundary: date | None = None,
     ) -> dict[str, int]:
-        """End assignments that are not academically eligible in the target term.
-
-        Existing assignments are never copied or guessed. Valid assignments continue
-        naturally across terms. Newly eligible subjects remain unassigned until an
-        administrator explicitly chooses a teacher.
-        """
+        """End started assignments that lose eligibility without rewriting scheduled history."""
 
         query = select(TeacherAssignment).where(
             TeacherAssignment.tenant_id == tenant_id,
@@ -1266,9 +1267,12 @@ class AcademicCurriculumService:
         if class_ids:
             query = query.where(TeacherAssignment.class_id.in_(class_ids))
         assignments = list((await db.execute(query.with_for_update())).scalars())
-        boundary = term.start_date or date.today()
-        ended = 0
+        boundary = transition_boundary or term.start_date or date.today()
+        if term.start_date is not None and boundary < term.start_date:
+            boundary = term.start_date
+
         cache: dict[uuid.UUID, set[uuid.UUID]] = {}
+        ineligible: list[TeacherAssignment] = []
         for assignment in assignments:
             eligible = cache.get(assignment.class_id)
             if eligible is None:
@@ -1283,12 +1287,34 @@ class AcademicCurriculumService:
                 except (ConflictException, NotFoundException):
                     eligible = set()
                 cache[assignment.class_id] = eligible
-            if assignment.curriculum_subject_id in eligible:
-                continue
+            if assignment.curriculum_subject_id not in eligible:
+                ineligible.append(assignment)
+
+        scheduled_conflicts = [
+            assignment
+            for assignment in ineligible
+            if assignment.effective_from >= boundary
+        ]
+        if scheduled_conflicts:
+            raise ConflictException(
+                "A scheduled teacher assignment would become ineligible at this academic transition. "
+                "Remove or reschedule it explicitly before changing the specialization context.",
+                payload={
+                    "code": "SCHEDULED_TEACHER_ASSIGNMENT_CONFLICT",
+                    "transition_boundary": boundary.isoformat(),
+                    "dependency_counts": {
+                        "scheduled_teacher_assignments": len(scheduled_conflicts)
+                    },
+                    "teacher_assignment_ids": [
+                        str(assignment.id) for assignment in scheduled_conflicts
+                    ],
+                },
+            )
+
+        ended = 0
+        for assignment in ineligible:
             previous_state = assignment.state.value
             effective_to = boundary - timedelta(days=1)
-            if effective_to < assignment.effective_from:
-                effective_to = assignment.effective_from
             assignment.effective_to = effective_to
             db.add(assignment)
             db.add(

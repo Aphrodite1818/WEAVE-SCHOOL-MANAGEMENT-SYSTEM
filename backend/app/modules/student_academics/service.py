@@ -248,86 +248,6 @@ class StudentAcademicService:
             if current_order > other_order and start_date <= term.start_date:
                 raise BadRequestException("Later terms must start after earlier terms.")
 
-    @staticmethod
-    async def _specialization_blockers_for_next_term(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        term: AcademicTerm,
-    ) -> tuple[dict[str, int], list[str]]:
-        """Require specialization on the class, never on individual students."""
-        terms = list(
-            (
-                await db.execute(
-                    select(AcademicTerm).where(
-                        AcademicTerm.tenant_id == tenant_id,
-                        AcademicTerm.academic_session_id == term.academic_session_id,
-                    )
-                )
-            ).scalars()
-        )
-        current_position = StudentAcademicService._TERM_ORDER[term.name]
-        later_terms = [
-            row for row in terms if StudentAcademicService._TERM_ORDER[row.name] > current_position
-        ]
-        if not later_terms:
-            return {"students_missing_department": 0}, []
-        next_term = min(later_terms, key=lambda row: StudentAcademicService._TERM_ORDER[row.name])
-        next_position = StudentAcademicService._TERM_ORDER[next_term.name]
-        levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, active_only=True)
-        required_levels = {
-            level.id: level
-            for level in levels
-            if level.specialization_required_from_term_position is not None
-            and level.specialization_required_from_term_position <= next_position
-        }
-        if not required_levels:
-            return {"students_missing_department": 0}, []
-        enrollments = list(
-            (
-                await db.execute(
-                    select(StudentEnrollment)
-                    .join(Student, Student.id == StudentEnrollment.student_id)
-                    .where(
-                        StudentEnrollment.tenant_id == tenant_id,
-                        StudentEnrollment.academic_session_id == term.academic_session_id,
-                        StudentEnrollment.is_current.is_(True),
-                        StudentEnrollment.academic_level_id.in_(required_levels),
-                        Student.status == AcademicStatus.ACTIVE,
-                        Student.is_archived.is_(False),
-                    )
-                )
-            ).scalars()
-        )
-        class_ids = {row.class_id for row in enrollments if row.class_id is not None}
-        assigned_class_ids: set[uuid.UUID] = set()
-        if class_ids:
-            assigned_class_ids = set(
-                (
-                    await db.execute(
-                        select(ClassTermDepartmentAssignment.class_id).where(
-                            ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                            ClassTermDepartmentAssignment.academic_term_id == next_term.id,
-                            ClassTermDepartmentAssignment.class_id.in_(class_ids),
-                        )
-                    )
-                ).scalars()
-            )
-        missing_by_level: dict[uuid.UUID, int] = {}
-        for enrollment in enrollments:
-            if enrollment.class_id is None or enrollment.class_id not in assigned_class_ids:
-                missing_by_level[enrollment.academic_level_id] = (
-                    missing_by_level.get(enrollment.academic_level_id, 0) + 1
-                )
-        blockers = [
-            (
-                f"{count} {required_levels[level_id].name} students are in classes without "
-                f"a department for {next_term.name.value.replace('_', ' ').title()}."
-            )
-            for level_id, count in missing_by_level.items()
-        ]
-        return {"students_missing_department": sum(missing_by_level.values())}, blockers
-
     # ------------------------------------------------------------------
     # Session and term lifecycle
     # ------------------------------------------------------------------
@@ -546,14 +466,6 @@ class StudentAcademicService:
             )
             counts.update(contribution.get("counts", {}))
             blockers.extend(contribution.get("blockers", []))
-            (
-                specialization_counts,
-                specialization_blockers,
-            ) = await StudentAcademicService._specialization_blockers_for_next_term(
-                db, tenant_id=tenant_id, term=term
-            )
-            counts.update(specialization_counts)
-            blockers.extend(specialization_blockers)
         can_delete = (
             term.status == AcademicTermStatus.DRAFT
             and not term.is_current
@@ -844,7 +756,9 @@ class StudentAcademicService:
         from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
         from app.modules.school_calendar.service import SchoolCalendarService
 
-        await TermPlanEntitlementService.ensure_open_eligible(db, tenant_id, term.id)
+        entitlement = await TermPlanEntitlementService.ensure_open_eligible(
+            db, tenant_id, term.id
+        )
         readiness = await SchoolCalendarService.term_calendar_readiness(
             db, tenant_id=tenant_id, term_id=term.id
         )
@@ -892,6 +806,12 @@ class StudentAcademicService:
         term.closed_by_admin_id = None
         try:
             term = await StudentAcademicRepository.save_academic_term(db, term)
+            await TermPlanEntitlementService.mark_effective_for_open_term(
+                db,
+                tenant_id=tenant_id,
+                term=term,
+                entitlement=entitlement,
+            )
             await StudentAcademicService._record_academic_lifecycle(
                 db,
                 tenant_id=tenant_id,
@@ -908,6 +828,9 @@ class StudentAcademicService:
                 "Another academic term is currently open. Close it first."
             ) from exc
         await db.commit()
+        from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache
+
+        await invalidate_tenant_subscription_cache(tenant_id)
         return term
 
     @staticmethod

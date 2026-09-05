@@ -232,6 +232,14 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
             new=AsyncMock(),
         ),
         patch(
+            "app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.mark_effective_for_open_term",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.subscriptions.cache.invalidate_tenant_subscription_cache",
+            new=AsyncMock(),
+        ),
+        patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
             new=AsyncMock(return_value=term),
         ),

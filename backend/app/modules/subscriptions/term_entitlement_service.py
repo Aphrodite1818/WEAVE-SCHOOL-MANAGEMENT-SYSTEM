@@ -856,6 +856,43 @@ class TermPlanEntitlementService:
         return entitlement
 
     @staticmethod
+    async def mark_effective_for_open_term(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        term: AcademicTerm,
+        entitlement: TermPlanEntitlement,
+    ) -> None:
+        """Synchronize the legacy tenant plan snapshot only when a term becomes effective.
+
+        TermPlanEntitlement plus the current OPEN term remain authoritative for access.
+        tenant.plan is only a compatibility snapshot for remaining presentation/read paths.
+        """
+        if (
+            term.tenant_id != tenant_id
+            or term.status != AcademicTermStatus.OPEN
+            or not term.is_current
+        ):
+            raise ConflictException(
+                "A term entitlement can only become effective for the current open term."
+            )
+        if (
+            entitlement.tenant_id != tenant_id
+            or entitlement.academic_term_id != term.id
+            or entitlement.status != TermEntitlementStatus.ACTIVE
+        ):
+            raise ConflictException(
+                "The selected entitlement does not belong to the current open term."
+            )
+        tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
+        if tenant is None:
+            raise NotFoundException("Tenant not found.")
+        tenant.plan = coerce_subscription_plan(entitlement.plan_code)
+        tenant.initial_plan_intent = None
+        tenant.trial_ends_at = None
+        await db.flush()
+
+    @staticmethod
     async def close_for_term(
         db: AsyncSession,
         tenant_id: uuid.UUID,
