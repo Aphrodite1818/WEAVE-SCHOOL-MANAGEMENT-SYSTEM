@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -97,7 +97,7 @@ async def test_only_active_comment_for_grade_can_be_deleted_if_unused(monkeypatc
     await _delete_personal_comment(SimpleNamespace(), admin, current.id)
 
     delete_template.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         actor=admin,
         template_id=current.id,
     )
