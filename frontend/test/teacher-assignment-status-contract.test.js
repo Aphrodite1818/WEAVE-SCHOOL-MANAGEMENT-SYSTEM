@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
+// Existing coverage is owned by the eligible-class API; the workspace must not recreate it.
 const source = fs.readFileSync(
   new URL("../src/features/academic-admin/TeacherAssignmentsWorkspace.jsx", import.meta.url),
   "utf8",
