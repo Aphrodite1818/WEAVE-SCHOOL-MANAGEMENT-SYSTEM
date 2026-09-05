@@ -49,6 +49,7 @@ REMOVED_BACKEND_REFERENCES = (
     "StudentBatchClassAssignmentRequest",
     "StudentClassChangeRequest",
     "EnrollmentReportCardService",
+    "ReportCardCommentsUpdate",
 )
 
 REMOVED_TEST_IMPORTS = (
@@ -56,6 +57,7 @@ REMOVED_TEST_IMPORTS = (
     "import app.modules.students.enrollment_service",
     "from app.modules.report_cards.generation_service",
     "import app.modules.report_cards.generation_service",
+    "ReportCardCommentsUpdate",
 )
 
 
@@ -78,6 +80,13 @@ def test_removed_placement_request_symbols_are_not_reintroduced() -> None:
     assert hasattr(schemas, "StudentClassPlacementRequest")
     assert hasattr(schemas, "StudentClassReassignmentRequest")
     assert hasattr(schemas, "StudentAcademicLevelReassignmentRequest")
+
+
+def test_removed_report_card_comment_patch_schema_stays_removed() -> None:
+    schemas = importlib.import_module("app.modules.report_cards.schemas")
+
+    assert not hasattr(schemas, "ReportCardCommentsUpdate")
+    assert hasattr(schemas, "ReportCardPrincipalCommentUpdate")
 
 
 def test_backend_app_has_no_stale_placement_or_report_generation_references() -> None:
