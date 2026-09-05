@@ -22,6 +22,7 @@ export const academicWorkflowOrder = [
   "assignments",
   "school-calendar",
   "grading",
+  "comment-templates",
   "results",
   "report-cards",
   "progression",
@@ -195,6 +196,21 @@ export const academicWorkflowConfig = {
       { id: "inactive", label: "Inactive Rules" },
     ],
   },
+  "comment-templates": {
+    title: "Comment Templates",
+    shortTitle: "Comment Templates",
+    description:
+      "Manage your personal principal-comment templates and grade defaults without changing historical report text.",
+    icon: FileText,
+    tone: "accent",
+    defaultTab: "overview",
+    tabs: [
+      { id: "overview", label: "All Templates" },
+      { id: "active", label: "Active" },
+      { id: "inactive", label: "Inactive" },
+      { id: "archived", label: "Archived" },
+    ],
+  },
   results: {
     title: "Results Management",
     shortTitle: "Results",
@@ -323,6 +339,12 @@ export const academicWorkflowSummaryCards = [
     description: "Assessment and score rules",
     to: "/admin/academic/grading",
     icon: Ruler,
+  },
+  {
+    label: "Comment Templates",
+    description: "Personal principal comment wording",
+    to: "/admin/academic/comment-templates",
+    icon: FileText,
   },
   {
     label: "Results",
