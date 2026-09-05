@@ -17,6 +17,7 @@ from app.modules.cbt.academics.schemas import (
 from app.modules.classes.models import AcademicLevel, AcademicLevelStatus, ClassRoom
 from app.modules.student_academics.curriculum_models import Curriculum, CurriculumSubject
 from app.modules.student_academics.models import TeacherAssignment
+from app.modules.subjects.models import Subject
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.teachers.models import (
     TeacherAccount,
@@ -120,6 +121,7 @@ def project_teacher_assignment(
         .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
         .join(Curriculum, Curriculum.academic_level_id == ClassRoom.academic_level_id)
         .join(CurriculumSubject, CurriculumSubject.curriculum_id == Curriculum.id)
+        .join(Subject, Subject.id == CurriculumSubject.subject_id)
         .where(
             ClassRoom.tenant_id == tenant_id,
             ClassRoom.id == assignment.class_id,
@@ -131,6 +133,9 @@ def project_teacher_assignment(
             CurriculumSubject.tenant_id == tenant_id,
             CurriculumSubject.id == assignment.curriculum_subject_id,
             CurriculumSubject.is_active.is_(True),
+            Subject.tenant_id == tenant_id,
+            Subject.is_active.is_(True),
+            Subject.archived_at.is_(None),
         )
     ).first()
     if context is None:
