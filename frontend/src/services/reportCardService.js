@@ -1,11 +1,5 @@
 import { api } from "./api";
-import {
-  buildChangedPatch,
-  hasPatchChanges,
-  mergePatchResult,
-  rememberById,
-  rememberRecord,
-} from "./patchPayload";
+import { rememberById, rememberRecord } from "./patchPayload";
 
 const reportCardsById = new Map();
 
@@ -59,18 +53,12 @@ export const reportCardService = {
     );
     return rememberRecord(reportCardsById, response);
   },
-  updateReportCardComments: async (reportCardId, payload) => {
-    const key = String(reportCardId);
-    const current = reportCardsById.get(key);
-    const changes = buildChangedPatch(current, payload);
-    if (!hasPatchChanges(changes)) return current;
-
+  updatePrincipalComment: async (reportCardId, payload) => {
     const response = await api.patch(
-      `/tenant-admin/academic/report-cards/${reportCardId}/comments`,
-      changes,
+      `/tenant-admin/academic/report-cards/${reportCardId}/principal-comment`,
+      payload,
     );
-    reportCardsById.set(key, mergePatchResult(current, changes, response));
-    return response;
+    return rememberRecord(reportCardsById, response);
   },
   publishReportCard: async (reportCardId) => {
     const response = await api.post(
@@ -80,16 +68,25 @@ export const reportCardService = {
   },
 
   listMyReportCards: (params = {}, requestOptions) =>
-    api.get(`/students/me/academic/report-cards${queryString(params)}`, requestOptions),
+    api.get(
+      `/students/me/academic/report-cards${queryString(params)}`,
+      requestOptions,
+    ),
   getMyReportCard: (reportCardId, requestOptions) =>
-    api.get(`/students/me/academic/report-cards/${reportCardId}`, requestOptions),
+    api.get(
+      `/students/me/academic/report-cards/${reportCardId}`,
+      requestOptions,
+    ),
   listChildReportCards: (studentId, params = {}, requestOptions) =>
     api.get(
       `/parents/me/children/${studentId}/academic/report-cards${queryString(params)}`,
       requestOptions,
     ),
   getChildReportCard: (studentId, reportCardId, requestOptions) =>
-    api.get(`/parents/me/children/${studentId}/academic/report-cards/${reportCardId}`, requestOptions),
+    api.get(
+      `/parents/me/children/${studentId}/academic/report-cards/${reportCardId}`,
+      requestOptions,
+    ),
 };
 
 export default reportCardService;
