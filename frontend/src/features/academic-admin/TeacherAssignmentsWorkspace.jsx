@@ -62,6 +62,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [currentTerm, setCurrentTerm] = useState(null);
+  const [assignmentLevelId, setAssignmentLevelId] = useState("");
   const [curriculumSubjects, setCurriculumSubjects] = useState([]);
   const [eligibleClasses, setEligibleClasses] = useState([]);
   const [selectedClassIds, setSelectedClassIds] = useState([]);
@@ -121,10 +122,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             String(item.status || "").toLowerCase() === "open",
         ) || null,
       );
-      setForm((current) => ({
-        ...current,
-        class_id: current.class_id || nextClasses[0]?.id || "",
-      }));
+      setAssignmentLevelId((current) =>
+        current ||
+        nextClasses.find((item) => item.academic_level_id)?.academic_level_id ||
+        "",
+      );
     } catch (err) {
       const message = getErrorMessage(
         err,
@@ -161,47 +163,19 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     showError,
   ]);
 
-  const loadClassSubjects = useCallback(async () => {
-    if (!form.class_id || !currentTermId) {
+  const loadLevelSubjects = useCallback(async () => {
+    if (editingAssignmentId || !assignmentLevelId || !currentTermId) {
       setCurriculumSubjects([]);
       return;
     }
     try {
-      const [resolvedSubjects, currentResponse, scheduledResponse] =
-        await Promise.all([
-          curriculumService.getResolvedClassSubjects(form.class_id, currentTermId),
-          academicService.listTeacherAssignments({
-            class_id: form.class_id,
-            status: "current",
-            limit: 100,
-          }),
-          academicService.listTeacherAssignments({
-            class_id: form.class_id,
-            status: "scheduled",
-            limit: 100,
-          }),
-        ]);
-      const protectedAssignments = [
-        ...asItems(currentResponse),
-        ...asItems(scheduledResponse),
-      ];
-      const assignedSubjectIds = new Set(
-        protectedAssignments
-          .map((item) => item.curriculum_subject_id)
-          .filter(Boolean),
-      );
-
+      const response = await curriculumService.getCurriculum(assignmentLevelId);
       setCurriculumSubjects(
-        asItems(resolvedSubjects)
-          .filter((subject) => {
-            const available =
-              !assignedSubjectIds.has(subject.curriculum_subject_id) ||
-              subject.curriculum_subject_id === form.curriculum_subject_id;
-            return available;
-          })
+        (response?.subjects || [])
+          .filter((subject) => subject.is_active !== false && !subject.archived_at)
           .map((subject) => ({
             ...subject,
-            id: subject.curriculum_subject_id,
+            id: subject.id || subject.curriculum_subject_id,
           })),
       );
     } catch (err) {
@@ -209,16 +183,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       showError(
         getErrorMessage(
           err,
-          "Could not load subjects available to this class.",
+          "Could not load curriculum subjects for this academic level.",
         ),
       );
     }
-  }, [
-    currentTermId,
-    form.class_id,
-    form.curriculum_subject_id,
-    showError,
-  ]);
+  }, [assignmentLevelId, currentTermId, editingAssignmentId, showError]);
 
   useEffect(() => {
     loadBase();
@@ -229,8 +198,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   }, [loadAssignments]);
 
   useEffect(() => {
-    loadClassSubjects();
-  }, [loadClassSubjects]);
+    loadLevelSubjects();
+  }, [loadLevelSubjects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -246,15 +215,15 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           currentTermId,
         );
         if (cancelled) return;
-        const rows = asItems(response);
+        const rows = asItems(response).filter(
+          (item) => item.academic_level_id === assignmentLevelId,
+        );
         setEligibleClasses(rows);
         setSelectedClassIds((current) => {
           const selectable = new Set(
             rows.filter((item) => !item.already_assigned).map((item) => item.class_id),
           );
-          const retained = current.filter((id) => selectable.has(id));
-          if (retained.length) return retained;
-          return selectable.has(form.class_id) ? [form.class_id] : [];
+          return current.filter((id) => selectable.has(id));
         });
       } catch (err) {
         if (cancelled) return;
@@ -267,7 +236,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     return () => {
       cancelled = true;
     };
-  }, [currentTermId, editingAssignmentId, form.class_id, form.curriculum_subject_id, showError]);
+  }, [assignmentLevelId, currentTermId, editingAssignmentId, form.curriculum_subject_id, showError]);
 
   useEffect(() => {
     const nextStatus =
@@ -286,6 +255,17 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     if (activeTab !== "end") setEndingAssignmentId("");
   }, [activeTab]);
 
+  const levelOptions = useMemo(() => {
+    const byId = new Map();
+    classes.forEach((item) => {
+      if (!item.academic_level_id || byId.has(item.academic_level_id)) return;
+      byId.set(item.academic_level_id, {
+        value: item.academic_level_id,
+        label: item.academic_level_name || "Academic level",
+      });
+    });
+    return Array.from(byId.values());
+  }, [classes]);
   const classOptions = useMemo(
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes],
@@ -299,41 +279,30 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     () =>
       curriculumSubjects.map((item) => ({
         value: item.id,
-        label: [item.subject_name, item.subject_code]
+        label: [
+          item.subject_name,
+          item.subject_code,
+          item.is_elective ? "Elective" : null,
+        ]
           .filter(Boolean)
           .join(" · "),
       })),
     [curriculumSubjects],
   );
-  const eligibleClassGroups = useMemo(() => {
-    const groups = new Map();
-    eligibleClasses.forEach((item) => {
-      const key = item.academic_level_id;
-      const group = groups.get(key) || {
-        id: key,
-        label: item.academic_level_name,
-        items: [],
-      };
-      group.items.push(item);
-      groups.set(key, group);
-    });
-    return Array.from(groups.values());
-  }, [eligibleClasses]);
-
   const resetForm = () => {
     setEditingAssignmentId("");
     setReason("");
-    setForm((current) => ({
-      class_id: current.class_id,
+    setForm({
+      class_id: "",
       curriculum_subject_id: "",
       teacher_membership_id: "",
       effective_from: today(),
-    }));
+    });
     setSelectedClassIds([]);
   };
 
   const openAssignmentEditor = (item) => {
-    if (!item.is_active) return;
+    if (String(item.status || "").toLowerCase() !== "current") return;
     setReason("");
     setEditingAssignmentId(item.id);
     setForm({
@@ -354,7 +323,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       !editingAssignmentId &&
       (!form.curriculum_subject_id || !currentTerm?.id)
     ) {
-      showWarning("Select a class subject in the current open term.");
+      showWarning("Select an academic level and subject in the current open term.");
       return;
     }
     if (!editingAssignmentId && selectedClassIds.length === 0) {
@@ -390,7 +359,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       );
       resetForm();
       await loadAssignments();
-      await loadClassSubjects();
+      await loadLevelSubjects();
     } catch (err) {
       showError(getErrorMessage(err, "Could not save teacher assignment."));
     } finally {
@@ -421,7 +390,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       showSuccess("Assignment ended and retained in history.");
       setEndingAssignmentId("");
       await loadAssignments();
-      await loadClassSubjects();
+      await loadLevelSubjects();
     } catch (err) {
       showError(getErrorMessage(err, "Could not end assignment."));
     } finally {
@@ -480,28 +449,41 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       }
       description={
         currentTerm
-          ? "Choose a class to find its eligible subjects, then select a subject, a teacher and one or more eligible classes. Existing and scheduled assignments remain protected."
+          ? "Choose an academic level and subject, then assign a teacher to one or more eligible classes. Existing and scheduled assignments remain protected."
           : "Open an academic term before creating teacher assignments."
       }
     >
       <form className="space-y-3" onSubmit={saveAssignment}>
         <fieldset disabled={Boolean(saving)} className="space-y-3">
-          <SelectControl
-            label="Class"
-            value={form.class_id}
-            onChange={(value) =>
-              setForm((current) => ({
-                ...current,
-                class_id: value,
-                curriculum_subject_id: "",
-              }))
-            }
-            options={classOptions}
-            required
-            disabled={Boolean(editingAssignmentId)}
-          />
-          {!editingAssignmentId ? (
+          {editingAssignmentId ? (
+            <SelectControl
+              label="Class"
+              value={form.class_id}
+              options={classOptions}
+              required
+              disabled
+            />
+          ) : (
             <>
+              <SelectControl
+                label="Academic level"
+                value={assignmentLevelId}
+                onChange={(value) => {
+                  setAssignmentLevelId(value);
+                  setForm((current) => ({
+                    ...current,
+                    class_id: "",
+                    curriculum_subject_id: "",
+                  }));
+                  setSelectedClassIds([]);
+                }}
+                options={levelOptions}
+                placeholder={
+                  levelOptions.length ? "Select academic level" : "No active classes available"
+                }
+                required
+                disabled={!currentTerm || levelOptions.length === 0}
+              />
               <SelectControl
                 label="Subject"
                 value={form.curriculum_subject_id}
@@ -516,61 +498,74 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                 placeholder={
                   !currentTerm
                     ? "No current open term"
-                    : subjectOptions.length === 0
-                      ? "No unassigned subjects available to this class"
-                      : "Select subject"
+                    : !assignmentLevelId
+                      ? "Select academic level first"
+                      : subjectOptions.length === 0
+                        ? "No curriculum subjects available for this level"
+                        : "Select subject"
                 }
                 required
-                disabled={!currentTerm || subjectOptions.length === 0}
+                disabled={!currentTerm || !assignmentLevelId || subjectOptions.length === 0}
               />
               {form.curriculum_subject_id ? (
                 <fieldset className="space-y-3 rounded-xl border border-border p-3">
                   <legend className="px-1 text-sm font-medium text-text">
                     Eligible classes
                   </legend>
-                  <Button type="button" size="small" variant="outline" disabled={Boolean(saving)} onClick={() => setSelectedClassIds(eligibleClasses.filter((row) => !row.already_assigned).map((row) => row.class_id))}>Select all eligible classes</Button>
-                  {eligibleClassGroups.length ? (
-                    eligibleClassGroups.map((group) => (
-                      <div key={group.id} className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                          {group.label}
-                        </p>
-                        {group.items.map((item) => {
-                          const disabled = item.already_assigned || Boolean(saving);
-                          return (
-                            <label
-                              key={item.class_id}
-                              className="flex items-center gap-2 text-sm text-text"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedClassIds.includes(item.class_id)}
-                                disabled={disabled}
-                                onChange={(event) =>
-                                  setSelectedClassIds((current) =>
-                                    event.target.checked
-                                      ? [...current, item.class_id]
-                                      : current.filter((id) => id !== item.class_id),
-                                  )
-                                }
-                              />
-                              <span>
-                                {item.display_name}
-                                {item.department_name ? ` · ${item.department_name}` : ""}
-                                {disabled ? " · already assigned" : ""}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    ))
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outline"
+                    disabled={Boolean(saving)}
+                    onClick={() =>
+                      setSelectedClassIds(
+                        eligibleClasses
+                          .filter((row) => !row.already_assigned)
+                          .map((row) => row.class_id),
+                      )
+                    }
+                  >
+                    Select all eligible classes
+                  </Button>
+                  {eligibleClasses.length ? (
+                    <div className="space-y-2">
+                      {eligibleClasses.map((item) => {
+                        const disabled = item.already_assigned || Boolean(saving);
+                        return (
+                          <label
+                            key={item.class_id}
+                            className="flex items-center gap-2 text-sm text-text"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedClassIds.includes(item.class_id)}
+                              disabled={disabled}
+                              onChange={(event) =>
+                                setSelectedClassIds((current) =>
+                                  event.target.checked
+                                    ? [...current, item.class_id]
+                                    : current.filter((id) => id !== item.class_id),
+                                )
+                              }
+                            />
+                            <span>
+                              {item.display_name}
+                              {item.department_name ? ` · ${item.department_name}` : ""}
+                              {item.already_assigned ? " · already assigned" : ""}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   ) : (
-                    <p className="text-sm text-text-muted">No eligible classes.</p>
+                    <p className="text-sm text-text-muted">
+                      No eligible classes in this academic level.
+                    </p>
                   )}
-        </fieldset>
-            ) : null}
-          </>
-        ) : null}
+                </fieldset>
+              ) : null}
+            </>
+          )}
         <SelectControl
           label="Teacher"
           value={form.teacher_membership_id}
@@ -603,7 +598,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             disabled={
               saving === "assignment" ||
               (!editingAssignmentId &&
-                (!currentTerm || subjectOptions.length === 0 || selectedClassIds.length === 0))
+                (!currentTerm || !assignmentLevelId || subjectOptions.length === 0 || selectedClassIds.length === 0))
             }
           >
             {saving === "assignment"
@@ -708,8 +703,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                       {item.subject_code || "No subject code"}
                     </p>
                   </div>
-                  <Badge variant={item.is_active ? "success" : "error"}>
-                    {item.is_active ? "active" : "inactive"}
+                  <Badge variant={String(item.status || "").toLowerCase() === "current" ? "success" : String(item.status || "").toLowerCase() === "scheduled" ? "warning" : "default"}>
+                    {String(item.status || "ended").toLowerCase()}
                   </Badge>
                 </div>
                 <div className="mt-3 space-y-1 text-sm text-text-muted">
@@ -732,7 +727,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                   >
                     View
                   </Button>
-                  {item.is_active && activeTab === "reassign" ? (
+                  {String(item.status || "").toLowerCase() === "current" && activeTab === "reassign" ? (
                     <Button
                       type="button"
                       size="small"
@@ -742,7 +737,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                       Reassign teacher
                     </Button>
                   ) : null}
-                  {item.is_active && activeTab === "end" ? (
+                  {String(item.status || "").toLowerCase() === "current" && activeTab === "end" ? (
                     <Button
                       type="button"
                       size="small"
@@ -757,7 +752,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                       End assignment
                     </Button>
                   ) : null}
-                  {!item.is_active && activeTab === "history" ? (
+                  {String(item.status || "").toLowerCase() === "ended" && activeTab === "history" ? (
                     <Button
                       type="button"
                       size="small"
@@ -834,7 +829,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             </p>
             <p>Subject: {viewingAssignment.subject_name || "Subject"}</p>
             <p>Effective: {formatPeriod(viewingAssignment)}</p>
-            <p>Status: {viewingAssignment.is_active ? "active" : "ended"}</p>
+            <p>Status: {String(viewingAssignment.status || "ended").toLowerCase()}</p>
           </div>
         ) : null}
       </Modal>
