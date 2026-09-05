@@ -401,12 +401,6 @@ class StudentHardDeleteRequest(InputBase):
 # ---------------------------------------------------------------------------
 
 
-class StudentBatchClassAssignmentResponse(OutputBase):
-    updated_student_ids: list[uuid.UUID]
-    target_class_id: uuid.UUID
-    updated_count: int
-
-
 class StudentEnrollmentResponse(OutputBase):
     """Immutable student class-placement segment."""
 
