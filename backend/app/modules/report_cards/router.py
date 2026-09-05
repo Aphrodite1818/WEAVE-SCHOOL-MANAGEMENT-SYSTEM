@@ -15,8 +15,8 @@ from app.modules.parents.models import Parent
 from app.modules.report_cards.models import ReportCardStatus
 from app.modules.report_cards.print_service import ReportCardPrintService
 from app.modules.report_cards.schemas import (
-    ReportCardCommentsUpdate,
     ReportCardListResponse,
+    ReportCardPrincipalCommentUpdate,
     ReportCardResponse,
 )
 from app.modules.report_cards.service import ReportCardService
@@ -87,15 +87,9 @@ student_router = APIRouter(
     tags=["Student Report Cards"],
 )
 
-CurrentTenantAdmin: TypeAlias = Annotated[
-    TenantAdmin,
-    Depends(get_current_tenant_admin),
-]
+CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentParent: TypeAlias = Annotated[Parent, Depends(get_current_parent)]
-CurrentStudent: TypeAlias = Annotated[
-    Student,
-    Depends(get_current_onboarded_student),
-]
+CurrentStudent: TypeAlias = Annotated[Student, Depends(get_current_onboarded_student)]
 
 
 @tenant_admin_router.get("", response_model=ReportCardListResponse)
@@ -125,11 +119,7 @@ async def list_report_cards(
         skip=skip,
         limit=limit,
     )
-    await _apply_school_branding(
-        db,
-        tenant_id=current_admin.tenant_id,
-        cards=items,
-    )
+    await _apply_school_branding(db, tenant_id=current_admin.tenant_id, cards=items)
     return ReportCardListResponse(items=items, total=total)
 
 
@@ -142,17 +132,10 @@ async def get_report_card(
 ) -> ReportCardResponse:
     _prevent_report_card_cache(response)
     card = await ReportCardService.get(db, current_admin, report_card_id)
-    return await _brand_card(
-        db,
-        tenant_id=current_admin.tenant_id,
-        card=card,
-    )
+    return await _brand_card(db, tenant_id=current_admin.tenant_id, card=card)
 
 
-@tenant_admin_router.post(
-    "/{report_card_id}/regenerate",
-    response_model=ReportCardResponse,
-)
+@tenant_admin_router.post("/{report_card_id}/regenerate", response_model=ReportCardResponse)
 async def regenerate_report_card(
     report_card_id: UUID,
     db: DbSession,
@@ -163,60 +146,34 @@ async def regenerate_report_card(
         tenant_id=current_admin.tenant_id,
         feature=FeatureCode.REPORT_CARDS,
     )
-    card = await ReportCardService.regenerate(
-        db,
-        current_admin,
-        report_card_id,
-    )
-    return await _brand_card(
-        db,
-        tenant_id=current_admin.tenant_id,
-        card=card,
-    )
+    card = await ReportCardService.regenerate(db, current_admin, report_card_id)
+    return await _brand_card(db, tenant_id=current_admin.tenant_id, card=card)
 
 
 @tenant_admin_router.patch(
-    "/{report_card_id}/comments",
+    "/{report_card_id}/principal-comment",
     response_model=ReportCardResponse,
 )
-async def update_report_card_comments(
+async def update_principal_comment(
     report_card_id: UUID,
-    payload: ReportCardCommentsUpdate,
+    payload: ReportCardPrincipalCommentUpdate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ReportCardResponse:
-    card = await ReportCardService.update_comments(
-        db,
-        current_admin,
-        report_card_id,
-        payload,
+    card = await ReportCardService.update_principal_comment(
+        db, current_admin, report_card_id, payload
     )
-    return await _brand_card(
-        db,
-        tenant_id=current_admin.tenant_id,
-        card=card,
-    )
+    return await _brand_card(db, tenant_id=current_admin.tenant_id, card=card)
 
 
-@tenant_admin_router.post(
-    "/{report_card_id}/publish",
-    response_model=ReportCardResponse,
-)
+@tenant_admin_router.post("/{report_card_id}/publish", response_model=ReportCardResponse)
 async def publish_report_card(
     report_card_id: UUID,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> ReportCardResponse:
-    card = await ReportCardService.publish(
-        db,
-        current_admin,
-        report_card_id,
-    )
-    return await _brand_card(
-        db,
-        tenant_id=current_admin.tenant_id,
-        card=card,
-    )
+    card = await ReportCardService.publish(db, current_admin, report_card_id)
+    return await _brand_card(db, tenant_id=current_admin.tenant_id, card=card)
 
 
 @tenant_admin_router.get("/{report_card_id}/print", response_class=HTMLResponse)
@@ -226,30 +183,19 @@ async def print_report_card(
     current_admin: CurrentTenantAdmin,
 ) -> HTMLResponse:
     return HTMLResponse(
-        await ReportCardPrintService.render_html(
-            db,
-            current_admin,
-            report_card_id,
-        ),
+        await ReportCardPrintService.render_html(db, current_admin, report_card_id),
         headers=REPORT_CARD_HTML_HEADERS,
     )
 
 
-@tenant_admin_router.get(
-    "/{report_card_id}/download",
-    response_class=HTMLResponse,
-)
+@tenant_admin_router.get("/{report_card_id}/download", response_class=HTMLResponse)
 async def download_report_card(
     report_card_id: UUID,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> HTMLResponse:
     return HTMLResponse(
-        await ReportCardPrintService.render_html(
-            db,
-            current_admin,
-            report_card_id,
-        ),
+        await ReportCardPrintService.render_html(db, current_admin, report_card_id),
         headers=REPORT_CARD_HTML_HEADERS,
     )
 
@@ -271,11 +217,7 @@ async def list_child_report_cards(
         academic_session_id=academic_session_id,
         academic_term_id=academic_term_id,
     )
-    await _apply_school_branding(
-        db,
-        tenant_id=current_parent.tenant_id,
-        cards=items,
-    )
+    await _apply_school_branding(db, tenant_id=current_parent.tenant_id, cards=items)
     return ReportCardListResponse(items=items, total=total)
 
 
@@ -294,11 +236,7 @@ async def list_my_report_cards(
         academic_session_id=academic_session_id,
         academic_term_id=academic_term_id,
     )
-    await _apply_school_branding(
-        db,
-        tenant_id=current_student.tenant_id,
-        cards=items,
-    )
+    await _apply_school_branding(db, tenant_id=current_student.tenant_id, cards=items)
     return ReportCardListResponse(items=items, total=total)
 
 
@@ -311,11 +249,7 @@ async def get_my_report_card(
 ) -> ReportCardResponse:
     _prevent_report_card_cache(response)
     card = await ReportCardService.get(db, current_student, report_card_id)
-    return await _brand_card(
-        db,
-        tenant_id=current_student.tenant_id,
-        card=card,
-    )
+    return await _brand_card(db, tenant_id=current_student.tenant_id, card=card)
 
 
 @student_router.get("/{report_card_id}/print", response_class=HTMLResponse)
@@ -325,11 +259,7 @@ async def print_my_report_card(
     current_student: CurrentStudent,
 ) -> HTMLResponse:
     return HTMLResponse(
-        await ReportCardPrintService.render_html(
-            db,
-            current_student,
-            report_card_id,
-        ),
+        await ReportCardPrintService.render_html(db, current_student, report_card_id),
         headers=REPORT_CARD_HTML_HEADERS,
     )
 
@@ -346,11 +276,7 @@ async def get_child_report_card(
     card = await ReportCardService.get(db, current_parent, report_card_id)
     if card.student_id != student_id:
         raise ForbiddenException("Report card does not belong to this child.")
-    return await _brand_card(
-        db,
-        tenant_id=current_parent.tenant_id,
-        card=card,
-    )
+    return await _brand_card(db, tenant_id=current_parent.tenant_id, card=card)
 
 
 @parent_router.get("/{report_card_id}/print", response_class=HTMLResponse)
@@ -364,10 +290,6 @@ async def print_child_report_card(
     if card.student_id != student_id:
         raise ForbiddenException("Report card does not belong to this child.")
     return HTMLResponse(
-        await ReportCardPrintService.render_html(
-            db,
-            current_parent,
-            report_card_id,
-        ),
+        await ReportCardPrintService.render_html(db, current_parent, report_card_id),
         headers=REPORT_CARD_HTML_HEADERS,
     )
