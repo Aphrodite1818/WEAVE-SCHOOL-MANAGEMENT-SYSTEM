@@ -104,11 +104,15 @@ function StudentClassPlacementPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [levelId, search, sessionId]);
+    setTargetClassId("");
+  }, [levelId, sessionId]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   useEffect(() => {
     setSelectedIds([]);
-    setTargetClassId((current) => (page === 1 ? "" : current));
     if (!sessionId || !levelId) {
       setStudents([]);
       setTotal(0);
