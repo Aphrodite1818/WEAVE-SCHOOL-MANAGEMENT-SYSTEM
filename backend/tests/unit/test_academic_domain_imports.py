@@ -19,6 +19,8 @@ CANONICAL_MODULES = (
     "app.modules.students.placement_service",
     "app.modules.students.placement_router",
     "app.modules.students.academic_context_router",
+    "app.modules.tenant_admins.router",
+    "app.modules.student_academics.service",
     "app.modules.report_cards.comment_models",
     "app.modules.report_cards.comment_schemas",
     "app.modules.report_cards.comment_service",
@@ -27,6 +29,7 @@ CANONICAL_MODULES = (
     "app.modules.report_cards.ranking_policy",
     "app.modules.report_cards.repository",
     "app.modules.report_cards.service",
+    "app.modules.report_cards.model_events",
     "app.modules.report_cards.fixed_router",
     "app.modules.report_cards.router",
     "app.modules.report_cards.bulk_service",
@@ -34,6 +37,7 @@ CANONICAL_MODULES = (
     "app.modules.cbt.sync.projectors.students",
     "app.modules.cbt.sync.projectors.curriculum",
     "app.modules.cbt.sync.projectors.bootstrap",
+    "app.main",
 )
 
 
