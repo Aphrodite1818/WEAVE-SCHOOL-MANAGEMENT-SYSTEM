@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +41,14 @@ CANONICAL_MODULES = (
     "app.main",
 )
 
+REMOVED_BACKEND_REFERENCES = (
+    "app.modules.students.enrollment_service",
+    "app.modules.report_cards.generation_service",
+    "StudentBatchClassAssignmentRequest",
+    "StudentClassChangeRequest",
+    "EnrollmentReportCardService",
+)
+
 
 @pytest.mark.parametrize("module_name", CANONICAL_MODULES)
 def test_canonical_academic_modules_import(module_name: str) -> None:
@@ -60,3 +69,17 @@ def test_removed_placement_request_symbols_are_not_reintroduced() -> None:
     assert hasattr(schemas, "StudentClassPlacementRequest")
     assert hasattr(schemas, "StudentClassReassignmentRequest")
     assert hasattr(schemas, "StudentAcademicLevelReassignmentRequest")
+
+
+def test_backend_app_has_no_stale_placement_or_report_generation_references() -> None:
+    backend_root = Path(__file__).resolve().parents[2]
+    app_root = backend_root / "app"
+    offenders: list[str] = []
+
+    for path in app_root.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for removed in REMOVED_BACKEND_REFERENCES:
+            if removed in source:
+                offenders.append(f"{path.relative_to(backend_root)} -> {removed}")
+
+    assert offenders == [], "Stale academic imports/contracts remain:\n" + "\n".join(offenders)
