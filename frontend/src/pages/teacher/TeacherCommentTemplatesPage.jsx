@@ -1,5 +1,5 @@
+import { Archive, CheckCircle2, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Archive, Plus, Save, Trash2 } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
@@ -7,7 +7,6 @@ import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import Input from "../../components/ui/Input";
 import Modal from "../../components/ui/Modal";
 import { useToast } from "../../hooks/useToast";
 import { parseApiError } from "../../services/api";
@@ -21,7 +20,13 @@ const asItems = (response) =>
       : [];
 
 const gradeLabel = (scale) =>
-  `${scale.grade}${scale.remark ? ` · ${scale.remark}` : ""}`;
+  scale ? `${scale.grade}${scale.remark ? ` · ${scale.remark}` : ""}` : "Unknown grade";
+
+const templateGradeId = (template) => template?.grading_scale_ids?.[0] || "";
+const templateIsDefault = (template) => {
+  const gradeId = templateGradeId(template);
+  return Boolean(gradeId && template?.default_grading_scale_ids?.includes(gradeId));
+};
 
 function TeacherCommentTemplatesPage() {
   const { showSuccess, showError } = useToast();
@@ -65,68 +70,42 @@ function TeacherCommentTemplatesPage() {
   const openCreate = () =>
     setEditor({
       id: null,
-      name: "",
       text: "",
-      gradingScaleIds: [],
-      defaultGradingScaleIds: [],
+      gradingScaleId: gradingScales[0]?.id || "",
+      isDefault: false,
     });
 
   const openEdit = (template) =>
     setEditor({
       id: template.id,
-      name: template.name,
       text: template.text,
-      gradingScaleIds: template.grading_scale_ids || [],
-      defaultGradingScaleIds: template.default_grading_scale_ids || [],
+      gradingScaleId: templateGradeId(template),
+      isDefault: templateIsDefault(template),
     });
-
-  const toggleGrade = (scaleId, checked) => {
-    setEditor((current) => {
-      const gradingScaleIds = checked
-        ? [...new Set([...current.gradingScaleIds, scaleId])]
-        : current.gradingScaleIds.filter((id) => id !== scaleId);
-      return {
-        ...current,
-        gradingScaleIds,
-        defaultGradingScaleIds: current.defaultGradingScaleIds.filter((id) =>
-          gradingScaleIds.includes(id),
-        ),
-      };
-    });
-  };
-
-  const toggleDefault = (scaleId, checked) => {
-    setEditor((current) => ({
-      ...current,
-      gradingScaleIds: [...new Set([...current.gradingScaleIds, scaleId])],
-      defaultGradingScaleIds: checked
-        ? [...new Set([...current.defaultGradingScaleIds, scaleId])]
-        : current.defaultGradingScaleIds.filter((id) => id !== scaleId),
-    }));
-  };
 
   const save = async (event) => {
     event.preventDefault();
-    if (!editor?.name.trim() || !editor?.text.trim()) return;
+    if (!editor?.text.trim() || !editor?.gradingScaleId) return;
     setBusy(true);
-    const payload = {
-      name: editor.name.trim(),
-      text: editor.text.trim(),
-      grading_scale_ids: editor.gradingScaleIds,
-      default_grading_scale_ids: editor.defaultGradingScaleIds,
-    };
     try {
       if (editor.id) {
-        await reportCommentService.updateTeacherTemplate(editor.id, payload);
-        showSuccess("Template updated. Existing student comments were not changed.");
+        await reportCommentService.updateTeacherTemplate(editor.id, {
+          text: editor.text.trim(),
+          is_default: editor.isDefault,
+        });
+        showSuccess("Comment updated. Existing submitted student comments were not changed.");
       } else {
-        await reportCommentService.createTeacherTemplate(payload);
-        showSuccess("Personal teacher comment template created.");
+        await reportCommentService.createTeacherTemplate({
+          text: editor.text.trim(),
+          grading_scale_id: editor.gradingScaleId,
+          is_default: editor.isDefault,
+        });
+        showSuccess("Personal class-teacher comment saved for this grade.");
       }
       setEditor(null);
       await load();
     } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to save template.").message);
+      showError(parseApiError(requestError, "Failed to save comment.").message);
     } finally {
       setBusy(false);
     }
@@ -136,10 +115,23 @@ function TeacherCommentTemplatesPage() {
     setBusy(true);
     try {
       await reportCommentService.updateTeacherTemplate(template.id, { status });
-      showSuccess(status === "archived" ? "Template archived." : "Template status updated.");
+      showSuccess(status === "archived" ? "Comment archived." : "Comment status updated.");
       await load();
     } catch (requestError) {
-      showError(parseApiError(requestError, "Failed to update template status.").message);
+      showError(parseApiError(requestError, "Failed to update comment status.").message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const makeDefault = async (template) => {
+    setBusy(true);
+    try {
+      await reportCommentService.updateTeacherTemplate(template.id, { is_default: true });
+      showSuccess(`Default comment updated for Grade ${scaleById.get(templateGradeId(template))?.grade || ""}.`);
+      await load();
+    } catch (requestError) {
+      showError(parseApiError(requestError, "Failed to make this the default comment.").message);
     } finally {
       setBusy(false);
     }
@@ -149,13 +141,13 @@ function TeacherCommentTemplatesPage() {
     setBusy(true);
     try {
       await reportCommentService.deleteTeacherTemplate(template.id);
-      showSuccess("Unused template deleted.");
+      showSuccess("Unused comment deleted.");
       await load();
     } catch (requestError) {
       showError(
         parseApiError(
           requestError,
-          "This template is referenced historically and cannot be deleted. Deactivate or archive it instead.",
+          "This comment is referenced historically and cannot be deleted. Deactivate or archive it instead.",
         ).message,
       );
     } finally {
@@ -172,121 +164,219 @@ function TeacherCommentTemplatesPage() {
               My Comment Templates
             </h1>
             <p className="mt-1 text-sm text-text-muted">
-              Personal class-teacher wording mapped to the school grading scale. Templates never alter historical submitted comments.
+              Save the actual class-teacher comment for one grade. You can keep several comments for the same grade, with one personal default.
             </p>
           </div>
-          <Button type="button" onClick={openCreate} disabled={!canCreate}>
+          <Button
+            type="button"
+            onClick={openCreate}
+            disabled={!canCreate || gradingScales.length === 0}
+          >
             <Plus className="h-4 w-4" />
-            New template
+            New comment
           </Button>
         </div>
 
         {!canCreate && !loading ? (
           <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-800">
-            You are not currently assigned as a class teacher. Existing templates remain available for history, but new template creation and usage are disabled until you receive a class-teacher assignment.
+            You are not currently assigned as a class teacher. Existing comments remain preserved, but new comment creation and usage are disabled until you receive a class-teacher assignment.
           </div>
         ) : null}
 
         <label className="flex items-center gap-2 text-sm font-semibold text-text-soft">
-          <input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />
-          Include archived templates
+          <input
+            type="checkbox"
+            checked={includeArchived}
+            onChange={(event) => setIncludeArchived(event.target.checked)}
+          />
+          Include archived comments
         </label>
 
         {loading ? (
-          <LoadingState label="Loading personal templates..." />
+          <LoadingState label="Loading personal comments..." />
+        ) : gradingScales.length === 0 ? (
+          <Card className="p-6">
+            <EmptyState
+              title="No grading scale is available"
+              description="The school must configure grades before class teachers can save grade-linked comments."
+            />
+          </Card>
         ) : templates.length === 0 ? (
           <Card className="p-6">
-            <EmptyState title="No comment templates yet" description="Create reusable wording for grades you commonly comment on." />
+            <EmptyState
+              title="No saved comments yet"
+              description="Create reusable wording for grades you commonly comment on."
+            />
           </Card>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
-            {templates.map((template) => (
-              <Card key={template.id} className="p-4 sm:p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-semibold text-text">{template.name}</h2>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <Badge variant={template.status === "active" ? "success" : "default"}>{template.status}</Badge>
-                      {(template.grading_scale_ids || []).map((id) => (
-                        <Badge key={id} variant="default">
-                          {scaleById.get(id)?.grade || "Grade"}
-                          {(template.default_grading_scale_ids || []).includes(id) ? " · Default" : ""}
-                        </Badge>
-                      ))}
-                    </div>
+            {templates.map((template) => {
+              const gradeId = templateGradeId(template);
+              const scale = scaleById.get(gradeId);
+              const isDefault = templateIsDefault(template);
+              return (
+                <Card key={template.id} className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="default">Grade {scale?.grade || "—"}</Badge>
+                    <Badge variant={template.status === "active" ? "success" : "default"}>
+                      {template.status}
+                    </Badge>
+                    {isDefault ? <Badge variant="success">Default</Badge> : null}
                   </div>
-                </div>
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-text-soft">{template.text}</p>
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-border/70 pt-3">
-                  <Button type="button" size="small" variant="outline" onClick={() => openEdit(template)} disabled={busy || template.status === "archived"}>
-                    Edit
-                  </Button>
-                  {template.status === "active" ? (
-                    <Button type="button" size="small" variant="outline" onClick={() => setStatus(template, "inactive")} disabled={busy}>
-                      Deactivate
+                  <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-text-soft">
+                    {template.text}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-border/70 pt-3">
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="outline"
+                      onClick={() => openEdit(template)}
+                      disabled={busy || template.status === "archived" || !canCreate}
+                    >
+                      Edit comment
                     </Button>
-                  ) : template.status === "inactive" ? (
-                    <Button type="button" size="small" variant="outline" onClick={() => setStatus(template, "active")} disabled={busy || !canCreate}>
-                      Activate
+                    {template.status === "active" && !isDefault ? (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outline"
+                        onClick={() => makeDefault(template)}
+                        disabled={busy || !canCreate}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Make default
+                      </Button>
+                    ) : null}
+                    {template.status === "active" ? (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outline"
+                        onClick={() => setStatus(template, "inactive")}
+                        disabled={busy}
+                      >
+                        Deactivate
+                      </Button>
+                    ) : template.status === "inactive" ? (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outline"
+                        onClick={() => setStatus(template, "active")}
+                        disabled={busy || !canCreate}
+                      >
+                        Activate
+                      </Button>
+                    ) : null}
+                    {template.status !== "archived" ? (
+                      <Button
+                        type="button"
+                        size="small"
+                        variant="outline"
+                        onClick={() => setStatus(template, "archived")}
+                        disabled={busy}
+                      >
+                        <Archive className="h-4 w-4" />
+                        Archive
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="danger"
+                      onClick={() => remove(template)}
+                      disabled={busy}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete if unused
                     </Button>
-                  ) : null}
-                  {template.status !== "archived" ? (
-                    <Button type="button" size="small" variant="outline" onClick={() => setStatus(template, "archived")} disabled={busy}>
-                      <Archive className="h-4 w-4" />
-                      Archive
-                    </Button>
-                  ) : null}
-                  <Button type="button" size="small" variant="danger" onClick={() => remove(template)} disabled={busy}>
-                    <Trash2 className="h-4 w-4" />
-                    Delete if unused
-                  </Button>
-                </div>
-              </Card>
-            ))}
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
 
       <Modal
         open={Boolean(editor)}
-        title={editor?.id ? "Edit teacher comment template" : "Create teacher comment template"}
-        description="Choose the grades this wording applies to and optionally make it your personal default for a grade."
+        title={editor?.id ? "Edit teacher comment" : "Create teacher comment"}
+        description={
+          editor?.id
+            ? "The grade stays fixed. Edit the wording or make this your default comment for that grade."
+            : "Write the comment exactly as you want it used and assign it to one grade."
+        }
         onClose={() => !busy && setEditor(null)}
         closeOnOverlay={!busy}
       >
         {editor ? (
           <form onSubmit={save} className="space-y-4">
-            <Input label="Template name" value={editor.name} required onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))} />
             <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Template text</span>
-              <textarea className="input-base min-h-32" maxLength={2000} required value={editor.text} onChange={(event) => setEditor((current) => ({ ...current, text: event.target.value }))} />
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Grade</span>
+              <select
+                className="input-base"
+                value={editor.gradingScaleId}
+                disabled={Boolean(editor.id)}
+                required
+                onChange={(event) =>
+                  setEditor((current) => ({ ...current, gradingScaleId: event.target.value }))
+                }
+              >
+                {gradingScales.map((scale) => (
+                  <option key={scale.id} value={scale.id}>
+                    {gradeLabel(scale)}
+                  </option>
+                ))}
+              </select>
+              {editor.id ? (
+                <p className="mt-1 text-xs text-text-muted">
+                  Create another comment if you want separate wording for another grade.
+                </p>
+              ) : null}
             </label>
-            <div>
-              <p className="text-sm font-semibold text-text-soft">Applies to grades</p>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {gradingScales.map((scale) => {
-                  const selected = editor.gradingScaleIds.includes(scale.id);
-                  const isDefault = editor.defaultGradingScaleIds.includes(scale.id);
-                  return (
-                    <div key={scale.id} className="rounded-xl border border-border p-3">
-                      <label className="flex items-center gap-2 text-sm font-semibold text-text">
-                        <input type="checkbox" checked={selected} onChange={(event) => toggleGrade(scale.id, event.target.checked)} />
-                        {gradeLabel(scale)}
-                      </label>
-                      <label className="mt-2 flex items-center gap-2 text-xs text-text-muted">
-                        <input type="checkbox" checked={isDefault} onChange={(event) => toggleDefault(scale.id, event.target.checked)} />
-                        My default for Grade {scale.grade}
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
+                Class-teacher comment
+              </span>
+              <textarea
+                className="input-base min-h-36"
+                maxLength={2000}
+                required
+                placeholder="e.g. An excellent performance this term. Keep it up."
+                value={editor.text}
+                onChange={(event) =>
+                  setEditor((current) => ({ ...current, text: event.target.value }))
+                }
+              />
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-border/70 p-3 text-sm text-text-soft">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={editor.isDefault}
+                disabled={Boolean(editor.id && editor.isDefault)}
+                onChange={(event) =>
+                  setEditor((current) => ({ ...current, isDefault: event.target.checked }))
+                }
+              />
+              <span>
+                <span className="font-semibold text-text">Use as my default for this grade</span>
+                <span className="mt-0.5 block text-xs text-text-muted">
+                  Your first active comment for a grade becomes the default automatically. Choosing another comment as default replaces the old default.
+                </span>
+              </span>
+            </label>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setEditor(null)} disabled={busy}>Cancel</Button>
-              <Button type="submit" disabled={busy || !editor.name.trim() || !editor.text.trim()}>
+              <Button type="button" variant="outline" onClick={() => setEditor(null)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={busy || !editor.text.trim() || !editor.gradingScaleId}
+              >
                 <Save className="h-4 w-4" />
-                {busy ? "Saving..." : "Save template"}
+                {busy ? "Saving..." : "Save comment"}
               </Button>
             </div>
           </form>
