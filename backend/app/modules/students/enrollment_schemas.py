@@ -25,7 +25,8 @@ class StudentClassPlacementRequest(EnrollmentInput):
     def unique_students(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
         if len(value) != len(set(value)):
             raise ValueError("student_ids must not contain duplicates")
-        return value
+        # Normalize row-lock acquisition order for every bulk placement caller.
+        return sorted(value, key=lambda student_id: student_id.int)
 
 
 class StudentClassPlacementResponse(BaseModel):
