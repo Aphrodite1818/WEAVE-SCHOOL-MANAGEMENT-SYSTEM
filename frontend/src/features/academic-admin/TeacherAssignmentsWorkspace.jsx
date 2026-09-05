@@ -77,7 +77,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     teacher_membership_id: "",
     status:
       activeTab === "reassign" || activeTab === "end"
-        ? "active"
+        ? "current"
         : activeTab === "history"
           ? "ended"
           : "",
@@ -167,17 +167,26 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       return;
     }
     try {
-      const [resolvedSubjects, assignmentsResponse] = await Promise.all([
-        curriculumService.getResolvedClassSubjects(form.class_id, currentTermId),
-        academicService.listTeacherAssignments({
-          class_id: form.class_id,
-          status: "active",
-          limit: 100,
-        }),
-      ]);
-      const activeAssignments = asItems(assignmentsResponse);
+      const [resolvedSubjects, currentResponse, scheduledResponse] =
+        await Promise.all([
+          curriculumService.getResolvedClassSubjects(form.class_id, currentTermId),
+          academicService.listTeacherAssignments({
+            class_id: form.class_id,
+            status: "current",
+            limit: 100,
+          }),
+          academicService.listTeacherAssignments({
+            class_id: form.class_id,
+            status: "scheduled",
+            limit: 100,
+          }),
+        ]);
+      const protectedAssignments = [
+        ...asItems(currentResponse),
+        ...asItems(scheduledResponse),
+      ];
       const assignedSubjectIds = new Set(
-        activeAssignments
+        protectedAssignments
           .map((item) => item.curriculum_subject_id)
           .filter(Boolean),
       );
@@ -263,7 +272,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   useEffect(() => {
     const nextStatus =
       activeTab === "reassign" || activeTab === "end"
-        ? "active"
+        ? "current"
         : activeTab === "history"
           ? "ended"
           : "";
@@ -627,9 +636,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       }
       description={
         activeTab === "reassign"
-          ? "Select an active assignment, then choose the replacement teacher and effective date."
+          ? "Select a current assignment, then choose the replacement teacher and effective date."
           : activeTab === "end"
-            ? "Select an active assignment and record its effective end date."
+            ? "Select a current assignment and record its effective end date."
             : "Filter and review current or historical teacher assignments."
       }
     >
@@ -653,7 +662,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           value={filters.status}
           onChange={(value) => updateFilters({ status: value })}
           options={[
-            { value: "active", label: "Active" },
+            { value: "scheduled", label: "Scheduled" },
+            { value: "current", label: "Current" },
             { value: "ended", label: "Ended" },
           ]}
           placeholder="All statuses"
