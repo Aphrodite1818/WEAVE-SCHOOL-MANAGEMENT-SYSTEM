@@ -45,7 +45,7 @@ async def refresh_draft_rank_from_authoritative_results(
     if card.class_id is None:
         raise BadRequestException("A resolved class is required for report ranking.")
 
-    students, _ = await StudentRepository.list_students(
+    students, _ = await StudentRepository.list_for_tenant(
         db=db,
         tenant_id=card.tenant_id,
         class_id=card.class_id,
