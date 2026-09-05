@@ -14,7 +14,7 @@ from app.modules.classes.schemas import (
     ClassRoomUpdate,
 )
 from app.modules.communications.schemas import AnnouncementUpdate
-from app.modules.report_cards.schemas import ReportCardCommentsUpdate
+from app.modules.report_cards.schemas import ReportCardPrincipalCommentUpdate
 from app.modules.school_calendar.calendar_enums import (
     SchoolCalendarEventAudience,
     SchoolCalendarEventType,
@@ -227,10 +227,15 @@ def test_announcement_patch_rejects_null_core_fields_and_keeps_clearable_schedul
     }
 
 
-def test_report_card_comment_patch_supports_intentional_clear_only() -> None:
-    _assert_invalid(ReportCardCommentsUpdate)
-    payload = ReportCardCommentsUpdate(class_teacher_comment=None)
-    assert payload.model_dump(exclude_unset=True) == {"class_teacher_comment": None}
+def test_report_card_principal_comment_update_requires_explicit_text() -> None:
+    _assert_invalid(ReportCardPrincipalCommentUpdate)
+    _assert_invalid(ReportCardPrincipalCommentUpdate, principal_comment=None)
+    _assert_invalid(ReportCardPrincipalCommentUpdate, principal_comment="")
+
+    payload = ReportCardPrincipalCommentUpdate(principal_comment="Keep improving.")
+    assert payload.model_dump(exclude_unset=True) == {
+        "principal_comment": "Keep improving."
+    }
 
 
 def test_attendance_settings_update_rejects_null_config_and_allows_time_clear() -> None:
