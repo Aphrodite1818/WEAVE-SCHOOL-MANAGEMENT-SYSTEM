@@ -61,11 +61,12 @@ jobs:
       - name: Install frontend
         working-directory: frontend
         run: npm ci
+      - name: Prepare postgres extensions
+        run: PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d weave_test -c 'CREATE EXTENSION IF NOT EXISTS btree_gist;'
       - name: Apply fixes
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
           import shutil
 
           def replace_once(path, old, new, label):
@@ -76,8 +77,6 @@ jobs:
                   raise SystemExit(f"{label}: expected one match, got {count}")
               p.write_text(text.replace(old, new, 1))
 
-          # Student enrollment history: avoid async relationship lazy-loading and
-          # preserve tenant scope while reading the immutable placement segment.
           path = "backend/app/modules/students/enrollment_service.py"
           replace_once(path, "from sqlalchemy import func, select", "from sqlalchemy import and_, func, select", "sqlalchemy and import")
           replace_once(path, "from app.modules.classes.models import AcademicLevel, ClassRoom", "from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom", "ArmLabel import")
@@ -108,7 +107,6 @@ jobs:
               "CTDA identity",
           )
 
-          # Setup/readiness defects found during review.
           replace_once(
               "backend/app/modules/student_academics/setup_readiness.py",
               'count(TeacherAssignment, TeacherAssignment.state == "current").label(',
@@ -134,8 +132,6 @@ jobs:
               "specialization live assignment",
           )
 
-          # Student directory: use canonical enrollment response fields and do not
-          # send unsupported request fields to the class-change endpoint.
           student_page = Path("frontend/src/pages/admin/StudentDirectoryPage.jsx")
           text = student_page.read_text()
           anchor = '''  const classOptions = useMemo(\n    () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),\n    [classes],\n  );\n'''
@@ -164,7 +160,6 @@ jobs:
               raise SystemExit("history reason mismatch")
           student_page.write_text(text.replace(old_reason, new_reason, 1))
 
-          # Department UX: assign curriculum subjects to this level's ALD directly.
           dep_page = Path("frontend/src/features/academic-admin/DepartmentsWorkspace.jsx")
           text = dep_page.read_text()
           import_anchor = 'import { getErrorMessage } from "../../services/api";\n'
@@ -196,7 +191,6 @@ jobs:
               raise SystemExit("department applicability panel anchor mismatch")
           dep_page.write_text(text.replace(panel_anchor, panel, 1))
 
-          # Guide contract regression identified by CI.
           guide = Path("frontend/src/pages/admin/AdminGettingStartedPage.jsx")
           text = guide.read_text()
           import_anchor = 'import Card from "../../components/ui/Card";\n'
@@ -207,7 +201,6 @@ jobs:
               text = text.replace(replace, '  const visibleStepIds = new Set(guideState.steps.map((step) => step.id));\n  const steps = ROLE_GUIDES.admin.steps.filter((step) => visibleStepIds.has(step.id));\n', 1)
           guide.write_text(text)
 
-          # Prevent/generated test cache artifacts from returning.
           gitignore = Path(".gitignore")
           text = gitignore.read_text()
           ignore = "frontend/.vite-test-cache-*/\n"
@@ -218,7 +211,6 @@ jobs:
               if cache.is_dir():
                   shutil.rmtree(cache)
 
-          # Focused backend regression tests.
           Path("backend/tests/unit/students/test_enrollment_history_contract.py").write_text('''from datetime import date, datetime, timezone\nfrom types import SimpleNamespace\nfrom unittest.mock import AsyncMock, MagicMock, patch\nfrom uuid import uuid4\n\nimport pytest\n\nfrom app.modules.students.enrollment_service import StudentEnrollmentService\nfrom app.modules.students.models import StudentEnrollmentOutcome\nfrom app.modules.students.repository import StudentRepository\n\n\n@pytest.mark.asyncio\nasync def test_history_uses_joined_display_rows_without_class_relationship_lazy_loads():\n    tenant_id, student_id, class_id, level_id, session_id = [uuid4() for _ in range(5)]\n    now = datetime.now(timezone.utc)\n    enrollment = SimpleNamespace(\n        id=uuid4(), tenant_id=tenant_id, student_id=student_id,\n        academic_level_id=level_id, class_id=class_id, academic_session_id=session_id,\n        started_on=date(2026, 9, 1), ended_on=None,\n        entry_outcome=StudentEnrollmentOutcome.ENROLLED, exit_outcome=None,\n        entry_reason="Initial placement", exit_reason=None,\n        created_by_admin_id=None, ended_by_admin_id=None, created_at=now, updated_at=now,\n    )\n\n    class RelationshipTrap:\n        id = class_id\n        def __getattr__(self, name):\n            if name in {"academic_level_name", "academic_level", "arm", "arm_label_ref"}:\n                raise AssertionError(f"unexpected lazy relationship access: {name}")\n            raise AttributeError(name)\n\n    rows = MagicMock()\n    rows.all.return_value = [(\n        enrollment, RelationshipTrap(), SimpleNamespace(name="SS1"),\n        SimpleNamespace(name="2026/27"), SimpleNamespace(label="A"),\n    )]\n    db = SimpleNamespace(execute=AsyncMock(return_value=rows))\n    with patch.object(StudentRepository, "get_by_id", new=AsyncMock(return_value=SimpleNamespace(id=student_id))):\n        history = await StudentEnrollmentService.list_history(db, tenant_id=tenant_id, student_id=student_id)\n\n    assert history[0].class_name == "SS1"\n    assert history[0].class_arm == "A"\n    assert history[0].entry_outcome == StudentEnrollmentOutcome.ENROLLED\n\n\n@pytest.mark.asyncio\nasync def test_class_department_lookup_uses_level_department_identity():\n    tenant_id, class_id, term_id, link_id = [uuid4() for _ in range(4)]\n    result = MagicMock()\n    result.scalar_one_or_none.return_value = link_id\n    db = SimpleNamespace(execute=AsyncMock(return_value=result))\n    resolved = await StudentEnrollmentService._department_for_class(\n        db, tenant_id=tenant_id, class_id=class_id, academic_term_id=term_id\n    )\n    assert resolved == link_id\n    statement = str(db.execute.call_args.args[0])\n    assert "academic_level_department_id" in statement\n''')
           PY
           git rm -r --ignore-unmatch frontend/.vite-test-cache-forms-17088 frontend/.vite-test-cache-forms-1812 || true
