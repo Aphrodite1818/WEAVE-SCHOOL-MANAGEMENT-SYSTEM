@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.report_cards.models import (
@@ -218,7 +218,16 @@ class ReportCardRepository:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[ReportCard]:
-        return list(
+        """Return one current ranking representative per student.
+
+        During correction/reissue a student may temporarily have both an official
+        published version and a replacement draft. Ranking must include that student
+        only once and use the replacement draft's new average, while published
+        positions themselves remain immutable. The historical method name is kept
+        because this repository call is the ranking source used by the service.
+        """
+
+        rows = list(
             (
                 await db.execute(
                     select(ReportCard).where(
@@ -226,12 +235,20 @@ class ReportCardRepository:
                         ReportCard.class_id == class_id,
                         ReportCard.academic_session_id == academic_session_id,
                         ReportCard.academic_term_id == academic_term_id,
-                        ReportCard.status == ReportCardStatus.DRAFT,
                         ReportCard.superseded_at.is_(None),
+                        ReportCard.status.in_(
+                            [ReportCardStatus.DRAFT, ReportCardStatus.PUBLISHED]
+                        ),
                     )
                 )
             ).scalars()
         )
+        by_student: dict[uuid.UUID, ReportCard] = {}
+        for card in rows:
+            current = by_student.get(card.student_id)
+            if current is None or card.status == ReportCardStatus.DRAFT:
+                by_student[card.student_id] = card
+        return list(by_student.values())
 
     @staticmethod
     async def list_current_cards_for_class_period(
@@ -283,6 +300,14 @@ class ReportCardRepository:
 
     @staticmethod
     async def save(db: AsyncSession, report_card: ReportCard) -> ReportCard:
+        # Published issuance snapshots are immutable. Ranking refreshes may include a
+        # published card as context, but they must never rewrite its stored rank.
+        if report_card.status == ReportCardStatus.PUBLISHED:
+            state = inspect(report_card)
+            for field in ("position", "position_out_of"):
+                history = state.attrs[field].history
+                if history.has_changes() and history.deleted:
+                    setattr(report_card, field, history.deleted[0])
         db.add(report_card)
         await db.flush()
         await db.refresh(report_card)
