@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -61,7 +61,7 @@ async def test_principal_template_must_be_active_and_personally_owned(monkeypatc
         )
 
     list_templates.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         tenant_id=admin.tenant_id,
         owner_type=CommentTemplateOwnerType.TENANT_ADMIN,
         owner_id=admin.id,
