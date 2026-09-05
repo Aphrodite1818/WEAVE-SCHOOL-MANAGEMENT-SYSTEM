@@ -77,6 +77,7 @@ async def test_print_uses_stored_report_snapshot_instead_of_live_class_configura
     card_id = uuid4()
     now = datetime.now(timezone.utc)
     actor = SimpleNamespace(id=uuid4(), tenant_id=tenant_id)
+    db = SimpleNamespace()
     snapshot = SimpleNamespace(
         id=card_id,
         tenant_id=tenant_id,
@@ -119,14 +120,10 @@ async def test_print_uses_stored_report_snapshot_instead_of_live_class_configura
         AsyncMock(return_value=tenant),
     )
 
-    html = await ReportCardPrintService.render_html(
-        SimpleNamespace(), actor, card_id
-    )
+    html = await ReportCardPrintService.render_html(db, actor, card_id)
 
     assert "SS1 C" in html
     assert "Excellent consistency." in html
     assert "Outstanding performance." in html
     assert "2026/2027" in html
-    ReportCardService.get.assert_awaited_once_with(
-        pytest.ANY if hasattr(pytest, "ANY") else SimpleNamespace(), actor, card_id
-    )
+    ReportCardService.get.assert_awaited_once_with(db, actor, card_id)
