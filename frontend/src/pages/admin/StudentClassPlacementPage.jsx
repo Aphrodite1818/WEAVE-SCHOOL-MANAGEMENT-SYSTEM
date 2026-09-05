@@ -70,12 +70,14 @@ function StudentClassPlacementPage() {
     ])
       .then(([sessionResult, levelResult, classResult]) => {
         if (!active) return;
-        const nextSessions = asItems(sessionResult);
-        setSessions(nextSessions);
+        const allSessions = asItems(sessionResult);
+        const placementSessions = allSessions.filter(
+          (item) => item.is_current && String(item.status || "").toLowerCase() === "open",
+        );
+        setSessions(placementSessions);
         setLevels(asItems(levelResult));
         setClasses(asItems(classResult));
-        const current = nextSessions.find((item) => item.is_current) || nextSessions[0];
-        setSessionId(current?.id || "");
+        setSessionId(placementSessions[0]?.id || "");
       })
       .catch((requestError) => {
         if (!active) return;
@@ -92,7 +94,7 @@ function StudentClassPlacementPage() {
   useEffect(() => {
     setSelectedIds([]);
     setTargetClassId("");
-    if (!levelId) {
+    if (!sessionId || !levelId) {
       setStudents([]);
       return;
     }
@@ -120,7 +122,7 @@ function StudentClassPlacementPage() {
     return () => {
       active = false;
     };
-  }, [levelId, search]);
+  }, [levelId, search, sessionId]);
 
   const levelOptions = useMemo(
     () => levels.map((item) => ({ value: item.id, label: item.name })),
@@ -186,7 +188,7 @@ function StudentClassPlacementPage() {
             Class Placement
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Place students who already have a level enrollment but do not yet have a class.
+            Place students who already have a level enrollment but do not yet have a class. Placement is available throughout the current open academic session.
           </p>
         </div>
         <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-muted">
@@ -201,13 +203,19 @@ function StudentClassPlacementPage() {
       ) : null}
 
       <Card className="p-4 sm:p-5">
+        {sessions.length === 0 && !loading ? (
+          <div className="mb-4 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-800">
+            Class Placement requires the current academic session to be OPEN.
+          </div>
+        ) : null}
         <div className="grid gap-4 lg:grid-cols-4">
           <SelectField
             label="Academic session"
             value={sessionId}
             options={sessionOptions}
             onChange={setSessionId}
-            placeholder="Choose session"
+            placeholder="No open current session"
+            disabled={sessions.length <= 1}
           />
           <SelectField
             label="Academic level"
@@ -215,6 +223,7 @@ function StudentClassPlacementPage() {
             options={levelOptions}
             onChange={setLevelId}
             placeholder="Choose level"
+            disabled={!sessionId}
           />
           <SelectField
             label="Target class"
@@ -222,7 +231,7 @@ function StudentClassPlacementPage() {
             options={classOptions}
             onChange={setTargetClassId}
             placeholder={levelId ? "Choose class" : "Choose a level first"}
-            disabled={!levelId}
+            disabled={!sessionId || !levelId}
           />
           <Input
             label="Search unassigned students"
@@ -230,6 +239,7 @@ function StudentClassPlacementPage() {
             placeholder="Name or admission number"
             onChange={(event) => setSearch(event.target.value)}
             icon={Search}
+            disabled={!sessionId || !levelId}
           />
         </div>
       </Card>
@@ -247,7 +257,7 @@ function StudentClassPlacementPage() {
           </div>
           <Button
             type="button"
-            disabled={!targetClassId || selectedIds.length === 0 || placing}
+            disabled={!sessionId || !targetClassId || selectedIds.length === 0 || placing}
             onClick={placeStudents}
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -257,6 +267,13 @@ function StudentClassPlacementPage() {
 
         {loading ? (
           <div className="p-6"><LoadingState label="Loading placement roster..." /></div>
+        ) : !sessionId ? (
+          <div className="p-6">
+            <EmptyState
+              title="No open current session"
+              description="Open the current academic session before placing students into classes."
+            />
+          </div>
         ) : !levelId ? (
           <div className="p-6">
             <EmptyState
