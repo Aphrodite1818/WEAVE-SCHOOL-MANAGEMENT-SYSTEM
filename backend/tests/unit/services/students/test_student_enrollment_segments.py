@@ -8,19 +8,16 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
-from app.modules.student_academics.models import AcademicSessionStatus
-from app.modules.students.enrollment_schemas import StudentClassChangeRequest
-from app.modules.students.enrollment_service import StudentEnrollmentService
+from app.modules.students.enrollment_schemas import StudentClassReassignmentRequest
 from app.modules.students.models import (
     AcademicStatus,
     StudentEnrollment,
     StudentEnrollmentOutcome,
 )
+from app.modules.students.placement_service import StudentPlacementService
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.students.schemas import StudentEnrollmentDetailResponse
 from app.modules.students.service import StudentService
-from app.modules.classes.repository import ClassRoomRepository
-from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
 
 
 def _segment(*, ended_on: date | None = None) -> StudentEnrollment:
@@ -54,14 +51,16 @@ def test_current_state_is_derived_and_not_writable() -> None:
     assert not hasattr(StudentEnrollment, "changed_by_admin_id")
 
 
-def test_class_change_contract_rejects_progression_outcome() -> None:
+def test_reassign_class_contract_rejects_legacy_outcome_field() -> None:
     with pytest.raises(ValidationError):
-        StudentClassChangeRequest(
-            target_class_id=uuid.uuid4(),
-            academic_session_id=uuid.uuid4(),
-            effective_date=date(2026, 8, 20),
-            reason="Correct arm placement",
-            outcome="repeated",
+        StudentClassReassignmentRequest.model_validate(
+            {
+                "target_class_id": str(uuid.uuid4()),
+                "academic_session_id": str(uuid.uuid4()),
+                "effective_date": "2026-08-20",
+                "reason": "Correct arm placement",
+                "outcome": "repeated",
+            }
         )
 
 
@@ -96,7 +95,7 @@ def test_enrollment_history_schema_exposes_entry_exit_metadata_and_level_name() 
 
 
 @pytest.mark.asyncio
-async def test_class_change_splits_placement_on_effective_date(monkeypatch) -> None:
+async def test_reassign_class_splits_placement_on_effective_date(monkeypatch) -> None:
     tenant_id = uuid.uuid4()
     student_id = uuid.uuid4()
     level_id = uuid.uuid4()
@@ -105,11 +104,7 @@ async def test_class_change_splits_placement_on_effective_date(monkeypatch) -> N
     session_id = uuid.uuid4()
     admin_id = uuid.uuid4()
 
-    student = SimpleNamespace(
-        id=student_id,
-        tenant_id=tenant_id,
-        status=AcademicStatus.ACTIVE,
-    )
+    student = SimpleNamespace(id=student_id, tenant_id=tenant_id, status=AcademicStatus.ACTIVE)
     current = SimpleNamespace(
         id=uuid.uuid4(),
         student_id=student_id,
@@ -118,19 +113,9 @@ async def test_class_change_splits_placement_on_effective_date(monkeypatch) -> N
         academic_session_id=session_id,
         started_on=date(2026, 8, 1),
     )
-    target_class = SimpleNamespace(
-        id=target_class_id,
-        academic_level_id=level_id,
-        is_active=True,
-        archived_at=None,
-    )
-    session = SimpleNamespace(
-        id=session_id,
-        is_current=True,
-        status=AcademicSessionStatus.OPEN,
-    )
+    target_class = SimpleNamespace(id=target_class_id, academic_level_id=level_id)
     actor = SimpleNamespace(id=admin_id, tenant_id=tenant_id)
-    payload = StudentClassChangeRequest(
+    payload = StudentClassReassignmentRequest(
         target_class_id=target_class_id,
         academic_session_id=session_id,
         effective_date=date(2026, 8, 20),
@@ -138,39 +123,39 @@ async def test_class_change_splits_placement_on_effective_date(monkeypatch) -> N
     )
 
     monkeypatch.setattr(
-        "app.modules.students.enrollment_service.ensure_academic_write_window",
+        "app.modules.students.placement_service.ensure_academic_write_window",
         AsyncMock(),
     )
     monkeypatch.setattr(StudentRepository, "get_by_id", AsyncMock(return_value=student))
-    monkeypatch.setattr(ClassRoomRepository, "get_by_id", AsyncMock(return_value=target_class))
     monkeypatch.setattr(
-        AcademicSessionLifecycleRepository,
-        "get_by_id",
-        AsyncMock(return_value=session),
+        StudentPlacementService,
+        "_require_open_session",
+        AsyncMock(return_value=SimpleNamespace(id=session_id)),
+    )
+    monkeypatch.setattr(
+        StudentPlacementService,
+        "_require_target_class",
+        AsyncMock(return_value=target_class),
     )
     monkeypatch.setattr(
         StudentEnrollmentRepository,
         "get_current",
         AsyncMock(return_value=current),
     )
+    close_segment = AsyncMock()
+    create_segment = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
+    invalidate = AsyncMock()
+    monkeypatch.setattr(StudentPlacementService, "_close_segment", close_segment)
+    monkeypatch.setattr(StudentPlacementService, "_create_segment", create_segment)
+    monkeypatch.setattr(StudentPlacementService, "_invalidate_derived_context", invalidate)
     monkeypatch.setattr(
-        StudentEnrollmentService,
-        "_ensure_specialization_transfer_safe",
-        AsyncMock(),
+        StudentService,
+        "get_student_profile",
+        AsyncMock(return_value=SimpleNamespace(id=student_id)),
     )
-    monkeypatch.setattr(
-        StudentEnrollmentService,
-        "_ensure_backdated_split_safe",
-        AsyncMock(),
-    )
-    close_segment = AsyncMock(return_value=current)
-    create_segment = AsyncMock()
-    monkeypatch.setattr(StudentEnrollmentService, "_close_segment", close_segment)
-    monkeypatch.setattr(StudentEnrollmentService, "_create_segment", create_segment)
-    monkeypatch.setattr(StudentService, "_build_detail_response", AsyncMock(return_value=object()))
 
-    db = AsyncMock()
-    await StudentEnrollmentService.change_class(
+    db = SimpleNamespace(commit=AsyncMock())
+    await StudentPlacementService.reassign_class(
         db,
         actor=actor,
         student_id=student_id,
@@ -182,4 +167,10 @@ async def test_class_change_splits_placement_on_effective_date(monkeypatch) -> N
     assert create_segment.await_args.kwargs["started_on"] == date(2026, 8, 20)
     assert create_segment.await_args.kwargs["class_id"] == target_class_id
     assert create_segment.await_args.kwargs["outcome"] == StudentEnrollmentOutcome.RECLASSIFIED
+    invalidate.assert_awaited_once_with(
+        db,
+        tenant_id=tenant_id,
+        student_id=student_id,
+        academic_session_id=session_id,
+    )
     db.commit.assert_awaited_once()
