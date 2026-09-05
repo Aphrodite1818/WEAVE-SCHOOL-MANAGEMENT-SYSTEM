@@ -52,6 +52,14 @@ const humanize = (value, fallback = "Not set") =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const normalizeGrade = (value) => String(value || "").trim().toLowerCase();
+
+const commentOptionLabel = (template) => {
+  const text = String(template?.text || "").trim();
+  if (!text) return "Saved comment";
+  return text.length > 90 ? `${text.slice(0, 87)}...` : text;
+};
+
 const statusVariant = (value) => {
   const status = String(value || "").toLowerCase();
   if (["complete", "ready", "published", "submitted", "submitted_or_overridden", "available"].includes(status)) {
@@ -74,6 +82,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const [terms, setTerms] = useState([]);
   const [classes, setClasses] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [gradingScales, setGradingScales] = useState([]);
   const [overview, setOverview] = useState(null);
   const [cards, setCards] = useState([]);
   const [filters, setFilters] = useState({
@@ -99,11 +108,18 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     setLoading(true);
     setError(null);
     try {
-      const [sessionResponse, termResponse, classResponse, templateResponse] = await Promise.all([
+      const [
+        sessionResponse,
+        termResponse,
+        classResponse,
+        templateResponse,
+        gradeResponse,
+      ] = await Promise.all([
         academicService.listSessions({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
         classService.getClasses({ limit: 100, activeOnly: false }),
         reportCommentService.listAdminTemplates({ include_archived: false }),
+        academicService.listGradingScales({ active_only: true, limit: 100 }),
       ]);
       const nextSessions = asItems(sessionResponse);
       const nextTerms = asItems(termResponse);
@@ -125,6 +141,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       setTerms(nextTerms);
       setClasses(nextClasses);
       setTemplates(nextTemplates);
+      setGradingScales(asItems(gradeResponse));
       setFilters((current) => ({
         class_id: current.class_id || nextClasses[0]?.id || "",
         academic_session_id:
@@ -205,9 +222,9 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes],
   );
-  const templateOptions = useMemo(
-    () => templates.map((item) => ({ value: item.id, label: item.name })),
-    [templates],
+  const scaleIdByGrade = useMemo(
+    () => new Map(gradingScales.map((item) => [normalizeGrade(item.grade), item.id])),
+    [gradingScales],
   );
 
   const rows = overview?.items || [];
@@ -230,6 +247,51 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const selectedClass = classes.find((item) => item.id === filters.class_id);
   const selectedSession = sessions.find((item) => item.id === filters.academic_session_id);
   const selectedTerm = terms.find((item) => item.id === filters.academic_term_id);
+
+  const optionsForGradeId = useCallback(
+    (gradeId) =>
+      gradeId
+        ? templates
+            .filter((item) => (item.grading_scale_ids || []).includes(gradeId))
+            .sort((left, right) => {
+              const leftDefault = (left.default_grading_scale_ids || []).includes(gradeId) ? 1 : 0;
+              const rightDefault = (right.default_grading_scale_ids || []).includes(gradeId) ? 1 : 0;
+              return rightDefault - leftDefault;
+            })
+            .map((item) => ({
+              value: item.id,
+              label: commentOptionLabel(item),
+              description: (item.default_grading_scale_ids || []).includes(gradeId)
+                ? "Default for this grade"
+                : "Saved principal comment",
+            }))
+        : [],
+    [templates],
+  );
+
+  const selectedStudentGradeId = selectedStudent?.overall_grade
+    ? scaleIdByGrade.get(normalizeGrade(selectedStudent.overall_grade))
+    : null;
+  const generationTemplateOptions = useMemo(
+    () => optionsForGradeId(selectedStudentGradeId),
+    [optionsForGradeId, selectedStudentGradeId],
+  );
+
+  const principalEditorGradeId = useMemo(() => {
+    if (!principalEditor?.card) return null;
+    const score = Number(principalEditor.card.average_score);
+    if (!Number.isFinite(score)) return null;
+    const scale = gradingScales.find((item) => {
+      const minimum = Number(item.min_score);
+      const maximum = Number(item.max_score);
+      return Number.isFinite(minimum) && Number.isFinite(maximum) && score >= minimum && score <= maximum;
+    });
+    return scale?.id || null;
+  }, [gradingScales, principalEditor]);
+  const principalEditorTemplateOptions = useMemo(
+    () => optionsForGradeId(principalEditorGradeId),
+    [optionsForGradeId, principalEditorGradeId],
+  );
 
   const contextControls = (
     <WorkspacePanel
@@ -291,6 +353,10 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         ? { class_id: filters.class_id }
         : { student_id: selectedStudentId }),
     };
+    if (generationTarget === "class") {
+      payload.apply_default_principal_template = true;
+      return payload;
+    }
     if (principalMode === "default") payload.apply_default_principal_template = true;
     if (principalMode === "template" && principalTemplateId) {
       payload.principal_template_id = principalTemplateId;
@@ -314,11 +380,11 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       showWarning("No student in this class is currently ready for generation.");
       return;
     }
-    if (principalMode === "template" && !principalTemplateId) {
-      showWarning("Choose a principal comment template.");
+    if (generationTarget === "student" && principalMode === "template" && !principalTemplateId) {
+      showWarning("Choose a principal comment assigned to this student's grade.");
       return;
     }
-    if (principalMode === "manual" && !principalComment.trim()) {
+    if (generationTarget === "student" && principalMode === "manual" && !principalComment.trim()) {
       showWarning("Enter the principal comment to use.");
       return;
     }
@@ -412,10 +478,17 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const savePrincipalComment = async (event) => {
     event.preventDefault();
     if (!principalEditor) return;
-    const selectedTemplate = templates.find((item) => item.id === principalEditor.template_id);
+    const allowedTemplateIds = new Set(principalEditorTemplateOptions.map((item) => item.value));
+    const selectedTemplate = templates.find(
+      (item) => item.id === principalEditor.template_id && allowedTemplateIds.has(item.id),
+    );
+    if (principalEditor.template_id && !selectedTemplate) {
+      showWarning("Choose a principal comment assigned to this report's calculated grade.");
+      return;
+    }
     const text = selectedTemplate?.text || principalEditor.comment.trim();
     if (!text) {
-      showWarning("Choose a template or enter a principal comment.");
+      showWarning("Choose a grade-matched saved comment or enter a principal comment.");
       return;
     }
     setSaving("principal");
@@ -489,7 +562,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       {activeTab === "generate" ? (
         <WorkspacePanel
           title="Generate report cards"
-          description="Generation uses backend readiness, snapshot data, and your selected principal-comment policy. Students with unresolved teacher comments are skipped rather than silently treated as ready."
+          description="Generation uses backend readiness, snapshot data, and grade-aware principal comments. Students with unresolved teacher comments are skipped rather than silently treated as ready."
         >
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
             <div className="space-y-4">
@@ -500,6 +573,9 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                   setGenerationTarget(value);
                   setSelectedStudentId("");
                   setGenerationSummary(null);
+                  setPrincipalTemplateId("");
+                  setPrincipalComment("");
+                  if (value === "class") setPrincipalMode("default");
                 }}
                 options={[
                   { value: "class", label: "Entire class" },
@@ -510,7 +586,11 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                 <SelectControl
                   label="Student"
                   value={selectedStudentId}
-                  onChange={setSelectedStudentId}
+                  onChange={(value) => {
+                    setSelectedStudentId(value);
+                    setPrincipalTemplateId("");
+                    setPrincipalComment("");
+                  }}
                   options={rows.map((item) => ({
                     value: item.student_id,
                     label: studentLabel(item),
@@ -520,7 +600,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                 />
               ) : (
                 <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
-                  <span className="font-semibold text-text">{readyRows.length}</span> of {rows.length} students are ready. Others will be returned as skipped with an explicit backend reason.
+                  <span className="font-semibold text-text">{readyRows.length}</span> of {rows.length} students are ready. Each generated student uses your default principal comment for their own calculated grade.
                 </div>
               )}
               <Button type="button" onClick={generate} disabled={saving === "generate"}>
@@ -543,46 +623,58 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
 
             <div className="space-y-3 rounded-xl border border-border/70 bg-surface p-4">
               <p className="font-semibold text-text">Principal comment policy</p>
-              <SelectControl
-                label="Comment source"
-                value={principalMode}
-                onChange={(value) => {
-                  setPrincipalMode(value);
-                  setPrincipalTemplateId("");
-                  setPrincipalComment("");
-                }}
-                options={[
-                  { value: "default", label: "Use my grade defaults" },
-                  { value: "template", label: "Use one of my templates" },
-                  { value: "manual", label: "Write a manual comment" },
-                ]}
-              />
-              {principalMode === "template" ? (
-                <SelectControl
-                  label="Principal template"
-                  value={principalTemplateId}
-                  onChange={setPrincipalTemplateId}
-                  options={templateOptions}
-                  required
-                />
-              ) : null}
-              {principalMode === "manual" ? (
-                <label className="grid gap-1.5 text-sm font-medium text-text-soft">
-                  Principal comment
-                  <textarea
-                    value={principalComment}
-                    onChange={(event) => setPrincipalComment(event.target.value)}
-                    rows={5}
-                    maxLength={2000}
-                    className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-primary"
+              {generationTarget === "class" ? (
+                <>
+                  <StatusBadge value="available" />
+                  <p className="text-sm leading-6 text-text-muted">
+                    Bulk generation always resolves your personal default principal comment separately for each student's calculated grade. One arbitrary comment is never applied to the whole class.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <SelectControl
+                    label="Comment source"
+                    value={principalMode}
+                    onChange={(value) => {
+                      setPrincipalMode(value);
+                      setPrincipalTemplateId("");
+                      setPrincipalComment("");
+                    }}
+                    options={[
+                      { value: "default", label: "Use my grade default" },
+                      { value: "template", label: "Choose another comment for this grade" },
+                      { value: "manual", label: "Write a manual comment" },
+                    ]}
                   />
-                </label>
-              ) : null}
-              {principalMode === "default" ? (
-                <p className="text-sm leading-6 text-text-muted">
-                  Each student uses your active default template mapped to the calculated overall grade. Missing defaults remain explicit rather than being inferred from another admin account.
-                </p>
-              ) : null}
+                  {principalMode === "template" ? (
+                    <SelectControl
+                      label={`Grade ${selectedStudent?.overall_grade || ""} principal comment`}
+                      value={principalTemplateId}
+                      onChange={setPrincipalTemplateId}
+                      options={generationTemplateOptions}
+                      required
+                      disabled={!selectedStudentGradeId}
+                    />
+                  ) : null}
+                  {principalMode === "manual" ? (
+                    <label className="grid gap-1.5 text-sm font-medium text-text-soft">
+                      Principal comment
+                      <textarea
+                        value={principalComment}
+                        onChange={(event) => setPrincipalComment(event.target.value)}
+                        rows={5}
+                        maxLength={2000}
+                        className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-primary"
+                      />
+                    </label>
+                  ) : null}
+                  {principalMode === "default" ? (
+                    <p className="text-sm leading-6 text-text-muted">
+                      This student uses your active default principal comment mapped to Grade {selectedStudent?.overall_grade || "—"}.
+                    </p>
+                  ) : null}
+                </>
+              )}
             </div>
           </div>
         </WorkspacePanel>
@@ -687,16 +779,16 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       <Modal
         open={Boolean(principalEditor)}
         title="Edit principal comment"
-        description="Principal comments may be edited only on draft report cards. Published versions remain immutable."
+        description="Principal comments may be edited only on draft report cards. Saved comments shown here are restricted to this report's calculated grade."
         onClose={() => setPrincipalEditor(null)}
       >
         {principalEditor ? (
           <form className="space-y-4" onSubmit={savePrincipalComment}>
             <SelectControl
-              label="Use a personal template"
+              label="Use a saved comment for this grade"
               value={principalEditor.template_id}
               onChange={(value) => setPrincipalEditor((current) => ({ ...current, template_id: value, comment: "" }))}
-              options={templateOptions}
+              options={principalEditorTemplateOptions}
               clearable
             />
             <label className="grid gap-1.5 text-sm font-medium text-text-soft">
