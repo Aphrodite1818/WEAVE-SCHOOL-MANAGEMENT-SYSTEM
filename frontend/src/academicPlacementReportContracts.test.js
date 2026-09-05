@@ -74,3 +74,38 @@ test("teacher navigation and guide expose comments but no score-entry authority"
   assert.doesNotMatch(nav, /Score Entry/);
   assert.doesNotMatch(guide, /entering attendance or scores/);
 });
+
+test("personal comment editors ask for text and one grade, never a template name", () => {
+  const admin = readSource(
+    "features",
+    "academic-admin",
+    "CommentTemplatesWorkspace.jsx",
+  );
+  const teacher = readSource(
+    "pages",
+    "teacher",
+    "TeacherCommentTemplatesPage.jsx",
+  );
+
+  for (const source of [admin, teacher]) {
+    assert.doesNotMatch(source, /Template name/);
+    assert.match(source, /grading_scale_id/);
+    assert.match(source, /is_default/);
+    assert.match(source, /New comment/);
+    assert.match(source, /Make default/);
+  }
+});
+
+test("teacher student-comment picker is scoped to the calculated grade", () => {
+  const source = readSource(
+    "pages",
+    "teacher",
+    "TeacherStudentCommentsPage.jsx",
+  );
+
+  assert.match(source, /listTeacherGradingScales/);
+  assert.match(source, /overall_grade/);
+  assert.match(source, /grading_scale_ids/);
+  assert.match(source, /Default suggestion/);
+  assert.doesNotMatch(source, /suggested_template\.name/);
+});
