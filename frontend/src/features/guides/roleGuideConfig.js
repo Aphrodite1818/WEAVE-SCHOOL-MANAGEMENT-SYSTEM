@@ -201,10 +201,20 @@ export const ROLE_GUIDES = {
         shortLabel: "Classes",
         label: "Review your assigned classes",
         description:
-          "Confirm your class and subject assignments before entering attendance or scores.",
+          "Confirm your class and subject assignments before taking attendance or reviewing academic results.",
         actionLabel: "Open my classes",
         to: "/teacher/classes",
         icon: School,
+      },
+      {
+        id: "comments",
+        shortLabel: "Comments",
+        label: "Complete class-teacher comments",
+        description:
+          "If you are the explicit class teacher, review finalized academic performance, save drafts, and submit term comments when results are ready.",
+        actionLabel: "Open student comments",
+        to: "/teacher/student-comments",
+        icon: FileText,
       },
       {
         id: "attendance",
