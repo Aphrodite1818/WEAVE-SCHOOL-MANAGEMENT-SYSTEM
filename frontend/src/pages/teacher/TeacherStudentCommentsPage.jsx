@@ -26,6 +26,14 @@ const titleCase = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+const normalizeGrade = (value) => String(value || "").trim().toLowerCase();
+
+const commentOptionLabel = (template) => {
+  const text = String(template?.text || "").trim();
+  if (!text) return "Saved comment";
+  return text.length > 90 ? `${text.slice(0, 87)}...` : text;
+};
+
 const statusVariant = (status) => {
   const value = String(status || "").toLowerCase();
   if (value === "submitted") return "success";
@@ -54,6 +62,7 @@ function TeacherStudentCommentsPage() {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [gradingScales, setGradingScales] = useState([]);
   const [rows, setRows] = useState([]);
   const [classId, setClassId] = useState("");
   const [sessionId, setSessionId] = useState("");
@@ -70,12 +79,14 @@ function TeacherStudentCommentsPage() {
       reportCommentService.getTeacherCommentSummary(),
       academicService.listTeacherSessions({ limit: 100 }),
       reportCommentService.listTeacherTemplates(),
+      reportCommentService.listTeacherGradingScales(),
     ])
-      .then(([summaryResponse, sessionResponse, templateResponse]) => {
+      .then(([summaryResponse, sessionResponse, templateResponse, gradeResponse]) => {
         if (!active) return;
         setSummary(summaryResponse);
         setSessions(asItems(sessionResponse));
         setTemplates(asItems(templateResponse).filter((item) => item.status === "active"));
+        setGradingScales(asItems(gradeResponse));
         setClassId(summaryResponse?.classes?.[0]?.class_id || "");
         setSessionId(
           summaryResponse?.academic_session_id ||
@@ -166,10 +177,32 @@ function TeacherStudentCommentsPage() {
     () => terms.map((item) => ({ value: item.id, label: titleCase(item.name) })),
     [terms],
   );
-  const templateOptions = useMemo(
-    () => templates.map((item) => ({ value: item.id, label: item.name })),
-    [templates],
+  const scaleIdByGrade = useMemo(
+    () =>
+      new Map(
+        gradingScales.map((item) => [normalizeGrade(item.grade), item.id]),
+      ),
+    [gradingScales],
   );
+  const editorTemplateOptions = useMemo(() => {
+    if (!editor?.row?.overall_grade) return [];
+    const gradeId = scaleIdByGrade.get(normalizeGrade(editor.row.overall_grade));
+    if (!gradeId) return [];
+    return templates
+      .filter((item) => (item.grading_scale_ids || []).includes(gradeId))
+      .sort((left, right) => {
+        const leftDefault = (left.default_grading_scale_ids || []).includes(gradeId) ? 1 : 0;
+        const rightDefault = (right.default_grading_scale_ids || []).includes(gradeId) ? 1 : 0;
+        return rightDefault - leftDefault;
+      })
+      .map((item) => ({
+        value: item.id,
+        label: commentOptionLabel(item),
+        description: (item.default_grading_scale_ids || []).includes(gradeId)
+          ? `Default for Grade ${editor.row.overall_grade}`
+          : `Grade ${editor.row.overall_grade}`,
+      }));
+  }, [editor, scaleIdByGrade, templates]);
 
   const openEditor = (row) => {
     const suggested = row.suggested_template;
@@ -236,7 +269,7 @@ function TeacherStudentCommentsPage() {
             Student Comments
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Review finalized performance and submit the class teacher comment used by report cards.
+            Review finalized performance and submit the class-teacher comment used by report cards.
           </p>
         </div>
 
@@ -282,7 +315,7 @@ function TeacherStudentCommentsPage() {
               <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
                 <div>
                   <p className="font-semibold text-text">Comment readiness</p>
-                  <p className="text-xs text-text-muted">Scores are read-only here. Final submission unlocks only after academic readiness.</p>
+                  <p className="text-xs text-text-muted">Scores are read-only here. Comment work starts when the student's expected results are finalized and locked.</p>
                 </div>
                 <Button type="button" size="small" variant="outline" onClick={loadRoster} disabled={rosterLoading}>
                   <RefreshCw className="h-4 w-4" />
@@ -307,31 +340,44 @@ function TeacherStudentCommentsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {rows.map((row) => (
-                        <tr key={row.student_id}>
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-text">{row.student_name || row.admission_number}</p>
-                            <p className="text-xs text-text-muted">{row.admission_number}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge variant={row.academic_ready ? "success" : "warning"}>{titleCase(row.readiness_label)}</Badge>
-                          </td>
-                          <td className="px-4 py-3 text-text-soft">{row.average ?? "—"}</td>
-                          <td className="px-4 py-3 text-text-soft">{row.overall_grade || "—"}</td>
-                          <td className="px-4 py-3">
-                            <Badge variant={statusVariant(row.comment_status)}>{titleCase(row.comment_status)}</Badge>
-                            {row.comment_status === "needs_review" ? (
-                              <p className="mt-1 max-w-xs text-xs text-error">Performance or placement context changed after submission. Review and resubmit.</p>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <Button type="button" size="small" variant="outline" onClick={() => openEditor(row)}>
-                              <FilePenLine className="h-4 w-4" />
-                              {row.comment ? "Review comment" : "Write comment"}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
+                      {rows.map((row) => {
+                        const canOpen = row.academic_ready || Boolean(row.comment);
+                        return (
+                          <tr key={row.student_id}>
+                            <td className="px-4 py-3">
+                              <p className="font-semibold text-text">{row.student_name || row.admission_number}</p>
+                              <p className="text-xs text-text-muted">{row.admission_number}</p>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant={row.academic_ready ? "success" : "warning"}>{titleCase(row.readiness_label)}</Badge>
+                            </td>
+                            <td className="px-4 py-3 text-text-soft">{row.average ?? "—"}</td>
+                            <td className="px-4 py-3 text-text-soft">{row.overall_grade || "—"}</td>
+                            <td className="px-4 py-3">
+                              <Badge variant={statusVariant(row.comment_status)}>{titleCase(row.comment_status)}</Badge>
+                              {row.comment_status === "needs_review" ? (
+                                <p className="mt-1 max-w-xs text-xs text-error">Performance or placement context changed after submission. Review and resubmit.</p>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <Button
+                                type="button"
+                                size="small"
+                                variant="outline"
+                                disabled={!canOpen}
+                                onClick={() => openEditor(row)}
+                              >
+                                <FilePenLine className="h-4 w-4" />
+                                {row.comment
+                                  ? "Review comment"
+                                  : row.academic_ready
+                                    ? "Write comment"
+                                    : "Waiting for results"}
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -344,7 +390,7 @@ function TeacherStudentCommentsPage() {
       <Modal
         open={Boolean(editor)}
         title={editor ? `Teacher comment · ${editor.row.student_name || editor.row.admission_number}` : "Teacher comment"}
-        description="Templates are suggestions only. Review the final text before submitting."
+        description="Only saved comments assigned to this student's calculated grade are shown. Review the final wording before submission."
         onClose={() => !busy && setEditor(null)}
         closeOnOverlay={!busy}
       >
@@ -355,19 +401,20 @@ function TeacherStudentCommentsPage() {
               <div><span className="text-text-muted">Overall grade</span><p className="font-semibold text-text">{editor.row.overall_grade || "—"}</p></div>
             </div>
             <SelectField
-              label="My template"
+              label={`My Grade ${editor.row.overall_grade || ""} comments`}
               value={editor.sourceTemplateId}
-              options={templateOptions}
+              options={editorTemplateOptions}
               onChange={selectTemplate}
               placeholder="Write manually"
             />
             {editor.row.suggested_template ? (
-              <p className="text-xs text-text-muted">
-                Suggested default for this grade: <span className="font-semibold text-text">{editor.row.suggested_template.name}</span>
-              </p>
+              <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs text-text-muted">
+                <span className="font-semibold text-text">Default suggestion:</span>{" "}
+                {editor.row.suggested_template.text}
+              </div>
             ) : null}
             <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Class teacher comment</span>
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Class-teacher comment</span>
               <textarea
                 className="input-base min-h-36"
                 maxLength={2000}
@@ -377,7 +424,7 @@ function TeacherStudentCommentsPage() {
             </label>
             {!editor.row.academic_ready ? (
               <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-amber-800">
-                Final submission is unavailable until all expected results are finalized and locked. You may keep a draft.
+                This older draft can be reviewed, but final submission remains unavailable until all expected results are finalized and locked.
               </div>
             ) : null}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
