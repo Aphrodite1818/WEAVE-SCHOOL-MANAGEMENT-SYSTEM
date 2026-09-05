@@ -49,6 +49,13 @@ REMOVED_BACKEND_REFERENCES = (
     "EnrollmentReportCardService",
 )
 
+REMOVED_TEST_IMPORTS = (
+    "from app.modules.students.enrollment_service",
+    "import app.modules.students.enrollment_service",
+    "from app.modules.report_cards.generation_service",
+    "import app.modules.report_cards.generation_service",
+)
+
 
 @pytest.mark.parametrize("module_name", CANONICAL_MODULES)
 def test_canonical_academic_modules_import(module_name: str) -> None:
@@ -83,3 +90,22 @@ def test_backend_app_has_no_stale_placement_or_report_generation_references() ->
                 offenders.append(f"{path.relative_to(backend_root)} -> {removed}")
 
     assert offenders == [], "Stale academic imports/contracts remain:\n" + "\n".join(offenders)
+
+
+def test_backend_tests_have_no_imports_from_removed_academic_modules() -> None:
+    backend_root = Path(__file__).resolve().parents[2]
+    tests_root = backend_root / "tests"
+    guard_path = Path(__file__).resolve()
+    offenders: list[str] = []
+
+    for path in tests_root.rglob("*.py"):
+        if path.resolve() == guard_path:
+            continue
+        source = path.read_text(encoding="utf-8")
+        for removed_import in REMOVED_TEST_IMPORTS:
+            if removed_import in source:
+                offenders.append(
+                    f"{path.relative_to(backend_root)} -> {removed_import}"
+                )
+
+    assert offenders == [], "Tests still import removed academic modules:\n" + "\n".join(offenders)
