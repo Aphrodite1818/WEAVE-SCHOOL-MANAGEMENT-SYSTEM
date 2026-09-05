@@ -1,0 +1,168 @@
+name: Fix teacher assignment level-first UX once
+
+on:
+  push:
+    branches: [cbt-sync-module-structure]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    if: contains(github.event.head_commit.message, '[fix-teacher-level-first]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cbt-sync-module-structure
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Apply level-first teacher assignment repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/features/academic-admin/TeacherAssignmentsWorkspace.jsx')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '  const [currentTerm, setCurrentTerm] = useState(null);\n  const [curriculumSubjects, setCurriculumSubjects] = useState([]);',
+              '  const [currentTerm, setCurrentTerm] = useState(null);\n  const [assignmentLevelId, setAssignmentLevelId] = useState("");\n  const [curriculumSubjects, setCurriculumSubjects] = useState([]);',
+              'assignment level state',
+          )
+
+          replace_once(
+              '''      setForm((current) => ({\n        ...current,\n        class_id: current.class_id || nextClasses[0]?.id || "",\n      }));''',
+              '''      setAssignmentLevelId((current) =>\n        current ||\n        nextClasses.find((item) => item.academic_level_id)?.academic_level_id ||\n        "",\n      );''',
+              'base level initialization',
+          )
+
+          start = text.index('  const loadClassSubjects = useCallback(async () => {\n')
+          end = text.index('  useEffect(() => {\n    loadBase();', start)
+          new_loader = '''  const loadLevelSubjects = useCallback(async () => {\n    if (editingAssignmentId || !assignmentLevelId || !currentTermId) {\n      setCurriculumSubjects([]);\n      return;\n    }\n    try {\n      const response = await curriculumService.getCurriculum(assignmentLevelId);\n      setCurriculumSubjects(\n        (response?.subjects || [])\n          .filter((subject) => subject.is_active !== false && !subject.archived_at)\n          .map((subject) => ({\n            ...subject,\n            id: subject.id || subject.curriculum_subject_id,\n          })),\n      );\n    } catch (err) {\n      setCurriculumSubjects([]);\n      showError(\n        getErrorMessage(\n          err,\n          "Could not load curriculum subjects for this academic level.",\n        ),\n      );\n    }\n  }, [assignmentLevelId, currentTermId, editingAssignmentId, showError]);\n\n'''
+          text = text[:start] + new_loader + text[end:]
+          text = text.replace('loadClassSubjects()', 'loadLevelSubjects()')
+          text = text.replace('[loadClassSubjects]', '[loadLevelSubjects]')
+
+          old_eligible = '''        const rows = asItems(response);\n        setEligibleClasses(rows);\n        setSelectedClassIds((current) => {\n          const selectable = new Set(\n            rows.filter((item) => !item.already_assigned).map((item) => item.class_id),\n          );\n          const retained = current.filter((id) => selectable.has(id));\n          if (retained.length) return retained;\n          return selectable.has(form.class_id) ? [form.class_id] : [];\n        });'''
+          new_eligible = '''        const rows = asItems(response).filter(\n          (item) => item.academic_level_id === assignmentLevelId,\n        );\n        setEligibleClasses(rows);\n        setSelectedClassIds((current) => {\n          const selectable = new Set(\n            rows.filter((item) => !item.already_assigned).map((item) => item.class_id),\n          );\n          return current.filter((id) => selectable.has(id));\n        });'''
+          replace_once(old_eligible, new_eligible, 'eligible class filtering')
+          replace_once(
+              '  }, [currentTermId, editingAssignmentId, form.class_id, form.curriculum_subject_id, showError]);',
+              '  }, [assignmentLevelId, currentTermId, editingAssignmentId, form.curriculum_subject_id, showError]);',
+              'eligible class dependencies',
+          )
+
+          class_options_marker = '  const classOptions = useMemo(\n'
+          index = text.index(class_options_marker)
+          level_options = '''  const levelOptions = useMemo(() => {\n    const byId = new Map();\n    classes.forEach((item) => {\n      if (!item.academic_level_id || byId.has(item.academic_level_id)) return;\n      byId.set(item.academic_level_id, {\n        value: item.academic_level_id,\n        label: item.academic_level_name || "Academic level",\n      });\n    });\n    return Array.from(byId.values());\n  }, [classes]);\n'''
+          text = text[:index] + level_options + text[index:]
+
+          start = text.index('  const eligibleClassGroups = useMemo(() => {\n')
+          end = text.index('  const resetForm = () => {\n', start)
+          text = text[:start] + text[end:]
+
+          replace_once(
+              '''    setForm((current) => ({\n      class_id: current.class_id,\n      curriculum_subject_id: "",\n      teacher_membership_id: "",\n      effective_from: today(),\n    }));''',
+              '''    setForm({\n      class_id: "",\n      curriculum_subject_id: "",\n      teacher_membership_id: "",\n      effective_from: today(),\n    });''',
+              'form reset',
+          )
+
+          replace_once(
+              '    if (!item.is_active) return;',
+              '    if (String(item.status || "").toLowerCase() !== "current") return;',
+              'reassign current-state guard',
+          )
+
+          replace_once(
+              '          ? "Choose a class to find its eligible subjects, then select a subject, a teacher and one or more eligible classes. Existing and scheduled assignments remain protected."',
+              '          ? "Choose an academic level and subject, then assign a teacher to one or more eligible classes. Existing and scheduled assignments remain protected."',
+              'editor description',
+          )
+
+          start = text.index('          <SelectControl\n            label="Class"\n', text.index('  const editor = ('))
+          end = text.index('        <SelectControl\n          label="Teacher"', start)
+          selection_ui = '''          {editingAssignmentId ? (\n            <SelectControl\n              label="Class"\n              value={form.class_id}\n              options={classOptions}\n              required\n              disabled\n            />\n          ) : (\n            <>\n              <SelectControl\n                label="Academic level"\n                value={assignmentLevelId}\n                onChange={(value) => {\n                  setAssignmentLevelId(value);\n                  setForm((current) => ({\n                    ...current,\n                    class_id: "",\n                    curriculum_subject_id: "",\n                  }));\n                  setSelectedClassIds([]);\n                }}\n                options={levelOptions}\n                placeholder={\n                  levelOptions.length ? "Select academic level" : "No active classes available"\n                }\n                required\n                disabled={!currentTerm || levelOptions.length === 0}\n              />\n              <SelectControl\n                label="Subject"\n                value={form.curriculum_subject_id}\n                onChange={(value) => {\n                  setForm((current) => ({\n                    ...current,\n                    curriculum_subject_id: value,\n                  }));\n                  setSelectedClassIds([]);\n                }}\n                options={subjectOptions}\n                placeholder={\n                  !currentTerm\n                    ? "No current open term"\n                    : !assignmentLevelId\n                      ? "Select academic level first"\n                      : subjectOptions.length === 0\n                        ? "No curriculum subjects available for this level"\n                        : "Select subject"\n                }\n                required\n                disabled={!currentTerm || !assignmentLevelId || subjectOptions.length === 0}\n              />\n              {form.curriculum_subject_id ? (\n                <fieldset className="space-y-3 rounded-xl border border-border p-3">\n                  <legend className="px-1 text-sm font-medium text-text">\n                    Eligible classes\n                  </legend>\n                  <Button\n                    type="button"\n                    size="small"\n                    variant="outline"\n                    disabled={Boolean(saving)}\n                    onClick={() =>\n                      setSelectedClassIds(\n                        eligibleClasses\n                          .filter((row) => !row.already_assigned)\n                          .map((row) => row.class_id),\n                      )\n                    }\n                  >\n                    Select all eligible classes\n                  </Button>\n                  {eligibleClasses.length ? (\n                    <div className="space-y-2">\n                      {eligibleClasses.map((item) => {\n                        const disabled = item.already_assigned || Boolean(saving);\n                        return (\n                          <label\n                            key={item.class_id}\n                            className="flex items-center gap-2 text-sm text-text"\n                          >\n                            <input\n                              type="checkbox"\n                              checked={selectedClassIds.includes(item.class_id)}\n                              disabled={disabled}\n                              onChange={(event) =>\n                                setSelectedClassIds((current) =>\n                                  event.target.checked\n                                    ? [...current, item.class_id]\n                                    : current.filter((id) => id !== item.class_id),\n                                )\n                              }\n                            />\n                            <span>\n                              {item.display_name}\n                              {item.department_name ? ` · ${item.department_name}` : ""}\n                              {item.already_assigned ? " · already assigned" : ""}\n                            </span>\n                          </label>\n                        );\n                      })}\n                    </div>\n                  ) : (\n                    <p className="text-sm text-text-muted">\n                      No eligible classes in this academic level.\n                    </p>\n                  )}\n                </fieldset>\n              ) : null}\n            </>\n          )}\n'''
+          text = text[:start] + selection_ui + text[end:]
+
+          replace_once(
+              '      showWarning("Select a class subject in the current open term.");',
+              '      showWarning("Select an academic level and subject in the current open term.");',
+              'assignment validation copy',
+          )
+          replace_once(
+              '                (!currentTerm || subjectOptions.length === 0 || selectedClassIds.length === 0))',
+              '                (!currentTerm || !assignmentLevelId || subjectOptions.length === 0 || selectedClassIds.length === 0))',
+              'submit disabled guard',
+          )
+
+          replace_once(
+              '''      curriculumSubjects.map((item) => ({\n        value: item.id,\n        label: [item.subject_name, item.subject_code]\n          .filter(Boolean)\n          .join(" · "),\n      })),''',
+              '''      curriculumSubjects.map((item) => ({\n        value: item.id,\n        label: [\n          item.subject_name,\n          item.subject_code,\n          item.is_elective ? "Elective" : null,\n        ]\n          .filter(Boolean)\n          .join(" · "),\n      })),''',
+              'subject labels',
+          )
+
+          # Replace stale is_active presentation/actions with canonical response status.
+          text = text.replace(
+              'variant={item.is_active ? "success" : "error"}',
+              'variant={String(item.status || "").toLowerCase() === "current" ? "success" : String(item.status || "").toLowerCase() === "scheduled" ? "warning" : "default"}',
+          )
+          text = text.replace(
+              '{item.is_active ? "active" : "inactive"}',
+              '{String(item.status || "ended").toLowerCase()}',
+          )
+          text = text.replace(
+              '{item.is_active && activeTab === "reassign" ? (',
+              '{String(item.status || "").toLowerCase() === "current" && activeTab === "reassign" ? (',
+          )
+          text = text.replace(
+              '{item.is_active && activeTab === "end" ? (',
+              '{String(item.status || "").toLowerCase() === "current" && activeTab === "end" ? (',
+          )
+          text = text.replace(
+              '{!item.is_active && activeTab === "history" ? (',
+              '{String(item.status || "").toLowerCase() === "ended" && activeTab === "history" ? (',
+          )
+          text = text.replace(
+              '<p>Status: {viewingAssignment.is_active ? "active" : "ended"}</p>',
+              '<p>Status: {String(viewingAssignment.status || "ended").toLowerCase()}</p>',
+          )
+
+          if 'getResolvedClassSubjects(form.class_id' in text:
+              raise SystemExit('anchor-class subject resolution still exists')
+          if 'eligibleClassGroups' in text:
+              raise SystemExit('redundant eligible class grouping still exists')
+          if 'item.is_active' in text or 'viewingAssignment.is_active' in text:
+              raise SystemExit('stale teacher assignment is_active response contract remains')
+
+          path.write_text(text, encoding='utf-8')
+
+          test_path = Path('frontend/test/teacher-assignment-level-first-contract.test.js')
+          test_path.write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs";\nimport test from "node:test";\n\nconst source = fs.readFileSync(\n  new URL("../src/features/academic-admin/TeacherAssignmentsWorkspace.jsx", import.meta.url),\n  "utf8",\n);\n\ntest("teacher assignment creation is level-first instead of anchor-class-first", () => {\n  assert.match(source, /label="Academic level"/);\n  assert.match(source, /curriculumService\\.getCurriculum\\(assignmentLevelId\\)/);\n  assert.doesNotMatch(source, /getResolvedClassSubjects\\(form\\.class_id/);\n  assert.doesNotMatch(source, /Choose a class to find its eligible subjects/);\n});\n\ntest("eligible classes are constrained to the selected academic level", () => {\n  assert.match(source, /item\\.academic_level_id === assignmentLevelId/);\n  assert.match(source, /getEligibleClasses\\(/);\n  assert.match(source, /Select all eligible classes/);\n  assert.doesNotMatch(source, /eligibleClassGroups/);\n});\n\ntest("assignment cards consume canonical scheduled-current-ended status", () => {\n  assert.doesNotMatch(source, /item\\.is_active/);\n  assert.doesNotMatch(source, /viewingAssignment\\.is_active/);\n  assert.match(source, /status \\|\\| ""\\)\\.toLowerCase\\(\\) === "current"/);\n  assert.match(source, /status \\|\\| ""\\)\\.toLowerCase\\(\\) === "scheduled"/);\n});\n''', encoding='utf-8')
+          PY
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Validate frontend
+        working-directory: frontend
+        run: npm run check
+      - name: Commit teacher assignment UX repair
+        run: |
+          rm -f .github/workflows/fix-teacher-assignment-level-first-once.yml
+          git config user.name "weave-review-bot"
+          git config user.email "weave-review-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: make teacher assignment level-first"
+          git push origin HEAD:cbt-sync-module-structure
