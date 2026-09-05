@@ -1,6 +1,6 @@
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -82,7 +82,7 @@ async def test_draft_rank_uses_all_ready_classmates_not_generated_report_rows(mo
     assert card.position == 2
     assert card.position_out_of == 2
     list_students.assert_awaited_once_with(
-        db=pytest.ANY if False else list_students.await_args.kwargs["db"],
+        db=ANY,
         tenant_id=tenant_id,
         class_id=class_id,
         limit=500,
