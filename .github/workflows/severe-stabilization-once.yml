@@ -56,24 +56,21 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: |
-            backend/requirements*.txt
-            backend/pyproject.toml
+          cache-dependency-path: backend/requirements.txt
 
-      - name: Apply deterministic severe fixes and tests
+      - name: Apply deterministic severe source fixes
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
 
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
+          def replace_once(text, old, new, label):
               count = text.count(old)
               if count != 1:
                   raise SystemExit(f"{label}: expected exactly one match, found {count}")
               return text.replace(old, new, 1)
 
-          # 1) Academic term lifecycle: closing a term must not depend on next-term specialization.
-          service_path = Path('backend/app/modules/student_academics/service.py')
+          service_path = Path("backend/app/modules/student_academics/service.py")
           service = service_path.read_text()
           helper_pattern = re.compile(
               r"\n    @staticmethod\n    async def _specialization_blockers_for_next_term\(.*?\n    # ------------------------------------------------------------------\n    # Session and term lifecycle",
@@ -87,421 +84,201 @@ jobs:
           if count != 1:
               raise SystemExit(f"next-term specialization helper: expected 1 match, found {count}")
 
-          old_next_term_block = '''            (\n                specialization_counts,\n                specialization_blockers,\n            ) = await StudentAcademicService._specialization_blockers_for_next_term(\n                db, tenant_id=tenant_id, term=term\n            )\n            counts.update(specialization_counts)\n            blockers.extend(specialization_blockers)\n'''
-          service = replace_once(
-              service,
-              old_next_term_block,
-              '',
-              'term dependency next-term blocker',
-          )
+          old = "            (\n                specialization_counts,\n                specialization_blockers,\n            ) = await StudentAcademicService._specialization_blockers_for_next_term(\n                db, tenant_id=tenant_id, term=term\n            )\n            counts.update(specialization_counts)\n            blockers.extend(specialization_blockers)\n"
+          service = replace_once(service, old, "", "remove future specialization close blocker")
 
-          service = replace_once(
-              service,
-              '        await TermPlanEntitlementService.ensure_open_eligible(db, tenant_id, term.id)\n',
-              '        entitlement = await TermPlanEntitlementService.ensure_open_eligible(\n            db, tenant_id, term.id\n        )\n',
-              'capture term entitlement on open',
-          )
-          service = replace_once(
-              service,
-              '''            term = await StudentAcademicRepository.save_academic_term(db, term)\n            await StudentAcademicService._record_academic_lifecycle(\n''',
-              '''            term = await StudentAcademicRepository.save_academic_term(db, term)\n            await TermPlanEntitlementService.mark_effective_for_open_term(\n                db,\n                tenant_id=tenant_id,\n                term=term,\n                entitlement=entitlement,\n            )\n            await StudentAcademicService._record_academic_lifecycle(\n''',
-              'sync effective term plan snapshot',
-          )
-          service = replace_once(
-              service,
-              '''        await db.commit()\n        return term\n\n    @staticmethod\n    async def start_academic_term_closure(\n''',
-              '''        await db.commit()\n        from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache\n\n        await invalidate_tenant_subscription_cache(tenant_id)\n        return term\n\n    @staticmethod\n    async def start_academic_term_closure(\n''',
-              'invalidate subscription cache after term open',
-          )
+          old = "        await TermPlanEntitlementService.ensure_open_eligible(db, tenant_id, term.id)\n"
+          new = "        entitlement = await TermPlanEntitlementService.ensure_open_eligible(\n            db, tenant_id, term.id\n        )\n"
+          service = replace_once(service, old, new, "capture opening entitlement")
+
+          old = "            term = await StudentAcademicRepository.save_academic_term(db, term)\n            await StudentAcademicService._record_academic_lifecycle(\n"
+          new = "            term = await StudentAcademicRepository.save_academic_term(db, term)\n            await TermPlanEntitlementService.mark_effective_for_open_term(\n                db,\n                tenant_id=tenant_id,\n                term=term,\n                entitlement=entitlement,\n            )\n            await StudentAcademicService._record_academic_lifecycle(\n"
+          service = replace_once(service, old, new, "sync plan snapshot on term open")
+
+          old = "        await db.commit()\n        return term\n\n    @staticmethod\n    async def start_academic_term_closure(\n"
+          new = "        await db.commit()\n        from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache\n\n        await invalidate_tenant_subscription_cache(tenant_id)\n        return term\n\n    @staticmethod\n    async def start_academic_term_closure(\n"
+          service = replace_once(service, old, new, "invalidate entitlement cache after opening")
           service_path.write_text(service)
 
-          # 2) Subscription: snapshot legacy tenant.plan only when a term entitlement actually becomes effective.
-          entitlement_path = Path('backend/app/modules/subscriptions/term_entitlement_service.py')
+          entitlement_path = Path("backend/app/modules/subscriptions/term_entitlement_service.py")
           entitlement_service = entitlement_path.read_text()
-          marker = '''    @staticmethod\n    async def close_for_term(\n'''
-          method = '''    @staticmethod\n    async def mark_effective_for_open_term(\n        db: AsyncSession,\n        *,\n        tenant_id: uuid.UUID,\n        term: AcademicTerm,\n        entitlement: TermPlanEntitlement,\n    ) -> None:\n        \"\"\"Synchronize the legacy tenant plan snapshot when an entitlement becomes effective.\n\n        TermPlanEntitlement + the current OPEN term remain authoritative for access.\n        tenant.plan is retained only as a compatibility snapshot for remaining read/presentation\n        paths and must never make a DRAFT-term purchase effective early.\n        \"\"\"\n        if (\n            term.tenant_id != tenant_id\n            or term.status != AcademicTermStatus.OPEN\n            or not term.is_current\n        ):\n            raise ConflictException(\n                \"A term entitlement can only become effective for the current open term.\"\n            )\n        if (\n            entitlement.tenant_id != tenant_id\n            or entitlement.academic_term_id != term.id\n            or entitlement.status != TermEntitlementStatus.ACTIVE\n        ):\n            raise ConflictException(\n                \"The selected entitlement does not belong to the current open term.\"\n            )\n        tenant = await SubscriptionRepository.get_tenant(db, tenant_id)\n        if tenant is None:\n            raise NotFoundException(\"Tenant not found.\")\n        tenant.plan = coerce_subscription_plan(entitlement.plan_code)\n        tenant.initial_plan_intent = None\n        tenant.trial_ends_at = None\n        await db.flush()\n\n'''
+          marker = "    @staticmethod\n    async def close_for_term(\n"
+          method = (
+              "    @staticmethod\n"
+              "    async def mark_effective_for_open_term(\n"
+              "        db: AsyncSession,\n"
+              "        *,\n"
+              "        tenant_id: uuid.UUID,\n"
+              "        term: AcademicTerm,\n"
+              "        entitlement: TermPlanEntitlement,\n"
+              "    ) -> None:\n"
+              "        \"\"\"Synchronize the legacy tenant plan snapshot only when a term becomes effective.\n\n"
+              "        TermPlanEntitlement plus the current OPEN term remain authoritative for access.\n"
+              "        tenant.plan is only a compatibility snapshot for remaining presentation/read paths.\n"
+              "        \"\"\"\n"
+              "        if (\n"
+              "            term.tenant_id != tenant_id\n"
+              "            or term.status != AcademicTermStatus.OPEN\n"
+              "            or not term.is_current\n"
+              "        ):\n"
+              "            raise ConflictException(\n"
+              "                \"A term entitlement can only become effective for the current open term.\"\n"
+              "            )\n"
+              "        if (\n"
+              "            entitlement.tenant_id != tenant_id\n"
+              "            or entitlement.academic_term_id != term.id\n"
+              "            or entitlement.status != TermEntitlementStatus.ACTIVE\n"
+              "        ):\n"
+              "            raise ConflictException(\n"
+              "                \"The selected entitlement does not belong to the current open term.\"\n"
+              "            )\n"
+              "        tenant = await SubscriptionRepository.get_tenant(db, tenant_id)\n"
+              "        if tenant is None:\n"
+              "            raise NotFoundException(\"Tenant not found.\")\n"
+              "        tenant.plan = coerce_subscription_plan(entitlement.plan_code)\n"
+              "        tenant.initial_plan_intent = None\n"
+              "        tenant.trial_ends_at = None\n"
+              "        await db.flush()\n\n"
+          )
           entitlement_service = replace_once(
               entitlement_service,
               marker,
               method + marker,
-              'insert effective snapshot helper',
+              "insert open-term effective snapshot helper",
           )
           entitlement_path.write_text(entitlement_service)
 
-          # 3) Curriculum/specialization transitions: no phantom one-day assignments and no open-term copy bypass.
-          curriculum_path = Path('backend/app/modules/student_academics/curriculum_v2_service.py')
+          curriculum_path = Path("backend/app/modules/student_academics/curriculum_v2_service.py")
           curriculum = curriculum_path.read_text()
-          curriculum = replace_once(
-              curriculum,
-              '''        if target.status in {AcademicTermStatus.CLOSING, AcademicTermStatus.CLOSED}:\n            raise ConflictException(\"Cannot copy specialization into a closing or closed term.\")\n''',
-              '''        if target.status != AcademicTermStatus.DRAFT:\n            raise ConflictException(\n                \"Specializations can only be copied into a draft academic term.\"\n            )\n''',
-              'restrict specialization copy to draft target',
-          )
+          old = "        if target.status in {AcademicTermStatus.CLOSING, AcademicTermStatus.CLOSED}:\n            raise ConflictException(\"Cannot copy specialization into a closing or closed term.\")\n"
+          new = "        if target.status != AcademicTermStatus.DRAFT:\n            raise ConflictException(\n                \"Specializations can only be copied into a draft academic term.\"\n            )\n"
+          curriculum = replace_once(curriculum, old, new, "restrict specialization copy to draft")
 
-          # All three OPEN-term reinterpretation paths use the actual transition day.
-          curriculum = replace_once(
-              curriculum,
-              '''                    term=current_term,\n                    acting_admin_id=None,\n''',
-              '''                    term=current_term,\n                    acting_admin_id=None,\n                    transition_boundary=date.today(),\n''',
-              'curriculum scope transition boundary',
-          )
-          curriculum = replace_once(
-              curriculum,
-              '''                acting_admin_id=admin_id,\n                class_ids={class_id},\n''',
-              '''                acting_admin_id=admin_id,\n                class_ids={class_id},\n                transition_boundary=date.today(),\n''',
-              'class specialization transition boundary',
-          )
-          curriculum = replace_once(
-              curriculum,
-              '''                term=current_term,\n                acting_admin_id=admin_id,\n            )\n        db.add(\n''',
-              '''                term=current_term,\n                acting_admin_id=admin_id,\n                transition_boundary=date.today(),\n            )\n        db.add(\n''',
-              'specialization policy transition boundary',
-          )
+          old = "                    term=current_term,\n                    acting_admin_id=None,\n"
+          new = "                    term=current_term,\n                    acting_admin_id=None,\n                    transition_boundary=date.today(),\n"
+          curriculum = replace_once(curriculum, old, new, "scope transition boundary")
 
-          reconcile_pattern = re.compile(
+          old = "                acting_admin_id=admin_id,\n                class_ids={class_id},\n"
+          new = "                acting_admin_id=admin_id,\n                class_ids={class_id},\n                transition_boundary=date.today(),\n"
+          curriculum = replace_once(curriculum, old, new, "class specialization transition boundary")
+
+          old = "                term=current_term,\n                acting_admin_id=admin_id,\n            )\n        db.add(\n"
+          new = "                term=current_term,\n                acting_admin_id=admin_id,\n                transition_boundary=date.today(),\n            )\n        db.add(\n"
+          curriculum = replace_once(curriculum, old, new, "policy transition boundary")
+
+          pattern = re.compile(
               r"    @staticmethod\n    async def reconcile_teacher_assignments_for_term\(.*?        return \{\"ended\": ended, \"deleted_scheduled\": 0\}\n",
               re.S,
           )
-          new_reconcile = '''    @staticmethod\n    async def reconcile_teacher_assignments_for_term(\n        db: AsyncSession,\n        *,\n        tenant_id: uuid.UUID,\n        term: AcademicTerm,\n        acting_admin_id: uuid.UUID | None,\n        class_ids: set[uuid.UUID] | None = None,\n        transition_boundary: date | None = None,\n    ) -> dict[str, int]:\n        \"\"\"End started assignments that lose eligibility without rewriting scheduled history.\n\n        Reconciliation is deliberately two-phase. It first resolves every affected\n        assignment and rejects incompatible assignments that have not started at the\n        transition boundary. Only after that validation succeeds are already-started\n        assignments ended. This prevents a future assignment from being collapsed into\n        a fake one-day inclusive range.\n        \"\"\"\n\n        query = select(TeacherAssignment).where(\n            TeacherAssignment.tenant_id == tenant_id,\n            TeacherAssignment.effective_to.is_(None),\n        )\n        if term.end_date is not None:\n            query = query.where(TeacherAssignment.effective_from <= term.end_date)\n        if class_ids:\n            query = query.where(TeacherAssignment.class_id.in_(class_ids))\n        assignments = list((await db.execute(query.with_for_update())).scalars())\n        boundary = transition_boundary or term.start_date or date.today()\n        if term.start_date is not None and boundary < term.start_date:\n            boundary = term.start_date\n\n        cache: dict[uuid.UUID, set[uuid.UUID]] = {}\n        ineligible: list[TeacherAssignment] = []\n        for assignment in assignments:\n            eligible = cache.get(assignment.class_id)\n            if eligible is None:\n                try:\n                    resolved = await CurriculumResolutionService.resolve_class_subjects(\n                        db,\n                        tenant_id=tenant_id,\n                        class_id=assignment.class_id,\n                        academic_term_id=term.id,\n                    )\n                    eligible = {item.curriculum_subject_id for item in resolved}\n                except (ConflictException, NotFoundException):\n                    eligible = set()\n                cache[assignment.class_id] = eligible\n            if assignment.curriculum_subject_id not in eligible:\n                ineligible.append(assignment)\n\n        scheduled_conflicts = [\n            assignment\n            for assignment in ineligible\n            if assignment.effective_from >= boundary\n        ]\n        if scheduled_conflicts:\n            raise ConflictException(\n                \"A scheduled teacher assignment would become ineligible at this academic transition. \"\n                \"Remove or reschedule it explicitly before changing the specialization context.\",\n                payload={\n                    \"code\": \"SCHEDULED_TEACHER_ASSIGNMENT_CONFLICT\",\n                    \"transition_boundary\": boundary.isoformat(),\n                    \"dependency_counts\": {\n                        \"scheduled_teacher_assignments\": len(scheduled_conflicts)\n                    },\n                    \"teacher_assignment_ids\": [\n                        str(assignment.id) for assignment in scheduled_conflicts\n                    ],\n                },\n            )\n\n        ended = 0\n        for assignment in ineligible:\n            previous_state = assignment.state.value\n            effective_to = boundary - timedelta(days=1)\n            assignment.effective_to = effective_to\n            db.add(assignment)\n            db.add(\n                TeacherAssignmentLifecycleAudit(\n                    tenant_id=tenant_id,\n                    assignment_id=assignment.id,\n                    class_id=assignment.class_id,\n                    curriculum_subject_id=assignment.curriculum_subject_id,\n                    action=\"specialization_assignment_ended\",\n                    previous_teacher_membership_id=assignment.teacher_membership_id,\n                    new_teacher_membership_id=assignment.teacher_membership_id,\n                    previous_state=previous_state,\n                    new_state=\"ended\",\n                    previous_effective_from=assignment.effective_from,\n                    previous_effective_to=None,\n                    new_effective_from=assignment.effective_from,\n                    new_effective_to=effective_to,\n                    acting_admin_id=acting_admin_id,\n                    reason=\"Subject is no longer eligible for the class in the target specialization context.\",\n                )\n            )\n            ended += 1\n        await db.flush()\n        return {\"ended\": ended, \"deleted_scheduled\": 0}\n'''
-          curriculum, count = reconcile_pattern.subn(new_reconcile, curriculum, count=1)
+          replacement = (
+              "    @staticmethod\n"
+              "    async def reconcile_teacher_assignments_for_term(\n"
+              "        db: AsyncSession,\n"
+              "        *,\n"
+              "        tenant_id: uuid.UUID,\n"
+              "        term: AcademicTerm,\n"
+              "        acting_admin_id: uuid.UUID | None,\n"
+              "        class_ids: set[uuid.UUID] | None = None,\n"
+              "        transition_boundary: date | None = None,\n"
+              "    ) -> dict[str, int]:\n"
+              "        \"\"\"End started assignments that lose eligibility without rewriting scheduled history.\"\"\"\n\n"
+              "        query = select(TeacherAssignment).where(\n"
+              "            TeacherAssignment.tenant_id == tenant_id,\n"
+              "            TeacherAssignment.effective_to.is_(None),\n"
+              "        )\n"
+              "        if term.end_date is not None:\n"
+              "            query = query.where(TeacherAssignment.effective_from <= term.end_date)\n"
+              "        if class_ids:\n"
+              "            query = query.where(TeacherAssignment.class_id.in_(class_ids))\n"
+              "        assignments = list((await db.execute(query.with_for_update())).scalars())\n"
+              "        boundary = transition_boundary or term.start_date or date.today()\n"
+              "        if term.start_date is not None and boundary < term.start_date:\n"
+              "            boundary = term.start_date\n\n"
+              "        cache: dict[uuid.UUID, set[uuid.UUID]] = {}\n"
+              "        ineligible: list[TeacherAssignment] = []\n"
+              "        for assignment in assignments:\n"
+              "            eligible = cache.get(assignment.class_id)\n"
+              "            if eligible is None:\n"
+              "                try:\n"
+              "                    resolved = await CurriculumResolutionService.resolve_class_subjects(\n"
+              "                        db,\n"
+              "                        tenant_id=tenant_id,\n"
+              "                        class_id=assignment.class_id,\n"
+              "                        academic_term_id=term.id,\n"
+              "                    )\n"
+              "                    eligible = {item.curriculum_subject_id for item in resolved}\n"
+              "                except (ConflictException, NotFoundException):\n"
+              "                    eligible = set()\n"
+              "                cache[assignment.class_id] = eligible\n"
+              "            if assignment.curriculum_subject_id not in eligible:\n"
+              "                ineligible.append(assignment)\n\n"
+              "        scheduled_conflicts = [\n"
+              "            assignment\n"
+              "            for assignment in ineligible\n"
+              "            if assignment.effective_from >= boundary\n"
+              "        ]\n"
+              "        if scheduled_conflicts:\n"
+              "            raise ConflictException(\n"
+              "                \"A scheduled teacher assignment would become ineligible at this academic transition. \"\n"
+              "                \"Remove or reschedule it explicitly before changing the specialization context.\",\n"
+              "                payload={\n"
+              "                    \"code\": \"SCHEDULED_TEACHER_ASSIGNMENT_CONFLICT\",\n"
+              "                    \"transition_boundary\": boundary.isoformat(),\n"
+              "                    \"dependency_counts\": {\n"
+              "                        \"scheduled_teacher_assignments\": len(scheduled_conflicts)\n"
+              "                    },\n"
+              "                    \"teacher_assignment_ids\": [\n"
+              "                        str(assignment.id) for assignment in scheduled_conflicts\n"
+              "                    ],\n"
+              "                },\n"
+              "            )\n\n"
+              "        ended = 0\n"
+              "        for assignment in ineligible:\n"
+              "            previous_state = assignment.state.value\n"
+              "            effective_to = boundary - timedelta(days=1)\n"
+              "            assignment.effective_to = effective_to\n"
+              "            db.add(assignment)\n"
+              "            db.add(\n"
+              "                TeacherAssignmentLifecycleAudit(\n"
+              "                    tenant_id=tenant_id,\n"
+              "                    assignment_id=assignment.id,\n"
+              "                    class_id=assignment.class_id,\n"
+              "                    curriculum_subject_id=assignment.curriculum_subject_id,\n"
+              "                    action=\"specialization_assignment_ended\",\n"
+              "                    previous_teacher_membership_id=assignment.teacher_membership_id,\n"
+              "                    new_teacher_membership_id=assignment.teacher_membership_id,\n"
+              "                    previous_state=previous_state,\n"
+              "                    new_state=\"ended\",\n"
+              "                    previous_effective_from=assignment.effective_from,\n"
+              "                    previous_effective_to=None,\n"
+              "                    new_effective_from=assignment.effective_from,\n"
+              "                    new_effective_to=effective_to,\n"
+              "                    acting_admin_id=acting_admin_id,\n"
+              "                    reason=\"Subject is no longer eligible for the class in the target specialization context.\",\n"
+              "                )\n"
+              "            )\n"
+              "            ended += 1\n"
+              "        await db.flush()\n"
+              "        return {\"ended\": ended, \"deleted_scheduled\": 0}\n"
+          )
+          curriculum, count = pattern.subn(replacement, curriculum, count=1)
           if count != 1:
               raise SystemExit(f"teacher reconciliation replacement: expected 1 match, found {count}")
           curriculum_path.write_text(curriculum)
 
-          # 4) Strengthen existing term-open unit test for entitlement snapshot + cache transition.
-          term_test_path = Path('backend/tests/unit/student_academics/test_academic_term_update.py')
+          term_test_path = Path("backend/tests/unit/student_academics/test_academic_term_update.py")
           term_test = term_test_path.read_text()
-          term_test = replace_once(
-              term_test,
-              'from unittest.mock import AsyncMock, patch\n',
-              'from types import SimpleNamespace\nfrom unittest.mock import AsyncMock, patch\n',
-              'academic term test SimpleNamespace import',
-          )
-          term_test = replace_once(
-              term_test,
-              'from app.modules.student_academics.service import StudentAcademicService\n',
-              'from app.modules.student_academics.service import StudentAcademicService\nfrom app.tenant_management.models import SubscriptionPlan\n',
-              'academic term test SubscriptionPlan import',
-          )
-          term_test = replace_once(
-              term_test,
-              '''    db = AsyncMock()\n\n    with (\n        patch(\n            \"app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id\",\n''',
-              '''    db = AsyncMock()\n    entitlement = SimpleNamespace(\n        id=uuid.uuid4(),\n        tenant_id=tenant_id,\n        academic_term_id=term.id,\n        plan_code=SubscriptionPlan.PROFESSIONAL,\n    )\n\n    with (\n        patch(\n            \"app.modules.student_academics.service.StudentAcademicRepository.get_term_by_id\",\n''',
-              'add term-open entitlement fixture',
-          )
-          term_test = replace_once(
-              term_test,
-              '''        patch(\n            \"app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.ensure_open_eligible\",\n            new=AsyncMock(),\n        ),\n''',
-              '''        patch(\n            \"app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.ensure_open_eligible\",\n            new=AsyncMock(return_value=entitlement),\n        ),\n        patch(\n            \"app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.mark_effective_for_open_term\",\n            new=AsyncMock(),\n        ) as mark_effective,\n        patch(\n            \"app.modules.subscriptions.cache.invalidate_tenant_subscription_cache\",\n            new=AsyncMock(),\n        ) as invalidate_subscription_cache,\n''',
-              'patch term-open entitlement transition',
-          )
-          term_test = replace_once(
-              term_test,
-              '''    assert opened.closing_started_at is None\n    db.commit.assert_awaited_once()\n\n\n@pytest.mark.asyncio\nasync def test_close_academic_term_starts_closure_for_open_terms() -> None:\n''',
-              '''    assert opened.closing_started_at is None\n    db.commit.assert_awaited_once()\n    mark_effective.assert_awaited_once_with(\n        db,\n        tenant_id=tenant_id,\n        term=term,\n        entitlement=entitlement,\n    )\n    invalidate_subscription_cache.assert_awaited_once_with(tenant_id)\n\n\n@pytest.mark.asyncio\nasync def test_close_academic_term_starts_closure_for_open_terms() -> None:\n''',
-              'assert term-open entitlement transition',
-          )
+          old = "        patch(\n            \"app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.ensure_open_eligible\",\n            new=AsyncMock(),\n        ),\n"
+          new = old + "        patch(\n            \"app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.mark_effective_for_open_term\",\n            new=AsyncMock(),\n        ),\n        patch(\n            \"app.modules.subscriptions.cache.invalidate_tenant_subscription_cache\",\n            new=AsyncMock(),\n        ),\n"
+          term_test = replace_once(term_test, old, new, "patch open-term entitlement collaborators in existing test")
           term_test_path.write_text(term_test)
-
-          # 5) Focused severe regression tests.
-          severe_test = r'''from __future__ import annotations
-
-import uuid
-from datetime import date, timedelta
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
-from app.core.exceptions import ConflictException
-from app.modules.cbt.sync.projectors.staff import project_teacher_assignment
-from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
-from app.modules.student_academics.models import (
-    AcademicTermStatus,
-    TeacherAssignment,
-)
-from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.student_academics.service import StudentAcademicService
-from app.modules.teachers.models import TeacherAccountStatus, TeacherMembershipStatus
-
-
-def _assignment(*, effective_from: date, curriculum_subject_id: uuid.UUID | None = None):
-    return TeacherAssignment(
-        id=uuid.uuid4(),
-        tenant_id=uuid.uuid4(),
-        class_id=uuid.uuid4(),
-        curriculum_subject_id=curriculum_subject_id or uuid.uuid4(),
-        teacher_membership_id=uuid.uuid4(),
-        effective_from=effective_from,
-        effective_to=None,
-    )
-
-
-def _scalar_result(rows):
-    result = MagicMock()
-    result.scalars.return_value = rows
-    return result
-
-
-@pytest.mark.asyncio
-async def test_term_closure_preview_does_not_query_next_term_specialization() -> None:
-    tenant_id = uuid.uuid4()
-    term = SimpleNamespace(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        academic_session_id=uuid.uuid4(),
-        status=AcademicTermStatus.OPEN,
-        is_current=True,
-    )
-    db = SimpleNamespace(
-        execute=AsyncMock(side_effect=AssertionError("preview must not inspect next-term specialization"))
-    )
-
-    with (
-        patch.object(StudentAcademicRepository, "get_term_by_id", new=AsyncMock(return_value=term)),
-        patch.object(StudentAcademicRepository, "count_results", new=AsyncMock(return_value=0)),
-        patch.object(StudentAcademicRepository, "count_report_cards", new=AsyncMock(return_value=0)),
-        patch(
-            "app.modules.school_calendar.service.SchoolCalendarService.inspect_term_closure_readiness",
-            new=AsyncMock(return_value={"counts": {}, "blockers": []}),
-        ),
-    ):
-        preview = await StudentAcademicService.academic_term_dependency_preview(
-            db, tenant_id, term.id
-        )
-
-    assert preview.can_close is True
-    assert preview.can_start_closing is True
-    db.execute.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_reconciliation_ends_started_assignment_at_transition_boundary_minus_one() -> None:
-    boundary = date.today()
-    assignment = _assignment(effective_from=boundary - timedelta(days=10))
-    term = SimpleNamespace(
-        id=uuid.uuid4(),
-        start_date=boundary - timedelta(days=30),
-        end_date=boundary + timedelta(days=60),
-    )
-    db = SimpleNamespace(
-        execute=AsyncMock(return_value=_scalar_result([assignment])),
-        add=MagicMock(),
-        flush=AsyncMock(),
-    )
-
-    with patch(
-        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_class_subjects",
-        new=AsyncMock(return_value=[]),
-    ):
-        result = await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
-            db,
-            tenant_id=assignment.tenant_id,
-            term=term,
-            acting_admin_id=uuid.uuid4(),
-            transition_boundary=boundary,
-        )
-
-    assert result["ended"] == 1
-    assert assignment.effective_to == boundary - timedelta(days=1)
-    assert assignment.effective_to >= assignment.effective_from
-    db.flush.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_reconciliation_blocks_ineligible_scheduled_assignment_without_mutation() -> None:
-    boundary = date.today()
-    assignment = _assignment(effective_from=boundary + timedelta(days=5))
-    term = SimpleNamespace(
-        id=uuid.uuid4(),
-        start_date=boundary - timedelta(days=30),
-        end_date=boundary + timedelta(days=60),
-    )
-    db = SimpleNamespace(
-        execute=AsyncMock(return_value=_scalar_result([assignment])),
-        add=MagicMock(),
-        flush=AsyncMock(),
-    )
-
-    with patch(
-        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_class_subjects",
-        new=AsyncMock(return_value=[]),
-    ):
-        with pytest.raises(ConflictException) as exc_info:
-            await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
-                db,
-                tenant_id=assignment.tenant_id,
-                term=term,
-                acting_admin_id=uuid.uuid4(),
-                transition_boundary=boundary,
-            )
-
-    assert exc_info.value.payload["code"] == "SCHEDULED_TEACHER_ASSIGNMENT_CONFLICT"
-    assert assignment.effective_to is None
-    db.add.assert_not_called()
-    db.flush.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_copy_class_departments_requires_draft_target() -> None:
-    tenant_id = uuid.uuid4()
-    session_id = uuid.uuid4()
-    target = SimpleNamespace(
-        id=uuid.uuid4(),
-        academic_session_id=session_id,
-        status=AcademicTermStatus.OPEN,
-    )
-    source = SimpleNamespace(
-        id=uuid.uuid4(),
-        academic_session_id=session_id,
-        status=AcademicTermStatus.CLOSED,
-    )
-    db = SimpleNamespace(execute=AsyncMock(side_effect=AssertionError("copy must stop before rows")))
-
-    with (
-        patch(
-            "app.modules.student_academics.curriculum_v2_service.ensure_academic_write_window",
-            new=AsyncMock(),
-        ),
-        patch.object(
-            AcademicCurriculumService,
-            "_term",
-            new=AsyncMock(side_effect=[target, source]),
-        ),
-    ):
-        with pytest.raises(ConflictException, match="draft academic term"):
-            await AcademicCurriculumService.copy_class_departments(
-                db,
-                tenant_id=tenant_id,
-                admin_id=uuid.uuid4(),
-                target_term_id=target.id,
-                source_term_id=source.id,
-            )
-
-    db.execute.assert_not_awaited()
-
-
-def test_incremental_teacher_projector_requires_visible_underlying_subject() -> None:
-    tenant_id = uuid.uuid4()
-    assignment = SimpleNamespace(
-        id=uuid.uuid4(),
-        effective_to=None,
-        class_id=uuid.uuid4(),
-        curriculum_subject_id=uuid.uuid4(),
-        teacher_membership_id=uuid.uuid4(),
-    )
-    membership = SimpleNamespace(status=TeacherMembershipStatus.ACTIVE)
-    account = SimpleNamespace(account_status=TeacherAccountStatus.ACTIVE, is_active=True)
-    first = MagicMock()
-    first.first.return_value = (assignment, membership, account)
-    second = MagicMock()
-    second.first.return_value = None
-    session = MagicMock()
-    session.execute.side_effect = [first, second]
-
-    assert project_teacher_assignment(session, tenant_id, assignment.id) is None
-
-    context_statement = session.execute.call_args_list[1].args[0]
-    sql = str(context_statement)
-    assert "subjects.is_active" in sql
-    assert "subjects.archived_at IS NULL" in sql
-    assert "subjects.tenant_id" in sql
-'''
-          Path('backend/tests/unit/student_academics/test_severe_stabilization.py').write_text(severe_test)
-
-          snapshot_test = r'''from __future__ import annotations
-
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
-
-import pytest
-
-from app.core.exceptions import ConflictException
-from app.modules.student_academics.models import AcademicTermStatus
-from app.modules.subscriptions.subscription_enums import TermEntitlementStatus
-from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
-from app.tenant_management.models import SubscriptionPlan
-
-
-@pytest.mark.asyncio
-async def test_open_term_effective_snapshot_uses_entitlement_plan_only_after_open() -> None:
-    tenant_id = uuid4()
-    term = SimpleNamespace(
-        id=uuid4(),
-        tenant_id=tenant_id,
-        status=AcademicTermStatus.OPEN,
-        is_current=True,
-    )
-    entitlement = SimpleNamespace(
-        tenant_id=tenant_id,
-        academic_term_id=term.id,
-        plan_code=SubscriptionPlan.PROFESSIONAL,
-        status=TermEntitlementStatus.ACTIVE,
-    )
-    tenant = SimpleNamespace(
-        plan=SubscriptionPlan.FREE,
-        initial_plan_intent=SubscriptionPlan.PROFESSIONAL,
-        trial_ends_at=None,
-    )
-    db = MagicMock()
-    db.flush = AsyncMock()
-
-    with patch(
-        "app.modules.subscriptions.term_entitlement_service.SubscriptionRepository.get_tenant",
-        new=AsyncMock(return_value=tenant),
-    ):
-        await TermPlanEntitlementService.mark_effective_for_open_term(
-            db,
-            tenant_id=tenant_id,
-            term=term,
-            entitlement=entitlement,
-        )
-
-    assert tenant.plan == SubscriptionPlan.PROFESSIONAL
-    assert tenant.initial_plan_intent is None
-    db.flush.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_draft_term_cannot_apply_effective_plan_snapshot() -> None:
-    tenant_id = uuid4()
-    term = SimpleNamespace(
-        id=uuid4(),
-        tenant_id=tenant_id,
-        status=AcademicTermStatus.DRAFT,
-        is_current=False,
-    )
-    entitlement = SimpleNamespace(
-        tenant_id=tenant_id,
-        academic_term_id=term.id,
-        plan_code=SubscriptionPlan.PROFESSIONAL,
-        status=TermEntitlementStatus.ACTIVE,
-    )
-
-    with pytest.raises(ConflictException, match="current open term"):
-        await TermPlanEntitlementService.mark_effective_for_open_term(
-            MagicMock(),
-            tenant_id=tenant_id,
-            term=term,
-            entitlement=entitlement,
-        )
-'''
-          Path('backend/tests/unit/subscriptions/test_term_open_effective_snapshot.py').write_text(snapshot_test)
           PY
 
       - name: Install backend dependencies
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          elif [ -f pyproject.toml ]; then
-            pip install -e .
-          else
-            echo 'No backend dependency manifest found' >&2
-            exit 1
-          fi
+          pip install -r requirements.txt
           pip install pytest pytest-asyncio
 
       - name: Compile backend
@@ -525,11 +302,11 @@ async def test_draft_term_cannot_apply_effective_plan_snapshot() -> None:
             tests/unit/subscriptions/test_term_open_effective_snapshot.py \
             tests/unit/subscriptions/test_term_entitlements.py
 
-      - name: Remove one-shot executor and commit verified fixes
+      - name: Commit verified fixes and remove executor
         run: |
           rm .github/workflows/severe-stabilization-once.yml
-          git config user.name 'weave-stabilization-bot'
-          git config user.email 'weave-stabilization-bot@users.noreply.github.com'
+          git config user.name weave-stabilization-bot
+          git config user.email weave-stabilization-bot@users.noreply.github.com
           git add backend .github/workflows/severe-stabilization-once.yml
           git diff --cached --check
           git commit -m 'fix: stabilize academic lifecycle and term entitlements'
