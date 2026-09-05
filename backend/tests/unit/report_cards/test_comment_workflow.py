@@ -8,7 +8,11 @@ import pytest
 
 from app.core.exceptions import BadRequestException, ForbiddenException
 from app.modules.report_cards.comment_models import TeacherCommentStatus
-from app.modules.report_cards.comment_schemas import CommentTemplateWrite, TeacherCommentWrite
+from app.modules.report_cards.comment_schemas import (
+    CommentTemplateWrite,
+    PersonalCommentTemplateCreate,
+    TeacherCommentWrite,
+)
 from app.modules.report_cards.comment_service import ReportCommentService
 from app.modules.teachers.models import TeacherMembership
 
@@ -46,6 +50,21 @@ def make_comment(*, teacher_id, student_id, enrollment_id, class_id, session_id,
     )
 
 
+def test_public_personal_comment_contract_is_text_plus_one_grade_only():
+    grade_id = uuid4()
+    payload = PersonalCommentTemplateCreate(
+        text="Very good performance. Keep it up.",
+        grading_scale_id=grade_id,
+        is_default=True,
+    )
+
+    assert payload.text == "Very good performance. Keep it up."
+    assert payload.grading_scale_id == grade_id
+    assert payload.is_default is True
+    assert "name" not in payload.model_fields_set
+    assert not hasattr(payload, "grading_scale_ids")
+
+
 @pytest.mark.asyncio
 async def test_subject_teacher_cannot_use_class_teacher_comment_capability(monkeypatch):
     teacher = TeacherMembership(id=uuid4(), tenant_id=uuid4())
@@ -63,6 +82,8 @@ async def test_subject_teacher_cannot_use_class_teacher_comment_capability(monke
 
 @pytest.mark.asyncio
 async def test_teacher_comment_draft_can_be_saved_before_results_are_ready(monkeypatch):
+    """Service remains tolerant for historical/internal callers; HTTP routes gate new work."""
+
     teacher = TeacherMembership(id=uuid4(), tenant_id=uuid4())
     student_id = uuid4()
     class_id = uuid4()
@@ -239,11 +260,11 @@ async def test_result_change_marks_submitted_teacher_comment_needs_review():
     db.add.assert_called_once_with(comment)
 
 
-def test_template_defaults_must_be_personal_grade_mappings():
+def test_internal_template_defaults_must_be_grade_mappings():
     grade_id = uuid4()
     with pytest.raises(ValueError, match="defaults must also appear"):
         CommentTemplateWrite(
-            name="Strong performance",
+            name="Internal derived name",
             text="Excellent progress.",
             grading_scale_ids=[],
             default_grading_scale_ids=[grade_id],
