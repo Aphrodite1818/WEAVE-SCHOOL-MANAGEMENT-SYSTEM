@@ -39,6 +39,10 @@ export const reportCommentService = {
   submitTeacherComment: (studentId, payload) =>
     api.post(`/teachers/me/student-comments/${studentId}/submit`, payload),
 
+  listTeacherCommentOverrides: (params) =>
+    api.get(
+      `/tenant-admin/academic/report-cards/teacher-comment-overrides${queryString(params)}`,
+    ),
   overrideTeacherComment: (payload) =>
     api.post(
       "/tenant-admin/academic/report-cards/teacher-comment-overrides",
