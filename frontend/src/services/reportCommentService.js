@@ -12,6 +12,8 @@ const queryString = (params = {}) => {
 };
 
 export const reportCommentService = {
+  getTeacherCommentSummary: () => api.get("/teachers/me/student-comments/summary"),
+  listTeacherGradingScales: () => api.get("/teachers/academics/grading-scales"),
   listTeacherTemplates: (params) =>
     api.get(`/teachers/me/comment-templates${queryString(params)}`),
   createTeacherTemplate: (payload) =>
