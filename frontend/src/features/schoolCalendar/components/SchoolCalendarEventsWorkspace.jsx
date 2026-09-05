@@ -327,7 +327,7 @@ function SchoolCalendarEventsWorkspace() {
             title="Calendar events"
             description="Scheduled school activities for the selected term calendar. Select an event to inspect it; lifecycle actions stay on the list."
             actions={
-              <div className="grid min-w-[18rem] gap-2 sm:grid-cols-2 xl:min-w-[38rem] xl:grid-cols-[minmax(14rem,1.6fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_auto] xl:items-end">
+              <div className="grid w-full min-w-0 gap-2 sm:grid-cols-2">
                 <SelectControl
                   label="Calendar"
                   value={selectedCalendarId}
