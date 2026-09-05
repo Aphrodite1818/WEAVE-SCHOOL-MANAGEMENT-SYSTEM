@@ -33,13 +33,19 @@ async def test_bulk_report_card_reopen_skips_superseded_history() -> None:
     actor = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id)
     current = SimpleNamespace(
         id=uuid.uuid4(),
+        student_id=uuid.uuid4(),
+        academic_session_id=uuid.uuid4(),
+        academic_term_id=uuid.uuid4(),
         status=ReportCardStatus.ARCHIVED,
         superseded_at=None,
-        published_at=SimpleNamespace(),
-        published_by=uuid.uuid4(),
+        published_at=None,
+        published_by=None,
     )
     historical = SimpleNamespace(
         id=uuid.uuid4(),
+        student_id=uuid.uuid4(),
+        academic_session_id=uuid.uuid4(),
+        academic_term_id=uuid.uuid4(),
         status=ReportCardStatus.ARCHIVED,
         superseded_at=SimpleNamespace(),
         published_at=SimpleNamespace(),
@@ -59,6 +65,10 @@ async def test_bulk_report_card_reopen_skips_superseded_history() -> None:
             BulkReportCardService,
             "_scope_cards",
             new=AsyncMock(return_value=[current, historical]),
+        ),
+        patch(
+            "app.modules.report_cards.bulk_service.ReportCardRepository.get_current_draft",
+            new=AsyncMock(return_value=None),
         ),
         patch(
             "app.modules.report_cards.bulk_service.ReportCardRepository.save",
