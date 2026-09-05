@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_teacher, get_current_tenant_admin
-from app.core.exceptions import ConflictException, NotFoundException
+from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.modules.report_cards.comment_audit_service import TeacherCommentAuditService
 from app.modules.report_cards.comment_models import (
     CommentTemplateOwnerType,
@@ -229,6 +229,34 @@ async def _delete_personal_comment(
     await ReportCommentService.delete_template(db, actor=actor, template_id=template_id)
 
 
+async def _ensure_teacher_comment_ready(
+    db: DbSession,
+    teacher: TeacherMembership,
+    student_id: UUID,
+    payload: TeacherCommentWrite,
+) -> None:
+    ready, _, grading_scale = await ReportCommentService._academic_readiness(
+        db,
+        tenant_id=teacher.tenant_id,
+        student_id=student_id,
+        academic_session_id=payload.academic_session_id,
+        academic_term_id=payload.academic_term_id,
+    )
+    if not ready or grading_scale is None:
+        raise BadRequestException(
+            "Class-teacher comment work begins after all expected results are finalized and locked."
+        )
+    if payload.source_template_id is None:
+        return
+    template = await _find_template(db, teacher, payload.source_template_id)
+    if _status_value(template.status) != CommentTemplateStatus.ACTIVE.value:
+        raise BadRequestException("Inactive or archived comments cannot be selected.")
+    if _single_grade_id(template) != grading_scale.id:
+        raise BadRequestException(
+            f"The selected saved comment is not assigned to Grade {grading_scale.grade}."
+        )
+
+
 @admin_template_router.get("", response_model=CommentTemplateListResponse)
 async def list_admin_comment_templates(
     db: DbSession,
@@ -362,6 +390,7 @@ async def save_teacher_comment_draft(
     db: DbSession,
     current_teacher: CurrentTeacher,
 ) -> TeacherCommentResponse:
+    await _ensure_teacher_comment_ready(db, current_teacher, student_id, payload)
     return await ReportCommentService.save_teacher_comment(
         db,
         teacher=current_teacher,
@@ -378,6 +407,7 @@ async def submit_teacher_comment(
     db: DbSession,
     current_teacher: CurrentTeacher,
 ) -> TeacherCommentResponse:
+    await _ensure_teacher_comment_ready(db, current_teacher, student_id, payload)
     return await ReportCommentService.save_teacher_comment(
         db,
         teacher=current_teacher,
