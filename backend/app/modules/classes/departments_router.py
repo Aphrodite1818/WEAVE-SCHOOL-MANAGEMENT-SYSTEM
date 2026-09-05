@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, status
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
 from app.modules.classes.department_service import DepartmentPoolService
+from app.modules.classes.department_repository import AcademicLevelDepartmentRepository
 from app.modules.classes.schemas import (
     AcademicLevelDepartmentActivateRequest,
     AcademicLevelDepartmentArchiveRequest,
@@ -46,6 +47,14 @@ async def list_departments(
     return await DepartmentPoolService.list_departments(
         db, current_admin, active_only=active_only, include_archived=include_archived
     )
+
+
+@router.get("/level-department-availability", response_model=list[AcademicLevelDepartmentResponse])
+async def list_level_department_availability(db: DbSession, current_admin: CurrentTenantAdmin):
+    rows = await AcademicLevelDepartmentRepository.list_for_level(
+        db, current_admin.tenant_id, None, include_archived=True
+    )
+    return [DepartmentPoolService._link_response(row) for row in rows]
 
 
 @router.patch("/departments/{department_id}", response_model=DepartmentResponse)

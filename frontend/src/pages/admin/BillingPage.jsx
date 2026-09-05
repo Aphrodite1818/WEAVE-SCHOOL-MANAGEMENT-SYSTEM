@@ -1,3 +1,4 @@
+import { termEntitlementLabel } from "../../features/subscriptions/termEntitlementPresentation";
 import {
   CalendarClock,
   CreditCard,
@@ -58,6 +59,7 @@ const termDisplayName = (term) =>
 
 function BillingPage() {
   const {
+    entitlements,
     planCode,
     statusMeta,
     errors: subscriptionErrors,
@@ -103,7 +105,7 @@ function BillingPage() {
     terms.find(
       (term) =>
         term.is_current &&
-        ["open", "closing"].includes(String(term.status || "").toLowerCase()),
+        String(term.status || "").toLowerCase() === "open",
     ) || null;
   const currentEntitlement = currentTerm
     ? history.find(
@@ -112,7 +114,7 @@ function BillingPage() {
           String(item.academic_term_id) === String(currentTerm.id),
       ) || null
     : null;
-  const effectivePlan = currentEntitlement?.plan_code || planCode || "free";
+  const effectivePlan = entitlements?.plan || planCode || "free";
   const paidThisTerm = currentTerm
     ? payments
         .filter(
@@ -173,7 +175,7 @@ function BillingPage() {
                     </h2>
                     <p className="mt-3 max-w-2xl text-sm leading-6 text-white/85">
                       Free is always available as Weave&apos;s permanent baseline.
-                      Paid plans belong only to the current academic term and
+                      Purchased plans belong to their selected academic term and
                       close with that term.
                     </p>
                   </div>
@@ -277,7 +279,7 @@ function BillingPage() {
                   <div className="mt-5">
                     <EmptyState
                       title="No operational term"
-                      description="There is nothing to purchase in advance. Select a plan only when the next term is ready to open."
+                      description="A plan purchased for a draft term is scheduled. Feature access follows the current open term; review Academic Terms for readiness blockers."
                     />
                   </div>
                 )}
@@ -313,7 +315,7 @@ function BillingPage() {
                             </p>
                           </div>
                           <Badge variant={statusVariant(item.status)}>
-                            {item.status}
+                            {termEntitlementLabel(item, term)}
                           </Badge>
                         </div>
                       );

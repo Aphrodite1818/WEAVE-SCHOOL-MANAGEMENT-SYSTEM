@@ -15,7 +15,7 @@ from app.modules.superadmin.models import SuperAdmin
 from app.modules.teachers.models import Teacher, TeacherAccount
 from app.modules.tenant_admins.models import TenantAdmin
 
-CURRENT_LEGAL_POLICY_VERSION = "weave-legal-compliance-v1"
+CURRENT_LEGAL_POLICY_VERSION = "weave-legal-compliance-v1.1"
 
 
 def _actor_compliance_identity(

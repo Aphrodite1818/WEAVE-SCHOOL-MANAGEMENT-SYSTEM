@@ -1,3 +1,4 @@
+import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { Tags } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -26,15 +27,21 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
   const [label, setLabel] = useState("");
   const [editing, setEditing] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       setArmLabels(asItems(await armLabelService.getArmLabels({ includeArchived: true })));
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load arm labels."));
+      setLoadError(getErrorMessage(error, "Could not load arm labels."));
+    } finally {
+      setLoading(false);
     }
-  }, [showError]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -50,6 +57,8 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
 
   const selectView = (view) => {
     const next = new URLSearchParams(searchParams);
+    if (view === "create") next.set("returnView", activeTab === "create" ? "overview" : activeTab);
+    else next.delete("returnView");
     next.set("view", view);
     next.delete("tab");
     setSearchParams(next, { replace: true });
@@ -58,22 +67,25 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
   const closeEditor = () => {
     setEditing(null);
     setLabel("");
-    selectView("overview");
+    selectView(searchParams.get("returnView") || (activeTab === "create" ? "overview" : activeTab));
   };
 
   const save = async (event) => {
     event.preventDefault();
     if (!label.trim()) return;
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving(true);
     try {
       if (editing) await armLabelService.updateArmLabel(editing.id, { label: label.trim() });
       else await armLabelService.createArmLabel({ label: label.trim() });
       showSuccess(editing ? "Arm label updated." : "Arm label created.");
-      closeEditor();
+      finishAcademicCreation(submission, () => { setLabel(""); }, closeEditor, Boolean(editing));
       await load();
     } catch (error) {
       showError(getErrorMessage(error, "Could not save arm label."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving(false);
     }
   };
@@ -119,26 +131,31 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
               description="Create one reusable label that can be used across many levels."
             >
               <form className="space-y-3" onSubmit={save}>
-                <Input
-                  label="Arm label"
-                  value={label}
-                  onChange={(event) => setLabel(event.target.value)}
-                  placeholder="A"
-                  required
-                />
-                <FormActions
-                  submitting={Boolean(saving)}
-                  submitLabel={editing ? "Save label" : "Add arm label"}
-                  editing
-                  onCancel={closeEditor}
-                />
+                <fieldset disabled={Boolean(saving)} className="space-y-3">
+                  <Input
+                    label="Arm label"
+                    value={label}
+                    onChange={(event) => setLabel(event.target.value)}
+                    placeholder="A"
+                    required
+                  />
+                  <FormActions
+                    submitting={Boolean(saving)}
+                    submitLabel={editing ? "Save label" : "Add arm label"}
+                    repeatable
+                    editing={Boolean(editing)}
+                    onCancel={closeEditor}
+                  />
+                </fieldset>
               </form>
             </WorkspacePanel>
           ) : null
         }
         content={
-          activeTab === "create" && !editing ? null : (
             <RecordList
+              loading={loading}
+              error={loadError}
+              onRetry={load}
               title="Arm labels"
               description="Reusable class labels with explicit active, inactive, and archived states."
               actions={
@@ -217,7 +234,6 @@ function ArmLabelsWorkspace({ activeTab = "overview" }) {
                 );
               }}
             />
-          )
         }
       />
       <TypedConfirmationDialog

@@ -1,14 +1,15 @@
+import ClassSpecializationWorkspace from "./ClassSpecializationWorkspace";
+import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { Building2, Link2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
-import { academicLevelService, classService } from "../../services/academicsService";
-import { academicService } from "../../services/academicService";
+import { academicLevelService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
-import { curriculumService } from "../../services/curriculumService";
 import { departmentService } from "../../services/departmentService";
 import {
+  FormActions,
   Input,
   RecordList,
   SelectControl,
@@ -18,18 +19,6 @@ import {
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
 const items = (value) => (Array.isArray(value) ? value : value?.items || []);
-const classLabel = (row) =>
-  row?.display_name ||
-  [row?.academic_level_name, row?.arm_label].filter(Boolean).join(" ") ||
-  "Class";
-const termName = (value) =>
-  String(value || "Term")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-const termPosition = (value) =>
-  ({ first_term: 1, second_term: 2, third_term: 3 })[
-    String(value || "").toLowerCase()
-  ] || 0;
 const lifecycleStatus = (row) =>
   row.archived_at ? "archived" : row.is_active ? "active" : "inactive";
 const normalizeName = (value) =>
@@ -42,8 +31,6 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   const { showError, showSuccess } = useToast();
   const [levels, setLevels] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [terms, setTerms] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [levelDepartmentsByLevel, setLevelDepartmentsByLevel] = useState({});
   const [levelId, setLevelId] = useState("");
@@ -53,49 +40,42 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   const [name, setName] = useState("");
   const [attachDepartmentId, setAttachDepartmentId] = useState("");
 
-  const [classId, setClassId] = useState("");
-  const [termId, setTermId] = useState("");
-  const [academicLevelDepartmentId, setAcademicLevelDepartmentId] = useState("");
-  const [sourceTermId, setSourceTermId] = useState("");
-  const [currentAssignment, setCurrentAssignment] = useState(null);
-
   const [pendingAction, setPendingAction] = useState(null);
   const [saving, setSaving] = useState("");
+  const [loadErrors, setLoadErrors] = useState({});
+  const [loadStatus, setLoadStatus] = useState({ pool: true, base: true, availability: true });
 
   const loadPool = useCallback(async () => {
+    setLoadStatus((current) => ({ ...current, pool: true }));
+    setLoadErrors((current) => ({ ...current, pool: "" }));
     try {
       setDepartments(
         items(await departmentService.getDepartments({ includeArchived: true })),
       );
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load the department pool."));
+      setLoadErrors((current) => ({ ...current, pool: getErrorMessage(error, "Could not load the department pool.") }));
+    } finally {
+      setLoadStatus((current) => ({ ...current, pool: false }));
     }
-  }, [showError]);
+  }, []);
 
   const loadBase = useCallback(async () => {
+    setLoadStatus((current) => ({ ...current, base: true }));
+    setLoadErrors((current) => ({ ...current, base: "" }));
     try {
-      const [levelResponse, categoryResponse, classResponse, termResponse] =
+      const [levelResponse, categoryResponse] =
         await Promise.all([
           academicLevelService.getLevels({ activeOnly: true }),
           academicLevelService.getCategories(),
-          classService.getClasses({ activeOnly: true, limit: 500 }),
-          academicService.listTerms({ limit: 100 }),
         ]);
       setLevels(items(levelResponse));
       setCategories(items(categoryResponse));
-      setClasses(items(classResponse));
-      const termRows = items(termResponse).filter((term) =>
-        ["draft", "open"].includes(String(term.status || "").toLowerCase()),
-      );
-      setTerms(termRows);
-      setTermId(
-        (current) =>
-          current || termRows.find((term) => term.is_current)?.id || termRows[0]?.id || "",
-      );
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load department setup."));
+      setLoadErrors((current) => ({ ...current, base: getErrorMessage(error, "Could not load department setup.") }));
+    } finally {
+      setLoadStatus((current) => ({ ...current, base: false }));
     }
-  }, [showError]);
+  }, []);
 
   const eligibleLevels = useMemo(() => {
     const allowed = new Set(
@@ -109,50 +89,25 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     [levelDepartmentsByLevel, levelId],
   );
 
-  const levelClasses = useMemo(
-    () => classes.filter((row) => row.academic_level_id === levelId),
-    [classes, levelId],
-  );
-
   const loadLevelDepartments = useCallback(async () => {
+    setLoadErrors((current) => ({ ...current, availability: "" }));
     if (!eligibleLevels.length) {
       setLevelDepartmentsByLevel({});
+      setLoadStatus((current) => ({ ...current, availability: false }));
       return;
     }
-
+    setLoadStatus((current) => ({ ...current, availability: true }));
     try {
-      const entries = await Promise.all(
-        eligibleLevels.map(async (level) => [
-          String(level.id),
-          items(
-            await departmentService.getLevelDepartments(level.id, {
-              includeArchived: true,
-            }),
-          ),
-        ]),
-      );
-      setLevelDepartmentsByLevel(Object.fromEntries(entries));
+      const rows = items(await departmentService.getLevelAvailability());
+      const grouped = {};
+      rows.forEach((row) => { (grouped[String(row.academic_level_id)] ||= []).push(row); });
+      setLevelDepartmentsByLevel(grouped);
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load level department availability."));
+      setLoadErrors((current) => ({ ...current, availability: getErrorMessage(error, "Could not load level department availability.") }));
+    } finally {
+      setLoadStatus((current) => ({ ...current, availability: false }));
     }
-  }, [eligibleLevels, showError]);
-
-  const loadCurrentAssignment = useCallback(async () => {
-    if (!classId || !termId) {
-      setCurrentAssignment(null);
-      setAcademicLevelDepartmentId("");
-      return;
-    }
-    try {
-      const assignment = await curriculumService.getClassDepartment(classId, termId);
-      setCurrentAssignment(assignment || null);
-      setAcademicLevelDepartmentId(assignment?.academic_level_department_id || "");
-    } catch (error) {
-      setCurrentAssignment(null);
-      setAcademicLevelDepartmentId("");
-      showError(getErrorMessage(error, "Could not load this class specialization."));
-    }
-  }, [classId, termId, showError]);
+  }, [eligibleLevels]);
 
   useEffect(() => {
     loadBase();
@@ -170,17 +125,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   }, [loadLevelDepartments]);
 
   useEffect(() => {
-    if (!levelClasses.some((row) => row.id === classId)) {
-      setClassId(levelClasses[0]?.id || "");
-    }
-  }, [classId, levelClasses]);
-
-  useEffect(() => {
-    loadCurrentAssignment();
-  }, [loadCurrentAssignment]);
-
-  useEffect(() => {
-    setEditorOpen(false);
+    setEditorOpen(activeTab === "create");
     setEditing(null);
     setName("");
     setAttachDepartmentId("");
@@ -208,38 +153,11 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
       ),
     [attachedCanonicalIds, departments],
   );
-  const activeLevelDepartments = useMemo(
-    () => levelDepartments.filter((row) => lifecycleStatus(row) === "active"),
-    [levelDepartments],
-  );
-  const selectedLevel = levels.find((row) => row.id === levelId) || null;
-  const selectedTerm = terms.find((row) => row.id === termId) || null;
-  const specializationActive = Boolean(
-    selectedLevel?.specialization_required_from_term_position != null &&
-      termPosition(selectedTerm?.name) >=
-        Number(selectedLevel.specialization_required_from_term_position),
-  );
-  const previousTerms = useMemo(
-    () =>
-      terms.filter(
-        (row) =>
-          row.id !== termId &&
-          row.academic_session_id === selectedTerm?.academic_session_id &&
-          termPosition(row.name) < termPosition(selectedTerm?.name),
-      ),
-    [selectedTerm?.academic_session_id, selectedTerm?.name, termId, terms],
-  );
-
-  useEffect(() => {
-    const nearest = [...previousTerms].sort(
-      (left, right) => termPosition(right.name) - termPosition(left.name),
-    )[0];
-    setSourceTermId(nearest?.id || "");
-  }, [previousTerms]);
-
   const saveDepartment = async (event) => {
     event.preventDefault();
     if (!name.trim() || exactDuplicate) return;
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("department");
     try {
       if (editing) {
@@ -251,12 +169,13 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
       }
       setEditing(null);
       setName("");
-      setEditorOpen(false);
+      finishAcademicCreation(submission, () => setName(""), () => setEditorOpen(false), Boolean(editing));
       await loadPool();
       await loadLevelDepartments();
     } catch (error) {
       showError(getErrorMessage(error, "Could not save department."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
@@ -264,6 +183,8 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   const attachToLevel = async (event) => {
     event.preventDefault();
     if (!levelId || !attachDepartmentId) return;
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("attach");
     try {
       await departmentService.attachDepartment(levelId, attachDepartmentId);
@@ -273,12 +194,13 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     } catch (error) {
       showError(getErrorMessage(error, "Could not attach department to this level."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
 
   const runLifecycle = async () => {
-    if (!pendingAction) return;
+    if (!pendingAction || saving) return;
     const { scope, item, action, academicLevelId } = pendingAction;
     setSaving(item.id);
     try {
@@ -307,49 +229,6 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
       setPendingAction(null);
     } catch (error) {
       showError(getErrorMessage(error, `Could not ${action} this department.`));
-    } finally {
-      setSaving("");
-    }
-  };
-
-  const saveClassSpecialization = async (event) => {
-    event.preventDefault();
-    if (!classId || !termId || !specializationActive || !academicLevelDepartmentId)
-      return;
-    setSaving("placement");
-    try {
-      const assignment = await curriculumService.setClassDepartment(
-        classId,
-        termId,
-        academicLevelDepartmentId,
-      );
-      setCurrentAssignment(assignment);
-      showSuccess("Class specialization set for this term.");
-    } catch (error) {
-      showError(getErrorMessage(error, "Could not update class specialization."));
-      await loadCurrentAssignment();
-    } finally {
-      setSaving("");
-    }
-  };
-
-  const copyPreviousSpecializations = async () => {
-    if (!termId || !sourceTermId) return;
-    setSaving("copy");
-    try {
-      const result = await curriculumService.copyClassDepartments(
-        termId,
-        sourceTermId,
-      );
-      await loadCurrentAssignment();
-      const copied = Number(result?.copied || 0);
-      showSuccess(
-        `${copied} class specialization${copied === 1 ? "" : "s"} copied.`,
-      );
-    } catch (error) {
-      showError(
-        getErrorMessage(error, "Could not copy previous term specializations."),
-      );
     } finally {
       setSaving("");
     }
@@ -431,47 +310,76 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     );
   };
 
+  const loading = Object.values(loadStatus).some(Boolean);
+  const loadError = Object.values(loadErrors).filter(Boolean).join(" ");
+  const retryLoading = () => Promise.all([loadBase(), loadPool(), loadLevelDepartments()]);
+  const loadFeedback = loadError ? (
+    <div role="alert" className="space-y-2 text-sm text-error">
+      <p>{loadError}</p>
+      <Button type="button" variant="outline" onClick={retryLoading}>Retry loading departments</Button>
+    </div>
+  ) : loading ? <p role="status">Loading departments and level availability...</p> : null;
+
   if (activeTab === "availability") {
     return (
       <WorkspaceGrid
         editor={
           <WorkspacePanel
             title="Make a department available"
-            description="Choose from the school-wide pool. This creates the level-specific specialization identity used by curriculum and class placement."
+            description="Choose a school-wide department and the level where it will be available."
           >
             <form className="space-y-3" onSubmit={attachToLevel}>
-              <SelectControl
-                label="Academic level"
-                value={levelId}
-                onChange={setLevelId}
-                options={eligibleLevels.map((row) => ({ value: row.id, label: row.name }))}
-                required
-              />
-              <SelectControl
-                label="Department"
-                value={attachDepartmentId}
-                onChange={setAttachDepartmentId}
-                options={attachableDepartments.map((row) => ({
-                  value: row.id,
-                  label: row.name,
-                }))}
-                placeholder={
-                  attachableDepartments.length
-                    ? "Select department from pool"
-                    : "All active departments are already attached"
-                }
-                required
-              />
-              <Button
-                type="submit"
-                disabled={saving === "attach" || !levelId || !attachDepartmentId}
-              >
-                {saving === "attach" ? "Saving…" : "Make available"}
-              </Button>
+              <fieldset disabled={Boolean(saving) || loading || Boolean(loadError)} className="space-y-3">
+                <SelectControl
+                  label="Academic level"
+                  value={levelId}
+                  onChange={setLevelId}
+                  options={eligibleLevels.map((row) => ({ value: row.id, label: row.name }))}
+                  required
+                />
+                <SelectControl
+                  label="Department"
+                  value={attachDepartmentId}
+                  onChange={setAttachDepartmentId}
+                  options={attachableDepartments.map((row) => ({
+                    value: row.id,
+                    label: row.name,
+                  }))}
+                  placeholder={
+                    attachableDepartments.length
+                      ? "Select department from pool"
+                      : "All active departments are already attached"
+                  }
+                  required
+                />
+                <Button
+                  type="submit"
+                  disabled={saving === "attach" || !levelId || !attachDepartmentId}
+                >
+                  {saving === "attach" ? "Saving…" : "Make available"}
+                </Button>
+              </fieldset>
             </form>
           </WorkspacePanel>
         }
-        content={
+        content={<div className="space-y-4">
+          {loadFeedback}
+          <WorkspacePanel title="Department availability by level" description="Select a cell to add availability. Use the lifecycle actions below to deactivate or restore existing availability safely.">
+            <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+              <thead><tr><th className="p-3">Level</th>{departments.filter((row) => lifecycleStatus(row) === "active").map((row) => <th className="p-3" key={row.id}>{row.name}</th>)}</tr></thead>
+              <tbody>{eligibleLevels.map((level) => <tr key={level.id} className="border-t border-border"><th className="p-3">{level.name}</th>{departments.filter((row) => lifecycleStatus(row) === "active").map((department) => {
+                const link = (levelDepartmentsByLevel[String(level.id)] || []).find((row) => row.department_id === department.id);
+                return <td className="p-3" key={department.id}><Button type="button" size="small" variant="outline" disabled={Boolean(saving) || loading || Boolean(loadError)} aria-label={`${level.name}: ${department.name}, ${link ? lifecycleStatus(link) : "not available"}`} onClick={async () => {
+                  if (saving) return;
+                  if (link) { setLevelId(level.id); setPendingAction({ scope: "level", item: link, action: link.archived_at ? "restore" : link.is_active ? "deactivate" : "activate", academicLevelId: level.id }); return; }
+                  setSaving("matrix");
+                  try { await departmentService.attachDepartment(level.id, department.id); await loadLevelDepartments(); showSuccess(`${department.name} is available in ${level.name}.`); }
+                  catch (error) { showError(getErrorMessage(error, "Could not update availability.")); }
+                  finally { setSaving(""); }
+                }}>{link ? lifecycleStatus(link) === "active" ? "Available" : lifecycleStatus(link) : "Add"}</Button></td>;
+              })}</tr>)}</tbody>
+            </table></div>
+          </WorkspacePanel>
           <RecordList
             title="Level availability"
             description="Each department-enabled academic level shows its department mappings directly."
@@ -516,134 +424,14 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
             }}
             showInspector={false}
           />
-        }
+          <TypedConfirmationDialog open={Boolean(pendingAction)} title={actionConfig?.[0]} description="Existing curriculum and term references are protected. Resolve any blockers before changing availability." confirmationText={actionConfig?.[1] || ""} confirmLabel={actionConfig?.[2]} isLoading={Boolean(saving)} onConfirm={runLifecycle} onCancel={() => setPendingAction(null)} />
+        </div>}
       />
     );
   }
 
   if (activeTab === "placements") {
-    const currentName =
-      currentAssignment?.department_name ||
-      levelDepartments.find((row) => row.id === currentAssignment?.academic_level_department_id)
-        ?.department_name;
-    return (
-      <WorkspaceGrid
-        content={
-          <WorkspacePanel
-            title="Current term placement"
-            description="A class belongs permanently to its level; specialization is selected per term from that level's active department mappings."
-          >
-            <div className="rounded-lg border border-border/70 px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                {classLabel(levelClasses.find((row) => row.id === classId))}
-              </p>
-              <p className="mt-1 text-lg font-semibold text-text">
-                {currentName ||
-                  (specializationActive
-                    ? "Not assigned"
-                    : "Specialization not active")}
-              </p>
-              <p className="mt-1 text-sm text-text-muted">
-                {currentName
-                  ? "This class receives general subjects plus subjects for this specialization."
-                  : specializationActive
-                    ? "Choose an exact department for this class and term."
-                    : "Before specialization begins, every active curriculum subject is eligible."}
-              </p>
-            </div>
-          </WorkspacePanel>
-        }
-        editor={
-          <WorkspacePanel
-            title="Set class specialization"
-            description="Only active departments available to the selected level can be assigned."
-          >
-            <form className="space-y-3" onSubmit={saveClassSpecialization}>
-              <SelectControl
-                label="Academic level"
-                value={levelId}
-                onChange={setLevelId}
-                options={eligibleLevels.map((row) => ({ value: row.id, label: row.name }))}
-                required
-              />
-              <SelectControl
-                label="Class"
-                value={classId}
-                onChange={setClassId}
-                options={levelClasses.map((row) => ({ value: row.id, label: classLabel(row) }))}
-                placeholder={levelClasses.length ? "Select class" : "No classes in this level"}
-                required
-              />
-              <SelectControl
-                label="Academic term"
-                value={termId}
-                onChange={setTermId}
-                options={terms.map((row) => ({
-                  value: row.id,
-                  label: `${termName(row.name)} · ${row.status}`,
-                }))}
-                required
-              />
-              {specializationActive ? (
-                <>
-              <SelectControl
-                label="Department"
-                value={academicLevelDepartmentId}
-                onChange={setAcademicLevelDepartmentId}
-                options={[
-                  { value: "", label: "General — no department for this term" },
-                  ...activeLevelDepartments.map((row) => ({
-                    value: row.id,
-                    label: row.department_name || "Department",
-                  })),
-                ].filter((option) => option.value)}
-              />
-              <Button
-                type="submit"
-                disabled={
-                  saving === "placement" ||
-                  !classId ||
-                  !termId ||
-                  !academicLevelDepartmentId
-                }
-              >
-                {saving === "placement" ? "Saving…" : "Save term placement"}
-              </Button>
-                  {previousTerms.length ? (
-                    <div className="space-y-2 border-t border-border/70 pt-3">
-                      <SelectControl
-                        label="Copy from term"
-                        value={sourceTermId}
-                        onChange={setSourceTermId}
-                        options={previousTerms.map((row) => ({
-                          value: row.id,
-                          label: termName(row.name),
-                        }))}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={saving === "copy" || !sourceTermId}
-                        onClick={copyPreviousSpecializations}
-                      >
-                        {saving === "copy"
-                          ? "Copying..."
-                          : "Copy previous term specializations"}
-                      </Button>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <p className="rounded-lg border border-border/70 px-3 py-3 text-sm text-text-muted">
-                  Specialization is not active for this level in the selected
-                  term, so no department assignment is required.
-                </p>
-              )}
-            </form>
-          </WorkspacePanel>
-        }
-      />
-    );
+    return <div className="space-y-4">{loadFeedback}<ClassSpecializationWorkspace levels={levels} availability={levelDepartmentsByLevel} /></div>;
   }
 
   return (
@@ -656,41 +444,21 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
               description="Department names are school-wide. Level availability is configured separately."
             >
               <form className="space-y-3" onSubmit={saveDepartment}>
-                <Input
-                  label="Department name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Science"
-                  required
-                />
-                {exactDuplicate ? (
-                  <p className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-                    {exactDuplicate.name} already exists in the department pool.
-                  </p>
-                ) : null}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="submit"
-                    disabled={saving === "department" || !name.trim() || Boolean(exactDuplicate)}
-                  >
-                    {saving === "department"
-                      ? "Saving…"
-                      : editing
-                        ? "Save department"
-                        : "Add department"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setEditorOpen(false);
-                      setEditing(null);
-                      setName("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
+                <fieldset disabled={Boolean(saving) || loading || Boolean(loadError)} className="space-y-3">
+                  <Input
+                    label="Department name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Science"
+                    required
+                  />
+                  {exactDuplicate ? (
+                    <p className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+                      {exactDuplicate.name} already exists in the department pool.
+                    </p>
+                  ) : null}
+                  <FormActions repeatable editing={Boolean(editing)} submitting={Boolean(saving)} disabled={!name.trim() || Boolean(exactDuplicate)} onCancel={() => { setEditorOpen(false); setEditing(null); setName(""); }} />
+                </fieldset>
               </form>
             </WorkspacePanel>
           ) : null
@@ -714,14 +482,17 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
               ) : null
             }
             items={departments}
+            loading={loading}
+            error={loadError}
+            onRetry={retryLoading}
             emptyIcon={Building2}
             emptyTitle="No departments"
             emptyDescription="Create the first school-wide department definition."
             renderTitle={(row) => row.name}
             renderMeta={() => "School-wide department"}
-            renderDescription={() =>
-              "Reuse this definition across any department-enabled academic level."
-            }
+            recordLabel="Department"
+            detailsLabel="Available levels"
+            renderDescription={(row) => eligibleLevels.filter((level) => (levelDepartmentsByLevel[String(level.id)] || []).some((link) => link.department_id === row.id && link.is_active && !link.archived_at)).map((level) => level.name).join(", ") || "No levels configured"}
             renderStatus={lifecycleStatus}
             showInspector={!editorOpen}
             onEdit={(row) => {

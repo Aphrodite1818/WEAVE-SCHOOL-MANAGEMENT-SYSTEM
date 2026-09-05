@@ -1,5 +1,5 @@
 import { CheckCircle2, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -15,6 +15,8 @@ function SubscriptionVerifyPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { refreshSubscriptionState } = useSubscription();
+  const verification = useRef(null);
+  const [retry, setRetry] = useState(0);
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Verifying your payment...");
   const [successRoute, setSuccessRoute] = useState("/admin/billing");
@@ -22,7 +24,7 @@ function SubscriptionVerifyPage() {
 
   useEffect(() => {
     let mounted = true;
-    let redirectTimer = null;
+
 
     async function verifyPayment() {
       if (!reference) {
@@ -34,8 +36,11 @@ function SubscriptionVerifyPage() {
       }
 
       try {
-        const entitlement =
-          await subscriptionService.verifyTermPayment(reference);
+        if (!verification.current || verification.current.reference !== reference) {
+          verification.current = { reference, promise: subscriptionService.verifyTermPayment(reference) };
+        }
+        const entitlement = await verification.current.promise;
+        if (!mounted) return;
         const paymentIntent = subscriptionService.consumeTermPaymentIntent({
           academicTermId: entitlement?.academic_term_id,
           reference,
@@ -77,14 +82,12 @@ function SubscriptionVerifyPage() {
             ? openedTerm
               ? "Payment verified and the academic term is now open."
               : `${openTermError} Return to the term workflow to resolve it; your payment is already recorded.`
-            : "Payment verified and the plan change is active for the current academic term.",
+            : `Payment verified. ${entitlement?.plan_code || "Your plan"} was purchased for the selected academic term. Feature access follows the current open term; a purchase for a draft term is scheduled until that term opens.`,
         );
 
-        redirectTimer = window.setTimeout(() => {
-          navigate(returnPath, { replace: true });
-        }, 1800);
       } catch (error) {
         if (!mounted) return;
+        verification.current = null;
 
         const apiError = parseApiError(
           error,
@@ -109,9 +112,9 @@ function SubscriptionVerifyPage() {
 
     return () => {
       mounted = false;
-      if (redirectTimer) window.clearTimeout(redirectTimer);
+
     };
-  }, [navigate, reference, refreshSubscriptionState]);
+  }, [reference, refreshSubscriptionState, retry]);
 
   const isSuccess = status === "success";
   const needsReview = status === "review";
@@ -157,7 +160,8 @@ function SubscriptionVerifyPage() {
             </h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">{message}</p>
 
-            <div className="mt-6">
+            <div className="mt-6 flex justify-center gap-3">
+              {status === "error" && reference ? <Button type="button" onClick={() => { setStatus("loading"); setMessage("Verifying your payment..."); setRetry((value) => value + 1); }}>Retry verification</Button> : null}
               <Button
                 variant={isSuccess || needsReview ? "primary" : "outline"}
                 onClick={() =>

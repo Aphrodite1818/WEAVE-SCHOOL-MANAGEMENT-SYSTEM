@@ -102,7 +102,8 @@ test("billing derives the current operational term instead of any active history
   const source = await read("src/pages/admin/BillingPage.jsx");
 
   assert.match(source, /is_current/);
-  assert.match(source, /\["open", "closing"\]/);
+  assert.match(source, /String\(term.status \|\| ""\).toLowerCase\(\) === "open"/);
+  assert.match(source, /entitlements\?\.plan/);
   assert.doesNotMatch(
     source,
     /history\.find\(\(item\)\s*=>\s*item\.status\s*===\s*"active"\)/,

@@ -80,7 +80,7 @@ test("Subjects by Level keeps separate assignment and lifecycle pages", async ()
   const config = await read("src/features/academic-admin/academicWorkflowConfig.js");
   assert.match(config, /curriculum: \{/);
   assert.match(config, /Curriculum Subjects/);
-  assert.match(source, /Add curriculum subject/);
+  assert.match(source, /Add subjects to curriculum/);
   assert.match(source, /Subject applicability/);
   assert.match(source, /curriculumService\.addSubject/);
   assert.match(source, /academic_level_department_ids/);

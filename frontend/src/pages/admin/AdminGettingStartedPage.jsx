@@ -1,112 +1,49 @@
-import { ArrowRight, CheckCircle2, GraduationCap } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useToast } from "../../hooks/useToast";
+import { getErrorMessage } from "../../services/api";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
-import { supportsDepartmentWorkflow } from "../../features/academic-admin/academicDepartmentCapability";
-import { ROLE_GUIDES } from "../../features/guides/roleGuideConfig";
-import { academicLevelService } from "../../services/academicsService";
 
-const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 
-function AdminGettingStartedPage() {
+function AdminGettingStartedPage({ setup, guideState }) {
   const navigate = useNavigate();
-  const guide = ROLE_GUIDES.admin;
-  const [categoryOptions, setCategoryOptions] = useState([]);
-
-  useEffect(() => {
-    let mounted = true;
-    academicLevelService
-      .getCategories()
-      .then((result) => {
-        if (mounted) setCategoryOptions(asItems(result));
-      })
-      .catch(() => {
-        if (mounted) setCategoryOptions([]);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const steps = useMemo(
-    () =>
-      supportsDepartmentWorkflow(categoryOptions)
-        ? guide.steps
-        : guide.steps.filter((step) => step.id !== "departments"),
-    [categoryOptions, guide.steps],
-  );
-
-  return (
-    <DashboardLayout
-      role="admin"
-      title="School setup"
-      description="Configure one school function at a time. You can leave and continue later without losing completed work."
-      actions={
-        <Button
-          variant="outline"
-          size="small"
-          onClick={() => navigate("/admin/dashboard")}
-        >
-          Finish later
-        </Button>
-      }
-    >
-      <section className="mx-auto max-w-5xl space-y-5">
-        <Card className="p-5 sm:p-6">
-          <div className="flex items-start gap-4">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary">
-              <GraduationCap className="h-6 w-6" />
-            </span>
-            <div>
-              <h2 className="text-xl font-semibold text-text sm:text-2xl">
-                Set up the academic workspace
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-                Each page below owns one responsibility. Complete the school
-                structure first, then curriculum and operational periods.
-                Nothing is hidden inside a long setup form.
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          {steps.map((step, index) => {
-            const Icon = step.icon || CheckCircle2;
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => navigate(`/admin/getting-started/${step.id}`)}
-                className="rounded-2xl border border-border/70 bg-surface p-4 text-left transition hover:border-primary/40 hover:bg-primary-soft/20"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-muted text-text-soft">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-text-faint">
-                      Step {index + 1}
-                    </p>
-                    <h3 className="mt-1 font-semibold text-text">
-                      {step.label}
-                    </h3>
-                    <p className="mt-1 text-sm leading-5 text-text-muted">
-                      {step.description}
-                    </p>
-                  </div>
-                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-text-faint" />
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-    </DashboardLayout>
-  );
+  const { showError } = useToast();
+  const steps = guideState.steps;
+  const required = steps.filter((step) => !step.optional);
+  const optional = steps.filter((step) => step.optional);
+  const completed = required.filter((step) => setup.data?.completion?.[step.id] === true);
+  const pending = required.filter((step) => setup.data?.completion?.[step.id] !== true);
+  const current = pending.find((step) => step.id === guideState.guideState?.current_step) || pending[0];
+  const openStep = async (step) => {
+    await guideState.moveTo(step.id);
+    navigate(`/admin/getting-started/${step.id}`);
+  };
+  return <DashboardLayout role="admin" title="School setup" description="Get this school operational. Progress reflects saved configuration and academic readiness."
+    actions={<Button variant="outline" onClick={() => navigate("/admin/dashboard")}>Finish later</Button>}>
+    <section className="mx-auto max-w-5xl space-y-4">
+      <Card className="space-y-3 p-5">
+        <h2 className="text-xl font-semibold">{completed.length} of {required.length} required steps complete</h2>
+        <p className="text-sm text-text-muted">{setup.data?.session_name || "No session configured"} / {setup.data?.term_name?.replaceAll("_", " ") || "No term configured"}</p>
+        <p className="text-sm text-text-muted">{setup.data?.note}</p>
+        <Button variant="outline" disabled={setup.loading} onClick={setup.refresh}>{setup.loading ? "Checking setup..." : "Refresh readiness"}</Button>
+        {setup.error ? <p role="alert" className="text-sm text-error">{setup.error}</p> : null}
+        {!setup.loading && !setup.error && current ? <div className="border-t border-border pt-4">
+          <p className="text-xs font-semibold uppercase text-text-muted">Current task</p>
+          <h3 className="mt-2 text-lg font-semibold">{current.label}</h3>
+          <p className="my-2 text-sm text-text-muted">{current.description}</p>
+          <Button onClick={() => openStep(current).catch((error) => showError(getErrorMessage(error, "Could not save guide progress. Try again.")))}>{current.actionLabel}<ArrowRight className="h-4 w-4" /></Button>
+        </div> : null}
+        {!pending.length && !setup.loading && !setup.error ? <Button>Complete setup</Button> : null}
+      </Card>
+      {setup.data?.blockers?.length ? <Card className="p-5"><h3 className="font-semibold">Readiness blockers</h3><ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{setup.data.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></Card> : null}
+      <Card className="p-5"><h3 className="font-semibold">Upcoming tasks</h3><div className="mt-3 divide-y divide-border">{pending.filter((step) => step.id !== current?.id).map((step) => <div key={step.id} className="flex items-center justify-between gap-3 py-3"><div><p className="text-sm font-semibold">{step.label}</p><p className="text-sm text-text-muted">{step.description}</p></div><Button size="small" variant="outline" onClick={() => openStep(step).catch((error) => showError(getErrorMessage(error, "Could not save guide progress. Try again.")))}>Open</Button></div>)}</div></Card>
+      <details className="rounded-xl border border-border bg-surface p-5"><summary className="cursor-pointer font-semibold">Completed ({completed.length})</summary><ul className="mt-3 space-y-2">{completed.map((step) => <li key={step.id} className="flex items-center gap-2 text-sm"><CheckCircle2 className="h-4 w-4 text-success" />{step.label}</li>)}</ul></details>
+      {optional.length ? <Card className="p-5"><h3 className="font-semibold">Optional setup</h3><p className="mt-1 text-sm text-text-muted">These capabilities do not block school setup.</p><div className="mt-3 flex flex-wrap gap-2">{optional.map((step) => <Button key={step.id} variant="outline" onClick={() => navigate(step.to)}>{step.actionLabel}</Button>)}</div></Card> : null}
+    </section>
+  </DashboardLayout>;
 }
 
 export default AdminGettingStartedPage;

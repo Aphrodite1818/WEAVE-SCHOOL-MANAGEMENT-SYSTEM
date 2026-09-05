@@ -9,6 +9,7 @@ const buildQuery = (options = {}) => {
 };
 
 export const departmentService = {
+  getLevelAvailability: () => api.get("/tenant-admin/academics/level-department-availability"),
   getDepartments: (options = {}) =>
     api.get(`/tenant-admin/academics/departments?${buildQuery(options)}`),
   createDepartment: (payload) => api.post("/tenant-admin/academics/departments", payload),

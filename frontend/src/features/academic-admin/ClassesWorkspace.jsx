@@ -1,3 +1,4 @@
+import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -46,9 +47,13 @@ function ClassesWorkspace({ activeTab = "overview" }) {
   const [teachers, setTeachers] = useState([]);
   const [classForm, setClassForm] = useState(emptyClassForm);
   const [editingClassId, setEditingClassId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       const [levelRows, classRows, armLabelRows, teacherRows] = await Promise.all([
         academicLevelService.getLevels({ activeOnly: true }),
@@ -61,9 +66,11 @@ function ClassesWorkspace({ activeTab = "overview" }) {
       setArmLabels(asItems(armLabelRows));
       setTeachers(asItems(teacherRows).filter(isAssignableClassTeacher));
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load class structure."));
+      setLoadError(getErrorMessage(error, "Could not load class structure."));
+    } finally {
+      setLoading(false);
     }
-  }, [showError]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -87,6 +94,8 @@ function ClassesWorkspace({ activeTab = "overview" }) {
 
   const selectView = (view) => {
     const next = new URLSearchParams(searchParams);
+    if (view === "create") next.set("returnView", activeTab === "create" ? "overview" : activeTab);
+    else next.delete("returnView");
     next.set("view", view);
     next.delete("tab");
     setSearchParams(next, { replace: true });
@@ -95,12 +104,14 @@ function ClassesWorkspace({ activeTab = "overview" }) {
   const closeEditor = () => {
     setEditingClassId("");
     setClassForm(emptyClassForm);
-    selectView("overview");
+    selectView(searchParams.get("returnView") || (activeTab === "create" ? "overview" : activeTab));
   };
 
   const saveClass = async (event) => {
     event.preventDefault();
     const wasEditing = Boolean(editingClassId);
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving(true);
     try {
       const payload = {
@@ -113,7 +124,7 @@ function ClassesWorkspace({ activeTab = "overview" }) {
         await classService.createClass(payload);
       }
       showSuccess(wasEditing ? "Class arm updated." : "Class arm created.");
-      closeEditor();
+      finishAcademicCreation(submission, () => { setClassForm((current) => ({ ...emptyClassForm, academic_level_id: current.academic_level_id })); }, closeEditor, wasEditing);
       await load();
     } catch (error) {
       showError(
@@ -123,6 +134,7 @@ function ClassesWorkspace({ activeTab = "overview" }) {
         ),
       );
     } finally {
+      endAcademicSubmission(submission);
       setSaving(false);
     }
   };
@@ -160,56 +172,61 @@ function ClassesWorkspace({ activeTab = "overview" }) {
             description="Choose the authoritative level and reusable arm label for this class group."
           >
             <form className="space-y-3" onSubmit={saveClass}>
-              <SelectControl
-                label="Academic level"
-                value={classForm.academic_level_id}
-                onChange={(value) =>
-                  setClassForm((current) => ({
-                    ...current,
-                    academic_level_id: value,
-                  }))
-                }
-                options={levelOptions}
-                required
-              />
-              <SelectControl
-                label="Arm"
-                value={classForm.arm_label_id}
-                onChange={(value) =>
-                  setClassForm((current) => ({
-                    ...current,
-                    arm_label_id: value,
-                  }))
-                }
-                options={armLabelOptions}
-                placeholder="Select arm"
-                required
-              />
-              <SelectControl
-                label="Class teacher"
-                value={classForm.teacher_membership_id}
-                onChange={(value) =>
-                  setClassForm((current) => ({
-                    ...current,
-                    teacher_membership_id: value,
-                  }))
-                }
-                options={teacherOptions}
-                clearable
-              />
-              <FormActions
-                submitting={saving === true}
-                submitLabel={editingClassId ? "Save class" : "Create class"}
-                editing
-                onCancel={closeEditor}
-              />
+              <fieldset disabled={Boolean(saving)} className="space-y-3">
+                <SelectControl
+                  label="Academic level"
+                  value={classForm.academic_level_id}
+                  onChange={(value) =>
+                    setClassForm((current) => ({
+                      ...current,
+                      academic_level_id: value,
+                    }))
+                  }
+                  options={levelOptions}
+                  required
+                />
+                <SelectControl
+                  label="Arm"
+                  value={classForm.arm_label_id}
+                  onChange={(value) =>
+                    setClassForm((current) => ({
+                      ...current,
+                      arm_label_id: value,
+                    }))
+                  }
+                  options={armLabelOptions}
+                  placeholder="Select arm"
+                  required
+                />
+                <SelectControl
+                  label="Class teacher"
+                  value={classForm.teacher_membership_id}
+                  onChange={(value) =>
+                    setClassForm((current) => ({
+                      ...current,
+                      teacher_membership_id: value,
+                    }))
+                  }
+                  options={teacherOptions}
+                  clearable
+                />
+                <FormActions
+                  submitting={Boolean(saving)}
+                  submitLabel={editingClassId ? "Save class" : "Create class"}
+                  repeatable
+                  editing={Boolean(editingClassId)}
+                  onCancel={closeEditor}
+                />
+              </fieldset>
             </form>
           </WorkspacePanel>
         ) : null
       }
       content={
-        activeTab === "create" && !editingClassId ? null : (
           <RecordList
+              loading={loading}
+              error={loadError}
+              onRetry={load}
             title="Classes"
             description="Concrete student groups within academic levels. Select a row to inspect it; lifecycle actions remain available directly from the directory."
             actions={
@@ -287,7 +304,6 @@ function ClassesWorkspace({ activeTab = "overview" }) {
               </>
             )}
           />
-        )
       }
     />
   );

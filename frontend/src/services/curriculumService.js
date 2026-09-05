@@ -1,6 +1,10 @@
 import { api } from "./api";
 
 export const curriculumService = {
+  getSpecializationWorkspace: (termId) =>
+    api.get(`/tenant-admin/academics/terms/${termId}/specialization-workspace`),
+  addSubjects: (levelId, payload) =>
+    api.post(`/tenant-admin/academics/levels/${levelId}/curriculum/subjects/bulk`, payload),
   getCurriculum: (levelId) =>
     api.get(`/tenant-admin/academics/levels/${levelId}/curriculum`),
   addSubject: (levelId, payload) =>

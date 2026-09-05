@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -26,6 +27,47 @@ class CurriculumSubjectCreate(BaseModel):
         if len(value) != len(set(value)):
             raise ValueError("department selections must be unique")
         return value
+
+
+class CurriculumSubjectsBulkCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subjects: list[CurriculumSubjectCreate] = Field(min_length=1, max_length=100)
+
+    @field_validator("subjects")
+    @classmethod
+    def unique_subjects(cls, value):
+        if len({row.subject_id for row in value}) != len(value):
+            raise ValueError("subject selections must be unique")
+        return value
+
+
+class CurriculumSubjectsBulkResponse(BaseModel):
+    created: int
+
+
+class ClassSpecializationReadiness(BaseModel):
+    class_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    display_name: str
+    specialization_required: bool
+    readiness: Literal["not_required", "configured", "missing"]
+    academic_level_department_id: uuid.UUID | None
+    department_name: str | None
+
+
+class SpecializationWorkspaceResponse(BaseModel):
+    academic_term_id: uuid.UUID
+    status: str
+    classes: list[ClassSpecializationReadiness]
+
+
+class SetupReadinessResponse(BaseModel):
+    completion: dict[str, bool | None]
+    blockers: list[str]
+    academic_term_id: uuid.UUID | None
+    term_name: str | None
+    session_name: str | None
+    note: str
 
 
 class CurriculumSubjectUpdate(BaseModel):

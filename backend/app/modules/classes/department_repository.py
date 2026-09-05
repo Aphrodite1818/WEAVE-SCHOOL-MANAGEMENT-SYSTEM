@@ -176,7 +176,7 @@ class AcademicLevelDepartmentRepository:
     async def list_for_level(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        academic_level_id: uuid.UUID,
+        academic_level_id: uuid.UUID | None,
         *,
         active_only: bool = False,
         include_archived: bool = False,
@@ -187,10 +187,11 @@ class AcademicLevelDepartmentRepository:
             .join(Department, Department.id == AcademicLevelDepartment.department_id)
             .where(
                 AcademicLevelDepartment.tenant_id == tenant_id,
-                AcademicLevelDepartment.academic_level_id == academic_level_id,
                 Department.tenant_id == tenant_id,
             )
         )
+        if academic_level_id is not None:
+            query = query.where(AcademicLevelDepartment.academic_level_id == academic_level_id)
         if active_only:
             query = query.where(
                 AcademicLevelDepartment.is_active.is_(True),

@@ -68,10 +68,7 @@ test("role guides follow runtime attendance exposure", () => {
     roleGuide,
     /runtimeConfig\?\.features\?\.attendance !== false/,
   );
-  assert.match(
-    roleGuide,
-    /baseConfig\.steps[\s\S]*\.filter\(\(step\) => step\.id !== "attendance"\)/,
-  );
+  assert.match(roleGuide, /visibleGuideSteps\(baseConfig.steps/);
   assert.match(roleGuide, /ATTENDANCE_HIDDEN_DESCRIPTIONS/);
   assert.match(roleGuide, /ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS/);
   assert.match(roleGuide, /before entering scores/);

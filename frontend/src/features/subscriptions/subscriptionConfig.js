@@ -22,6 +22,7 @@ export const FEATURE_CODES = {
   ADVANCED_ANALYTICS: "advanced_analytics",
   AI_ASSISTANT: "ai_assistant",
   BULK_IMPORT: "bulk_import",
+  BULK_ACADEMIC_OPERATIONS: "bulk_academic_operations",
   TENANT_BRANDING: "tenant_branding",
   CBT_PAIRING: "cbt_pairing",
 };

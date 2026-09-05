@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
@@ -8,6 +9,8 @@ import { curriculumService } from "../../services/curriculumService";
 import { departmentService } from "../../services/departmentService";
 import { subjectService } from "../../services/subject.service";
 import {
+  FormActions,
+  Input,
   RecordList,
   SelectControl,
   WorkspaceGrid,
@@ -18,7 +21,7 @@ const items = (value) => (Array.isArray(value) ? value : value?.items || []);
 
 const scopeLabel = (row) => {
   const departments = row?.departments || [];
-  if (departments.length === 0) return "All specializations";
+  if (departments.length === 0) return "General";
   return departments
     .map((item) => item.department_name || "Department")
     .filter(Boolean)
@@ -27,12 +30,18 @@ const scopeLabel = (row) => {
 
 export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const { showError, showSuccess } = useToast();
+  const levelRequest = useRef(0);
   const [levels, setLevels] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [levelDepartments, setLevelDepartments] = useState([]);
   const [levelId, setLevelId] = useState("");
   const [curriculum, setCurriculum] = useState(null);
-  const [subjectId, setSubjectId] = useState("");
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
+  const [query, setQuery] = useState("");
+  const [reviewing, setReviewing] = useState(false);
+  const [addDepartmentIds, setAddDepartmentIds] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [elective, setElective] = useState(false);
   const [scopeSubjectId, setScopeSubjectId] = useState("");
   const [selectedDepartmentIds, setSelectedDepartmentIds] = useState([]);
@@ -55,16 +64,21 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   }, [showError]);
 
   const loadLevel = useCallback(async () => {
+    const request = ++levelRequest.current;
     if (!levelId) {
       setCurriculum(null);
       setLevelDepartments([]);
       return;
     }
+    setLoading(true);
+    setLoadError("");
+    setCurriculum(null);
     try {
       const [curriculumResponse, departmentResponse] = await Promise.all([
         curriculumService.getCurriculum(levelId),
         departmentService.getLevelDepartments(levelId, { activeOnly: true }),
       ]);
+      if (request !== levelRequest.current) return;
       const curriculumRows = curriculumResponse?.subjects || [];
       setCurriculum(curriculumResponse);
       setLevelDepartments(items(departmentResponse));
@@ -74,9 +88,12 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
           : curriculumRows[0]?.id || "",
       );
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load this level curriculum."));
+      if (request !== levelRequest.current) return;
+      setLoadError(getErrorMessage(error, "Could not load this level curriculum."));
+    } finally {
+      if (request === levelRequest.current) setLoading(false);
     }
-  }, [levelId, showError]);
+  }, [levelId]);
 
   useEffect(() => {
     loadBase();
@@ -84,10 +101,14 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
 
   useEffect(() => {
     loadLevel();
+    return () => { levelRequest.current += 1; };
   }, [loadLevel]);
 
   useEffect(() => {
     setEditorMode("");
+    setSelectedSubjectIds([]);
+    setAddDepartmentIds([]);
+    setReviewing(false);
   }, [activeTab, levelId]);
 
   const curriculumSubjects = useMemo(() => curriculum?.subjects || [], [curriculum]);
@@ -98,6 +119,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const available = subjects.filter(
     (row) => !attached.has(row.id) && row.is_active !== false && !row.archived_at,
   );
+  const matchingSubjects = subjects.filter((row) => row.name.toLowerCase().includes(query.trim().toLowerCase()));
   const selectedScopeSubject = useMemo(
     () => curriculumSubjects.find((row) => row.id === scopeSubjectId) || null,
     [curriculumSubjects, scopeSubjectId],
@@ -113,27 +135,35 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
 
   const addSubject = async (event) => {
     event.preventDefault();
-    if (!subjectId || !levelId) return;
+    if (!selectedSubjectIds.length || selectedSubjectIds.length > 100 || !levelId || !reviewing) return;
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("subject");
     try {
-      await curriculumService.addSubject(levelId, {
-        subject_id: subjectId,
-        is_elective: elective,
-        academic_level_department_ids: [],
+      await curriculumService.addSubjects(levelId, {
+        subjects: selectedSubjectIds.map((subject_id) => ({
+          subject_id, is_elective: elective,
+          academic_level_department_ids: addDepartmentIds,
+        })),
       });
-      setSubjectId("");
-      setElective(false);
-      setEditorMode("");
+      showSuccess(`${selectedSubjectIds.length} subjects added to the curriculum.`);
+      finishAcademicCreation(submission, () => {
+        setSelectedSubjectIds([]);
+        setElective(false);
+        setAddDepartmentIds([]);
+        setReviewing(false);
+      }, () => setEditorMode(""));
       await loadLevel();
-      showSuccess("Subject added to the level curriculum.");
     } catch (error) {
-      showError(getErrorMessage(error, "Could not add subject."));
+      showError(getErrorMessage(error, "Could not confirm subjects were saved. Refresh the curriculum before retrying."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
 
   const toggleElective = async (row) => {
+    if (saving) return;
     setSaving(row.id);
     try {
       await curriculumService.updateSubject(row.id, { is_elective: !row.is_elective });
@@ -147,6 +177,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   };
 
   const updateLifecycle = async (row, action) => {
+    if (saving) return;
     setSaving(row.id);
     try {
       if (action === "activate") await curriculumService.activateSubject(row.id);
@@ -170,7 +201,9 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
 
   const saveApplicability = async (event) => {
     event.preventDefault();
-    if (!scopeSubjectId) return;
+    if (!scopeSubjectId || saving) return;
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("applicability");
     try {
       await curriculumService.updateSubject(scopeSubjectId, {
@@ -186,6 +219,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     } catch (error) {
       showError(getErrorMessage(error, "Could not update subject applicability."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
@@ -205,6 +239,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
       onChange={setLevelId}
       options={levels.map((row) => ({ value: row.id, label: row.name }))}
       required
+      disabled={Boolean(saving)}
     />
   );
 
@@ -219,6 +254,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
               description="Choose which specializations receive this subject once specialization is active. With no departments selected, the subject is general and remains available to every class."
             >
               <form className="space-y-4" onSubmit={saveApplicability}>
+                <fieldset disabled={Boolean(saving)} className="space-y-4">
                 <SelectControl
                   label="Curriculum subject"
                   value={scopeSubjectId}
@@ -274,12 +310,13 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                     type="submit"
                     disabled={saving === "applicability" || !scopeSubjectId}
                   >
-                    {saving === "applicability" ? "Saving…" : "Save applicability"}
+                    {saving === "applicability" ? "Saving…" : "Save changes"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setEditorMode("")}>
                     Cancel
                   </Button>
                 </div>
+                </fieldset>
               </form>
             </WorkspacePanel>
           ) : null
@@ -289,7 +326,10 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
             title="Subject applicability"
             description="Department scope is part of the level curriculum. Before specialization begins, every active curriculum subject remains available to every class."
             actions={<div className="min-w-[18rem]">{levelControl}</div>}
-            items={curriculumSubjects}
+            loading={loading}
+          error={loadError}
+          onRetry={loadLevel}
+          items={curriculumSubjects}
             emptyTitle="No curriculum subjects"
             emptyDescription="Add subjects to this level before configuring specialization applicability."
             renderTitle={(row) => row.subject_name}
@@ -319,34 +359,47 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
       editor={
         editorOpen ? (
           <WorkspacePanel
-            title="Add curriculum subject"
-            description="Create a subject once in the school subject pool, then attach it to this academic level. New subjects start as general and can be scoped under Subject Applicability."
+            title="Add subjects to curriculum"
+            description="Select subjects, set elective status and department applicability, then review before saving."
           >
             <form className="space-y-3" onSubmit={addSubject}>
-              <SelectControl
-                label="Subject"
-                value={subjectId}
-                onChange={setSubjectId}
-                options={available.map((row) => ({ value: row.id, label: row.name }))}
-                placeholder={available.length ? "Select subject" : "All active subjects are attached"}
-                required
-              />
-              <label className="flex items-center gap-2 text-sm font-medium text-text">
-                <input
-                  type="checkbox"
-                  checked={elective}
-                  onChange={(event) => setElective(event.target.checked)}
-                />
-                Elective subject
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" disabled={saving === "subject" || !subjectId}>
-                  {saving === "subject" ? "Saving…" : "Add to curriculum"}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setEditorMode("")}>
-                  Cancel
-                </Button>
-              </div>
+              <fieldset disabled={Boolean(saving)} className="space-y-3">
+                {!reviewing ? (
+                  <>
+                    <Input label="Search subjects" value={query} onChange={(event) => setQuery(event.target.value)} autoFocus />
+                    <Button type="button" variant="outline" onClick={() => setSelectedSubjectIds((current) => [...new Set([...current, ...available.filter((row) => row.name.toLowerCase().includes(query.toLowerCase())).map((row) => row.id)])])}>
+                      Select all matching available subjects
+                    </Button>
+                    <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-border p-3">
+                      {matchingSubjects.map((row) => (
+                        <label key={row.id} className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={selectedSubjectIds.includes(row.id)} disabled={attached.has(row.id) || !available.some((item) => item.id === row.id)} onChange={(event) => setSelectedSubjectIds((current) => event.target.checked ? [...current, row.id] : current.filter((id) => id !== row.id))} />
+                          {row.name}{attached.has(row.id) ? " - Already added" : row.is_active === false || row.archived_at ? " - Inactive" : ""}
+                        </label>
+                      ))}
+                      {!matchingSubjects.length ? <p>No subjects match your search.</p> : null}
+                    </div>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={elective} onChange={(event) => setElective(event.target.checked)} /> Elective subjects</label>
+                    <p className="text-sm font-semibold">Department applicability</p>
+                    <p className="text-sm text-text-muted">No departments selected means General. These settings apply to every selected subject.</p>
+                    {levelDepartments.map((row) => (
+                      <label key={row.id} className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={addDepartmentIds.includes(row.id)} onChange={(event) => setAddDepartmentIds((current) => event.target.checked ? [...current, row.id] : current.filter((id) => id !== row.id))} />
+                        {row.department_name}
+                      </label>
+                    ))}
+                    {selectedSubjectIds.length > 100 ? <p role="alert" className="text-sm text-error">Select at most 100 subjects per batch.</p> : null}
+                    <Button type="button" disabled={!selectedSubjectIds.length || selectedSubjectIds.length > 100} onClick={() => setReviewing(true)}>Review {selectedSubjectIds.length} subjects</Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm">{subjects.filter((row) => selectedSubjectIds.includes(row.id)).map((row) => row.name).join(", ")}</p>
+                    <p className="text-sm">{elective ? "Elective" : "Compulsory"} / {addDepartmentIds.length ? levelDepartments.filter((row) => addDepartmentIds.includes(row.id)).map((row) => row.department_name).join(", ") : "General"}</p>
+                    <Button type="button" variant="outline" onClick={() => setReviewing(false)}>Change selection</Button>
+                    <FormActions repeatable submitting={Boolean(saving)} onCancel={() => setEditorMode("")} />
+                  </>
+                )}
+              </fieldset>
             </form>
           </WorkspacePanel>
         ) : null
@@ -359,12 +412,15 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
             <div className="flex min-w-[18rem] flex-col gap-2 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1">{levelControl}</div>
               {!editorOpen ? (
-                <Button type="button" onClick={() => setEditorMode("subject")}>
-                  Add subject
+                <Button type="button" disabled={loading || Boolean(loadError) || !curriculum} onClick={() => setEditorMode("subject")}>
+                  Add subjects
                 </Button>
               ) : null}
             </div>
           }
+          loading={loading}
+          error={loadError}
+          onRetry={loadLevel}
           items={curriculumSubjects}
           emptyTitle="No curriculum subjects"
           emptyDescription="Attach a subject from the school subject pool."
@@ -378,7 +434,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
               <Button
                 size="small"
                 variant="outline"
-                disabled={saving === row.id}
+                disabled={Boolean(saving)}
                 onClick={() => toggleElective(row)}
               >
                 {row.is_elective ? "Make compulsory" : "Make elective"}
@@ -386,7 +442,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
               <Button
                 size="small"
                 variant="outline"
-                disabled={saving === row.id}
+                disabled={Boolean(saving)}
                 onClick={() =>
                   updateLifecycle(row, row.is_active === false ? "activate" : "deactivate")
                 }

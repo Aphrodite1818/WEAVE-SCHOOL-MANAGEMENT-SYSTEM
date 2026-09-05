@@ -14,6 +14,10 @@ from app.modules.student_academics.curriculum_v2_schemas import (
     ClassTermDepartmentSet,
     CurriculumResponse,
     CurriculumSubjectCreate,
+    CurriculumSubjectsBulkCreate,
+    CurriculumSubjectsBulkResponse,
+    SetupReadinessResponse,
+    SpecializationWorkspaceResponse,
     CurriculumSubjectResponse,
     CurriculumSubjectUpdate,
     EligibleTeacherAssignmentClassResponse,
@@ -22,11 +26,31 @@ from app.modules.student_academics.curriculum_v2_schemas import (
     TeacherAssignmentBulkResponse,
 )
 from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+from app.modules.student_academics.curriculum_bulk_service import add_curriculum_subjects
+from app.modules.student_academics.specialization_workspace import specialization_workspace
+from app.modules.student_academics.setup_readiness import get_setup_readiness
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(prefix="/tenant-admin/academics", tags=["Curriculum"])
 CurrentTenantAdmin: TypeAlias = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
+
+
+@router.get("/setup-readiness", response_model=SetupReadinessResponse)
+async def setup_readiness(db: DbSession, current_admin: CurrentTenantAdmin):
+    return await get_setup_readiness(db, current_admin.tenant_id)
+
+
+@router.get(
+    "/terms/{academic_term_id}/specialization-workspace",
+    response_model=SpecializationWorkspaceResponse,
+)
+async def get_specialization_workspace(
+    academic_term_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await specialization_workspace(db, current_admin.tenant_id, academic_term_id)
 
 
 @router.get("/levels/{academic_level_id}/curriculum", response_model=CurriculumResponse)
@@ -54,6 +78,20 @@ async def add_curriculum_subject(
     return await AcademicCurriculumService.add_subject(
         db, current_admin.tenant_id, academic_level_id, payload
     )
+
+
+@router.post(
+    "/levels/{academic_level_id}/curriculum/subjects/bulk",
+    status_code=201,
+    response_model=CurriculumSubjectsBulkResponse,
+)
+async def bulk_add_curriculum_subjects(
+    academic_level_id: uuid.UUID,
+    payload: CurriculumSubjectsBulkCreate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await add_curriculum_subjects(db, current_admin.tenant_id, academic_level_id, payload)
 
 
 @router.patch(

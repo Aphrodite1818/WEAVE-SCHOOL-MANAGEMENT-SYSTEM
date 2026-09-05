@@ -4,7 +4,7 @@ import {
   CreditCard,
   ShieldCheck,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import PublicLayout from "../../components/layout/PublicLayout";
@@ -96,6 +96,7 @@ function MobileSubscriptionOptionsPage() {
   const [activePlanCode, setActivePlanCode] = useState(
     requestedPlanCode || "professional",
   );
+  const checkoutLock = useRef(false);
   const [busyPlan, setBusyPlan] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -177,7 +178,7 @@ function MobileSubscriptionOptionsPage() {
 
   const handlePlan = async (selectedOption = activeOption) => {
     const option = selectedOption;
-    if (!term || !option || option.transition === "current") {
+    if (checkoutLock.current || busyPlan || !term || !option || option.transition === "current") {
       return;
     }
     if (!option.eligible) {
@@ -187,6 +188,7 @@ function MobileSubscriptionOptionsPage() {
       });
       return;
     }
+    checkoutLock.current = true;
     setBusyPlan(option.plan_code);
     setError("");
 
@@ -227,6 +229,7 @@ function MobileSubscriptionOptionsPage() {
       await refreshSubscriptionState({ silent: true });
       navigate(returnPath, { replace: true });
     } catch (actionError) {
+      checkoutLock.current = false;
       setError(
         parseApiError(actionError, "Could not change the term plan.").message,
       );
@@ -431,7 +434,7 @@ function MobileSubscriptionOptionsPage() {
                     className="min-h-14 w-full rounded-full text-base"
                     disabled={
                       activeOption.transition === "current" ||
-                      busyPlan === activeOption.plan_code
+                      Boolean(busyPlan)
                     }
                     onClick={() => handlePlan()}
                   >

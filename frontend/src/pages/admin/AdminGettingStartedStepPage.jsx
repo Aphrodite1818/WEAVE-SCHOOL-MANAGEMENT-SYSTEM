@@ -1,3 +1,4 @@
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { ArrowLeft, ArrowRight, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
@@ -14,6 +15,7 @@ const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 
 function AdminGettingStartedStepPage() {
   const navigate = useNavigate();
+  const { entitlements } = useSubscription();
   const { step: stepId } = useParams();
   const [categoryOptions, setCategoryOptions] = useState([]);
   const [capabilitiesReady, setCapabilitiesReady] = useState(false);
@@ -37,12 +39,12 @@ function AdminGettingStartedStepPage() {
   }, []);
 
   const steps = useMemo(() => {
-    const configured = ROLE_GUIDES.admin.steps;
+    const configured = ROLE_GUIDES.admin.steps.filter((item) => !item.feature || entitlements?.features?.[item.feature] === true);
     if (!capabilitiesReady) return configured;
     return supportsDepartmentWorkflow(categoryOptions)
       ? configured
       : configured.filter((item) => item.id !== "departments");
-  }, [capabilitiesReady, categoryOptions]);
+  }, [capabilitiesReady, categoryOptions, entitlements]);
 
   if (!capabilitiesReady) return null;
 
@@ -96,7 +98,7 @@ function AdminGettingStartedStepPage() {
             size="small"
             onClick={() => navigate("/admin/getting-started")}
           >
-            Complete setup
+            Review setup
           </Button>
         )}
       </div>

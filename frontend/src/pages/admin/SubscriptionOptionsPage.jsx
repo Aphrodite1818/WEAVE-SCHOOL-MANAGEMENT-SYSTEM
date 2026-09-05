@@ -1,5 +1,5 @@
 import { CheckCircle2, CreditCard } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -61,6 +61,7 @@ function SubscriptionOptionsPage() {
   const [term, setTerm] = useState(null);
   const [planOptions, setPlanOptions] = useState(null);
   const [loading, setLoading] = useState(true);
+  const checkoutLock = useRef(false);
   const [busyPlan, setBusyPlan] = useState("");
   const [error, setError] = useState("");
   const [eligibilityWarning, setEligibilityWarning] = useState(null);
@@ -120,7 +121,7 @@ function SubscriptionOptionsPage() {
   );
 
   const handlePlan = async (option) => {
-    if (!term || !option || option.transition === "current") return;
+    if (checkoutLock.current || busyPlan || !term || !option || option.transition === "current") return;
     if (!option.eligible) {
       setEligibilityWarning({
         planName: formatPlanName(option.plan_code),
@@ -128,6 +129,7 @@ function SubscriptionOptionsPage() {
       });
       return;
     }
+    checkoutLock.current = true;
     setBusyPlan(option.plan_code);
     setError("");
 
@@ -168,6 +170,7 @@ function SubscriptionOptionsPage() {
       await refreshSubscriptionState({ silent: true });
       navigate(returnPath, { replace: true });
     } catch (actionError) {
+      checkoutLock.current = false;
       setError(
         parseApiError(actionError, "Could not change the term plan.").message,
       );
@@ -190,7 +193,7 @@ function SubscriptionOptionsPage() {
               </h2>
               {planOptions?.current_plan ? (
                 <Badge variant="success">
-                  {formatPlanName(planOptions.current_plan)} active
+                  {formatPlanName(planOptions.current_plan)} ? {String(planOptions.term_status).toLowerCase() === "draft" ? "Purchased for this term" : "Plan for this term"}
                 </Badge>
               ) : null}
             </div>

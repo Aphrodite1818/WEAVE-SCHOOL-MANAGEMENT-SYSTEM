@@ -1,3 +1,4 @@
+import { beginAcademicSubmission, endAcademicSubmission } from "./academicSubmission";
 import { Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -87,6 +88,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const [editingAssignmentId, setEditingAssignmentId] = useState("");
   const [viewingAssignment, setViewingAssignment] = useState(null);
   const [endingAssignmentId, setEndingAssignmentId] = useState("");
+  const [reason, setReason] = useState("");
   const [effectiveTo, setEffectiveTo] = useState(today());
   const [pendingDelete, setPendingDelete] = useState(null);
   const [saving, setSaving] = useState("");
@@ -311,6 +313,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
 
   const resetForm = () => {
     setEditingAssignmentId("");
+    setReason("");
     setForm((current) => ({
       class_id: current.class_id,
       curriculum_subject_id: "",
@@ -322,6 +325,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
 
   const openAssignmentEditor = (item) => {
     if (!item.is_active) return;
+    setReason("");
     setEditingAssignmentId(item.id);
     setForm({
       class_id: item.class_id || "",
@@ -349,10 +353,15 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       return;
     }
 
+    if (editingAssignmentId && (!currentTermId || reason.trim().length < 3)) { showWarning("Select an open term and enter an audit reason of at least 3 characters."); return; }
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("assignment");
     try {
       if (editingAssignmentId) {
         await academicService.reassignTeacherAssignment(editingAssignmentId, {
+          academic_term_id: currentTermId,
+          reason: reason.trim(),
           teacher_membership_id: form.teacher_membership_id,
           effective_from: form.effective_from,
         });
@@ -376,11 +385,13 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     } catch (err) {
       showError(getErrorMessage(err, "Could not save teacher assignment."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
 
   const endAssignment = async (item) => {
+    if (saving || !currentTermId || reason.trim().length < 3) { showWarning("Enter an audit reason and ensure there is a current open term."); return; }
     setSaving(item.id);
     try {
       const preview = await academicService.getTeacherAssignmentDependencies(
@@ -394,6 +405,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         return;
       }
       await academicService.endTeacherAssignment(item.id, {
+        academic_term_id: currentTermId,
+        reason: reason.trim(),
         effective_to: effectiveTo || null,
       });
       showSuccess("Assignment ended and retained in history.");
@@ -408,6 +421,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   };
 
   const openDeleteConfirmation = async (item) => {
+    setReason("");
     try {
       const preview = await academicService.getTeacherAssignmentDependencies(
         item.id,
@@ -428,11 +442,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   };
 
   const deleteAssignment = async () => {
-    if (!pendingDelete?.item) return;
+    if (!pendingDelete?.item || saving || reason.trim().length < 3) return;
     const item = pendingDelete.item;
     setSaving(item.id);
     try {
-      await academicService.deleteTeacherAssignment(item.id);
+      await academicService.deleteTeacherAssignment(item.id, { reason: reason.trim() });
       showSuccess("Historical assignment deleted.");
       setPendingDelete(null);
       await loadAssignments();
@@ -457,92 +471,94 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       }
       description={
         currentTerm
-          ? "Choose a class, one of its subjects for the current term, and a teacher. Level and department rules are resolved automatically."
+          ? "Choose a class to find its eligible subjects, then select a subject, a teacher and one or more eligible classes. Existing and scheduled assignments remain protected."
           : "Open an academic term before creating teacher assignments."
       }
     >
       <form className="space-y-3" onSubmit={saveAssignment}>
-        <SelectControl
-          label="Class"
-          value={form.class_id}
-          onChange={(value) =>
-            setForm((current) => ({
-              ...current,
-              class_id: value,
-              curriculum_subject_id: "",
-            }))
-          }
-          options={classOptions}
-          required
-          disabled={Boolean(editingAssignmentId)}
-        />
-        {!editingAssignmentId ? (
-          <>
-            <SelectControl
-              label="Subject"
-              value={form.curriculum_subject_id}
-              onChange={(value) => {
-                setForm((current) => ({
-                  ...current,
-                  curriculum_subject_id: value,
-                }));
-                setSelectedClassIds([]);
-              }}
-              options={subjectOptions}
-              placeholder={
-                !currentTerm
-                  ? "No current open term"
-                  : subjectOptions.length === 0
-                    ? "No unassigned subjects available to this class"
-                    : "Select subject"
-              }
-              required
-              disabled={!currentTerm || subjectOptions.length === 0}
-            />
-            {form.curriculum_subject_id ? (
-              <fieldset className="space-y-3 rounded-xl border border-border p-3">
-                <legend className="px-1 text-sm font-medium text-text">
-                  Eligible classes
-                </legend>
-                {eligibleClassGroups.length ? (
-                  eligibleClassGroups.map((group) => (
-                    <div key={group.id} className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                        {group.label}
-                      </p>
-                      {group.items.map((item) => {
-                        const disabled = item.already_assigned;
-                        return (
-                          <label
-                            key={item.class_id}
-                            className="flex items-center gap-2 text-sm text-text"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedClassIds.includes(item.class_id)}
-                              disabled={disabled}
-                              onChange={(event) =>
-                                setSelectedClassIds((current) =>
-                                  event.target.checked
-                                    ? [...current, item.class_id]
-                                    : current.filter((id) => id !== item.class_id),
-                                )
-                              }
-                            />
-                            <span>
-                              {item.display_name}
-                              {item.department_name ? ` · ${item.department_name}` : ""}
-                              {disabled ? " · already assigned" : ""}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-text-muted">No eligible classes.</p>
-                )}
-              </fieldset>
+        <fieldset disabled={Boolean(saving)} className="space-y-3">
+          <SelectControl
+            label="Class"
+            value={form.class_id}
+            onChange={(value) =>
+              setForm((current) => ({
+                ...current,
+                class_id: value,
+                curriculum_subject_id: "",
+              }))
+            }
+            options={classOptions}
+            required
+            disabled={Boolean(editingAssignmentId)}
+          />
+          {!editingAssignmentId ? (
+            <>
+              <SelectControl
+                label="Subject"
+                value={form.curriculum_subject_id}
+                onChange={(value) => {
+                  setForm((current) => ({
+                    ...current,
+                    curriculum_subject_id: value,
+                  }));
+                  setSelectedClassIds([]);
+                }}
+                options={subjectOptions}
+                placeholder={
+                  !currentTerm
+                    ? "No current open term"
+                    : subjectOptions.length === 0
+                      ? "No unassigned subjects available to this class"
+                      : "Select subject"
+                }
+                required
+                disabled={!currentTerm || subjectOptions.length === 0}
+              />
+              {form.curriculum_subject_id ? (
+                <fieldset className="space-y-3 rounded-xl border border-border p-3">
+                  <legend className="px-1 text-sm font-medium text-text">
+                    Eligible classes
+                  </legend>
+                  <Button type="button" size="small" variant="outline" disabled={Boolean(saving)} onClick={() => setSelectedClassIds(eligibleClasses.filter((row) => !row.already_assigned).map((row) => row.class_id))}>Select all eligible classes</Button>
+                  {eligibleClassGroups.length ? (
+                    eligibleClassGroups.map((group) => (
+                      <div key={group.id} className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                          {group.label}
+                        </p>
+                        {group.items.map((item) => {
+                          const disabled = item.already_assigned || Boolean(saving);
+                          return (
+                            <label
+                              key={item.class_id}
+                              className="flex items-center gap-2 text-sm text-text"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedClassIds.includes(item.class_id)}
+                                disabled={disabled}
+                                onChange={(event) =>
+                                  setSelectedClassIds((current) =>
+                                    event.target.checked
+                                      ? [...current, item.class_id]
+                                      : current.filter((id) => id !== item.class_id),
+                                  )
+                                }
+                              />
+                              <span>
+                                {item.display_name}
+                                {item.department_name ? ` · ${item.department_name}` : ""}
+                                {disabled ? " · already assigned" : ""}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-text-muted">No eligible classes.</p>
+                  )}
+        </fieldset>
             ) : null}
           </>
         ) : null}
@@ -593,7 +609,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             </Button>
           ) : null}
         </div>
-      </form>
+      </fieldset>
+              </form>
     </WorkspacePanel>
   );
 
@@ -722,6 +739,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                       variant="danger"
                       disabled={saving === item.id}
                       onClick={() => {
+                        setReason("");
                         setEndingAssignmentId(item.id);
                         setEffectiveTo(item.effective_from || today());
                       }}
@@ -867,6 +885,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             }
             required
           />
+          <Input label="Audit reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={3} maxLength={500} disabled={Boolean(saving)} />
         </form>
       </Modal>
 
@@ -919,6 +938,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             onChange={(event) => setEffectiveTo(event.target.value)}
             required
           />
+          <Input label="Audit reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={3} maxLength={500} disabled={Boolean(saving)} />
         </form>
       </Modal>
 
@@ -934,7 +954,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         isLoading={saving === pendingDelete?.item?.id}
         onConfirm={deleteAssignment}
         onCancel={() => setPendingDelete(null)}
-      />
+        confirmDisabled={reason.trim().length < 3}
+      ><Input label="Audit reason" value={reason} onChange={(event) => setReason(event.target.value)} minLength={3} maxLength={500} required /></TypedConfirmationDialog>
     </WorkspacePanel>
   );
 

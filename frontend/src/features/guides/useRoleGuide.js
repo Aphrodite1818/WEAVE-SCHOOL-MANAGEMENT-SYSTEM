@@ -1,3 +1,5 @@
+import { useSubscription } from "../subscriptions/useSubscription";
+import { visibleGuideSteps } from "./guideStepVisibility";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
@@ -29,11 +31,13 @@ export function useRoleGuide({
   allowSkippedCurrentStep = false,
 } = {}) {
   const normalizedRole = String(role || "").toLowerCase();
+  const subscription = useSubscription();
+  const entitledFeatures = subscription?.entitlements?.features;
   const baseConfig = guideForRole(normalizedRole);
   const runtimeConfig = useRuntimeConfig();
   const attendanceEnabled = runtimeConfig?.features?.attendance !== false;
   const config = useMemo(() => {
-    if (!baseConfig || attendanceEnabled) return baseConfig;
+    if (!baseConfig) return baseConfig;
 
     const stepDescriptionOverrides =
       ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS[normalizedRole] || {};
@@ -42,14 +46,13 @@ export function useRoleGuide({
       ...baseConfig,
       description:
         ATTENDANCE_HIDDEN_DESCRIPTIONS[normalizedRole] || baseConfig.description,
-      steps: baseConfig.steps
-        .filter((step) => step.id !== "attendance")
+      steps: visibleGuideSteps(baseConfig.steps, { attendanceEnabled, features: entitledFeatures, completionMap, role: normalizedRole })
         .map((step) => ({
           ...step,
           description: stepDescriptionOverrides[step.id] || step.description,
         })),
     };
-  }, [attendanceEnabled, baseConfig, normalizedRole]);
+  }, [attendanceEnabled, baseConfig, normalizedRole, entitledFeatures, completionMap]);
   const [guideState, setGuideState] = useState(null);
   const [loading, setLoading] = useState(Boolean(config && enabled));
   const stateVersionRef = useRef(0);
@@ -138,12 +141,12 @@ export function useRoleGuide({
         ...step,
         complete: hasOwn(completionMap, step.id)
           ? Boolean(completionMap[step.id])
-          : guideState?.status === "completed" ||
+          : normalizedRole === "admin" ? false : guideState?.status === "completed" ||
             (storedIndex >= 0 && baseIndex >= 0 && baseIndex < storedIndex),
         skipped: skipped.has(step.id),
       };
     });
-  }, [baseConfig, completionMap, config, guideState]);
+  }, [baseConfig, completionMap, config, guideState, normalizedRole]);
 
   const firstPendingIndex = useMemo(() => {
     const index = steps.findIndex((step) => !step.complete && !step.skipped);
@@ -179,7 +182,7 @@ export function useRoleGuide({
     ? Math.round((resolvedCount / steps.length) * 100)
     : 0;
   const allResolved =
-    steps.length > 0 && steps.every((step) => step.complete || step.skipped);
+    steps.length > 0 && steps.filter((step) => !step.optional).every((step) => step.complete || (normalizedRole !== "admin" && step.skipped));
   const syncPending = Boolean(guideState?.sync_pending);
 
   useEffect(() => {

@@ -14,14 +14,24 @@ from app.modules.bulk_imports.templates import (
     TEMPLATE_VERSION_BY_RESOURCE,
 )
 from app.modules.bulk_imports.validators import BulkImportValidator, ImportRowValidationResult
+from app.modules.classes.department_repository import AcademicLevelDepartmentRepository, CanonicalDepartmentRepository
 from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import (
     AcademicLevelRepository,
     ArmLabelRepository,
     ClassRoomRepository,
-    DepartmentRepository,
 )
 from app.modules.student_academics.repository import StudentAcademicRepository
+
+
+
+def _mock_department_context(monkeypatch, level_id, assigned, supplied):
+    assigned_link = SimpleNamespace(id=uuid4(), academic_level_id=level_id, department=assigned, is_active=True, archived_at=None)
+    supplied_link = assigned_link if supplied.id == assigned.id else SimpleNamespace(id=uuid4(), academic_level_id=level_id, department=supplied, is_active=True, archived_at=None)
+    monkeypatch.setattr(BulkImportService, "_get_class_term_department_assignment", AsyncMock(return_value=SimpleNamespace(academic_level_department_id=assigned_link.id)))
+    monkeypatch.setattr(AcademicLevelDepartmentRepository, "get_by_id", AsyncMock(return_value=assigned_link))
+    monkeypatch.setattr(AcademicLevelDepartmentRepository, "get_for_level_department", AsyncMock(return_value=supplied_link))
+    monkeypatch.setattr(CanonicalDepartmentRepository, "get_by_normalized_name", AsyncMock(return_value=supplied))
 
 
 def _active_level(level_id, name="JSS1"):
@@ -257,21 +267,8 @@ async def test_student_import_requires_matching_current_term_department(monkeypa
         "get_current_term",
         AsyncMock(return_value=SimpleNamespace(id=term_id)),
     )
-    monkeypatch.setattr(
-        BulkImportService,
-        "_get_class_term_department_assignment",
-        AsyncMock(return_value=SimpleNamespace(department_id=department_id)),
-    )
-    monkeypatch.setattr(
-        DepartmentRepository,
-        "get_by_id",
-        AsyncMock(return_value=department),
-    )
-    monkeypatch.setattr(
-        DepartmentRepository,
-        "get_by_normalized_name",
-        AsyncMock(return_value=department),
-    )
+
+    _mock_department_context(monkeypatch, level_id, department, department)
 
     row = ImportRowValidationResult(
         row_number=2,
@@ -332,16 +329,8 @@ async def test_student_import_requires_department_for_specialized_class(monkeypa
         "get_current_term",
         AsyncMock(return_value=SimpleNamespace(id=term_id)),
     )
-    monkeypatch.setattr(
-        BulkImportService,
-        "_get_class_term_department_assignment",
-        AsyncMock(return_value=SimpleNamespace(department_id=department_id)),
-    )
-    monkeypatch.setattr(
-        DepartmentRepository,
-        "get_by_id",
-        AsyncMock(return_value=_active_department(department_id)),
-    )
+
+    _mock_department_context(monkeypatch, level_id, _active_department(department_id), _active_department(department_id))
 
     row = ImportRowValidationResult(
         row_number=2,
@@ -457,21 +446,8 @@ async def test_student_import_rejects_wrong_department_for_specialized_class(mon
         "get_current_term",
         AsyncMock(return_value=SimpleNamespace(id=term_id)),
     )
-    monkeypatch.setattr(
-        BulkImportService,
-        "_get_class_term_department_assignment",
-        AsyncMock(return_value=SimpleNamespace(department_id=science_id)),
-    )
-    monkeypatch.setattr(
-        DepartmentRepository,
-        "get_by_id",
-        AsyncMock(return_value=science),
-    )
-    monkeypatch.setattr(
-        DepartmentRepository,
-        "get_by_normalized_name",
-        AsyncMock(return_value=art),
-    )
+
+    _mock_department_context(monkeypatch, level_id, science, art)
 
     row = ImportRowValidationResult(
         row_number=2,

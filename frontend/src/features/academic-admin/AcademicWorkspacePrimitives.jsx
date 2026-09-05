@@ -112,13 +112,19 @@ export function FormActions({
   editing = false,
   onCancel,
   disabled = false,
+  repeatable = false,
 }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row">
-      <Button type="submit" disabled={submitting || disabled}>
-        {submitting ? "Saving..." : submitLabel}
+      <Button type="submit" name="saveIntent" value="another" disabled={submitting || disabled}>
+        {submitting ? "Saving..." : repeatable ? editing ? "Save changes" : "Save & add another" : submitLabel}
       </Button>
-      {editing ? (
+      {repeatable && !editing ? (
+        <Button type="submit" name="saveIntent" value="close" variant="outline" disabled={submitting || disabled}>
+          Save & close
+        </Button>
+      ) : null}
+      {onCancel ? (
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
           Cancel
         </Button>
@@ -391,7 +397,7 @@ function DefaultRecordInspector({
 export function RecordList({
   title,
   description,
-  items,
+  items: records,
   emptyTitle,
   emptyDescription,
   emptyIcon,
@@ -406,7 +412,20 @@ export function RecordList({
   actions,
   listClassName,
   showInspector = true,
+  loading = false,
+  error = "",
+  onRetry,
+  recordLabel = "Record",
+  detailsLabel = "Details",
 }) {
+  const [query, setQuery] = useState("");
+  const items = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    return search ? records.filter((item) =>
+      [renderTitle(item), renderMeta?.(item), renderDescription?.(item), renderStatus?.(item)]
+        .filter((value) => typeof value === "string").join(" ").toLowerCase().includes(search),
+    ) : records;
+  }, [query, records, renderTitle, renderMeta, renderDescription, renderStatus]);
   const [selectedRecordId, setSelectedRecordId] = useState(items[0]?.id || "");
 
   useEffect(() => {
@@ -427,7 +446,16 @@ export function RecordList({
 
   return (
     <WorkspacePanel title={title} description={description} actions={actions}>
-      {items.length === 0 ? (
+      <div className="mb-3 flex items-end gap-3">
+        <Input label={`Search ${title}`} value={query} onChange={(event) => setQuery(event.target.value)} />
+        <span className="shrink-0 pb-3 text-xs text-text-muted" role="status">{items.length} of {records.length}</span>
+      </div>
+      {error ? (
+        <div role="alert" className="space-y-2 text-sm text-error">
+          <p>{error}</p>
+          {onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Retry loading</Button> : null}
+        </div>
+      ) : loading ? <p role="status" className="text-sm text-text-muted">Loading records…</p> : items.length === 0 ? (
         <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyDescription} />
       ) : (
         <div
@@ -446,8 +474,8 @@ export function RecordList({
               <table className="w-full min-w-[46rem] border-collapse text-left">
                 <thead className="bg-surface-muted/55 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
                   <tr>
-                    <th className="px-4 py-3">Record</th>
-                    <th className="px-4 py-3">Details</th>
+                    <th className="px-4 py-3">{recordLabel}</th>
+                    <th className="px-4 py-3">{detailsLabel}</th>
                     <th className="px-4 py-3">Lifecycle</th>
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
@@ -467,7 +495,7 @@ export function RecordList({
                         )}
                       >
                         <td className="px-4 py-3 align-top">
-                          <p className="font-semibold text-text">{renderTitle(item)}</p>
+                          <button type="button" className="text-left font-semibold text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" aria-pressed={selected} onClick={() => setSelectedRecordId(item.id)}>{renderTitle(item)}</button>
                           {renderMeta ? (
                             <p className="mt-1 text-xs text-text-muted">{renderMeta(item)}</p>
                           ) : null}

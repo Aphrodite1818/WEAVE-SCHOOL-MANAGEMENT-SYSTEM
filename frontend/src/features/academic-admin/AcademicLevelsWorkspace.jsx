@@ -1,3 +1,4 @@
+import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { Library } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -49,9 +50,13 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   const [editingLevelId, setEditingLevelId] = useState("");
   const [editingLevelForm, setEditingLevelForm] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
       const [levelRows, classRows, categoryRows] = await Promise.all([
         academicLevelService.getLevels({ includeArchived: true }),
@@ -72,9 +77,11 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
             },
       );
     } catch (error) {
-      showError(getErrorMessage(error, "Could not load academic levels."));
+      setLoadError(getErrorMessage(error, "Could not load academic levels."));
+    } finally {
+      setLoading(false);
     }
-  }, [showError]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -121,6 +128,8 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
 
   const selectView = (view) => {
     const next = new URLSearchParams(searchParams);
+    if (view === "create") next.set("returnView", activeTab === "create" ? "overview" : activeTab);
+    else next.delete("returnView");
     next.set("view", view);
     next.delete("tab");
     setSearchParams(next, { replace: true });
@@ -133,7 +142,7 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       ...emptyLevelForm,
       category: categoryOptions[0]?.value || "",
     });
-    selectView("overview");
+    selectView(searchParams.get("returnView") || (activeTab === "create" ? "overview" : activeTab));
   };
 
   const updateFormCategory = (value) => {
@@ -157,6 +166,8 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
   const createLevel = async (event) => {
     event.preventDefault();
     if (!levelForm.category) return;
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving(true);
     try {
       await academicLevelService.createLevel({
@@ -172,11 +183,12 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
           ),
       });
       showSuccess("Academic level created as draft.");
-      closeEditor();
+      finishAcademicCreation(submission, () => { setLevelForm((current) => ({ ...emptyLevelForm, category: current.category })); }, closeEditor, false);
       await load();
     } catch (error) {
       showError(getErrorMessage(error, "Could not create academic level."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving(false);
     }
   };
@@ -186,6 +198,8 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     if (!editingLevelId || !editingLevelForm?.name.trim() || !editingLevelForm?.category) {
       return;
     }
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving(editingLevelId);
     try {
       const payload = structuralFieldsLocked
@@ -209,6 +223,7 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
     } catch (error) {
       showError(getErrorMessage(error, "Could not update this academic level."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving(false);
     }
   };
@@ -254,116 +269,121 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
               description="Levels own curriculum and ordered progression; classes remain optional organization."
             >
               <form className="space-y-3" onSubmit={editingLevelId ? updateLevel : createLevel}>
-                <Input
-                  label="Level name"
-                  value={editingLevelId ? editingLevelForm?.name || "" : levelForm.name}
-                  onChange={(event) =>
-                    editingLevelId
-                      ? setEditingLevelForm((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      : setLevelForm((current) => ({ ...current, name: event.target.value }))
-                  }
-                  placeholder="JSS1"
-                  required
-                />
-                <SelectControl
-                  label="Category"
-                  value={editingLevelId ? editingLevelForm?.category || "" : levelForm.category}
-                  onChange={updateFormCategory}
-                  options={selectOptions}
-                  disabled={structuralFieldsLocked}
-                  required
-                />
-                <Input
-                  label="Position"
-                  type="number"
-                  min="1"
-                  value={editingLevelId ? editingLevelForm?.position || "" : levelForm.position}
-                  onChange={(event) =>
-                    editingLevelId
-                      ? setEditingLevelForm((current) => ({
-                          ...current,
-                          position: event.target.value,
-                          specialization_required_from_term_position:
-                            current.category === "SENIOR_SECONDARY" &&
-                            Number(event.target.value) > 1
-                              ? "1"
-                              : current.specialization_required_from_term_position,
-                        }))
-                      : setLevelForm((current) => ({
-                          ...current,
-                          position: event.target.value,
-                          specialization_required_from_term_position:
-                            current.category === "SENIOR_SECONDARY" &&
-                            Number(event.target.value) > 1
-                              ? "1"
-                              : current.specialization_required_from_term_position,
-                        }))
-                  }
-                  disabled={structuralFieldsLocked}
-                  required
-                />
-                {selectedCategorySupportsDepartments && isSeniorSecondary ? (
-                  <div className="space-y-1.5">
-                    {isLaterSeniorLevel ? (
-                      <Input
-                        label="Department specialization"
-                        value="Required from First Term"
-                        disabled
-                      />
-                    ) : (
-                      <SelectControl
-                        label="Department specialization"
-                        value={
-                          editingLevelId
-                            ? editingLevelForm?.specialization_required_from_term_position || "1"
-                            : levelForm.specialization_required_from_term_position || "1"
-                        }
-                        onChange={(value) =>
-                          editingLevelId
-                            ? setEditingLevelForm((current) => ({
-                                ...current,
-                                specialization_required_from_term_position: value,
-                              }))
-                            : setLevelForm((current) => ({
-                                ...current,
-                                specialization_required_from_term_position: value,
-                              }))
-                        }
-                        options={specializationOptions}
-                        disabled={structuralFieldsLocked}
-                        searchable={false}
-                        required
-                      />
-                    )}
+                <fieldset disabled={Boolean(saving)} className="space-y-3">
+                  <Input
+                    label="Level name"
+                    value={editingLevelId ? editingLevelForm?.name || "" : levelForm.name}
+                    onChange={(event) =>
+                      editingLevelId
+                        ? setEditingLevelForm((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        : setLevelForm((current) => ({ ...current, name: event.target.value }))
+                    }
+                    placeholder="JSS1"
+                    required
+                  />
+                  <SelectControl
+                    label="Category"
+                    value={editingLevelId ? editingLevelForm?.category || "" : levelForm.category}
+                    onChange={updateFormCategory}
+                    options={selectOptions}
+                    disabled={structuralFieldsLocked}
+                    required
+                  />
+                  <Input
+                    label="Position"
+                    type="number"
+                    min="1"
+                    value={editingLevelId ? editingLevelForm?.position || "" : levelForm.position}
+                    onChange={(event) =>
+                      editingLevelId
+                        ? setEditingLevelForm((current) => ({
+                            ...current,
+                            position: event.target.value,
+                            specialization_required_from_term_position:
+                              current.category === "SENIOR_SECONDARY" &&
+                              Number(event.target.value) > 1
+                                ? "1"
+                                : current.specialization_required_from_term_position,
+                          }))
+                        : setLevelForm((current) => ({
+                            ...current,
+                            position: event.target.value,
+                            specialization_required_from_term_position:
+                              current.category === "SENIOR_SECONDARY" &&
+                              Number(event.target.value) > 1
+                                ? "1"
+                                : current.specialization_required_from_term_position,
+                          }))
+                    }
+                    disabled={structuralFieldsLocked}
+                    required
+                  />
+                  {selectedCategorySupportsDepartments && isSeniorSecondary ? (
+                    <div className="space-y-1.5">
+                      {isLaterSeniorLevel ? (
+                        <Input
+                          label="Department specialization"
+                          value="Required from First Term"
+                          disabled
+                        />
+                      ) : (
+                        <SelectControl
+                          label="Department specialization"
+                          value={
+                            editingLevelId
+                              ? editingLevelForm?.specialization_required_from_term_position || "1"
+                              : levelForm.specialization_required_from_term_position || "1"
+                          }
+                          onChange={(value) =>
+                            editingLevelId
+                              ? setEditingLevelForm((current) => ({
+                                  ...current,
+                                  specialization_required_from_term_position: value,
+                                }))
+                              : setLevelForm((current) => ({
+                                  ...current,
+                                  specialization_required_from_term_position: value,
+                                }))
+                          }
+                          options={specializationOptions}
+                          disabled={structuralFieldsLocked}
+                          searchable={false}
+                          required
+                        />
+                      )}
+                      <p className="text-xs leading-5 text-text-muted">
+                        {isLaterSeniorLevel
+                          ? "Later Senior Secondary levels always require a department from First Term."
+                          : "Choose the term when the first Senior Secondary level begins requiring a department."}
+                      </p>
+                    </div>
+                  ) : null}
+                  {structuralFieldsLocked ? (
                     <p className="text-xs leading-5 text-text-muted">
-                      {isLaterSeniorLevel
-                        ? "Later Senior Secondary levels always require a department from First Term."
-                        : "Choose the term when the first Senior Secondary level begins requiring a department."}
+                      Category, position, and specialization rules are locked after
+                      activation. The level name can still be updated.
                     </p>
-                  </div>
-                ) : null}
-                {structuralFieldsLocked ? (
-                  <p className="text-xs leading-5 text-text-muted">
-                    Category, position, and specialization rules are locked after
-                    activation. The level name can still be updated.
-                  </p>
-                ) : null}
-                <FormActions
-                  submitting={Boolean(saving)}
-                  submitLabel={editingLevelId ? "Save level" : "Create level"}
-                  editing
-                  onCancel={closeEditor}
-                />
+                  ) : null}
+                  <FormActions
+                    submitting={Boolean(saving)}
+                    submitLabel={editingLevelId ? "Save level" : "Create level"}
+                    repeatable
+                    editing={Boolean(editingLevelId)}
+                    onCancel={closeEditor}
+                  />
+                </fieldset>
               </form>
             </WorkspacePanel>
           ) : null
         }
         content={
-          activeTab === "create" && !editingLevelId ? null : (
             <RecordList
+              loading={loading}
+              error={loadError}
+              onRetry={load}
               title="Academic levels"
               description="Ordered academic stages. Select a level for details, while lifecycle operations remain directly accessible from the list."
               actions={
@@ -464,7 +484,6 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
                 </>
               )}
             />
-          )
         }
       />
       <ConfirmDialog

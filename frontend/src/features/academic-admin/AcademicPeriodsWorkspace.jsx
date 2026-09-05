@@ -1,3 +1,4 @@
+import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { CalendarDays } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -151,6 +152,8 @@ function AcademicPeriodsWorkspace({
 
   const selectView = (view) => {
     const next = new URLSearchParams(searchParams);
+    if (view === "create") next.set("returnView", activeTab === "create" ? "overview" : activeTab);
+    else next.delete("returnView");
     next.set("view", view);
     next.delete("tab");
     setSearchParams(next, { replace: true });
@@ -167,11 +170,12 @@ function AcademicPeriodsWorkspace({
         sessions[0]?.id ||
         "",
     }));
-    selectView("overview");
+    selectView(searchParams.get("returnView") || (activeTab === "create" ? "overview" : activeTab));
   };
 
   const saveSession = async (event) => {
-    event.preventDefault();
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("session");
     try {
       const row = editing?.type === "session" ? sessionById.get(editing.id) : null;
@@ -191,17 +195,19 @@ function AcademicPeriodsWorkspace({
       if (row) await academicService.updateSession(row.id, payload);
       else await academicService.createSession(payload);
       showSuccess(row ? "Academic session updated." : "Academic session created.");
-      closeEditor();
+      finishAcademicCreation(submission, () => setSessionForm(BLANK_SESSION), closeEditor, Boolean(editing));
       await load();
     } catch (error) {
       showError(getErrorMessage(error, "Could not save academic session."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
 
   const saveTerm = async (event) => {
-    event.preventDefault();
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("term");
     try {
       const payload = {
@@ -218,11 +224,12 @@ function AcademicPeriodsWorkspace({
       showSuccess(
         editing?.type === "term" ? "Academic term updated." : "Academic term created.",
       );
-      closeEditor();
+      finishAcademicCreation(submission, () => setTermForm((current) => ({ ...BLANK_TERM, academic_session_id: current.academic_session_id })), closeEditor, Boolean(editing));
       await load();
     } catch (error) {
       showError(getErrorMessage(error, "Could not save academic term."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
@@ -419,65 +426,68 @@ function AcademicPeriodsWorkspace({
       description="Session dates become immutable after opening. An open session may only change its next-session progression target."
     >
       <form className="space-y-3" onSubmit={saveSession}>
-        <Input
-          label="Session name"
-          value={sessionForm.name}
-          onChange={(event) =>
-            setSessionForm((current) => ({ ...current, name: event.target.value }))
-          }
-          placeholder="2026/2027"
-          minLength={9}
-          maxLength={9}
-          required
-          disabled={sessionById.get(editing?.id)?.status === "open"}
-        />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <fieldset disabled={Boolean(saving)} className="space-y-3">
           <Input
-            label="Start date"
-            type="date"
-            value={sessionForm.start_date}
+            label="Session name"
+            value={sessionForm.name}
             onChange={(event) =>
-              setSessionForm((current) => ({
-                ...current,
-                start_date: event.target.value,
-              }))
+              setSessionForm((current) => ({ ...current, name: event.target.value }))
             }
+            placeholder="2026/2027"
+            minLength={9}
+            maxLength={9}
+            required
             disabled={sessionById.get(editing?.id)?.status === "open"}
           />
-          <Input
-            label="End date"
-            type="date"
-            value={sessionForm.end_date}
-            onChange={(event) =>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <Input
+              label="Start date"
+              type="date"
+              value={sessionForm.start_date}
+              onChange={(event) =>
+                setSessionForm((current) => ({
+                  ...current,
+                  start_date: event.target.value,
+                }))
+              }
+              disabled={sessionById.get(editing?.id)?.status === "open"}
+            />
+            <Input
+              label="End date"
+              type="date"
+              value={sessionForm.end_date}
+              onChange={(event) =>
+                setSessionForm((current) => ({
+                  ...current,
+                  end_date: event.target.value,
+                }))
+              }
+              disabled={sessionById.get(editing?.id)?.status === "open"}
+            />
+          </div>
+          <SelectControl
+            label="Next session"
+            value={sessionForm.next_academic_session_id}
+            onChange={(value) =>
               setSessionForm((current) => ({
                 ...current,
-                end_date: event.target.value,
+                next_academic_session_id: value,
               }))
             }
-            disabled={sessionById.get(editing?.id)?.status === "open"}
+            options={sessions
+              .filter((item) => item.id !== editing?.id && item.status === "draft")
+              .map((item) => ({ value: item.id, label: item.name }))}
+            clearable
+            placeholder="Optional progression target"
           />
-        </div>
-        <SelectControl
-          label="Next session"
-          value={sessionForm.next_academic_session_id}
-          onChange={(value) =>
-            setSessionForm((current) => ({
-              ...current,
-              next_academic_session_id: value,
-            }))
-          }
-          options={sessions
-            .filter((item) => item.id !== editing?.id && item.status === "draft")
-            .map((item) => ({ value: item.id, label: item.name }))}
-          clearable
-          placeholder="Optional progression target"
-        />
-        <FormActions
-          submitting={saving === "session"}
-          submitLabel={editing ? "Save session" : "Create session"}
-          editing
-          onCancel={closeEditor}
-        />
+          <FormActions
+            submitting={saving === "session"}
+            submitLabel={editing ? "Save session" : "Create session"}
+            repeatable
+            editing={Boolean(editing)}
+            onCancel={closeEditor}
+          />
+        </fieldset>
       </form>
     </WorkspacePanel>
   ) : (
@@ -486,62 +496,65 @@ function AcademicPeriodsWorkspace({
       description="Terms belong to one academic session. A plan is deliberately selected only when the term is opened."
     >
       <form className="space-y-3" onSubmit={saveTerm}>
-        <SelectControl
-          label="Academic session"
-          value={termForm.academic_session_id}
-          onChange={(value) =>
-            setTermForm((current) => ({
-              ...current,
-              academic_session_id: value,
-            }))
-          }
-          options={sessions.map((item) => ({ value: item.id, label: item.name }))}
-          required
-          disabled={editing?.type === "term"}
-        />
-        <SelectControl
-          label="Term"
-          value={termForm.name}
-          onChange={(value) =>
-            setTermForm((current) => ({ ...current, name: value }))
-          }
-          options={[
-            { value: "first_term", label: "First Term" },
-            { value: "second_term", label: "Second Term" },
-            { value: "third_term", label: "Third Term" },
-          ]}
-          required
-        />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-          <Input
-            label="Start date"
-            type="date"
-            value={termForm.start_date}
-            onChange={(event) =>
+        <fieldset disabled={Boolean(saving)} className="space-y-3">
+          <SelectControl
+            label="Academic session"
+            value={termForm.academic_session_id}
+            onChange={(value) =>
               setTermForm((current) => ({
                 ...current,
-                start_date: event.target.value,
+                academic_session_id: value,
               }))
             }
+            options={sessions.map((item) => ({ value: item.id, label: item.name }))}
+            required
+            disabled={editing?.type === "term"}
           />
-          <Input
-            label="End date"
-            type="date"
-            value={termForm.end_date}
-            onChange={(event) =>
-              setTermForm((current) => ({
-                ...current,
-                end_date: event.target.value,
-              }))
+          <SelectControl
+            label="Term"
+            value={termForm.name}
+            onChange={(value) =>
+              setTermForm((current) => ({ ...current, name: value }))
             }
+            options={[
+              { value: "first_term", label: "First Term" },
+              { value: "second_term", label: "Second Term" },
+              { value: "third_term", label: "Third Term" },
+            ]}
+            required
           />
-        </div>
-        <FormActions
-          submitting={saving === "term"}
-          submitLabel={editing ? "Save term" : "Create term"}
-          editing
-          onCancel={closeEditor}
-        />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <Input
+              label="Start date"
+              type="date"
+              value={termForm.start_date}
+              onChange={(event) =>
+                setTermForm((current) => ({
+                  ...current,
+                  start_date: event.target.value,
+                }))
+              }
+            />
+            <Input
+              label="End date"
+              type="date"
+              value={termForm.end_date}
+              onChange={(event) =>
+                setTermForm((current) => ({
+                  ...current,
+                  end_date: event.target.value,
+                }))
+              }
+            />
+          </div>
+          <FormActions
+            submitting={saving === "term"}
+            submitLabel={editing ? "Save term" : "Create term"}
+            repeatable
+            editing={Boolean(editing)}
+            onCancel={closeEditor}
+          />
+        </fieldset>
       </form>
     </WorkspacePanel>
   );

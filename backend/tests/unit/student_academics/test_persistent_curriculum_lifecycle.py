@@ -65,7 +65,7 @@ async def test_reconciliation_ends_removed_assignment_and_preserves_general() ->
 
 
 @pytest.mark.asyncio
-async def test_future_assignment_is_preserved_as_valid_ended_interval() -> None:
+async def test_future_assignment_blocks_transition_without_rewriting_history() -> None:
     boundary = date.today() + timedelta(days=10)
     future = _assignment(starts_on=boundary + timedelta(days=5))
     rows = MagicMock()
@@ -79,12 +79,15 @@ async def test_future_assignment_is_preserved_as_valid_ended_interval() -> None:
         "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_class_subjects",
         new=AsyncMock(return_value=[]),
     ):
-        await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
-            db, tenant_id=future.tenant_id, term=term, acting_admin_id=uuid4()
-        )
+        with pytest.raises(ConflictException, match="scheduled teacher assignment"):
+            await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
+                db, tenant_id=future.tenant_id, term=term, acting_admin_id=uuid4()
+            )
 
-    assert future.effective_to == future.effective_from
+    assert future.effective_to is None
     db.delete.assert_not_awaited()
+    db.add.assert_not_called()
+    db.flush.assert_not_awaited()
 
 
 def test_teacher_assignments_alone_do_not_block_reinterpretation() -> None:

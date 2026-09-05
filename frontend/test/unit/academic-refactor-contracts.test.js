@@ -72,8 +72,10 @@ test("class specialization writes only the level-department mapping identity", a
 
   assert.match(service, /academic_level_department_id: academicLevelDepartmentId/);
   assert.doesNotMatch(service, /department_id: departmentId/);
-  assert.match(workspace, /assignment\?\.academic_level_department_id/);
-  assert.match(workspace, /departmentService\.getLevelDepartments/);
+  const placements = await read("src/features/academic-admin/ClassSpecializationWorkspace.jsx");
+  assert.match(placements, /row\.academic_level_department_id/);
+  assert.match(placements, /getSpecializationWorkspace\(termId\)/);
+  assert.match(workspace, /departmentService\.getLevelAvailability/);
 });
 
 test("curriculum applicability uses active level-department mappings", async () => {

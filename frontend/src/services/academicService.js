@@ -88,6 +88,8 @@ const reassignTeacherAssignment = async (assignmentId, payload) => {
     `/tenant-admin/academics/teacher-assignments/${assignmentId}/reassign`,
     {
       teacher_membership_id: teacherMembershipId,
+      academic_term_id: payload.academic_term_id,
+      reason: payload.reason,
       ...(payload.effective_from
         ? { effective_from: payload.effective_from }
         : {}),
@@ -96,6 +98,7 @@ const reassignTeacherAssignment = async (assignmentId, payload) => {
 };
 
 export const academicService = {
+  getSetupReadiness: () => api.get("/tenant-admin/academics/setup-readiness"),
   listSessions: async (params) => {
     const response = await api.get(
       `/tenant-admin/academics/sessions${queryString(params)}`,
@@ -298,11 +301,6 @@ export const academicService = {
     api.post(
       "/tenant-admin/academics/teacher-assignments",
       buildTeacherAssignmentPayload(payload),
-    ),
-  deactivateTeacherAssignment: (assignmentId) =>
-    api.post(
-      `/tenant-admin/academics/teacher-assignments/${assignmentId}/end`,
-      { effective_to: new Date().toISOString().slice(0, 10) },
     ),
   endTeacherAssignment: (assignmentId, payload) =>
     api.post(

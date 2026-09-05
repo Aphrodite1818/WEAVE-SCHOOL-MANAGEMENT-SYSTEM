@@ -16,7 +16,7 @@ test("every supported dashboard role has a valid page guide", () => {
     assert.equal(guide.dashboardRoute, `/${role}/dashboard`);
 
     const expectedStepCount =
-      role === "admin" ? 12 : role === "teacher" ? 3 : 4;
+      role === "admin" ? 17 : role === "teacher" ? 3 : 4;
     assert.equal(guide.steps.length, expectedStepCount);
     assert.equal(
       new Set(guide.steps.map((step) => step.id)).size,
@@ -42,18 +42,9 @@ test("tenant admin guide follows the academic setup v2 dependency order", () => 
   assert.deepEqual(
     ROLE_GUIDES.admin.steps.map((step) => step.id),
     [
-      "school_logo",
-      "levels",
-      "arms",
-      "classes",
-      "departments",
-      "subjects",
-      "curriculum",
-      "session",
-      "term",
-      "calendar",
-      "assignments",
-      "progression",
+      "school_basics", "session", "term", "calendar", "levels", "arms", "classes",
+      "subjects", "curriculum", "departments", "teachers", "assignments", "students",
+      "grading", "readiness", "school_logo", "progression",
     ],
   );
 });

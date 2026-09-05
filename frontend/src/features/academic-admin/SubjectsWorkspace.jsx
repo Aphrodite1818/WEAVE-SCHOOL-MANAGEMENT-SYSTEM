@@ -1,3 +1,4 @@
+import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { BookOpen, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -100,6 +101,8 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
 
   const selectView = (view) => {
     const next = new URLSearchParams(searchParams);
+    if (view === "create") next.set("returnView", activeTab === "create" ? "overview" : activeTab);
+    else next.delete("returnView");
     next.set("view", view);
     next.delete("tab");
     setSearchParams(next, { replace: true });
@@ -108,7 +111,7 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
   const closeEditor = () => {
     setEditingId("");
     setForm(BLANK_SUBJECT);
-    selectView("overview");
+    selectView(searchParams.get("returnView") || (activeTab === "create" ? "overview" : activeTab));
   };
 
   const editSubject = (item) => {
@@ -122,6 +125,8 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
 
   const saveSubject = async (event) => {
     event.preventDefault();
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
     setSaving("form");
     try {
       const payload = {
@@ -136,11 +141,12 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
         await subjectService.createSubject(payload);
         showSuccess("Subject created.");
       }
-      closeEditor();
+      finishAcademicCreation(submission, () => { setForm(BLANK_SUBJECT); }, closeEditor, Boolean(editingId));
       await load();
     } catch (error) {
       showError(errorWithDependencies(error, "Could not save subject."));
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
@@ -217,7 +223,7 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
 
   const editor = (
     <WorkspacePanel
-      title={editingId ? "Edit subject" : "Create subject"}
+      title={editingId ? "Edit subject" : "Add subject"}
       description={
         editingId
           ? "Name and code become immutable after the subject is first used. Description can still be maintained while the subject is not archived."
@@ -230,39 +236,42 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
         </p>
       ) : null}
       <form className="space-y-3" onSubmit={saveSubject}>
-        <Input
-          label="Subject name"
-          value={form.name}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, name: event.target.value }))
-          }
-          required
-          disabled={Boolean(editingSubject?.archived_at)}
-        />
-        <Input
-          label="Subject code"
-          value={form.code}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, code: event.target.value }))
-          }
-          placeholder="MTH"
-          disabled={Boolean(editingSubject?.archived_at)}
-        />
-        <Input
-          label="Description"
-          value={form.description}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, description: event.target.value }))
-          }
-          disabled={Boolean(editingSubject?.archived_at)}
-        />
-        <FormActions
-          submitting={saving === "form"}
-          submitLabel={editingId ? "Save subject" : "Create subject"}
-          editing
-          disabled={Boolean(editingSubject?.archived_at)}
-          onCancel={closeEditor}
-        />
+        <fieldset disabled={Boolean(saving)} className="space-y-3">
+          <Input
+            label="Subject name"
+            value={form.name}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, name: event.target.value }))
+            }
+            required
+            disabled={Boolean(editingSubject?.archived_at)}
+          />
+          <Input
+            label="Subject code"
+            value={form.code}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, code: event.target.value }))
+            }
+            placeholder="MTH"
+            disabled={Boolean(editingSubject?.archived_at)}
+          />
+          <Input
+            label="Description"
+            value={form.description}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, description: event.target.value }))
+            }
+            disabled={Boolean(editingSubject?.archived_at)}
+          />
+          <FormActions
+            submitting={Boolean(saving)}
+            submitLabel={editingId ? "Save subject" : "Add subject"}
+            repeatable
+            editing={Boolean(editingId)}
+            disabled={Boolean(editingSubject?.archived_at)}
+            onCancel={closeEditor}
+          />
+        </fieldset>
       </form>
     </WorkspacePanel>
   );
@@ -277,7 +286,7 @@ function SubjectsWorkspace({ activeTab = "overview" }) {
             actions={
               !showEditor ? (
                 <Button type="button" onClick={() => selectView("create")}>
-                  Create subject
+                  Add subject
                 </Button>
               ) : null
             }
