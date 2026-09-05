@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_teacher, get_current_tenant_admin
+from app.modules.report_cards.comment_audit_service import TeacherCommentAuditService
 from app.modules.report_cards.comment_models import CommentTemplateOwnerType
 from app.modules.report_cards.comment_schemas import (
     CommentTemplateListResponse,
@@ -217,6 +218,25 @@ async def submit_teacher_comment(
         student_id=student_id,
         payload=payload,
         submit=True,
+    )
+
+
+@admin_override_router.get("", response_model=list[TeacherCommentOverrideResponse])
+async def list_teacher_comment_overrides(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+    student_id: UUID = Query(...),
+    academic_session_id: UUID = Query(...),
+    academic_term_id: UUID = Query(...),
+) -> list[TeacherCommentOverrideResponse]:
+    """Return append-only override history for one student-period context."""
+
+    return await TeacherCommentAuditService.list_overrides(
+        db,
+        admin=current_admin,
+        student_id=student_id,
+        academic_session_id=academic_session_id,
+        academic_term_id=academic_term_id,
     )
 
 
