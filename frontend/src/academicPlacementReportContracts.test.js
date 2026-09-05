@@ -1,0 +1,76 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const sourceRoot = path.dirname(fileURLToPath(import.meta.url));
+const readSource = (...segments) =>
+  fs.readFileSync(path.join(sourceRoot, ...segments), "utf8");
+
+test("student service uses only canonical placement contracts", () => {
+  const service = readSource("services", "studentService.js");
+
+  assert.match(service, /\/tenant-admin\/students\/class-placement/);
+  assert.match(service, /\/placement-history/);
+  assert.match(service, /\/placement-impact-preview/);
+  assert.match(service, /\/reassign-class/);
+  assert.match(service, /\/reassign-academic-level/);
+  assert.doesNotMatch(service, /assignClassBatch/);
+  assert.doesNotMatch(service, /changeStudentClass/);
+  assert.doesNotMatch(service, /batch-class-assignment/);
+  assert.doesNotMatch(service, /class-change/);
+});
+
+test("student self profile is hydrated from the derived term academic context", () => {
+  const service = readSource("services", "studentService.js");
+
+  assert.match(service, /\/students\/me\/academic-context/);
+  assert.match(service, /department_name/);
+  assert.match(service, /classArmWithDepartment/);
+});
+
+test("student directory keeps placement and reassignment responsibilities separate", () => {
+  const directory = readSource("pages", "admin", "StudentDirectoryPage.jsx");
+  const placementPage = readSource("pages", "admin", "StudentClassPlacementPage.jsx");
+
+  assert.match(directory, /getPlacementHistory/);
+  assert.match(directory, /previewPlacementImpact/);
+  assert.match(directory, /reassignStudentClass/);
+  assert.match(directory, /reassignStudentAcademicLevel/);
+  assert.doesNotMatch(directory, /assignClassBatch/);
+  assert.match(placementPage, /unassignedClass:\s*true/);
+  assert.match(placementPage, /placeStudents/);
+});
+
+test("report-card workspace uses authoritative readiness and audited teacher overrides", () => {
+  const workspace = readSource(
+    "features",
+    "academic-admin",
+    "ReportCardsWorkspace.jsx",
+  );
+
+  assert.match(workspace, /report_readiness === "ready"/);
+  assert.match(workspace, /teacher_comment_status/);
+  assert.match(workspace, /overrideTeacherComment/);
+  assert.match(workspace, /Audit reason/);
+  assert.match(workspace, /apply_default_principal_template/);
+  assert.match(workspace, /principal_template_id/);
+  assert.match(workspace, /Create replacement v/);
+  assert.doesNotMatch(workspace, /generate_for_class/);
+});
+
+test("teacher navigation and guide expose comments but no score-entry authority", () => {
+  const routes = readSource("routes", "teacherRoutes.jsx");
+  const nav = readSource("components", "layout", "navConfig.js");
+  const guide = readSource("features", "guides", "roleGuideConfig.js");
+
+  assert.match(routes, /student-comments/);
+  assert.match(routes, /comment-templates/);
+  assert.match(nav, /Student Comments/);
+  assert.match(nav, /My Comment Templates/);
+  assert.match(guide, /Complete class-teacher comments/);
+  assert.doesNotMatch(routes, /score-entry/);
+  assert.doesNotMatch(nav, /Score Entry/);
+  assert.doesNotMatch(guide, /entering attendance or scores/);
+});
