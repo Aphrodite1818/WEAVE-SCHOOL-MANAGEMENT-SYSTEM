@@ -45,7 +45,10 @@ test("shared academic directories are list-first and keep editors secondary", as
   assert.match(arms, /Add arm label/);
   assert.match(arms, /showInspector={!showEditor}/);
   assert.match(departments, /Add department/);
-  assert.match(departments, /showInspector={!editorOpen}/);
+  assert.match(departments, /Department catalog/);
+  assert.match(departments, /<table/);
+  assert.match(departments, /Available in/);
+  assert.match(departments, /!editorOpen/);
   assert.match(curriculum, /editorMode/);
   assert.match(curriculum, /Add subject/);
   assert.match(curriculum, /Subject applicability/);
