@@ -15,6 +15,7 @@ export const buildAcademicHubDirectory = (stats = {}) => [
   { key: "assignments", scope: "Class · Subject · Term", state: Number(stats.total_teachers) > 0 ? "Ready to assign" : "Needs teachers", lifecycle: "Scheduled → Active → Ended" },
   { key: "school-calendar", scope: "School days and events by term", state: stats.active_academic_term ? "Ready to configure" : "Needs open term", lifecycle: "Draft → Active → Archived" },
   { key: "grading", scope: "Assessment schemes and scales", state: "Configuration", lifecycle: "Draft → Active → Inactive" },
+  { key: "comment-templates", scope: "My principal comment templates", state: "Personal configuration", lifecycle: "Active → Inactive → Archived" },
   { key: "results", scope: numberLabel(stats.result_rows_total, "result rows"), state: Number(stats.result_rows_submitted) > 0 ? "Needs review" : "In progress", lifecycle: "Draft → Submitted → Approved → Locked" },
   { key: "report-cards", scope: numberLabel(stats.report_cards_generated, "generated"), state: Number(stats.report_cards_generated) > Number(stats.report_cards_published) ? "Needs publishing" : "Ready", lifecycle: "Draft → Published → Archived" },
   { key: "progression", scope: numberLabel(stats.total_students, "students tracked"), state: stats.active_academic_session ? "Available" : "Needs open session", lifecycle: "Review → Progress → Graduate" },
