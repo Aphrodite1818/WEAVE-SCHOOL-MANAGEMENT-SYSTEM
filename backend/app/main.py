@@ -91,6 +91,7 @@ from app.modules.student_academics.router import (
     tenant_admin_router as tenant_admin_academic_router,
 )
 from app.modules.student_academics.session_closure_router import router as session_closure_router
+from app.modules.student_academics.teacher_grading_router import router as teacher_grading_router
 from app.modules.student_academics.write_guard import ensure_admin_academic_write_window
 from app.modules.students.academic_context_router import router as student_academic_context_router
 from app.modules.students.placement_router import router as student_placement_router
@@ -282,6 +283,7 @@ def create_app() -> FastAPI:
         dependencies=admin_write_guard,
     )
     app.include_router(teacher_academic_router, prefix=API_V1_PREFIX)
+    app.include_router(teacher_grading_router, prefix=API_V1_PREFIX)
     app.include_router(student_academic_router, prefix=API_V1_PREFIX)
     app.include_router(parent_academic_router, prefix=API_V1_PREFIX)
     app.include_router(teacher_comment_router, prefix=API_V1_PREFIX)
