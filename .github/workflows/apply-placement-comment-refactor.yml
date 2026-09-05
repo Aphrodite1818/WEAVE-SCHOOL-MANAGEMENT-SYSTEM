@@ -1,0 +1,38 @@
+name: Apply placement comment refactor
+
+on:
+  push:
+    branches:
+      - cbt-sync-module-structure
+
+permissions:
+  contents: write
+
+jobs:
+  apply-refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cbt-sync-module-structure
+          fetch-depth: 0
+      - name: Apply idempotent refactor patch
+        run: python .github/scripts/apply_placement_comment_refactor.py
+      - name: Remove temporary patch helper
+        run: |
+          rm .github/scripts/apply_placement_comment_refactor.py
+          rm .github/workflows/apply-placement-comment-refactor.yml
+      - name: Validate patch
+        run: git diff --check
+      - name: Commit branch changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No patch changes to commit"
+            exit 0
+          fi
+          git commit -m "feat: wire canonical placement and comment routes"
+          git push origin HEAD:cbt-sync-module-structure
