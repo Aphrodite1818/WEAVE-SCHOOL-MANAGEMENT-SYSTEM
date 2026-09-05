@@ -86,6 +86,8 @@ class StudentEnrollmentOutcome(str, PyEnum):
     REPEATED = "repeated"
     DEMOTED = "demoted"
     RECLASSIFIED = "reclassified"
+    CLASS_PLACED = "class_placed"
+    LEVEL_REASSIGNED = "level_reassigned"
     REINSTATED = "reinstated"
     WITHDRAWN = "withdrawn"
     EXPELLED = "expelled"
