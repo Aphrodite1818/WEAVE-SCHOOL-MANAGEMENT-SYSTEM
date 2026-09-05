@@ -63,12 +63,9 @@ async def test_draft_rank_uses_all_ready_classmates_not_generated_report_rows(mo
             return True, Decimal("82"), SimpleNamespace(id=uuid4(), grade="A")
         return False, None, None
 
+    list_students = AsyncMock(return_value=(students, len(students)))
     save = AsyncMock(return_value=card)
-    monkeypatch.setattr(
-        StudentRepository,
-        "list_students",
-        AsyncMock(return_value=(students, len(students))),
-    )
+    monkeypatch.setattr(StudentRepository, "list_for_tenant", list_students)
     monkeypatch.setattr(
         ReportCommentService,
         "_academic_readiness",
@@ -84,6 +81,12 @@ async def test_draft_rank_uses_all_ready_classmates_not_generated_report_rows(mo
     assert result is card
     assert card.position == 2
     assert card.position_out_of == 2
+    list_students.assert_awaited_once_with(
+        db=pytest.ANY if False else list_students.await_args.kwargs["db"],
+        tenant_id=tenant_id,
+        class_id=class_id,
+        limit=500,
+    )
     save.assert_awaited_once()
 
 
@@ -96,7 +99,7 @@ async def test_published_rank_snapshot_is_never_recomputed(monkeypatch) -> None:
     )
     list_students = AsyncMock()
     save = AsyncMock()
-    monkeypatch.setattr(StudentRepository, "list_students", list_students)
+    monkeypatch.setattr(StudentRepository, "list_for_tenant", list_students)
     monkeypatch.setattr(ReportCardRepository, "save", save)
 
     result = await refresh_draft_rank_from_authoritative_results(
