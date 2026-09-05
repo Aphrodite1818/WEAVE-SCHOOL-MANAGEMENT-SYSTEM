@@ -4,7 +4,13 @@ from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
+from app.modules.classes.models import (
+    AcademicLevel,
+    AcademicLevelDepartment,
+    ArmLabel,
+    ClassRoom,
+    Department,
+)
 from app.modules.parents.models import Parent, ParentAccount
 from app.modules.search.schemas import TenantSearchResult
 from app.modules.student_academics.models import (
@@ -13,7 +19,11 @@ from app.modules.student_academics.models import (
     StudentSubjectResult,
     TeacherAssignment,
 )
-from app.modules.student_academics.curriculum_models import CurriculumSubject
+from app.modules.student_academics.curriculum_models import (
+    ClassTermDepartmentAssignment,
+    Curriculum,
+    CurriculumSubject,
+)
 from app.modules.students.models import Student
 from app.modules.subjects.models import Subject
 from app.modules.teachers.models import Teacher, TeacherAccount
@@ -64,6 +74,26 @@ class TenantSearchService:
         )
 
     @staticmethod
+    def _balanced_results(
+        groups: list[list[TenantSearchResult]], limit: int
+    ) -> list[TenantSearchResult]:
+        """Round-robin entity groups so later academic types cannot be starved."""
+        results: list[TenantSearchResult] = []
+        offset = 0
+        while len(results) < limit:
+            added = False
+            for group in groups:
+                if offset < len(group):
+                    results.append(group[offset])
+                    added = True
+                    if len(results) >= limit:
+                        break
+            if not added:
+                break
+            offset += 1
+        return results
+
+    @staticmethod
     async def search(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -80,8 +110,8 @@ class TenantSearchService:
         limit: int = 20,
     ) -> list[TenantSearchResult]:
         term = f"%{query.strip()}%"
-        per_type_limit = max(1, min(limit, 50))
-        items: list[TenantSearchResult] = []
+        per_type_limit = max(1, min(limit, 20))
+        groups: list[list[TenantSearchResult]] = []
 
         students = (
             await db.execute(
@@ -106,9 +136,10 @@ class TenantSearchService:
                 .limit(per_type_limit)
             )
         ).all()
+        student_items: list[TenantSearchResult] = []
         for student, classroom in students:
             class_label = classroom.display_name if classroom else None
-            items.append(
+            student_items.append(
                 TenantSearchResult(
                     label=TenantSearchService._name(student.first_name, student.last_name),
                     role="student",
@@ -118,6 +149,7 @@ class TenantSearchService:
                     href=f"/admin/students?admissionNumber={student.admission_number}",
                 )
             )
+        groups.append(student_items)
 
         teachers = (
             (
@@ -140,8 +172,9 @@ class TenantSearchService:
             .scalars()
             .all()
         )
+        teacher_items: list[TenantSearchResult] = []
         for teacher in teachers:
-            items.append(
+            teacher_items.append(
                 TenantSearchResult(
                     label=TenantSearchService._name(teacher.first_name, teacher.last_name),
                     role="teacher",
@@ -151,6 +184,7 @@ class TenantSearchService:
                     href=f"/admin/teachers?staffId={teacher.staff_id or teacher.email}",
                 )
             )
+        groups.append(teacher_items)
 
         parents = (
             (
@@ -172,8 +206,9 @@ class TenantSearchService:
             .scalars()
             .all()
         )
+        parent_items: list[TenantSearchResult] = []
         for parent in parents:
-            items.append(
+            parent_items.append(
                 TenantSearchResult(
                     label=TenantSearchService._name(parent.first_name, parent.last_name),
                     role="parent",
@@ -182,6 +217,7 @@ class TenantSearchService:
                     href=f"/admin/parents?email={parent.email}",
                 )
             )
+        groups.append(parent_items)
 
         classes = (
             (
@@ -206,17 +242,19 @@ class TenantSearchService:
             .scalars()
             .all()
         )
+        class_items: list[TenantSearchResult] = []
         for classroom in classes:
             label = classroom.display_name
-            items.append(
+            class_items.append(
                 TenantSearchResult(
                     label=label,
                     role="class",
                     metadata=classroom.arm_label,
                     class_name=label,
-                    href=f"/admin/classes?level={classroom.academic_level_name}&arm={classroom.arm_label or ''}",
+                    href="/admin/academic/classes?view=overview",
                 )
             )
+        groups.append(class_items)
 
         subjects = (
             (
@@ -232,18 +270,287 @@ class TenantSearchService:
             .scalars()
             .all()
         )
+        subject_items: list[TenantSearchResult] = []
         for subject in subjects:
-            items.append(
+            subject_items.append(
                 TenantSearchResult(
                     label=subject.name,
                     role="subject",
                     metadata=subject.code,
                     subject_name=subject.name,
-                    href=f"/admin/subjects?code={subject.code or subject.name}",
+                    href="/admin/academic/subjects?view=overview",
                 )
             )
+        groups.append(subject_items)
 
-        return items[:limit]
+        levels = (
+            (
+                await db.execute(
+                    select(AcademicLevel)
+                    .where(
+                        AcademicLevel.tenant_id == tenant_id,
+                        or_(
+                            AcademicLevel.name.ilike(term),
+                            cast(AcademicLevel.category, String).ilike(term),
+                            cast(AcademicLevel.status, String).ilike(term),
+                        ),
+                    )
+                    .order_by(AcademicLevel.category, AcademicLevel.position)
+                    .limit(per_type_limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        level_items = [
+            TenantSearchService._result(
+                label=level.name,
+                role="academic level",
+                metadata=f"{level.category.value} | {level.status.value}",
+                href="/admin/academic/levels?view=overview",
+            )
+            for level in levels
+        ]
+        groups.append(level_items)
+
+        arm_labels = (
+            (
+                await db.execute(
+                    select(ArmLabel)
+                    .where(
+                        ArmLabel.tenant_id == tenant_id,
+                        ArmLabel.label.ilike(term),
+                    )
+                    .order_by(ArmLabel.label)
+                    .limit(per_type_limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        arm_items = [
+            TenantSearchService._result(
+                label=arm.label,
+                role="arm label",
+                metadata="Reusable class arm",
+                href="/admin/academic/arm-labels?view=overview",
+            )
+            for arm in arm_labels
+        ]
+        groups.append(arm_items)
+
+        departments = (
+            (
+                await db.execute(
+                    select(Department)
+                    .where(
+                        Department.tenant_id == tenant_id,
+                        Department.name.ilike(term),
+                    )
+                    .order_by(Department.name)
+                    .limit(per_type_limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        department_items = [
+            TenantSearchService._result(
+                label=department.name,
+                role="department",
+                metadata=(
+                    "archived"
+                    if department.archived_at
+                    else "active" if department.is_active else "inactive"
+                ),
+                href="/admin/academic/departments?view=pool",
+            )
+            for department in departments
+        ]
+        groups.append(department_items)
+
+        level_department_rows = (
+            await db.execute(
+                select(AcademicLevelDepartment, AcademicLevel, Department)
+                .join(
+                    AcademicLevel,
+                    AcademicLevel.id == AcademicLevelDepartment.academic_level_id,
+                )
+                .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                .where(
+                    AcademicLevelDepartment.tenant_id == tenant_id,
+                    or_(
+                        AcademicLevel.name.ilike(term),
+                        Department.name.ilike(term),
+                    ),
+                )
+                .order_by(AcademicLevel.position, Department.name)
+                .limit(per_type_limit)
+            )
+        ).all()
+        level_department_items = [
+            TenantSearchService._result(
+                label=f"{level.name} · {department.name}",
+                role="level department",
+                metadata=(
+                    "available"
+                    if link.is_active and not link.archived_at
+                    else "unavailable"
+                ),
+                href="/admin/academic/departments?view=availability",
+            )
+            for link, level, department in level_department_rows
+        ]
+        groups.append(level_department_items)
+
+        curriculum_rows = (
+            await db.execute(
+                select(CurriculumSubject, Subject, AcademicLevel)
+                .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
+                .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
+                .join(Subject, Subject.id == CurriculumSubject.subject_id)
+                .where(
+                    CurriculumSubject.tenant_id == tenant_id,
+                    or_(
+                        Subject.name.ilike(term),
+                        Subject.code.ilike(term),
+                        AcademicLevel.name.ilike(term),
+                    ),
+                )
+                .order_by(AcademicLevel.position, Subject.name)
+                .limit(per_type_limit)
+            )
+        ).all()
+        curriculum_items = [
+            TenantSearchService._result(
+                label=f"{subject.name} · {level.name}",
+                role="curriculum subject",
+                metadata=(
+                    f"{'Elective' if curriculum_subject.is_elective else 'Compulsory'} | "
+                    f"{'active' if curriculum_subject.is_active else 'inactive'}"
+                ),
+                subject_name=subject.name,
+                href="/admin/academic/curriculum?view=subjects",
+            )
+            for curriculum_subject, subject, level in curriculum_rows
+        ]
+        groups.append(curriculum_items)
+
+        sessions = (
+            (
+                await db.execute(
+                    select(AcademicSession)
+                    .where(
+                        AcademicSession.tenant_id == tenant_id,
+                        or_(
+                            AcademicSession.name.ilike(term),
+                            cast(AcademicSession.status, String).ilike(term),
+                        ),
+                    )
+                    .order_by(AcademicSession.start_date.desc().nullslast())
+                    .limit(per_type_limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        session_items = [
+            TenantSearchService._result(
+                label=session.name,
+                role="academic session",
+                metadata=session.status.value,
+                href="/admin/academic/sessions?view=overview",
+            )
+            for session in sessions
+        ]
+        groups.append(session_items)
+
+        term_rows = (
+            await db.execute(
+                select(AcademicTerm, AcademicSession)
+                .join(
+                    AcademicSession,
+                    AcademicSession.id == AcademicTerm.academic_session_id,
+                )
+                .where(
+                    AcademicTerm.tenant_id == tenant_id,
+                    or_(
+                        AcademicSession.name.ilike(term),
+                        cast(AcademicTerm.name, String).ilike(term),
+                        cast(AcademicTerm.status, String).ilike(term),
+                    ),
+                )
+                .order_by(AcademicSession.start_date.desc().nullslast(), AcademicTerm.name)
+                .limit(per_type_limit)
+            )
+        ).all()
+        term_items = [
+            TenantSearchService._result(
+                label=f"{session.name} · {academic_term.name.value.replace('_', ' ').title()}",
+                role="academic term",
+                metadata=academic_term.status.value,
+                href="/admin/academic/terms?view=overview",
+            )
+            for academic_term, session in term_rows
+        ]
+        groups.append(term_items)
+
+        placement_rows = (
+            await db.execute(
+                select(
+                    ClassTermDepartmentAssignment,
+                    AcademicLevel,
+                    ArmLabel,
+                    Department,
+                    AcademicTerm,
+                    AcademicSession,
+                )
+                .join(ClassRoom, ClassRoom.id == ClassTermDepartmentAssignment.class_id)
+                .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
+                .join(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
+                .join(
+                    AcademicLevelDepartment,
+                    AcademicLevelDepartment.id
+                    == ClassTermDepartmentAssignment.academic_level_department_id,
+                )
+                .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                .join(
+                    AcademicTerm,
+                    AcademicTerm.id == ClassTermDepartmentAssignment.academic_term_id,
+                )
+                .join(
+                    AcademicSession,
+                    AcademicSession.id == AcademicTerm.academic_session_id,
+                )
+                .where(
+                    ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                    or_(
+                        AcademicLevel.name.ilike(term),
+                        ArmLabel.label.ilike(term),
+                        Department.name.ilike(term),
+                        AcademicSession.name.ilike(term),
+                        cast(AcademicTerm.name, String).ilike(term),
+                    ),
+                )
+                .order_by(AcademicSession.start_date.desc().nullslast(), AcademicLevel.position)
+                .limit(per_type_limit)
+            )
+        ).all()
+        placement_items = [
+            TenantSearchService._result(
+                label=f"{level.name} {arm.label} · {department.name}",
+                role="class placement",
+                metadata=(
+                    f"{session.name} | {academic_term.name.value.replace('_', ' ').title()}"
+                ),
+                class_name=f"{level.name} {arm.label}",
+                href="/admin/academic/departments?view=placements",
+            )
+            for _, level, arm, department, academic_term, session in placement_rows
+        ]
+        groups.append(placement_items)
+
+        return TenantSearchService._balanced_results(groups, limit)
 
     @staticmethod
     async def search_teacher(
