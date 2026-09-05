@@ -92,6 +92,7 @@ from app.modules.student_academics.router import (
 )
 from app.modules.student_academics.session_closure_router import router as session_closure_router
 from app.modules.student_academics.write_guard import ensure_admin_academic_write_window
+from app.modules.students.academic_context_router import router as student_academic_context_router
 from app.modules.students.placement_router import router as student_placement_router
 from app.modules.students.router import router as student_router
 from app.modules.subjects.router import router as subject_router
@@ -228,6 +229,7 @@ def create_app() -> FastAPI:
     app.include_router(tenant_router, prefix=f"{API_V1_PREFIX}/tenants", tags=["Tenants"])
     app.include_router(teacher_router, prefix=f"{API_V1_PREFIX}/teachers", tags=["Teachers"])
     app.include_router(student_router, prefix=f"{API_V1_PREFIX}/students", tags=["Students"])
+    app.include_router(student_academic_context_router, prefix=API_V1_PREFIX)
     app.include_router(parent_router, prefix=API_V1_PREFIX)
     app.include_router(realtime_router, prefix=API_V1_PREFIX)
     app.include_router(subject_router, prefix=f"{API_V1_PREFIX}/subjects", tags=["Subjects"])
