@@ -7,14 +7,24 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import BadRequestException, ForbiddenException
-from app.modules.report_cards.comment_models import TeacherCommentStatus
+from app.modules.report_cards.comment_models import (
+    CommentTemplateStatus,
+    TeacherCommentStatus,
+)
+from app.modules.report_cards.comment_router import (
+    _create_personal_comment,
+    _ensure_teacher_comment_ready,
+    _update_personal_comment,
+)
 from app.modules.report_cards.comment_schemas import (
     CommentTemplateWrite,
     PersonalCommentTemplateCreate,
+    PersonalCommentTemplateUpdate,
     TeacherCommentWrite,
 )
 from app.modules.report_cards.comment_service import ReportCommentService
 from app.modules.teachers.models import TeacherMembership
+from app.modules.tenant_admins.models import TenantAdmin
 
 
 class ScalarResult:
@@ -66,6 +76,113 @@ def test_public_personal_comment_contract_is_text_plus_one_grade_only():
 
 
 @pytest.mark.asyncio
+async def test_first_personal_comment_for_grade_becomes_default_automatically(monkeypatch):
+    grade_id = uuid4()
+    admin = TenantAdmin(tenant_id=uuid4())
+    admin.id = uuid4()
+    created = SimpleNamespace(id=uuid4())
+    create_template = AsyncMock(return_value=created)
+
+    monkeypatch.setattr(
+        "app.modules.report_cards.comment_router._owned_templates",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(ReportCommentService, "create_template", create_template)
+
+    result = await _create_personal_comment(
+        SimpleNamespace(),
+        admin,
+        PersonalCommentTemplateCreate(
+            text="Excellent performance. Keep it up.",
+            grading_scale_id=grade_id,
+            is_default=False,
+        ),
+    )
+
+    assert result is created
+    internal = create_template.await_args.kwargs["payload"]
+    assert internal.grading_scale_ids == [grade_id]
+    assert internal.default_grading_scale_ids == [grade_id]
+    assert internal.name == "Excellent performance. Keep it up."
+
+
+@pytest.mark.asyncio
+async def test_additional_comment_for_grade_does_not_replace_existing_default(monkeypatch):
+    grade_id = uuid4()
+    admin = TenantAdmin(tenant_id=uuid4())
+    admin.id = uuid4()
+    existing = SimpleNamespace(
+        id=uuid4(),
+        status=CommentTemplateStatus.ACTIVE,
+        grading_scale_ids=[grade_id],
+        default_grading_scale_ids=[grade_id],
+    )
+    create_template = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+
+    monkeypatch.setattr(
+        "app.modules.report_cards.comment_router._owned_templates",
+        AsyncMock(return_value=[existing]),
+    )
+    monkeypatch.setattr(ReportCommentService, "create_template", create_template)
+
+    await _create_personal_comment(
+        SimpleNamespace(),
+        admin,
+        PersonalCommentTemplateCreate(
+            text="Another strong Grade A comment.",
+            grading_scale_id=grade_id,
+            is_default=False,
+        ),
+    )
+
+    internal = create_template.await_args.kwargs["payload"]
+    assert internal.grading_scale_ids == [grade_id]
+    assert internal.default_grading_scale_ids == []
+
+
+@pytest.mark.asyncio
+async def test_make_default_updates_only_the_comments_fixed_grade(monkeypatch):
+    grade_id = uuid4()
+    admin = TenantAdmin(tenant_id=uuid4())
+    admin.id = uuid4()
+    current = SimpleNamespace(
+        id=uuid4(),
+        text="Alternative comment",
+        status=CommentTemplateStatus.ACTIVE,
+        grading_scale_ids=[grade_id],
+        default_grading_scale_ids=[],
+    )
+    existing_default = SimpleNamespace(
+        id=uuid4(),
+        status=CommentTemplateStatus.ACTIVE,
+        grading_scale_ids=[grade_id],
+        default_grading_scale_ids=[grade_id],
+    )
+    update_template = AsyncMock(return_value=SimpleNamespace(id=current.id))
+
+    monkeypatch.setattr(
+        "app.modules.report_cards.comment_router._find_template",
+        AsyncMock(return_value=current),
+    )
+    monkeypatch.setattr(
+        "app.modules.report_cards.comment_router._owned_templates",
+        AsyncMock(return_value=[current, existing_default]),
+    )
+    monkeypatch.setattr(ReportCommentService, "update_template", update_template)
+
+    await _update_personal_comment(
+        SimpleNamespace(),
+        admin,
+        current.id,
+        PersonalCommentTemplateUpdate(is_default=True),
+    )
+
+    internal = update_template.await_args.kwargs["payload"]
+    assert internal.grading_scale_ids == [grade_id]
+    assert internal.default_grading_scale_ids == [grade_id]
+
+
+@pytest.mark.asyncio
 async def test_subject_teacher_cannot_use_class_teacher_comment_capability(monkeypatch):
     teacher = TeacherMembership(id=uuid4(), tenant_id=uuid4())
     monkeypatch.setattr(
@@ -81,65 +198,63 @@ async def test_subject_teacher_cannot_use_class_teacher_comment_capability(monke
 
 
 @pytest.mark.asyncio
-async def test_teacher_comment_draft_can_be_saved_before_results_are_ready(monkeypatch):
-    """Service remains tolerant for historical/internal callers; HTTP routes gate new work."""
-
+async def test_teacher_comment_http_boundary_rejects_work_before_results_are_ready(monkeypatch):
     teacher = TeacherMembership(id=uuid4(), tenant_id=uuid4())
-    student_id = uuid4()
-    class_id = uuid4()
-    enrollment_id = uuid4()
-    session_id = uuid4()
-    term_id = uuid4()
-    comment = make_comment(
-        teacher_id=teacher.id,
-        student_id=student_id,
-        enrollment_id=enrollment_id,
-        class_id=class_id,
-        session_id=session_id,
-        term_id=term_id,
-    )
-    classroom = SimpleNamespace(id=class_id, teacher_membership_id=teacher.id)
-    enrollment = SimpleNamespace(id=enrollment_id, class_id=class_id)
-    db = SimpleNamespace(
-        execute=AsyncMock(return_value=ScalarResult(comment)),
-        add=Mock(),
-        commit=AsyncMock(),
-        refresh=AsyncMock(),
-    )
-
-    monkeypatch.setattr(
-        ReportCommentService,
-        "_current_comment_context",
-        AsyncMock(return_value=(enrollment, classroom)),
-    )
-    monkeypatch.setattr(
-        ReportCommentService,
-        "_require_class_teacher_capability",
-        AsyncMock(),
-    )
     monkeypatch.setattr(
         ReportCommentService,
         "_academic_readiness",
         AsyncMock(return_value=(False, None, None)),
     )
 
-    response = await ReportCommentService.save_teacher_comment(
-        db,
-        teacher=teacher,
-        student_id=student_id,
-        payload=TeacherCommentWrite(
-            academic_session_id=session_id,
-            academic_term_id=term_id,
-            comment_text="Keep improving your consistency.",
+    with pytest.raises(BadRequestException, match="finalized and locked"):
+        await _ensure_teacher_comment_ready(
+            SimpleNamespace(),
+            teacher,
+            uuid4(),
+            TeacherCommentWrite(
+                academic_session_id=uuid4(),
+                academic_term_id=uuid4(),
+                comment_text="Not ready yet.",
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_teacher_cannot_select_personal_comment_for_another_grade(monkeypatch):
+    teacher = TeacherMembership(id=uuid4(), tenant_id=uuid4())
+    expected_grade = SimpleNamespace(id=uuid4(), grade="A")
+    wrong_grade_id = uuid4()
+    selected_template_id = uuid4()
+
+    monkeypatch.setattr(
+        ReportCommentService,
+        "_academic_readiness",
+        AsyncMock(return_value=(True, Decimal("82"), expected_grade)),
+    )
+    monkeypatch.setattr(
+        "app.modules.report_cards.comment_router._find_template",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                id=selected_template_id,
+                status=CommentTemplateStatus.ACTIVE,
+                grading_scale_ids=[wrong_grade_id],
+                default_grading_scale_ids=[],
+            )
         ),
-        submit=False,
     )
 
-    assert response.status == TeacherCommentStatus.DRAFT.value
-    assert response.average_snapshot == Decimal("0")
-    assert response.grade_snapshot == "Pending"
-    assert response.comment_text == "Keep improving your consistency."
-    db.commit.assert_awaited_once()
+    with pytest.raises(BadRequestException, match="Grade A"):
+        await _ensure_teacher_comment_ready(
+            SimpleNamespace(),
+            teacher,
+            uuid4(),
+            TeacherCommentWrite(
+                academic_session_id=uuid4(),
+                academic_term_id=uuid4(),
+                comment_text="Wrong grade comment.",
+                source_template_id=selected_template_id,
+            ),
+        )
 
 
 @pytest.mark.asyncio
