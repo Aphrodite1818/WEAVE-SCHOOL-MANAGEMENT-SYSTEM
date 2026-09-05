@@ -27,7 +27,13 @@ const TeacherAttendancePage = lazy(
   () => import("../pages/teacher/AttendancePage"),
 );
 const TeacherClassesPage = lazy(() => import("../pages/teacher/MyClassesPage"));
+const TeacherCommentTemplatesPage = lazy(
+  () => import("../pages/teacher/TeacherCommentTemplatesPage"),
+);
 const TeacherStudentsPage = lazy(() => import("../pages/teacher/StudentsPage"));
+const TeacherStudentCommentsPage = lazy(
+  () => import("../pages/teacher/TeacherStudentCommentsPage"),
+);
 const TeacherSubjectsPage = lazy(() => import("../pages/teacher/SubjectsPage"));
 const TeacherDashboardPage = lazy(
   () => import("../pages/teacher/TeacherDashboardPage"),
@@ -57,6 +63,14 @@ export const teacherRoutes = (
         <Route path="/teacher/classes" element={<TeacherClassesPage />} />
         <Route path="/teacher/students" element={<TeacherStudentsPage />} />
         <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />
+        <Route
+          path="/teacher/student-comments"
+          element={<TeacherStudentCommentsPage />}
+        />
+        <Route
+          path="/teacher/comment-templates"
+          element={<TeacherCommentTemplatesPage />}
+        />
         <Route
           path="/teacher/attendance"
           element={
