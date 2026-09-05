@@ -1,0 +1,55 @@
+name: Fix calendar events overflow once
+
+on:
+  push:
+    branches: [cbt-sync-module-structure]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    if: contains(github.event.head_commit.message, '[fix-calendar-events-layout]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cbt-sync-module-structure
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Repair calendar events toolbar overflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/src/features/schoolCalendar/components/SchoolCalendarEventsWorkspace.jsx')
+          text = path.read_text(encoding='utf-8')
+          old = 'className="grid min-w-[18rem] gap-2 sm:grid-cols-2 xl:min-w-[38rem] xl:grid-cols-[minmax(14rem,1.6fr)_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)_auto] xl:items-end"'
+          new = 'className="grid w-full min-w-0 gap-2 sm:grid-cols-2"'
+          if text.count(old) != 1:
+              raise SystemExit(f'calendar events toolbar: expected one match, got {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          test = Path('frontend/test/school-calendar-events-layout-contract.test.js')
+          test.write_text('''import assert from "node:assert/strict";\nimport fs from "node:fs";\nimport test from "node:test";\n\nconst source = fs.readFileSync(\n  new URL("../src/features/schoolCalendar/components/SchoolCalendarEventsWorkspace.jsx", import.meta.url),\n  "utf8",\n);\n\ntest("calendar events toolbar cannot force the academic workspace wider than its header slot", () => {\n  assert.match(source, /grid w-full min-w-0 gap-2 sm:grid-cols-2/);\n  assert.doesNotMatch(source, /min-w-\\[18rem\\]/);\n  assert.doesNotMatch(source, /xl:min-w-\\[38rem\\]/);\n  assert.doesNotMatch(source, /xl:grid-cols-\\[minmax\\(14rem/);\n});\n''', encoding='utf-8')
+          PY
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Validate frontend
+        working-directory: frontend
+        run: npm run check
+      - name: Commit calendar layout repair
+        run: |
+          rm -f .github/workflows/fix-calendar-events-overflow-once.yml
+          git config user.name "weave-review-bot"
+          git config user.email "weave-review-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: prevent calendar events layout overflow"
+          git push origin HEAD:cbt-sync-module-structure
