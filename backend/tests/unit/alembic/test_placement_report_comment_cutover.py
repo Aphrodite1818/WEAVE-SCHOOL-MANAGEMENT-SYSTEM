@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy import UniqueConstraint
 
 import app.models  # noqa: F401
@@ -16,6 +18,21 @@ def test_python_enrollment_outcomes_match_canonical_placement_contract() -> None
     values = {item.value for item in StudentEnrollmentOutcome}
     assert "class_placed" in values
     assert "level_reassigned" in values
+
+
+def test_placement_migration_adds_the_same_enrollment_outcomes() -> None:
+    backend_root = Path(__file__).resolve().parents[3]
+    migration = (
+        backend_root
+        / "alembic"
+        / "versions"
+        / "20260905_student_placement_report_comments.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'revision: str = "20260905_placement_comments"' in migration
+    assert 'down_revision: Union[str, Sequence[str], None] = "20260905_cbt_sync_enum_repair"' in migration
+    assert "ADD VALUE IF NOT EXISTS 'class_placed'" in migration
+    assert "ADD VALUE IF NOT EXISTS 'level_reassigned'" in migration
 
 
 def test_comment_grade_mapping_references_grading_scale_and_template() -> None:
