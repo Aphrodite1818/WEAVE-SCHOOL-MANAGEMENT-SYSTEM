@@ -1,0 +1,58 @@
+name: Fix teacher eligible-class coverage once
+
+on:
+  push:
+    branches: [cbt-sync-module-structure]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    if: contains(github.event.head_commit.message, '[fix-teacher-eligible-coverage]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cbt-sync-module-structure
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply backend coverage repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path('backend/app/modules/student_academics/curriculum_v2_service.py')
+          text = service.read_text(encoding='utf-8')
+
+          old = '''        active_assignments = set(\n            (\n                await db.execute(\n                    select(TeacherAssignment.class_id).where(\n                        TeacherAssignment.tenant_id == tenant_id,\n                        TeacherAssignment.curriculum_subject_id == row.id,\n                        TeacherAssignment.is_active.is_(True),\n                    )\n                )\n            ).scalars()\n        )'''
+          new = '''        protected_assignments = set(\n            (\n                await db.execute(\n                    select(TeacherAssignment.class_id).where(\n                        TeacherAssignment.tenant_id == tenant_id,\n                        TeacherAssignment.curriculum_subject_id == row.id,\n                        # Current and future scheduled assignments both reserve\n                        # this class-subject slot. Only assignments already ended\n                        # before today are available for a new assignment.\n                        (TeacherAssignment.effective_to.is_(None))\n                        | (TeacherAssignment.effective_to >= date.today()),\n                    )\n                )\n            ).scalars()\n        )'''
+          if text.count(old) != 1:
+              raise SystemExit(f'eligible-class assignment query: expected one match, got {text.count(old)}')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              'already_assigned=classroom.id in active_assignments,',
+              'already_assigned=classroom.id in protected_assignments,',
+              1,
+          )
+          service.write_text(text, encoding='utf-8')
+
+          test = Path('backend/tests/regression/test_teacher_eligible_class_coverage_contract.py')
+          test.write_text('''from pathlib import Path\nimport unittest\n\nROOT = Path(__file__).resolve().parents[2]\nSERVICE = ROOT / "app" / "modules" / "student_academics" / "curriculum_v2_service.py"\n\n\nclass TeacherEligibleClassCoverageContractTests(unittest.TestCase):\n    def test_eligible_class_contract_protects_current_and_scheduled_assignments(self):\n        source = SERVICE.read_text(encoding="utf-8")\n        start = source.index("async def eligible_classes_for_subject")\n        end = source.index("async def resolved_class_subject_responses", start)\n        block = source[start:end]\n        self.assertIn("protected_assignments", block)\n        self.assertIn("TeacherAssignment.effective_to.is_(None)", block)\n        self.assertIn("TeacherAssignment.effective_to >= date.today()", block)\n        self.assertNotIn("TeacherAssignment.is_active.is_(True)", block)\n        self.assertIn("already_assigned=classroom.id in protected_assignments", block)\n\n    def test_contract_still_uses_canonical_resolver_for_eligibility(self):\n        source = SERVICE.read_text(encoding="utf-8")\n        start = source.index("async def eligible_classes_for_subject")\n        end = source.index("async def resolved_class_subject_responses", start)\n        block = source[start:end]\n        self.assertIn("CurriculumResolutionService.resolve_class_subjects", block)\n\n\nif __name__ == "__main__":\n    unittest.main()\n''', encoding='utf-8')
+          PY
+      - name: Validate backend contract
+        working-directory: backend
+        run: |
+          python tests/regression/test_teacher_eligible_class_coverage_contract.py
+          python -m py_compile app/modules/student_academics/curriculum_v2_service.py
+      - name: Commit backend coverage repair
+        run: |
+          rm -f .github/workflows/fix-teacher-eligible-class-coverage-once.yml
+          git config user.name "weave-review-bot"
+          git config user.email "weave-review-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: protect scheduled teacher assignment coverage"
+          git push origin HEAD:cbt-sync-module-structure
