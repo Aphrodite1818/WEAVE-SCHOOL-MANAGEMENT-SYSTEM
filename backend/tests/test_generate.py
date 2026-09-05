@@ -81,7 +81,7 @@ async def test_bulk_generate_uses_canonical_student_generation_and_refreshes_pos
 
     monkeypatch.setattr(
         StudentRepository,
-        "list_students",
+        "list_for_tenant",
         AsyncMock(return_value=(students, len(students))),
     )
     monkeypatch.setattr(ReportCardService, "generate_for_student", generate_one)
@@ -94,6 +94,12 @@ async def test_bulk_generate_uses_canonical_student_generation_and_refreshes_pos
     assert isinstance(result, ReportCardBulkGenerateResponse)
     assert len(result.generated) == len(student_ids)
     assert result.skipped == []
+    StudentRepository.list_for_tenant.assert_awaited_once_with(
+        db=db,
+        tenant_id=tenant_id,
+        class_id=class_id,
+        limit=500,
+    )
     assert generate_one.await_count == len(student_ids)
     assert all(call.kwargs["commit"] is False for call in generate_one.await_args_list)
     assert all(

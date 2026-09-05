@@ -17,6 +17,8 @@ import pytest
 CANONICAL_MODULES = (
     "app.models",
     "app.modules.students.enrollment_schemas",
+    "app.modules.students.enrollment_evidence",
+    "app.modules.students.lifecycle_service",
     "app.modules.students.placement_service",
     "app.modules.students.placement_router",
     "app.modules.students.academic_context_router",

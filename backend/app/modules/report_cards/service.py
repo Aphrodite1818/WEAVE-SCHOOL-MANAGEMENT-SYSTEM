@@ -538,7 +538,7 @@ class ReportCardService:
                 apply_default_principal_template=payload.apply_default_principal_template,
             )
 
-        students, _ = await StudentRepository.list_students(
+        students, _ = await StudentRepository.list_for_tenant(
             db=db,
             tenant_id=actor.tenant_id,
             class_id=payload.class_id,
@@ -731,7 +731,7 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> ReportCardClassOverviewResponse:
-        students, _ = await StudentRepository.list_students(
+        students, _ = await StudentRepository.list_for_tenant(
             db=db,
             tenant_id=actor.tenant_id,
             class_id=class_id,
