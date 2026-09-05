@@ -1160,13 +1160,17 @@ class AcademicCurriculumService:
                 )
             ).scalars()
         )
-        active_assignments = set(
+        protected_assignments = set(
             (
                 await db.execute(
                     select(TeacherAssignment.class_id).where(
                         TeacherAssignment.tenant_id == tenant_id,
                         TeacherAssignment.curriculum_subject_id == row.id,
-                        TeacherAssignment.is_active.is_(True),
+                        # Current and future scheduled assignments both reserve
+                        # this class-subject slot. Only assignments already ended
+                        # before today are available for a new assignment.
+                        (TeacherAssignment.effective_to.is_(None))
+                        | (TeacherAssignment.effective_to >= date.today()),
                     )
                 )
             ).scalars()
@@ -1195,7 +1199,7 @@ class AcademicCurriculumService:
                     arm_label=classroom.arm_label,
                     display_name=classroom.display_name,
                     department_name=department.department_name if department else None,
-                    already_assigned=classroom.id in active_assignments,
+                    already_assigned=classroom.id in protected_assignments,
                 )
             )
         return result
