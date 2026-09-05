@@ -1,0 +1,188 @@
+name: Academic UI refinement one-shot
+
+on:
+  push:
+    branches: [cbt-sync-module-structure]
+
+permissions:
+  contents: write
+
+jobs:
+  refine-and-validate:
+    if: contains(github.event.head_commit.message, '[academic-ui-refine]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cbt-sync-module-structure
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Apply UI refinements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, got {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          capability = "frontend/src/features/academic-admin/academicDepartmentCapability.js"
+          replace_once(
+              capability,
+              '''export const supportsDepartmentWorkflow = (categoryOptions) =>\n  asArray(categoryOptions).some((option) => Boolean(option?.supports_departments));\n''',
+              '''export const levelSupportsSpecialization = (level) => {\n  const position = Number(level?.specialization_required_from_term_position);\n  return Number.isInteger(position) && position >= 1 && position <= 3;\n};\n\nexport const supportsDepartmentWorkflow = (categoryOptions) =>\n  asArray(categoryOptions).some((option) => Boolean(option?.supports_departments));\n''',
+              "level specialization helper",
+          )
+
+          departments_path = Path("frontend/src/features/academic-admin/DepartmentsWorkspace.jsx")
+          text = departments_path.read_text()
+          import_anchor = '''import TypedConfirmationDialog from "./TypedConfirmationDialog";\n'''
+          if 'levelSupportsSpecialization' not in text:
+              text = text.replace(
+                  import_anchor,
+                  '''import { levelSupportsSpecialization } from "./academicDepartmentCapability";\nimport TypedConfirmationDialog from "./TypedConfirmationDialog";\n''',
+                  1,
+              )
+          old_eligible = '''  const eligibleLevels = useMemo(() => {\n    const allowed = new Set(\n      categories.filter((row) => row.supports_departments).map((row) => row.value),\n    );\n    return levels.filter((row) => allowed.has(row.category));\n  }, [categories, levels]);\n'''
+          new_eligible = '''  const eligibleLevels = useMemo(() => {\n    const allowed = new Set(\n      categories.filter((row) => row.supports_departments).map((row) => row.value),\n    );\n    return levels.filter(\n      (row) => allowed.has(row.category) && levelSupportsSpecialization(row),\n    );\n  }, [categories, levels]);\n'''
+          if text.count(old_eligible) != 1:
+              raise SystemExit("department eligible levels anchor mismatch")
+          text = text.replace(old_eligible, new_eligible, 1)
+          text = text.replace(
+              '  const selectedLevel = levels.find((row) => row.id === levelId) || null;\n',
+              '  const selectedLevel = eligibleLevels.find((row) => row.id === levelId) || null;\n',
+              1,
+          )
+          repeated_start = text.find('''          <RecordList\n            title="Level availability"''')
+          if repeated_start == -1:
+              raise SystemExit("repeated level availability list start not found")
+          repeated_end_marker = '''            showInspector={false}\n          />\n'''
+          repeated_end = text.find(repeated_end_marker, repeated_start)
+          if repeated_end == -1:
+              raise SystemExit("repeated level availability list end not found")
+          repeated_end += len(repeated_end_marker)
+          text = text[:repeated_start] + text[repeated_end:]
+          text = text.replace(
+              '<ClassSpecializationWorkspace levels={levels} availability={levelDepartmentsByLevel} />',
+              '<ClassSpecializationWorkspace levels={eligibleLevels} availability={levelDepartmentsByLevel} />',
+              1,
+          )
+
+          pool_start_marker = '''        content={\n          <RecordList\n            title="Department pool"'''
+          pool_start = text.find(pool_start_marker)
+          if pool_start == -1:
+              raise SystemExit("department pool content start not found")
+          pool_end_marker = '''            renderActions={(row) => lifecycleButtons(row, "pool")}\n          />\n        }\n'''
+          pool_end = text.find(pool_end_marker, pool_start)
+          if pool_end == -1:
+              raise SystemExit("department pool content end not found")
+          pool_end += len(pool_end_marker)
+          pool_replacement = '''        content={\n          <WorkspacePanel\n            title="Department catalog"\n            description="Create each specialization once for the school, then make it available only to levels that actually specialize."\n            actions={\n              !editorOpen ? (\n                <Button\n                  type="button"\n                  onClick={() => {\n                    setEditing(null);\n                    setName("");\n                    setEditorOpen(true);\n                  }}\n                >\n                  Add department\n                </Button>\n              ) : null\n            }\n          >\n            {loadFeedback}\n            {!loading && !loadError && departments.length === 0 ? (\n              <p className="text-sm text-text-muted">\n                No departments yet. Create the first school-wide specialization.\n              </p>\n            ) : null}\n            {departments.length ? (\n              <div className="overflow-x-auto">\n                <table className="w-full text-left text-sm">\n                  <thead>\n                    <tr className="border-b border-border">\n                      <th className="p-3">Department</th>\n                      <th className="p-3">Available in</th>\n                      <th className="p-3">Status</th>\n                      <th className="p-3 text-right">Actions</th>\n                    </tr>\n                  </thead>\n                  <tbody>\n                    {departments.map((row) => {\n                      const availableIn = eligibleLevels\n                        .filter((level) =>\n                          (levelDepartmentsByLevel[String(level.id)] || []).some(\n                            (link) =>\n                              link.department_id === row.id &&\n                              link.is_active &&\n                              !link.archived_at,\n                          ),\n                        )\n                        .map((level) => level.name);\n                      const status = lifecycleStatus(row);\n                      return (\n                        <tr key={row.id} className="border-b border-border/70 last:border-b-0">\n                          <td className="p-3 font-semibold text-text">{row.name}</td>\n                          <td className="p-3 text-text-muted">\n                            {availableIn.length ? availableIn.join(", ") : "No specialization levels"}\n                          </td>\n                          <td className="p-3 capitalize text-text-muted">{status}</td>\n                          <td className="p-3">\n                            <div className="flex flex-wrap justify-end gap-2">\n                              {!row.archived_at ? (\n                                <Button\n                                  type="button"\n                                  size="small"\n                                  variant="outline"\n                                  onClick={() => {\n                                    setEditing(row);\n                                    setName(row.name);\n                                    setEditorOpen(true);\n                                  }}\n                                >\n                                  Edit\n                                </Button>\n                              ) : null}\n                              {lifecycleButtons(row, "pool")}\n                            </div>\n                          </td>\n                        </tr>\n                      );\n                    })}\n                  </tbody>\n                </table>\n              </div>\n            ) : null}\n          </WorkspacePanel>\n        }\n'''
+          text = text[:pool_start] + pool_replacement + text[pool_end:]
+          departments_path.write_text(text)
+
+          class_specialization = Path("frontend/src/features/academic-admin/ClassSpecializationWorkspace.jsx")
+          text = class_specialization.read_text()
+          replace_once(
+              class_specialization,
+              '''  const visible = rows.filter((row) => !levelId || row.academic_level_id === levelId);\n''',
+              '''  const specializationLevelIds = new Set(levels.map((row) => row.id));\n  const visible = rows.filter(\n    (row) =>\n      specializationLevelIds.has(row.academic_level_id) &&\n      (!levelId || row.academic_level_id === levelId),\n  );\n''',
+              "specialization visible rows",
+          )
+          text = class_specialization.read_text()
+          text = text.replace(
+              'placeholder="All levels" clearable',
+              'placeholder="All specialization levels" clearable',
+              1,
+          )
+          class_specialization.write_text(text)
+
+          curriculum_path = Path("frontend/src/features/academic-admin/CurriculumWorkspace.jsx")
+          text = curriculum_path.read_text()
+          import_anchor = '''import {\n  FormActions,\n  Input,\n  RecordList,\n  SelectControl,\n  WorkspaceGrid,\n  WorkspacePanel,\n} from "./AcademicWorkspacePrimitives";\n'''
+          if 'levelSupportsSpecialization' not in text:
+              text = text.replace(
+                  import_anchor,
+                  import_anchor + 'import { levelSupportsSpecialization } from "./academicDepartmentCapability";\n',
+                  1,
+              )
+          memo_anchor = '''  const curriculumSubjects = useMemo(() => curriculum?.subjects || [], [curriculum]);\n'''
+          memo_add = memo_anchor + '''  const selectedLevel = useMemo(\n    () => levels.find((row) => row.id === levelId) || null,\n    [levelId, levels],\n  );\n  const specializationEnabled = levelSupportsSpecialization(selectedLevel);\n'''
+          if text.count(memo_anchor) != 1:
+              raise SystemExit("curriculum selected level anchor mismatch")
+          text = text.replace(memo_anchor, memo_add, 1)
+          text = text.replace(
+              '''          academic_level_department_ids: addDepartmentIds,\n''',
+              '''          academic_level_department_ids: specializationEnabled\n            ? addDepartmentIds\n            : [],\n''',
+              1,
+          )
+          text = text.replace(
+              '''    if (!scopeSubjectId || saving) return;\n''',
+              '''    if (!specializationEnabled || !scopeSubjectId || saving) return;\n''',
+              1,
+          )
+          text = text.replace(
+              '''  const editApplicability = (row) => {\n    setScopeSubjectId(row.id);\n''',
+              '''  const editApplicability = (row) => {\n    if (!specializationEnabled || !levelDepartments.length) return;\n    setScopeSubjectId(row.id);\n''',
+              1,
+          )
+          text = text.replace(
+              '''    const editorOpen = editorMode === "applicability";\n''',
+              '''    const editorOpen =\n      editorMode === "applicability" && specializationEnabled;\n''',
+              1,
+          )
+          text = text.replace(
+              '''            description="Department scope is part of the level curriculum. Before specialization begins, every active curriculum subject remains available to every class."\n''',
+              '''            description={\n              specializationEnabled\n                ? "Department scope is part of the level curriculum. Before specialization begins, every active curriculum subject remains available to every class."\n                : "This level does not specialize. Every curriculum subject is General and available to every class in the level."\n            }\n''',
+              1,
+          )
+          text = text.replace(
+              '''            renderDescription={(row) => `Available to: ${scopeLabel(row)}`}\n''',
+              '''            renderDescription={(row) =>\n              specializationEnabled\n                ? `Available to: ${scopeLabel(row)}`\n                : "General — available to every class in this level."\n            }\n''',
+              1,
+          )
+          old_actions = '''            renderActions={(row) => (\n              <Button\n                size="small"\n                variant="outline"\n                disabled={row.is_active === false}\n                onClick={() => editApplicability(row)}\n              >\n                Edit applicability\n              </Button>\n            )}\n'''
+          new_actions = '''            renderActions={(row) =>\n              specializationEnabled && levelDepartments.length ? (\n                <Button\n                  size="small"\n                  variant="outline"\n                  disabled={row.is_active === false}\n                  onClick={() => editApplicability(row)}\n                >\n                  Edit applicability\n                </Button>\n              ) : null\n            }\n'''
+          if text.count(old_actions) != 1:
+              raise SystemExit("curriculum applicability actions anchor mismatch")
+          text = text.replace(old_actions, new_actions, 1)
+          text = text.replace(
+              '''            description="Select subjects, set elective status and department applicability, then review before saving."\n''',
+              '''            description={\n              specializationEnabled\n                ? "Select subjects, set elective status and department applicability, then review before saving."\n                : "Select subjects, set elective status, then review before saving. Subjects in this level are General."\n            }\n''',
+              1,
+          )
+          old_department_form = '''                    <p className="text-sm font-semibold">Department applicability</p>\n                    <p className="text-sm text-text-muted">No departments selected means General. These settings apply to every selected subject.</p>\n                    {levelDepartments.map((row) => (\n                      <label key={row.id} className="flex items-center gap-2 text-sm">\n                        <input type="checkbox" checked={addDepartmentIds.includes(row.id)} onChange={(event) => setAddDepartmentIds((current) => event.target.checked ? [...current, row.id] : current.filter((id) => id !== row.id))} />\n                        {row.department_name}\n                      </label>\n                    ))}\n'''
+          new_department_form = '''                    {specializationEnabled ? (\n                      <>\n                        <p className="text-sm font-semibold">Department applicability</p>\n                        <p className="text-sm text-text-muted">No departments selected means General. These settings apply to every selected subject.</p>\n                        {levelDepartments.map((row) => (\n                          <label key={row.id} className="flex items-center gap-2 text-sm">\n                            <input type="checkbox" checked={addDepartmentIds.includes(row.id)} onChange={(event) => setAddDepartmentIds((current) => event.target.checked ? [...current, row.id] : current.filter((id) => id !== row.id))} />\n                            {row.department_name}\n                          </label>\n                        ))}\n                      </>\n                    ) : null}\n'''
+          if text.count(old_department_form) != 1:
+              raise SystemExit("curriculum add applicability form anchor mismatch")
+          text = text.replace(old_department_form, new_department_form, 1)
+          text = text.replace(
+              '''                    <p className="text-sm">{elective ? "Elective" : "Compulsory"} / {addDepartmentIds.length ? levelDepartments.filter((row) => addDepartmentIds.includes(row.id)).map((row) => row.department_name).join(", ") : "General"}</p>\n''',
+              '''                    <p className="text-sm">{elective ? "Elective" : "Compulsory"} / {specializationEnabled && addDepartmentIds.length ? levelDepartments.filter((row) => addDepartmentIds.includes(row.id)).map((row) => row.department_name).join(", ") : "General"}</p>\n''',
+              1,
+          )
+          curriculum_path.write_text(text)
+          PY
+      - name: Validate frontend
+        working-directory: frontend
+        run: npm run check
+      - name: Commit refinements
+        run: |
+          rm -f .github/workflows/academic-ui-refinement-once.yml
+          git config user.name "weave-review-bot"
+          git config user.email "weave-review-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: simplify specialization and curriculum UI"
+          git push origin HEAD:cbt-sync-module-structure
