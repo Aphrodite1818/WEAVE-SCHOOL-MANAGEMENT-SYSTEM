@@ -23,6 +23,8 @@ class OutputBase(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
+# Internal service contracts. The HTTP boundary exposes the simpler one-comment /
+# one-grade contracts below and derives the internal name automatically from text.
 class CommentTemplateWrite(InputBase):
     name: str = Field(min_length=1, max_length=120)
     text: str = Field(min_length=1, max_length=2000)
@@ -73,9 +75,35 @@ class CommentTemplateUpdate(InputBase):
         return self
 
 
+class PersonalCommentTemplateCreate(InputBase):
+    """Create one reusable personal comment for exactly one grading-scale entry."""
+
+    text: str = Field(min_length=1, max_length=2000)
+    grading_scale_id: uuid.UUID
+    is_default: bool = False
+
+
+class PersonalCommentTemplateUpdate(InputBase):
+    """Edit wording/lifecycle or make this comment the default for its fixed grade."""
+
+    text: str | None = Field(default=None, min_length=1, max_length=2000)
+    is_default: bool | None = None
+    status: CommentTemplateStatus | None = None
+
+    @model_validator(mode="after")
+    def validate_patch(self) -> "PersonalCommentTemplateUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one field must be provided")
+        if self.status == CommentTemplateStatus.ARCHIVED and self.text is not None:
+            raise ValueError("archive a comment separately from editing its text")
+        return self
+
+
 class CommentTemplateResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
+    # Kept in the response for the current database/service implementation only.
+    # UI must display `text`, not ask the actor to manage this derived value.
     name: str
     text: str
     owner_type: CommentTemplateOwnerType
