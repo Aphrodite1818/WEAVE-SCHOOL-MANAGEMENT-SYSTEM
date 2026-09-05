@@ -28,6 +28,12 @@ class StudentClassPlacementRequest(EnrollmentInput):
         return value
 
 
+class StudentClassPlacementResponse(BaseModel):
+    placed_student_ids: list[uuid.UUID]
+    target_class_id: uuid.UUID
+    placed_count: int
+
+
 class StudentClassReassignmentRequest(EnrollmentInput):
     """Move one already-classed student within the same academic level."""
 
