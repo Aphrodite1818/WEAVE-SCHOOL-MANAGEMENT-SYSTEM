@@ -57,3 +57,5 @@ jobs:
           git add -A
           git commit -m "refactor: simplify specialization and curriculum UI"
           git push origin HEAD:cbt-sync-module-structure
+
+# Validation rerun after academic UI contract assertions were updated.
