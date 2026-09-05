@@ -223,7 +223,7 @@ function TeacherStudentCommentsPage() {
   };
 
   const save = async (submit) => {
-    if (!editor || !editor.text.trim()) return;
+    if (!editor || !editor.text.trim() || !editor.row.academic_ready) return;
     setBusy(true);
     const payload = {
       academic_session_id: sessionId,
@@ -406,6 +406,7 @@ function TeacherStudentCommentsPage() {
               options={editorTemplateOptions}
               onChange={selectTemplate}
               placeholder="Write manually"
+              disabled={!editor.row.academic_ready}
             />
             {editor.row.suggested_template ? (
               <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs text-text-muted">
@@ -419,16 +420,22 @@ function TeacherStudentCommentsPage() {
                 className="input-base min-h-36"
                 maxLength={2000}
                 value={editor.text}
+                disabled={!editor.row.academic_ready}
                 onChange={(event) => setEditor((current) => ({ ...current, text: event.target.value }))}
               />
             </label>
             {!editor.row.academic_ready ? (
               <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-amber-800">
-                This older draft can be reviewed, but final submission remains unavailable until all expected results are finalized and locked.
+                This older draft is preserved for review but remains read-only until all expected results are finalized and locked.
               </div>
             ) : null}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" disabled={busy || !editor.text.trim()} onClick={() => save(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || !editor.text.trim() || !editor.row.academic_ready}
+                onClick={() => save(false)}
+              >
                 {busy ? "Saving..." : "Save Draft"}
               </Button>
               <Button type="button" disabled={busy || !editor.text.trim() || !editor.row.academic_ready} onClick={() => save(true)}>
