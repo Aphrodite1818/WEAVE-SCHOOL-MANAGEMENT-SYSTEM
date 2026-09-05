@@ -1,4 +1,4 @@
-"""Request contracts for immutable student-enrollment placement changes."""
+"""Canonical request contracts for student placement operations."""
 
 from __future__ import annotations
 
@@ -12,37 +12,13 @@ class EnrollmentInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
-class StudentClassChangeRequest(EnrollmentInput):
-    """Reclassify a student between classes in the same level/session."""
+class StudentClassPlacementRequest(EnrollmentInput):
+    """Bulk-place unassigned enrollments into a class in their existing level."""
 
-    target_class_id: uuid.UUID
     academic_session_id: uuid.UUID
-    effective_date: date = Field(default_factory=date.today)
-    reason: str = Field(min_length=3, max_length=500)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        if value > date.today():
-            raise ValueError("effective_date cannot be in the future")
-        return value
-
-    @field_validator("reason", mode="before")
-    @classmethod
-    def clean_reason(cls, value: str) -> str:
-        cleaned = str(value or "").strip()
-        if not cleaned:
-            raise ValueError("reason cannot be empty")
-        return cleaned
-
-
-class StudentBatchClassAssignmentRequest(EnrollmentInput):
-    """Place currently-unassigned students into one class."""
-
-    student_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+    academic_level_id: uuid.UUID
     target_class_id: uuid.UUID
-    effective_date: date = Field(default_factory=date.today)
-    reason: str = Field(min_length=3, max_length=500)
+    student_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
 
     @field_validator("student_ids")
     @classmethod
@@ -51,6 +27,15 @@ class StudentBatchClassAssignmentRequest(EnrollmentInput):
             raise ValueError("student_ids must not contain duplicates")
         return value
 
+
+class StudentClassReassignmentRequest(EnrollmentInput):
+    """Move one already-classed student within the same academic level."""
+
+    target_class_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    effective_date: date
+    reason: str = Field(min_length=3, max_length=500)
+
     @field_validator("effective_date")
     @classmethod
     def validate_effective_date(cls, value: date) -> date:
@@ -65,3 +50,66 @@ class StudentBatchClassAssignmentRequest(EnrollmentInput):
         if not cleaned:
             raise ValueError("reason cannot be empty")
         return cleaned
+
+
+class StudentAcademicLevelReassignmentRequest(EnrollmentInput):
+    """Move one student to a different academic level and a class in that level."""
+
+    target_academic_level_id: uuid.UUID
+    target_class_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    effective_date: date
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("effective_date")
+    @classmethod
+    def validate_effective_date(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("effective_date cannot be in the future")
+        return value
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def clean_reason(cls, value: str) -> str:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            raise ValueError("reason cannot be empty")
+        return cleaned
+
+
+class PlacementImpactPreviewRequest(EnrollmentInput):
+    target_academic_level_id: uuid.UUID
+    target_class_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    academic_term_id: uuid.UUID
+    effective_date: date
+
+    @field_validator("effective_date")
+    @classmethod
+    def validate_effective_date(cls, value: date) -> date:
+        if value > date.today():
+            raise ValueError("effective_date cannot be in the future")
+        return value
+
+
+class PlacementImpactSubject(BaseModel):
+    curriculum_subject_id: uuid.UUID
+    subject_id: uuid.UUID
+    subject_name: str
+
+
+class PlacementImpactPreviewResponse(BaseModel):
+    current_academic_level_id: uuid.UUID
+    current_class_id: uuid.UUID | None
+    destination_academic_level_id: uuid.UUID
+    destination_class_id: uuid.UUID
+    current_department: str | None = None
+    destination_department: str | None = None
+    department_changed: bool
+    subjects_remaining_applicable: list[PlacementImpactSubject] = Field(default_factory=list)
+    subjects_becoming_historical_only: list[PlacementImpactSubject] = Field(default_factory=list)
+    destination_subjects_without_scores: list[PlacementImpactSubject] = Field(default_factory=list)
+    teacher_comment_requires_review: bool
+    report_card_affected: bool
+    ranking_context_affected: bool = True
+    warnings: list[str] = Field(default_factory=list)
