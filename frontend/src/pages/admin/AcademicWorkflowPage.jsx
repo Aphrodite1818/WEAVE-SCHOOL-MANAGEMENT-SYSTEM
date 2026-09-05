@@ -7,6 +7,7 @@ import ArmLabelsWorkspace from "../../features/academic-admin/ArmLabelsWorkspace
 import AssessmentConfigWorkspace from "../../features/academic-admin/AssessmentConfigWorkspace";
 import BulkAcademicActionsWorkspace from "../../features/academic-admin/BulkAcademicActionsWorkspace";
 import ClassesWorkspace from "../../features/academic-admin/ClassesWorkspace";
+import CommentTemplatesWorkspace from "../../features/academic-admin/CommentTemplatesWorkspace";
 import CurriculumWorkspace from "../../features/academic-admin/CurriculumWorkspace";
 import DepartmentsWorkspace from "../../features/academic-admin/DepartmentsWorkspace";
 import GradingScalesWorkspace from "../../features/academic-admin/GradingScalesWorkspace";
@@ -120,6 +121,9 @@ export default function AcademicWorkflowPage() {
     }
     if (workflow === "grading") {
       return <GradingScalesWorkspace key={key} activeTab={activeTab} />;
+    }
+    if (workflow === "comment-templates") {
+      return <CommentTemplatesWorkspace key={key} activeTab={activeTab} />;
     }
     if (workflow === "sessions" && activeTab === "closing") {
       return (
