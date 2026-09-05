@@ -7,6 +7,7 @@ import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
 import { academicLevelService } from "../../services/academicsService";
 import { getErrorMessage } from "../../services/api";
+import { curriculumService } from "../../services/curriculumService";
 import { departmentService } from "../../services/departmentService";
 import {
   FormActions,
@@ -34,6 +35,9 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   const [departments, setDepartments] = useState([]);
   const [levelDepartmentsByLevel, setLevelDepartmentsByLevel] = useState({});
   const [levelId, setLevelId] = useState("");
+  const [levelCurriculum, setLevelCurriculum] = useState(null);
+  const [curriculumLoading, setCurriculumLoading] = useState(false);
+  const [curriculumError, setCurriculumError] = useState("");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -120,9 +124,33 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
     }
   }, [eligibleLevels, levelId]);
 
+  const loadLevelCurriculum = useCallback(async () => {
+    if (activeTab !== "availability" || !levelId) {
+      setLevelCurriculum(null);
+      setCurriculumError("");
+      return;
+    }
+    setCurriculumLoading(true);
+    setCurriculumError("");
+    try {
+      setLevelCurriculum(await curriculumService.getCurriculum(levelId));
+    } catch (error) {
+      setLevelCurriculum(null);
+      setCurriculumError(
+        getErrorMessage(error, "Could not load subject applicability for this level."),
+      );
+    } finally {
+      setCurriculumLoading(false);
+    }
+  }, [activeTab, levelId]);
+
   useEffect(() => {
     loadLevelDepartments();
   }, [loadLevelDepartments]);
+
+  useEffect(() => {
+    loadLevelCurriculum();
+  }, [loadLevelCurriculum]);
 
   useEffect(() => {
     setEditorOpen(activeTab === "create");
@@ -153,6 +181,12 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
       ),
     [attachedCanonicalIds, departments],
   );
+  const activeLevelDepartments = useMemo(
+    () => levelDepartments.filter((row) => lifecycleStatus(row) === "active"),
+    [levelDepartments],
+  );
+  const selectedLevel = levels.find((row) => row.id === levelId) || null;
+  const curriculumSubjects = levelCurriculum?.subjects || [];
   const saveDepartment = async (event) => {
     event.preventDefault();
     if (!name.trim() || exactDuplicate) return;
@@ -195,6 +229,34 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
       showError(getErrorMessage(error, "Could not attach department to this level."));
     } finally {
       endAcademicSubmission(submission);
+      setSaving("");
+    }
+  };
+
+  const toggleSubjectDepartment = async (subject, levelDepartmentId) => {
+    if (saving || subject.is_active === false) return;
+    const currentIds = (subject.departments || []).map(
+      (item) => item.academic_level_department_id,
+    );
+    const nextIds = currentIds.includes(levelDepartmentId)
+      ? currentIds.filter((id) => id !== levelDepartmentId)
+      : [...currentIds, levelDepartmentId];
+    setSaving(`scope:${subject.id}`);
+    try {
+      await curriculumService.updateSubject(subject.id, {
+        academic_level_department_ids: nextIds,
+      });
+      await loadLevelCurriculum();
+      showSuccess(
+        nextIds.length
+          ? "Subject department applicability updated."
+          : "Subject is now general for this level.",
+      );
+    } catch (error) {
+      showError(
+        getErrorMessage(error, "Could not update subject department applicability."),
+      );
+    } finally {
       setSaving("");
     }
   };
@@ -379,6 +441,62 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
                 }}>{link ? lifecycleStatus(link) === "active" ? "Available" : lifecycleStatus(link) : "Add"}</Button></td>;
               })}</tr>)}</tbody>
             </table></div>
+          </WorkspacePanel>
+          <WorkspacePanel
+            title="Subjects using this level's departments"
+            description="Assign curriculum subjects to one or more departments for the selected academic level. No department selected means General."
+          >
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="font-semibold text-text">
+                {selectedLevel?.name || "Select an academic level"}
+              </span>
+              <span className="text-text-muted">
+                {curriculumSubjects.length} curriculum subject{curriculumSubjects.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {curriculumLoading ? (
+              <p role="status" className="text-sm text-text-muted">Loading subject applicability...</p>
+            ) : curriculumError ? (
+              <div role="alert" className="space-y-2 text-sm text-error">
+                <p>{curriculumError}</p>
+                <Button type="button" variant="outline" onClick={loadLevelCurriculum}>Retry</Button>
+              </div>
+            ) : !activeLevelDepartments.length ? (
+              <p className="text-sm text-text-muted">Make at least one active department available to this level first.</p>
+            ) : !curriculumSubjects.length ? (
+              <p className="text-sm text-text-muted">Add subjects to this level curriculum before assigning department applicability.</p>
+            ) : (
+              <div className="divide-y divide-border rounded-xl border border-border">
+                {curriculumSubjects.map((subject) => {
+                  const selectedIds = (subject.departments || []).map(
+                    (item) => item.academic_level_department_id,
+                  );
+                  return (
+                    <div key={subject.id} className="grid gap-3 p-3 lg:grid-cols-[minmax(12rem,1fr)_2fr] lg:items-center">
+                      <div>
+                        <p className="text-sm font-semibold text-text">{subject.subject_name || "Subject"}</p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          {selectedIds.length ? "Department scoped" : "General — available to every specialization"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {activeLevelDepartments.map((link) => (
+                          <label key={link.id} className="flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(link.id)}
+                              disabled={Boolean(saving) || subject.is_active === false}
+                              onChange={() => toggleSubjectDepartment(subject, link.id)}
+                            />
+                            {link.department_name || "Department"}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </WorkspacePanel>
           <RecordList
             title="Level availability"

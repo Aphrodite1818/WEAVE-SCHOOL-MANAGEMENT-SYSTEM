@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.modules.classes.models import (
     AcademicLevel,
     AcademicLevelDepartment,
+    AcademicLevelStatus,
     ArmLabel,
     ClassRoom,
     Department,
@@ -27,6 +28,7 @@ async def specialization_workspace(db, tenant_id, term_id):
                 ArmLabel.tenant_id == tenant_id,
                 ClassRoom.is_active.is_(True),
                 ClassRoom.archived_at.is_(None),
+                AcademicLevel.status == AcademicLevelStatus.ACTIVE,
             )
             .order_by(AcademicLevel.position, ArmLabel.label)
         )
@@ -44,7 +46,11 @@ async def specialization_workspace(db, tenant_id, term_id):
                 ClassTermDepartmentAssignment.tenant_id == tenant_id,
                 ClassTermDepartmentAssignment.academic_term_id == term_id,
                 AcademicLevelDepartment.tenant_id == tenant_id,
+                AcademicLevelDepartment.is_active.is_(True),
+                AcademicLevelDepartment.archived_at.is_(None),
                 Department.tenant_id == tenant_id,
+                Department.is_active.is_(True),
+                Department.archived_at.is_(None),
             )
         )
     ).all()

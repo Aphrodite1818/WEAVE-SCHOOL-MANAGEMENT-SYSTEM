@@ -151,7 +151,7 @@ async def get_setup_readiness(db, tenant_id):
                             StudentEnrollment.ended_on.is_(None),
                             StudentEnrollment.class_id.is_not(None),
                         ).label("students"),
-                        count(TeacherAssignment, TeacherAssignment.state == "current").label(
+                        count(TeacherAssignment, TeacherAssignment.is_active.is_(True)).label(
                             "assignments"
                         ),
                     )

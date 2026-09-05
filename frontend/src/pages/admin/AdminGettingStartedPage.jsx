@@ -6,12 +6,14 @@ import { useNavigate } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import { ROLE_GUIDES } from "../../features/guides/roleGuideConfig";
 
 
 function AdminGettingStartedPage({ setup, guideState }) {
   const navigate = useNavigate();
   const { showError } = useToast();
-  const steps = guideState.steps;
+  const visibleStepIds = new Set(guideState.steps.map((step) => step.id));
+  const steps = ROLE_GUIDES.admin.steps.filter((step) => visibleStepIds.has(step.id));
   const required = steps.filter((step) => !step.optional);
   const optional = steps.filter((step) => step.optional);
   const completed = required.filter((step) => setup.data?.completion?.[step.id] === true);

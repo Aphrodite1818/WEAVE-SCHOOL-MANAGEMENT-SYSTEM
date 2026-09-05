@@ -509,6 +509,18 @@ function StudentDirectoryPage() {
     () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
     [classes],
   );
+  const classChangeOptions = useMemo(() => {
+    const student = historyState?.student;
+    if (!student) return classOptions;
+    return classes
+      .filter(
+        (item) =>
+          item.id !== student.class_id &&
+          (!student.academic_level_id ||
+            item.academic_level_id === student.academic_level_id),
+      )
+      .map((item) => ({ value: item.id, label: classLabel(item) }));
+  }, [classes, classOptions, historyState?.student]);
   const levelOptions = useMemo(
     () => levels.map((item) => ({ value: item.id, label: item.name })),
     [levels],
@@ -778,7 +790,6 @@ function StudentDirectoryPage() {
         target_class_id: "",
         academic_session_id: currentSession?.id || "",
         effective_date: localDateInputValue(),
-        outcome: "reclassified",
         reason: "",
       },
     }));
@@ -1571,7 +1582,7 @@ function StudentDirectoryPage() {
               <SelectField
                 label="Target class"
                 value={historyState.form.target_class_id}
-                options={classOptions}
+                options={classChangeOptions}
                 required
                 error={fieldErrors.target_class_id}
                 onChange={(event) =>
@@ -1612,21 +1623,6 @@ function StudentDirectoryPage() {
                       ...current.form,
                       effective_date: event.target.value,
                     },
-                  }))
-                }
-              />
-              <SelectField
-                label="Outcome"
-                value={historyState.form.outcome}
-                required
-                options={[
-                  { value: "reclassified", label: "Reclassified" },
-                  { value: "repeated", label: "Repeated" },
-                ]}
-                onChange={(event) =>
-                  setHistoryState((current) => ({
-                    ...current,
-                    form: { ...current.form, outcome: event.target.value },
                   }))
                 }
               />
@@ -1697,18 +1693,20 @@ function StudentDirectoryPage() {
                       </p>
                       <p className="mt-1 text-xs text-text-muted">
                         {item.academic_session_name || item.academic_session_id}{" "}
-                        · {titleCase(item.outcome)}
+                        · {titleCase(item.entry_outcome)}
                       </p>
                     </div>
                     <div className="text-sm text-text-muted sm:text-right">
                       <p>
                         {formatDate(item.started_on)} –{" "}
-                        {item.is_current
-                          ? "Current"
-                          : formatDate(item.ended_on)}
+                        {item.ended_on
+                          ? formatDate(item.ended_on)
+                          : "Current"}
                       </p>
-                      {item.reason ? (
-                        <p className="mt-1 text-xs">{item.reason}</p>
+                      {item.entry_reason || item.exit_reason ? (
+                        <p className="mt-1 text-xs">
+                          {item.entry_reason || item.exit_reason}
+                        </p>
                       ) : null}
                     </div>
                   </div>

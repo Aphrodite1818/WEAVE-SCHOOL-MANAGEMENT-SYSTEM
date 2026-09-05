@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import date, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.modules.attendance.models import StudentAttendanceRecord, StudentAttendanceSheet
-from app.modules.classes.models import AcademicLevel, ClassRoom
+from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
 from app.modules.classes.repository import ClassRoomRepository
 from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
 from app.modules.student_academics.curriculum_service import CurriculumResolutionService
@@ -66,7 +66,7 @@ class StudentEnrollmentService:
 
         rows = (
             await db.execute(
-                select(StudentEnrollment, ClassRoom, AcademicLevel, AcademicSession)
+                select(StudentEnrollment, ClassRoom, AcademicLevel, AcademicSession, ArmLabel)
                 .join(
                     AcademicLevel,
                     AcademicLevel.id == StudentEnrollment.academic_level_id,
@@ -75,7 +75,20 @@ class StudentEnrollmentService:
                     AcademicSession,
                     AcademicSession.id == StudentEnrollment.academic_session_id,
                 )
-                .outerjoin(ClassRoom, ClassRoom.id == StudentEnrollment.class_id)
+                .outerjoin(
+                    ClassRoom,
+                    and_(
+                        ClassRoom.id == StudentEnrollment.class_id,
+                        ClassRoom.tenant_id == tenant_id,
+                    ),
+                )
+                .outerjoin(
+                    ArmLabel,
+                    and_(
+                        ArmLabel.id == ClassRoom.arm_label_id,
+                        ArmLabel.tenant_id == tenant_id,
+                    ),
+                )
                 .where(
                     StudentEnrollment.tenant_id == tenant_id,
                     StudentEnrollment.student_id == student_id,
@@ -90,7 +103,7 @@ class StudentEnrollmentService:
         ).all()
 
         output: list[StudentEnrollmentDetailResponse] = []
-        for enrollment, classroom, level, session in rows:
+        for enrollment, classroom, level, session, arm_label in rows:
             base = StudentEnrollmentDetailResponse.model_validate(enrollment).model_dump(
                 exclude={
                     "class_name",
@@ -102,8 +115,8 @@ class StudentEnrollmentService:
             output.append(
                 StudentEnrollmentDetailResponse(
                     **base,
-                    class_name=classroom.academic_level_name if classroom else None,
-                    class_arm=classroom.arm if classroom else None,
+                    class_name=level.name if classroom else None,
+                    class_arm=arm_label.label if arm_label else None,
                     academic_level_name=level.name,
                     academic_session_name=session.name,
                 )
@@ -206,7 +219,7 @@ class StudentEnrollmentService:
             return None
         return (
             await db.execute(
-                select(ClassTermDepartmentAssignment.department_id).where(
+                select(ClassTermDepartmentAssignment.academic_level_department_id).where(
                     ClassTermDepartmentAssignment.tenant_id == tenant_id,
                     ClassTermDepartmentAssignment.class_id == class_id,
                     ClassTermDepartmentAssignment.academic_term_id == academic_term_id,
