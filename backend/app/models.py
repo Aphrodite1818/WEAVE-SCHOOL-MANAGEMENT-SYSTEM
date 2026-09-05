@@ -34,3 +34,4 @@ import app.modules.classes.academic_level_dependency_contract  # noqa: E402,F401
 
 import app.modules.bulk_imports.model_events  # noqa: E402,F401
 import app.modules.cbt.sync.model_events  # noqa: E402,F401
+import app.modules.report_cards.model_events  # noqa: E402,F401
