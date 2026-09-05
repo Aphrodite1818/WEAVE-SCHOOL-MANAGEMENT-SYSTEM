@@ -49,6 +49,33 @@ const patchAdminStudent = async (studentId, payload) => {
   return response;
 };
 
+const mergeAcademicContext = (student, context) => {
+  if (!student || !context) return student;
+  const classArmWithDepartment = [context.class_arm, context.department_name]
+    .filter(Boolean)
+    .join(" · ");
+
+  return {
+    ...student,
+    academic_context: context,
+    academic_level_id: context.academic_level_id ?? student.academic_level_id,
+    academic_level_name: context.academic_level_name ?? student.academic_level_name,
+    class_id: context.class_id ?? student.class_id,
+    class_name: context.class_name ?? student.class_name,
+    class_arm: classArmWithDepartment || context.class_arm || student.class_arm,
+    department_id: context.department_id ?? null,
+    department_name: context.department_name ?? null,
+    current_academic_session_id:
+      context.academic_session_id ?? student.current_academic_session_id,
+    current_academic_session_name:
+      context.academic_session_name ?? student.current_academic_session_name,
+    current_academic_term_id:
+      context.academic_term_id ?? student.current_academic_term_id,
+    current_academic_term_name:
+      context.academic_term_name ?? student.current_academic_term_name,
+  };
+};
+
 export const studentService = {
   getStudents: (options = {}) =>
     api.get(`/students?${buildStudentQuery(options)}`),
@@ -68,7 +95,11 @@ export const studentService = {
     }),
 
   getMyStudent: async (requestOptions) => {
-    const response = await api.get("/students/me", requestOptions);
+    const [profile, academicContext] = await Promise.all([
+      api.get("/students/me", requestOptions),
+      api.get("/students/me/academic-context", requestOptions),
+    ]);
+    const response = mergeAcademicContext(profile, academicContext);
     return rememberRecord(studentSelfById, response);
   },
   getMyAcademicContext: (requestOptions) =>
