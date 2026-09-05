@@ -36,28 +36,26 @@ class ReportCardGenerateRequest(InputBase):
     class_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
-    generate_for_class: bool | None = None
+    principal_comment: str | None = Field(default=None, min_length=1, max_length=2000)
+    principal_template_id: uuid.UUID | None = None
+    apply_default_principal_template: bool = False
 
     @model_validator(mode="after")
-    def validate_target(self):
+    def validate_target(self) -> "ReportCardGenerateRequest":
         if self.student_id is None and self.class_id is None:
             raise ValueError("Either student_id or class_id is required.")
         if self.student_id is not None and self.class_id is not None:
             raise ValueError("Provide either student_id or class_id, not both.")
+        if self.principal_template_id is not None and self.apply_default_principal_template:
+            raise ValueError(
+                "Choose an explicit principal template or grade defaults, not both."
+            )
         return self
 
 
-class ReportCardCommentsUpdate(InputBase):
-    """Sparse report-card comment update; explicit null clears a comment."""
-
-    class_teacher_comment: str | None = Field(default=None, max_length=2000)
-    principal_comment: str | None = Field(default=None, max_length=2000)
-
-    @model_validator(mode="after")
-    def require_patch_field(self) -> "ReportCardCommentsUpdate":
-        if not self.model_fields_set:
-            raise ValueError("at least one report card comment field must be provided")
-        return self
+class ReportCardPrincipalCommentUpdate(InputBase):
+    principal_comment: str = Field(min_length=1, max_length=2000)
+    principal_template_id: uuid.UUID | None = None
 
 
 class ReportCardSubjectComponentResponse(OutputBase):
@@ -94,8 +92,12 @@ class ReportCardResponse(OutputBase):
     admission_number: str | None = None
     student_passport_photo_url: str | None = None
     class_id: uuid.UUID | None = None
+    academic_level_id: uuid.UUID | None = None
+    academic_level_department_id: uuid.UUID | None = None
     class_name: str | None = None
     class_arm: str | None = None
+    department_name: str | None = None
+    class_teacher_name: str | None = None
     academic_session_id: uuid.UUID
     academic_session_name: str | None = None
     academic_term_id: uuid.UUID
@@ -105,14 +107,18 @@ class ReportCardResponse(OutputBase):
     position: int | None = None
     position_out_of: int | None = None
     class_teacher_comment: str | None = None
+    teacher_comment_source: str | None = None
+    teacher_comment_source_id: uuid.UUID | None = None
     principal_comment: str | None = None
+    principal_comment_source_template_id: uuid.UUID | None = None
     version: int = 1
+    replaces_report_card_id: uuid.UUID | None = None
     published_at: datetime | None = None
     published_by: uuid.UUID | None = None
     is_outdated: bool = False
     superseded_at: datetime | None = None
     status: ReportCardStatus
-    lines: list[ReportCardSubjectLineResponse] = []
+    lines: list[ReportCardSubjectLineResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -126,13 +132,18 @@ class ReportCardClassOverviewRow(OutputBase):
     student_id: uuid.UUID
     student_name: str | None = None
     admission_number: str | None = None
+    results_readiness: str
     submitted_count: int
     expected_count: int
+    teacher_comment_status: str
+    overall_grade: str | None = None
+    principal_comment_status: str
+    report_readiness: str
     report_card_id: uuid.UUID | None = None
     report_card_status: str | None = None
     report_card_version: int | None = None
     is_outdated: bool = False
-    missing_subject_names: list[str] = []
+    missing_subject_names: list[str] = Field(default_factory=list)
 
 
 class ReportCardClassOverviewResponse(OutputBase):
