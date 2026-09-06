@@ -291,7 +291,7 @@ async def get_conversation(
     conversation_id: uuid.UUID, db: DbSession, actor: CurrentCommunicationActor
 ) -> ConversationResponse:
     current = await _active_communication_actor(actor, db)
-    conversation = await MessagingService.mark_read(
+    conversation = await MessagingService.get_conversation(
         db, actor=current, conversation_id=conversation_id
     )
     return await _conversation_response(db, conversation, current)
