@@ -52,7 +52,7 @@ async def test_create_conversation_uses_new_participants_for_first_message(
     async def find_direct_conversation(*_args, **_kwargs):
         return None
 
-    async def resolve_direct_target(*_args, **_kwargs):
+    async def resolve_target(*_args, **_kwargs):
         return recipient
 
     async def get_conversation_for_actor(_db, **_kwargs):
@@ -70,8 +70,8 @@ async def test_create_conversation_uses_new_participants_for_first_message(
         get_conversation_for_actor,
     )
     monkeypatch.setattr(
-        "app.modules.communications.messaging_service.RecipientResolver.resolve_direct_target",
-        resolve_direct_target,
+        "app.modules.communications.messaging_service.HierarchyMessagingPolicy.resolve_target",
+        resolve_target,
     )
     monkeypatch.setattr(
         "app.modules.communications.messaging_service.NotificationService.deliver",
