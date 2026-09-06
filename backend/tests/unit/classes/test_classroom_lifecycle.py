@@ -134,7 +134,7 @@ def _counts(**overrides: int) -> dict[str, int]:
         "report_cards_live": 0,
         "progression_items_total": 0,
         "progression_items_live": 0,
-        "announcement_audiences_total": 0,
+        "notice_audiences_total": 0,
     }
     values.update(overrides)
     return values
@@ -190,7 +190,7 @@ async def test_unused_classroom_can_change_structural_identity() -> None:
         _counts(attendance_sheets_total=1),
         _counts(report_cards_total=1),
         _counts(progression_items_total=1),
-        _counts(announcement_audiences_total=1),
+        _counts(notice_audiences_total=1),
     ],
 )
 async def test_used_classroom_cannot_change_level_or_arm(
