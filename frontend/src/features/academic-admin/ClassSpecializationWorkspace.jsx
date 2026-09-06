@@ -94,7 +94,6 @@ export default function ClassSpecializationWorkspace({ levels, availability }) {
       }
       await load();
       setSelected(failedIds);
-      window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
       setFeedback(`${completed} of ${classIds.length} class specializations saved.`);
       if (failures.length) setError(failures.join("\n"));
     } finally { lock.current = false; setPending(false); }
@@ -105,7 +104,6 @@ export default function ClassSpecializationWorkspace({ levels, availability }) {
     try {
       const result = await curriculumService.copyClassDepartments(termId, sourceId);
       await load();
-      window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
       setFeedback(`${result.copied} copied; ${result.skipped} existing or inapplicable assignments skipped. Copy applies to all eligible classes in this target term.`);
     } catch (err) { setError(getErrorMessage(err, "Could not copy specializations.")); }
     finally { lock.current = false; setPending(false); }

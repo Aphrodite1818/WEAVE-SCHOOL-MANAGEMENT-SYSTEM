@@ -729,6 +729,13 @@ async function request(endpoint, options = {}, hasRetried = false) {
       throw createApiError(response, data, responseHeaders);
     }
 
+    // Invalidate after the server confirms a write, including lifecycle actions.
+    if (
+      ["POST", "PATCH", "PUT", "DELETE"].includes(method) &&
+      /^\/(academic-levels|classes|subjects|tenant-admin\/(academics|setup-assistant))(\/|\?|$)/.test(endpoint)
+    ) {
+      window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
+    }
     return data;
   } catch (error) {
     if (isAbortError(error)) {

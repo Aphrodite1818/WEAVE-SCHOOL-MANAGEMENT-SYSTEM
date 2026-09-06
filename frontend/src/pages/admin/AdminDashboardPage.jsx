@@ -55,26 +55,28 @@ function AdminDashboardPage() {
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
+    let generation = 0;
 
     async function loadMetrics() {
+      const request = ++generation;
+      setError(null);
       try {
         const data = await getCachedDashboardBundle(ADMIN_DASHBOARD_CACHE_KEY, () =>
           dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
         );
-        if (!mounted || controller.signal.aborted) return;
+        if (!mounted || controller.signal.aborted || request !== generation) return;
         setAnalytics(data);
       } catch (err) {
-        if (!mounted || isAbortError(err)) return;
+        if (!mounted || isAbortError(err) || request !== generation) return;
         setError(getErrorMessage(err, "Failed to load dashboard analytics."));
       }
     }
 
     loadMetrics();
-    const handlePullRefresh = () => loadMetrics();
-    window.addEventListener("weave:pull-refresh", handlePullRefresh);
+    window.addEventListener("weave:dashboard-cache-invalidated", loadMetrics);
 
     return () => {
-      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
+      window.removeEventListener("weave:dashboard-cache-invalidated", loadMetrics);
       mounted = false;
       controller.abort();
     };

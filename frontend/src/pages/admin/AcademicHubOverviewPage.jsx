@@ -49,18 +49,26 @@ function AcademicHubOverviewPage() {
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
-    getCachedDashboardBundle(ACADEMIC_HUB_CACHE_KEY, () =>
-      dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
-    )
-      .then((data) => {
-        if (mounted) setAnalytics(data);
-      })
-      .catch((error) => {
-        if (mounted && !isAbortError(error)) {
-          setMetricsError(getErrorMessage(error, "Live academic counts are unavailable."));
-        }
-      });
+    let generation = 0;
+    const loadMetrics = () => {
+      const request = ++generation;
+      setMetricsError("");
+      return getCachedDashboardBundle(ACADEMIC_HUB_CACHE_KEY, () =>
+        dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
+      )
+        .then((data) => {
+          if (mounted && request === generation) setAnalytics(data);
+        })
+        .catch((error) => {
+          if (mounted && request === generation && !isAbortError(error)) {
+            setMetricsError(getErrorMessage(error, "Live academic counts are unavailable."));
+          }
+        });
+    };
+    loadMetrics();
+    window.addEventListener("weave:dashboard-cache-invalidated", loadMetrics);
     return () => {
+      window.removeEventListener("weave:dashboard-cache-invalidated", loadMetrics);
       mounted = false;
       controller.abort();
     };

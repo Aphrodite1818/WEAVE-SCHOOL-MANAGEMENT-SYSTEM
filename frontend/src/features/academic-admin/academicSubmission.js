@@ -14,7 +14,6 @@ export function beginAcademicSubmission(event, pending = false) {
 
 export function endAcademicSubmission(submission) {
   pendingForms.delete(submission.form);
-  if (typeof window !== "undefined") window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
   if (submission.focusAfterSave) {
     requestAnimationFrame(() => {
       submission.form.querySelector(
