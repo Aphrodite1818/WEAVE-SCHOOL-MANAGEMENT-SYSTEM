@@ -1,4 +1,4 @@
-"""Direct messaging service."""
+"""Hierarchy-authorized direct messaging service."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from app.modules.communications.enums import (
     NotificationSourceType,
     NotificationStatus,
 )
+from app.modules.communications.hierarchy_policy import HierarchyMessagingPolicy
 from app.modules.communications.models import (
     Conversation,
     ConversationParticipant,
@@ -23,12 +24,12 @@ from app.modules.communications.models import (
 )
 from app.modules.communications.notification_service import NotificationService
 from app.modules.communications.recipient_resolver import (
-    RecipientResolver,
     ResolvedRecipient,
     actor_tenant_id,
     actor_type_for,
 )
 from app.modules.communications.repository import CommunicationRepository
+from app.modules.realtime.publisher import RealtimePublisher
 
 _MESSAGE_PATHS = {
     CommunicationActorType.SUPERADMIN: "/superadmin/messages",
@@ -47,13 +48,13 @@ def _message_action_path(actor_type: CommunicationActorType, conversation_id: uu
 class MessagingService:
     @staticmethod
     async def available_recipients(db: AsyncSession, *, actor) -> list[ResolvedRecipient]:
-        return await RecipientResolver.available_direct_recipients(db, actor)
+        return await HierarchyMessagingPolicy.available_recipients(db, actor)
 
     @staticmethod
     async def create_conversation(db: AsyncSession, *, actor, payload) -> Conversation:
         sender_type = actor_type_for(actor)
         sender_tenant_id = actor_tenant_id(actor)
-        recipient = await RecipientResolver.resolve_direct_target(db, actor, payload.recipient)
+        recipient = await HierarchyMessagingPolicy.resolve_target(db, actor, payload.recipient)
         tenant_id = sender_tenant_id or recipient.tenant_id
         existing = await CommunicationRepository.find_direct_conversation(
             db,
@@ -103,6 +104,7 @@ class MessagingService:
             participants=participants,
             body=payload.body,
             notify=True,
+            enforce_current_relationship=False,
         )
         return await CommunicationRepository.get_conversation_for_actor(
             db,
@@ -139,6 +141,12 @@ class MessagingService:
         return conversation
 
     @staticmethod
+    async def can_reply(db: AsyncSession, *, actor, conversation: Conversation) -> bool:
+        if conversation.closed_at is not None:
+            return False
+        return await HierarchyMessagingPolicy.can_continue_conversation(db, actor, conversation)
+
+    @staticmethod
     async def _append_message(
         db: AsyncSession,
         *,
@@ -147,6 +155,7 @@ class MessagingService:
         body: str,
         notify: bool = True,
         participants: list[ConversationParticipant] | None = None,
+        enforce_current_relationship: bool = True,
     ) -> Message:
         sender_type = actor_type_for(actor)
         active_participants = (
@@ -164,6 +173,15 @@ class MessagingService:
         )
         if sender_participant is None:
             raise ForbiddenException("You are not a participant in this conversation")
+        if conversation.closed_at is not None:
+            raise ForbiddenException("This conversation is closed")
+        if enforce_current_relationship:
+            await HierarchyMessagingPolicy.ensure_can_continue_conversation(
+                db,
+                actor,
+                conversation,
+            )
+
         message = Message(
             conversation_id=conversation.id,
             tenant_id=conversation.tenant_id,
@@ -175,18 +193,19 @@ class MessagingService:
         conversation.updated_at = datetime.now(timezone.utc)
         await db.flush()
         sender_participant.last_read_message_id = message.id
+
+        recipients = [
+            ResolvedRecipient(
+                actor_type=participant.actor_type,
+                actor_id=participant.actor_id,
+                tenant_id=participant.tenant_id,
+                label="Conversation participant",
+            )
+            for participant in active_participants
+            if not (participant.actor_type == sender_type and participant.actor_id == actor.id)
+            and participant.left_at is None
+        ]
         if notify:
-            recipients = [
-                ResolvedRecipient(
-                    actor_type=participant.actor_type,
-                    actor_id=participant.actor_id,
-                    tenant_id=participant.tenant_id,
-                    label="Conversation participant",
-                )
-                for participant in active_participants
-                if not (participant.actor_type == sender_type and participant.actor_id == actor.id)
-                and participant.left_at is None
-            ]
             for recipient in recipients:
                 await NotificationService.deliver(
                     db,
@@ -198,6 +217,24 @@ class MessagingService:
                     action_path=_message_action_path(recipient.actor_type, conversation.id),
                     tenant_id=conversation.tenant_id,
                 )
+
+        for participant in active_participants:
+            if participant.left_at is not None:
+                continue
+            RealtimePublisher.defer_to_actor(
+                db,
+                event_type="message.created",
+                actor_type=participant.actor_type.value,
+                actor_id=participant.actor_id,
+                tenant_id=participant.tenant_id,
+                data={
+                    "conversation_id": str(conversation.id),
+                    "message_id": str(message.id),
+                    "sender_actor_type": sender_type.value,
+                    "sender_actor_id": str(actor.id),
+                },
+            )
+
         await db.refresh(message)
         return message
 
@@ -233,6 +270,7 @@ class MessagingService:
                 if (
                     participant.actor_type == current_actor_type
                     and participant.actor_id == actor.id
+                    and participant.left_at is None
                 ):
                     participant.last_read_message_id = latest.id
             message_ids = [
@@ -254,4 +292,21 @@ class MessagingService:
                     )
                 )
         await db.flush()
+
+        for participant in conversation.participants:
+            if participant.left_at is not None:
+                continue
+            RealtimePublisher.defer_to_actor(
+                db,
+                event_type="message.read",
+                actor_type=participant.actor_type.value,
+                actor_id=participant.actor_id,
+                tenant_id=participant.tenant_id,
+                data={
+                    "conversation_id": str(conversation.id),
+                    "reader_actor_type": current_actor_type.value,
+                    "reader_actor_id": str(actor.id),
+                    "last_read_message_id": str(latest.id) if latest is not None else None,
+                },
+            )
         return conversation

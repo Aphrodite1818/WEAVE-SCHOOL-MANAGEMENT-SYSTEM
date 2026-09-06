@@ -99,6 +99,8 @@ class ConversationResponse(OutputBase):
     participants: list[ConversationParticipantResponse] = Field(default_factory=list)
     messages: list[MessageResponse] = Field(default_factory=list)
     unread_count: int = 0
+    can_reply: bool = True
+    read_only_reason: str | None = None
 
 
 class ConversationListResponse(OutputBase):
