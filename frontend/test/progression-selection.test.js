@@ -38,7 +38,7 @@ test("Academic Hub replaces student-choice placement with read-only level transi
   assert.match(guided, /Level ordering and terminal-level review/);
 });
 
-test("frontend services use level enrollment, batch class assignment, and staged closure contracts", async () => {
+test("frontend services use level enrollment, canonical class placement, and staged closure contracts", async () => {
   const students = await read("src/services/studentService.js");
   const sessions = await read("src/services/academicService.js");
   const curriculumService = await read("src/services/curriculumService.js");
@@ -46,8 +46,11 @@ test("frontend services use level enrollment, batch class assignment, and staged
   const directory = await read("src/pages/admin/StudentDirectoryPage.jsx");
   assert.match(students, /academic_level_id/);
   assert.match(students, /unassigned_class/);
-  assert.match(students, /batch-class-assignment/);
-  assert.doesNotMatch(students, /progression\/selection|progression\/placement/);
+  assert.match(students, /class-placement/);
+  assert.doesNotMatch(
+    students,
+    /batch-class-assignment|progression\/selection|progression\/placement/,
+  );
   assert.match(sessions, /start-closing/);
   assert.match(curriculumService, /getResolvedClassSubjects/);
   assert.match(curriculumService, /classes\/\$\{classId\}\/terms\/\$\{termId\}\/department/);
