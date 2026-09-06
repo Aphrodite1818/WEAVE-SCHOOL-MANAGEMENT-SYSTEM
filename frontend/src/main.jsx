@@ -4,6 +4,7 @@ import "./styles/mobileDashboard.css";
 import "./styles/mobileOverrides.css";
 import "./styles/brandAssets.css";
 import "./styles/notificationDropdown.css";
+import "./styles/messaging.css";
 import "./styles/studentDashboardCleanup.css";
 import "./styles/mobileDirectoryCards.css";
 import "./styles/pwaInteractions.css";
