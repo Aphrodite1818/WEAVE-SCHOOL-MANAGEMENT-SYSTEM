@@ -16,7 +16,7 @@ test("messages workspace is wired to realtime message events", async () => {
   assert.match(page, /realtimeClient\.subscribe\(MESSAGE_CREATED_EVENT/);
   assert.match(page, /realtimeClient\.subscribe\(MESSAGE_READ_EVENT/);
   assert.match(page, /playIncomingMessageSound/);
-  assert.match(page, /messageService\.markRead/);
+  assert.match(page, /messageService\s*\.\s*markRead/);
 });
 
 test("messages workspace exposes animated bubbles without call controls", async () => {
