@@ -192,6 +192,7 @@ class MessagingService:
         db.add(message)
         conversation.updated_at = datetime.now(timezone.utc)
         await db.flush()
+        await db.refresh(message)
         sender_participant.last_read_message_id = message.id
 
         recipients = [
@@ -218,6 +219,15 @@ class MessagingService:
                     tenant_id=conversation.tenant_id,
                 )
 
+        created_at = getattr(message, "created_at", None) or datetime.now(timezone.utc)
+        realtime_payload = {
+            "conversation_id": str(conversation.id),
+            "message_id": str(message.id),
+            "sender_actor_type": sender_type.value,
+            "sender_actor_id": str(actor.id),
+            "body": message.body,
+            "created_at": created_at.isoformat(),
+        }
         for participant in active_participants:
             if participant.left_at is not None:
                 continue
@@ -227,15 +237,9 @@ class MessagingService:
                 actor_type=participant.actor_type.value,
                 actor_id=participant.actor_id,
                 tenant_id=participant.tenant_id,
-                data={
-                    "conversation_id": str(conversation.id),
-                    "message_id": str(message.id),
-                    "sender_actor_type": sender_type.value,
-                    "sender_actor_id": str(actor.id),
-                },
+                data=realtime_payload,
             )
 
-        await db.refresh(message)
         return message
 
     @staticmethod
