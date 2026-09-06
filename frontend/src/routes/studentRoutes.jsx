@@ -9,6 +9,7 @@ import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 
 const CommunicationInboxPage = lazy(() => import("../pages/shared/CommunicationInboxPage"));
 const MessagesPage = lazy(() => import("../pages/shared/MessagesPage"));
+const NoticesPage = lazy(() => import("../pages/shared/NoticesPage"));
 const RoleAnalyticsPage = lazy(() => import("../pages/shared/RoleAnalyticsPage"));
 const RoleGettingStartedPage = lazy(() => import("../pages/shared/RoleGettingStartedPage"));
 const RoleSettingsPage = lazy(() => import("../pages/shared/RoleSettingsPage"));
@@ -38,6 +39,7 @@ export const studentRoutes = (
       <Route path="/student/calendar" element={<SchoolCalendarPage role="student" />} />
       <Route path="/student/inbox" element={<CommunicationInboxPage />} />
       <Route path="/student/messages" element={<RuntimeFeatureRoute feature="messaging" role="student"><MessagesPage /></RuntimeFeatureRoute>} />
+      <Route path="/student/notices" element={<NoticesPage />} />
       <Route path="/student/settings" element={<RoleSettingsPage role="student" />} />
     </Route>
   </Route>
