@@ -48,9 +48,10 @@ const TenantBrandingPage = lazy(
   () => import("../pages/admin/TenantBrandingPage"),
 );
 const UsagePage = lazy(() => import("../pages/admin/UsagePage"));
-const AnnouncementManagementPage = lazy(
-  () => import("../pages/shared/AnnouncementManagementPage"),
+const NoticeManagementPage = lazy(
+  () => import("../pages/shared/NoticeManagementPage"),
 );
+const NoticesPage = lazy(() => import("../pages/shared/NoticesPage"));
 const CommunicationInboxPage = lazy(
   () => import("../pages/shared/CommunicationInboxPage"),
 );
@@ -81,58 +82,19 @@ export const adminRoutes = (
     />
     <Route element={<DashboardShell role="admin" />}>
       <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-      <Route
-        path="/admin/getting-started"
-        element={<AdminGettingStartedRoute />}
-      />
-      <Route
-        path="/admin/getting-started/:step"
-        element={<AdminGettingStartedRoute />}
-      />
-      <Route
-        path="/admin/search/:resultKey"
-        element={<AdminSearchDetailPage />}
-      />
-      <Route
-        path="/admin/analytics"
-        element={<RoleAnalyticsPage role="admin" />}
-      />
-      <Route
-        path="/admin/calendar"
-        element={<SchoolCalendarPage role="admin" />}
-      />
-      <Route
-        path="/admin/invitations/:role"
-        element={protectedWorkflow(<AdminInvitationPage />)}
-      />
-      <Route
-        path="/admin/teachers"
-        element={protectedWorkflow(<TeachersPage />)}
-      />
-      <Route
-        path="/admin/students"
-        element={protectedWorkflow(<StudentsPage />)}
-      />
-      <Route
-        path="/admin/students/create"
-        element={protectedWorkflow(<StudentCreatePage />)}
-      />
-      <Route
-        path="/admin/students/class-placement"
-        element={protectedWorkflow(<StudentClassPlacementPage />)}
-      />
-      <Route
-        path="/admin/parents"
-        element={protectedWorkflow(<ParentsPage />)}
-      />
-      <Route
-        path="/admin/parents/links"
-        element={protectedWorkflow(<ParentLinkManagementPage />)}
-      />
-      <Route
-        path="/admin/imports"
-        element={protectedWorkflow(<BulkImportRouteGuard />)}
-      />
+      <Route path="/admin/getting-started" element={<AdminGettingStartedRoute />} />
+      <Route path="/admin/getting-started/:step" element={<AdminGettingStartedRoute />} />
+      <Route path="/admin/search/:resultKey" element={<AdminSearchDetailPage />} />
+      <Route path="/admin/analytics" element={<RoleAnalyticsPage role="admin" />} />
+      <Route path="/admin/calendar" element={<SchoolCalendarPage role="admin" />} />
+      <Route path="/admin/invitations/:role" element={protectedWorkflow(<AdminInvitationPage />)} />
+      <Route path="/admin/teachers" element={protectedWorkflow(<TeachersPage />)} />
+      <Route path="/admin/students" element={protectedWorkflow(<StudentsPage />)} />
+      <Route path="/admin/students/create" element={protectedWorkflow(<StudentCreatePage />)} />
+      <Route path="/admin/students/class-placement" element={protectedWorkflow(<StudentClassPlacementPage />)} />
+      <Route path="/admin/parents" element={protectedWorkflow(<ParentsPage />)} />
+      <Route path="/admin/parents/links" element={protectedWorkflow(<ParentLinkManagementPage />)} />
+      <Route path="/admin/imports" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route
         path="/admin/imports/:jobId/student-slips"
         element={protectedWorkflow(
@@ -141,14 +103,8 @@ export const adminRoutes = (
           </BulkImportRouteGuard>,
         )}
       />
-      <Route
-        path="/admin/imports/:step"
-        element={protectedWorkflow(<BulkImportRouteGuard />)}
-      />
-      <Route
-        path="/admin/imports/:step/:jobId"
-        element={protectedWorkflow(<BulkImportRouteGuard />)}
-      />
+      <Route path="/admin/imports/:step" element={protectedWorkflow(<BulkImportRouteGuard />)} />
+      <Route path="/admin/imports/:step/:jobId" element={protectedWorkflow(<BulkImportRouteGuard />)} />
       <Route
         path="/admin/attendance"
         element={
@@ -158,15 +114,9 @@ export const adminRoutes = (
         }
       />
       <Route path="/admin/academic" element={<AcademicHubOverviewPage />} />
-      <Route
-        path="/admin/academic/:workflow"
-        element={protectedWorkflow(<AcademicWorkflowPage />)}
-      />
+      <Route path="/admin/academic/:workflow" element={protectedWorkflow(<AcademicWorkflowPage />)} />
       <Route path="/admin/billing" element={<BillingPage />} />
-      <Route
-        path="/admin/billing/plans"
-        element={<ResponsiveSubscriptionOptionsPage />}
-      />
+      <Route path="/admin/billing/plans" element={<ResponsiveSubscriptionOptionsPage />} />
       <Route
         path="/admin/cbt"
         element={protectedWorkflow(
@@ -193,14 +143,9 @@ export const adminRoutes = (
           </RuntimeFeatureRoute>
         }
       />
-      <Route
-        path="/admin/announcements"
-        element={<AnnouncementManagementPage mode="tenant-admin" />}
-      />
-      <Route
-        path="/admin/settings"
-        element={<RoleSettingsPage role="admin" />}
-      />
+      <Route path="/admin/notices" element={<NoticeManagementPage mode="tenant-admin" />} />
+      <Route path="/admin/notices/received" element={<NoticesPage />} />
+      <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
       <Route
         path="/admin/settings/branding"
         element={
