@@ -37,6 +37,10 @@ import {
   setMessageSoundEnabled,
 } from "../../utils/messageSound";
 
+const [MESSAGE_CREATED_EVENT, MESSAGE_READ_EVENT] = MESSAGE_REALTIME_EVENTS;
+const CONVERSATION_PAGE_SIZE = 30;
+const MAX_SEEN_REALTIME_EVENTS = 300;
+
 const actorTypeLabels = {
   superadmin: "WEAVE administration",
   tenant_admin: "Administrators",
@@ -53,11 +57,9 @@ const authRoleToActorType = {
   parent: "parent",
 };
 
-const CONVERSATION_PAGE_SIZE = 30;
-const MAX_SEEN_REALTIME_EVENTS = 300;
-
 const roleLabel = (actorType) =>
-  actorTypeLabels[actorType] || String(actorType || "contact").replaceAll("_", " ");
+  actorTypeLabels[actorType] ||
+  String(actorType || "contact").replaceAll("_", " ");
 const actorKeyFor = (item) => `${item?.actor_type}:${item?.actor_id}`;
 const shortActorId = (value) => (value ? String(value).slice(0, 8) : "unknown");
 
@@ -81,7 +83,11 @@ const flattenRecipients = (groups) =>
     })),
   );
 
-const identityLabel = (identity, currentActorKey, { useSelfLabel = true } = {}) => {
+const identityLabel = (
+  identity,
+  currentActorKey,
+  { useSelfLabel = true } = {},
+) => {
   if (!identity) return "Unknown contact";
   if (useSelfLabel && actorKeyFor(identity) === currentActorKey) return "You";
   return (
@@ -91,15 +97,17 @@ const identityLabel = (identity, currentActorKey, { useSelfLabel = true } = {}) 
 };
 
 const currentUserLabel = (user, actorType, actorId) => {
-  if (actorType === "student")
+  if (actorType === "student") {
     return (
       user.admission_number ||
       user.student_number ||
       user.email ||
       shortActorId(actorId)
     );
-  if (actorType === "teacher")
+  }
+  if (actorType === "teacher") {
     return user.staff_id || user.email || shortActorId(actorId);
+  }
   return user.email || shortActorId(actorId);
 };
 
@@ -179,14 +187,17 @@ const realtimeMessageFrom = (data) => ({
 });
 
 const appendUniqueMessage = (messages, message) => {
-  if (!message?.id) return messages || [];
   const current = messages || [];
-  if (current.some((item) => String(item.id) === String(message.id))) return current;
+  if (!message?.id) return current;
+  if (current.some((item) => String(item.id) === String(message.id))) {
+    return current;
+  }
   return [...current, message];
 };
 
 function Avatar({ label, size = "md" }) {
-  const sizeClass = size === "sm" ? "h-9 w-9 text-[11px]" : "h-11 w-11 text-xs";
+  const sizeClass =
+    size === "sm" ? "h-9 w-9 text-[11px]" : "h-11 w-11 text-xs";
   return (
     <span
       className={`flex shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary-soft font-black tracking-wide text-primary ${sizeClass}`}
@@ -208,9 +219,7 @@ export default function MessagesPage() {
   const [selected, setSelected] = useState(null);
   const [recipientGroups, setRecipientGroups] = useState([]);
   const [recipientKey, setRecipientKey] = useState("");
-  const [sidebarMode, setSidebarMode] = useState(
-    requestedConversationId ? "chats" : "chats",
-  );
+  const [sidebarMode, setSidebarMode] = useState("chats");
   const [sidebarRole, setSidebarRole] = useState("all");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [body, setBody] = useState("");
@@ -229,6 +238,7 @@ export default function MessagesPage() {
 
   const threadEndRef = useRef(null);
   const selectedIdRef = useRef(selectedId);
+  const recipientKeyRef = useRef(recipientKey);
   const seenRealtimeEventsRef = useRef(new Set());
   const liveAnimationTimerRef = useRef(null);
 
@@ -253,6 +263,18 @@ export default function MessagesPage() {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    recipientKeyRef.current = recipientKey;
+  }, [recipientKey]);
+
+  useEffect(() => {
+    if (requestedConversationId) {
+      setSelectedId(requestedConversationId);
+      setRecipientKey("");
+      setSidebarMode("chats");
+    }
+  }, [requestedConversationId]);
 
   const recipients = useMemo(
     () => flattenRecipients(recipientGroups),
@@ -297,13 +319,16 @@ export default function MessagesPage() {
 
   const recipientRoleOptions = useMemo(
     () => [
-      ...new Set(recipients.map((recipient) => recipient.actor_type).filter(Boolean)),
+      ...new Set(
+        recipients.map((recipient) => recipient.actor_type).filter(Boolean),
+      ),
     ],
     [recipients],
   );
 
   const selectedRecipient = useMemo(
-    () => recipients.find((recipient) => actorKeyFor(recipient) === recipientKey),
+    () =>
+      recipients.find((recipient) => actorKeyFor(recipient) === recipientKey),
     [recipientKey, recipients],
   );
 
@@ -367,14 +392,18 @@ export default function MessagesPage() {
         const rows = response?.items || [];
         setConversations(rows);
         setConversationTotal(Number(response?.total || rows.length));
-        if (!selectedIdRef.current && !recipientKey && rows[0]?.id) {
+        if (
+          !selectedIdRef.current &&
+          !recipientKeyRef.current &&
+          rows[0]?.id
+        ) {
           setSelectedId(rows[0].id);
         }
       } finally {
         if (showLoading) setLoading(false);
       }
     },
-    [conversationPage, recipientKey],
+    [conversationPage],
   );
 
   const refreshRecipients = useCallback(async () => {
@@ -386,10 +415,7 @@ export default function MessagesPage() {
     setLoading(true);
     setError("");
     try {
-      await Promise.all([
-        refreshConversations(),
-        refreshRecipients(),
-      ]);
+      await Promise.all([refreshConversations(), refreshRecipients()]);
     } catch (err) {
       setError(getErrorMessage(err, "Could not load messages."));
     } finally {
@@ -461,8 +487,7 @@ export default function MessagesPage() {
       if (seen.has(eventId)) return true;
       seen.add(eventId);
       if (seen.size > MAX_SEEN_REALTIME_EVENTS) {
-        const first = seen.values().next().value;
-        seen.delete(first);
+        seen.delete(seen.values().next().value);
       }
       return false;
     };
@@ -492,31 +517,30 @@ export default function MessagesPage() {
 
       animateLiveMessage(data.conversation_id, data.message_id);
 
-      let foundConversation = false;
-      setConversations((current) => {
-        const next = current.map((conversation) => {
-          if (String(conversation.id) !== String(data.conversation_id)) {
-            return conversation;
-          }
-          foundConversation = true;
-          return {
-            ...conversation,
-            updated_at: message.created_at,
-            messages: appendUniqueMessage(conversation.messages, message),
-            unread_count:
-              incoming && !activeConversation
-                ? Number(conversation.unread_count || 0) + 1
-                : activeConversation
-                  ? 0
-                  : Number(conversation.unread_count || 0),
-          };
-        });
-        return [...next].sort(
-          (a, b) =>
-            new Date(b.updated_at || b.messages?.at(-1)?.created_at || 0) -
-            new Date(a.updated_at || a.messages?.at(-1)?.created_at || 0),
-        );
-      });
+      setConversations((current) =>
+        [...current]
+          .map((conversation) => {
+            if (String(conversation.id) !== String(data.conversation_id)) {
+              return conversation;
+            }
+            return {
+              ...conversation,
+              updated_at: message.created_at,
+              messages: appendUniqueMessage(conversation.messages, message),
+              unread_count:
+                incoming && !activeConversation
+                  ? Number(conversation.unread_count || 0) + 1
+                  : activeConversation
+                    ? 0
+                    : Number(conversation.unread_count || 0),
+            };
+          })
+          .sort(
+            (a, b) =>
+              new Date(b.updated_at || b.messages?.at(-1)?.created_at || 0) -
+              new Date(a.updated_at || a.messages?.at(-1)?.created_at || 0),
+          ),
+      );
 
       if (activeConversation) {
         setSelected((current) =>
@@ -543,7 +567,7 @@ export default function MessagesPage() {
             })
             .catch(() => undefined);
         }
-      } else if (!foundConversation) {
+      } else {
         void refreshConversations().catch(() => undefined);
       }
 
@@ -566,14 +590,14 @@ export default function MessagesPage() {
             setSelected(response);
           }
         } catch {
-          // A reconnect refresh will reconcile state if this best-effort read receipt misses.
+          // Reconnect reconciliation is the fallback for an ephemeral read receipt.
         }
       }
     };
 
     const unsubscribers = [
-      realtimeClient.subscribe("message.created", onMessageCreated),
-      realtimeClient.subscribe("message.read", onMessageRead),
+      realtimeClient.subscribe(MESSAGE_CREATED_EVENT, onMessageCreated),
+      realtimeClient.subscribe(MESSAGE_READ_EVENT, onMessageRead),
       realtimeClient.subscribeConnection((state) => {
         setConnectionStatus(state.status);
         if (state.status === "reconnected") {
@@ -679,6 +703,9 @@ export default function MessagesPage() {
           },
           body: text,
         });
+        const alreadyExists = conversations.some(
+          (item) => item.id === conversation.id,
+        );
         setConversationPage(1);
         setSidebarMode("chats");
         setRecipientKey("");
@@ -688,11 +715,9 @@ export default function MessagesPage() {
           conversation,
           ...current.filter((item) => item.id !== conversation.id),
         ]);
-        setConversationTotal((current) =>
-          conversations.some((item) => item.id === conversation.id)
-            ? current
-            : current + 1,
-        );
+        if (!alreadyExists) {
+          setConversationTotal((current) => current + 1);
+        }
       }
       setBody("");
     } catch (err) {
@@ -1002,7 +1027,7 @@ export default function MessagesPage() {
 
             <div className="flex shrink-0 items-center gap-2">
               <span
-                className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold sm:flex ${liveConnected ? "border-success/20 bg-success-soft text-success" : "border-border bg-surface-muted text-text-muted"}`}
+                className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold sm:flex ${liveConnected ? "border-primary/20 bg-primary-soft text-primary" : "border-border bg-surface-muted text-text-muted"}`}
                 title={
                   liveConnected
                     ? "Realtime WebSocket connected"
@@ -1065,7 +1090,9 @@ export default function MessagesPage() {
                 {!selected ? (
                   <div className="flex h-full min-h-[16rem] items-center justify-center">
                     <div className="max-w-sm text-center">
-                      <Avatar label={selectedRecipient?.label} />
+                      <div className="flex justify-center">
+                        <Avatar label={selectedRecipient?.label} />
+                      </div>
                       <h3 className="mt-3 font-black text-text">
                         Start a conversation with {selectedRecipient?.label}
                       </h3>
@@ -1105,7 +1132,10 @@ export default function MessagesPage() {
                     return (
                       <div key={message.id}>
                         {showDay ? (
-                          <div className="my-4 flex items-center gap-3" aria-hidden="true">
+                          <div
+                            className="my-4 flex items-center gap-3"
+                            aria-hidden="true"
+                          >
                             <span className="h-px flex-1 bg-border" />
                             <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-[10px] font-bold text-text-faint shadow-sm">
                               {dayLabel(message.created_at)}
@@ -1139,12 +1169,18 @@ export default function MessagesPage() {
                               <time>{fullTimestampLabel(message.created_at)}</time>
                               {mine && isLastMine ? (
                                 read ? (
-                                  <span className="flex items-center gap-0.5" title="Read">
+                                  <span
+                                    className="flex items-center gap-0.5"
+                                    title="Read"
+                                  >
                                     <CheckCheck className="h-3.5 w-3.5" />
                                     <span className="sr-only">Read</span>
                                   </span>
                                 ) : (
-                                  <span className="flex items-center gap-0.5" title="Sent">
+                                  <span
+                                    className="flex items-center gap-0.5"
+                                    title="Sent"
+                                  >
                                     <Check className="h-3.5 w-3.5" />
                                     <span className="sr-only">Sent</span>
                                   </span>
@@ -1208,7 +1244,11 @@ export default function MessagesPage() {
                     </div>
                     <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-[10px] text-text-faint">
                       <span>Enter to send · Shift + Enter for a new line</span>
-                      <span>{liveConnected ? "Realtime connected" : "Sending still works while realtime reconnects"}</span>
+                      <span>
+                        {liveConnected
+                          ? "Realtime connected"
+                          : "Sending still works while realtime reconnects"}
+                      </span>
                     </div>
                   </>
                 )}
