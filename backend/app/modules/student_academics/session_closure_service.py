@@ -13,7 +13,6 @@ from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.classes.models import AcademicLevelStatus
 from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.communications.enums import (
-    AnnouncementPriority,
     CommunicationActorType,
     NotificationSourceType,
 )
@@ -347,9 +346,7 @@ class SessionClosureService:
         actor_id: uuid.UUID,
         title: str,
         body: str,
-        priority: str = "high",
     ) -> None:
-        _ = priority
         await NotificationService.deliver_system_event(
             db,
             recipients=[
@@ -668,9 +665,6 @@ class SessionClosureService:
                     "Academic write activities remain paused until the administrator finalizes closure."
                 )
             ),
-            priority=(
-                AnnouncementPriority.URGENT if progression_failed else AnnouncementPriority.HIGH
-            ),
         )
         await db.commit()
         await RealtimePublisher.publish_deferred_after_commit(db)
@@ -858,7 +852,6 @@ class SessionClosureService:
                 f"{session.name} has been closed. {next_session.name} remains in draft "
                 "for calendar setup and a separate opening step."
             ),
-            priority=AnnouncementPriority.HIGH,
         )
         await db.commit()
         await db.refresh(session)
