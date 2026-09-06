@@ -196,8 +196,8 @@ export default function AcademicOrbitNavigator({
     const maxTop = Math.max(EDGE_GAP, viewport.height - menuRect.height - EDGE_GAP);
     const buttonCenterX = settledPosition.x + BUTTON_SIZE / 2;
     const buttonCenterY = settledPosition.y + BUTTON_SIZE / 2;
-    let left = EDGE_GAP;
-    let top = EDGE_GAP;
+    let left;
+    let top;
 
     if (positionPreference.edge === "right") {
       left = settledPosition.x - MENU_GAP - menuRect.width;
