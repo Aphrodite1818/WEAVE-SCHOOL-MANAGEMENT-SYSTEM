@@ -55,7 +55,9 @@ test("frontend services use level enrollment, canonical class placement, and sta
   assert.match(curriculumService, /getResolvedClassSubjects/);
   assert.match(curriculumService, /classes\/\$\{classId\}\/terms\/\$\{termId\}\/department/);
   assert.match(curriculum, /academic_level_department_ids: selectedDepartmentIds/);
-  assert.match(directory, /department_name/);
+  assert.match(directory, /current_department/);
+  assert.match(directory, /destination_department/);
+  assert.doesNotMatch(directory, /student\??\.department_name/);
   assert.match(directory, /effective_date/);
   assert.match(directory, /academic_session_id/);
 });
