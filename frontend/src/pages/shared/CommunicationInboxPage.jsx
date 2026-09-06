@@ -8,7 +8,7 @@ import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import { authSession, getErrorMessage } from "../../services/api";
 import {
-  MESSAGE_REALTIME_EVENTS,
+  NOTIFICATION_REALTIME_EVENTS,
   emitNotificationsChanged,
   inboxService,
 } from "../../services/communicationService";
@@ -56,8 +56,11 @@ export default function CommunicationInboxPage() {
   }, [load]);
 
   useEffect(() => {
-    const unsubscribers = MESSAGE_REALTIME_EVENTS.map((eventType) =>
-      realtimeClient.subscribe(eventType, load),
+    const reconcileMessageNotification = (event) => {
+      if (event?.data?.source_type === "message") load();
+    };
+    const unsubscribers = NOTIFICATION_REALTIME_EVENTS.map((eventType) =>
+      realtimeClient.subscribe(eventType, reconcileMessageNotification),
     );
     unsubscribers.push(
       realtimeClient.subscribeConnection((state) => {
