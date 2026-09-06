@@ -4,6 +4,12 @@ import test from "node:test";
 import { ROLE_GUIDES, guideForRole } from "./roleGuideConfig.js";
 
 const expectedRoles = ["admin", "teacher", "parent", "student"];
+const expectedStepCounts = {
+  admin: 17,
+  teacher: 4,
+  parent: 4,
+  student: 4,
+};
 
 test("every supported dashboard role has a valid page guide", () => {
   assert.deepEqual(Object.keys(ROLE_GUIDES).sort(), [...expectedRoles].sort());
@@ -15,8 +21,7 @@ test("every supported dashboard role has a valid page guide", () => {
     assert.equal(guide.route, `/${role}/getting-started`);
     assert.equal(guide.dashboardRoute, `/${role}/dashboard`);
 
-    const expectedStepCount =
-      role === "admin" ? 17 : role === "teacher" ? 3 : 4;
+    const expectedStepCount = expectedStepCounts[role];
     assert.equal(guide.steps.length, expectedStepCount);
     assert.equal(
       new Set(guide.steps.map((step) => step.id)).size,
@@ -47,4 +52,12 @@ test("tenant admin guide follows the academic setup v2 dependency order", () => 
       "grading", "readiness", "school_logo", "progression",
     ],
   );
+});
+
+test("teacher guide exposes class-teacher comments without score-entry authority", () => {
+  assert.deepEqual(
+    ROLE_GUIDES.teacher.steps.map((step) => step.id),
+    ["classes", "comments", "attendance", "calendar"],
+  );
+  assert.equal(ROLE_GUIDES.teacher.steps[1].to, "/teacher/student-comments");
 });
