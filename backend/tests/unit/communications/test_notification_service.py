@@ -15,6 +15,10 @@ from app.modules.communications.notification_service import NotificationService
 from app.modules.communications.recipient_resolver import ResolvedRecipient
 
 
+def _db_stub() -> SimpleNamespace:
+    return SimpleNamespace(info={})
+
+
 @pytest.mark.asyncio
 async def test_notification_status_mutation_is_recipient_scoped(monkeypatch) -> None:
     actor = SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4())
@@ -27,6 +31,7 @@ async def test_notification_status_mutation_is_recipient_scoped(monkeypatch) -> 
         title="Bulk import completed",
         preview="10 rows imported.",
     )
+    db = _db_stub()
 
     async def get_notification_for_actor(_db, **kwargs):
         assert kwargs["actor_type"] == CommunicationActorType.TENANT_ADMIN
@@ -54,7 +59,7 @@ async def test_notification_status_mutation_is_recipient_scoped(monkeypatch) -> 
     )
 
     updated = await NotificationService.update_status(
-        None,
+        db,
         actor=actor,
         notification_id=uuid.uuid4(),
         status=NotificationStatus.ACKNOWLEDGED,
@@ -63,6 +68,10 @@ async def test_notification_status_mutation_is_recipient_scoped(monkeypatch) -> 
     assert updated.status == NotificationStatus.ACKNOWLEDGED
     assert updated.read_at is not None
     assert updated.acknowledged_at is not None
+    queued = db.info["weave_pending_realtime_messages"]
+    assert len(queued) == 1
+    assert queued[0].event.type == "notification.updated"
+    assert queued[0].event.data["source_type"] == "system_event"
 
 
 @pytest.mark.asyncio
@@ -77,6 +86,7 @@ async def test_notification_dismissal_does_not_destroy_source(monkeypatch) -> No
         title="School update",
         preview="Assembly starts at 8.",
     )
+    db = _db_stub()
 
     async def get_notification_for_actor(_db, **_kwargs):
         return delivery
@@ -102,7 +112,7 @@ async def test_notification_dismissal_does_not_destroy_source(monkeypatch) -> No
     )
 
     updated = await NotificationService.update_status(
-        None,
+        db,
         actor=actor,
         notification_id=delivery.id,
         status=NotificationStatus.DISMISSED,
@@ -111,6 +121,10 @@ async def test_notification_dismissal_does_not_destroy_source(monkeypatch) -> No
     assert updated.status == NotificationStatus.DISMISSED
     assert updated.dismissed_at is not None
     assert updated.source_id == delivery.source_id
+    queued = db.info["weave_pending_realtime_messages"]
+    assert len(queued) == 1
+    assert queued[0].event.type == "notification.dismissed"
+    assert queued[0].event.data["source_type"] == "notice"
 
 
 @pytest.mark.asyncio
@@ -123,6 +137,8 @@ async def test_system_event_failure_does_not_escape_source_transaction() -> None
             return False
 
     class FailingDatabase:
+        info = {}
+
         @staticmethod
         def begin_nested():
             return NestedTransaction()
