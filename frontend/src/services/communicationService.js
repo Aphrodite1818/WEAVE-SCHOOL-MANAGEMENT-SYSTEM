@@ -13,8 +13,13 @@ export const NOTIFICATION_REALTIME_EVENTS = [
   "notification.updated",
   "notification.dismissed",
 ];
+export const MESSAGE_REALTIME_EVENTS = ["message.created", "message.read"];
+export const NOTICE_REALTIME_EVENTS = [
+  "notice.published",
+  ...NOTIFICATION_REALTIME_EVENTS,
+];
 
-const announcementSnapshots = new Map();
+const noticeSnapshots = new Map();
 
 export function emitNotificationsChanged() {
   if (typeof window !== "undefined") {
@@ -41,6 +46,12 @@ export const notificationService = {
   dismiss: (id) => api.delete(`/notifications/${id}`),
 };
 
+export const inboxService = {
+  list: (params) => api.get(withQuery("/inbox", params)),
+  unreadCount: () => api.get("/inbox/unread-count"),
+  markRead: (id) => api.post(`/inbox/${id}/read`, {}),
+};
+
 export const messageService = {
   availableRecipients: () => api.get("/communications/available-recipients"),
   listConversations: (params) =>
@@ -52,57 +63,50 @@ export const messageService = {
   markRead: (id) => api.post(`/messages/conversations/${id}/read`, {}),
 };
 
-const announcementBasePath = (mode) =>
-  mode === "superadmin"
-    ? "/superadmin/announcements"
-    : "/tenant-admin/announcements";
+export const noticeService = {
+  listReceived: (params) => api.get(withQuery("/notices", params)),
+  markRead: (id) => api.post(`/notices/${id}/read`, {}),
+};
 
-export const communicationAnnouncementService = {
+const noticeBasePath = (mode) => {
+  if (mode === "superadmin") return "/superadmin/notices";
+  if (mode === "teacher") return "/teacher/notices";
+  return "/tenant-admin/notices";
+};
+
+export const communicationNoticeService = {
   list: async (mode, params) => {
-    const response = await api.get(withQuery(announcementBasePath(mode), params));
-    return rememberById(announcementSnapshots, response);
+    const response = await api.get(withQuery(noticeBasePath(mode), params));
+    return rememberById(noticeSnapshots, response);
   },
   create: async (mode, payload) => {
-    const response = await api.post(announcementBasePath(mode), payload);
-    return rememberRecord(announcementSnapshots, response);
+    const response = await api.post(noticeBasePath(mode), payload);
+    return rememberRecord(noticeSnapshots, response);
   },
   update: async (mode, id, payload) => {
     const key = String(id);
-    const current = announcementSnapshots.get(key);
+    const current = noticeSnapshots.get(key);
     const changes = buildChangedPatch(current, payload);
     if (!hasPatchChanges(changes)) return current;
-
-    const response = await api.patch(
-      `${announcementBasePath(mode)}/${id}`,
-      changes,
-    );
-    announcementSnapshots.set(
-      key,
-      mergePatchResult(current, changes, response),
-    );
+    const response = await api.patch(`${noticeBasePath(mode)}/${id}`, changes);
+    noticeSnapshots.set(key, mergePatchResult(current, changes, response));
     return response;
   },
   preview: (mode, payload) =>
-    api.post(`${announcementBasePath(mode)}/preview`, payload),
+    api.post(`${noticeBasePath(mode)}/preview`, payload),
   publish: async (mode, id, payload = {}) => {
     const response = await api.post(
-      `${announcementBasePath(mode)}/${id}/publish`,
+      `${noticeBasePath(mode)}/${id}/publish`,
       payload,
     );
-    return rememberRecord(announcementSnapshots, response);
+    return rememberRecord(noticeSnapshots, response);
   },
   archive: async (mode, id) => {
-    const response = await api.post(
-      `${announcementBasePath(mode)}/${id}/archive`,
-      {},
-    );
-    return rememberRecord(announcementSnapshots, response);
+    const response = await api.post(`${noticeBasePath(mode)}/${id}/archive`, {});
+    return rememberRecord(noticeSnapshots, response);
   },
   cancel: async (mode, id) => {
-    const response = await api.post(
-      `${announcementBasePath(mode)}/${id}/cancel`,
-      {},
-    );
-    return rememberRecord(announcementSnapshots, response);
+    const response = await api.post(`${noticeBasePath(mode)}/${id}/cancel`, {});
+    return rememberRecord(noticeSnapshots, response);
   },
 };
