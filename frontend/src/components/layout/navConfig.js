@@ -122,7 +122,12 @@ export const navGroups = {
           icon: Mail,
           runtimeFeature: "messaging",
         },
-        { label: "Announcements", to: "/admin/announcements", icon: FileText },
+        { label: "Notices", to: "/admin/notices", icon: FileText },
+        {
+          label: "Received Notices",
+          to: "/admin/notices/received",
+          icon: FileText,
+        },
       ],
     },
     {
@@ -164,6 +169,12 @@ export const navGroups = {
           to: "/teacher/messages",
           icon: Mail,
           runtimeFeature: "messaging",
+        },
+        { label: "Notices", to: "/teacher/notices", icon: FileText },
+        {
+          label: "Received Notices",
+          to: "/teacher/notices/received",
+          icon: FileText,
         },
       ],
     },
@@ -214,6 +225,7 @@ export const navGroups = {
           icon: Mail,
           runtimeFeature: "messaging",
         },
+        { label: "Notices", to: "/student/notices", icon: FileText },
         { label: "Settings", to: "/student/settings", icon: Settings },
       ],
     },
@@ -245,6 +257,7 @@ export const navGroups = {
           icon: Mail,
           runtimeFeature: "messaging",
         },
+        { label: "Notices", to: "/parent/notices", icon: FileText },
         {
           label: "Switch School",
           to: "/parent/schools",
@@ -291,8 +304,8 @@ export const navGroups = {
           runtimeFeature: "messaging",
         },
         {
-          label: "Announcements",
-          to: "/superadmin/announcements",
+          label: "Notices",
+          to: "/superadmin/notices",
           icon: FileText,
         },
         { label: "Settings", to: "/superadmin/settings", icon: Settings },
