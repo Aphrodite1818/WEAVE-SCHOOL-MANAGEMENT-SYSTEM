@@ -13,10 +13,7 @@ from app.modules.communications.enums import (
     NotificationSourceType,
     NotificationStatus,
 )
-from app.modules.communications.models import (
-    Announcement,
-    NotificationDelivery,
-)
+from app.modules.communications.models import Notice, NotificationDelivery
 from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
 from app.modules.parents.models import Parent, ParentAccount, ParentAccountStatus
 from app.modules.students.models import Student, StudentProfileStatus
@@ -146,12 +143,7 @@ class MetricsRepository:
 
     @staticmethod
     async def tenant_admin_counts(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
-        """Return tenant dashboard counts with one database round trip.
-
-        The previous implementation ran each count as a separate query. That is
-        acceptable against local Postgres, but it becomes slow against remote
-        Supabase because network round-trip time is paid for every count.
-        """
+        """Return tenant dashboard counts with one database round trip."""
         row = (
             await db.execute(
                 select(
@@ -253,15 +245,15 @@ class MetricsRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def announcement_category_counts(
+    async def notice_category_counts(
         db: AsyncSession,
         tenant_id: uuid.UUID,
     ) -> list[LabelCount]:
         rows = (
             await db.execute(
-                select(Announcement.category, func.count(Announcement.id))
-                .where(Announcement.tenant_id == tenant_id)
-                .group_by(Announcement.category)
+                select(Notice.category, func.count(Notice.id))
+                .where(Notice.tenant_id == tenant_id)
+                .group_by(Notice.category)
             )
         ).all()
         return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
@@ -422,7 +414,7 @@ class MetricsRepository:
         return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
 
     @staticmethod
-    async def teacher_announcement_ids(
+    async def teacher_notice_ids(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
@@ -431,10 +423,10 @@ class MetricsRepository:
         return list(
             (
                 await db.execute(
-                    select(Announcement.id).where(
-                        Announcement.tenant_id == tenant_id,
-                        Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
-                        Announcement.created_by_actor_id == teacher_id,
+                    select(Notice.id).where(
+                        Notice.tenant_id == tenant_id,
+                        Notice.created_by_actor_type == CommunicationActorType.TEACHER,
+                        Notice.created_by_actor_id == teacher_id,
                     )
                 )
             )
@@ -443,7 +435,7 @@ class MetricsRepository:
         )
 
     @staticmethod
-    async def teacher_announcement_category_counts(
+    async def teacher_notice_category_counts(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
@@ -451,34 +443,34 @@ class MetricsRepository:
     ) -> list[LabelCount]:
         rows = (
             await db.execute(
-                select(Announcement.category, func.count(Announcement.id))
+                select(Notice.category, func.count(Notice.id))
                 .where(
-                    Announcement.tenant_id == tenant_id,
-                    Announcement.created_by_actor_type == CommunicationActorType.TEACHER,
-                    Announcement.created_by_actor_id == teacher_id,
+                    Notice.tenant_id == tenant_id,
+                    Notice.created_by_actor_type == CommunicationActorType.TEACHER,
+                    Notice.created_by_actor_id == teacher_id,
                 )
-                .group_by(Announcement.category)
+                .group_by(Notice.category)
             )
         ).all()
         return [LabelCount(label=row[0], value=int(row[1])) for row in rows]
 
     @staticmethod
-    async def announcement_read_count(
+    async def notice_read_count(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        announcement_ids: list[uuid.UUID],
+        notice_ids: list[uuid.UUID],
         statuses: list[NotificationStatus],
     ) -> int:
-        if not announcement_ids:
+        if not notice_ids:
             return 0
 
         return await MetricsRepository.count(
             db,
             NotificationDelivery,
             NotificationDelivery.tenant_id == tenant_id,
-            NotificationDelivery.source_type == NotificationSourceType.ANNOUNCEMENT,
-            NotificationDelivery.source_id.in_(announcement_ids),
+            NotificationDelivery.source_type == NotificationSourceType.NOTICE,
+            NotificationDelivery.source_id.in_(notice_ids),
             NotificationDelivery.status.in_(statuses),
         )
 

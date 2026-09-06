@@ -20,12 +20,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.modules.communications.enums import (
-    AnnouncementAudienceType,
-    AnnouncementCategory,
-    AnnouncementPriority,
-    AnnouncementStatus,
     CommunicationActorType,
     ConversationType,
+    NoticeAudienceType,
+    NoticeCategory,
+    NoticePriority,
+    NoticeStatus,
     NotificationSourceType,
     NotificationStatus,
     enum_values,
@@ -153,8 +153,8 @@ class Message(UUIDMixin, TimestampMixin, Base):
     conversation: Mapped[Conversation] = relationship("Conversation", back_populates="messages")
 
 
-class Announcement(UUIDMixin, TimestampMixin, Base):
-    __tablename__ = "communication_announcements"
+class Notice(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "communication_notices"
 
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True
@@ -173,38 +173,38 @@ class Announcement(UUIDMixin, TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[AnnouncementCategory] = mapped_column(
+    category: Mapped[NoticeCategory] = mapped_column(
         SQLEnum(
-            AnnouncementCategory,
-            name="communication_announcement_category",
+            NoticeCategory,
+            name="communication_notice_category",
             schema=PUBLIC_SCHEMA,
             values_callable=enum_values,
         ),
         nullable=False,
-        default=AnnouncementCategory.GENERAL,
-        server_default=AnnouncementCategory.GENERAL.value,
+        default=NoticeCategory.GENERAL,
+        server_default=NoticeCategory.GENERAL.value,
     )
-    priority: Mapped[AnnouncementPriority] = mapped_column(
+    priority: Mapped[NoticePriority] = mapped_column(
         SQLEnum(
-            AnnouncementPriority,
-            name="communication_announcement_priority",
+            NoticePriority,
+            name="communication_notice_priority",
             schema=PUBLIC_SCHEMA,
             values_callable=enum_values,
         ),
         nullable=False,
-        default=AnnouncementPriority.NORMAL,
-        server_default=AnnouncementPriority.NORMAL.value,
+        default=NoticePriority.NORMAL,
+        server_default=NoticePriority.NORMAL.value,
     )
-    status: Mapped[AnnouncementStatus] = mapped_column(
+    status: Mapped[NoticeStatus] = mapped_column(
         SQLEnum(
-            AnnouncementStatus,
-            name="communication_announcement_status",
+            NoticeStatus,
+            name="communication_notice_status",
             schema=PUBLIC_SCHEMA,
             values_callable=enum_values,
         ),
         nullable=False,
-        default=AnnouncementStatus.DRAFT,
-        server_default=AnnouncementStatus.DRAFT.value,
+        default=NoticeStatus.DRAFT,
+        server_default=NoticeStatus.DRAFT.value,
     )
     publish_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -213,33 +213,33 @@ class Announcement(UUIDMixin, TimestampMixin, Base):
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    audiences: Mapped[list["AnnouncementAudience"]] = relationship(
-        "AnnouncementAudience",
-        back_populates="announcement",
+    audiences: Mapped[list["NoticeAudience"]] = relationship(
+        "NoticeAudience",
+        back_populates="notice",
         cascade="all, delete-orphan",
     )
 
     __table_args__ = (
-        Index("ix_comm_announcements_tenant_status", "tenant_id", "status", "publish_at"),
+        Index("ix_comm_notices_tenant_status", "tenant_id", "status", "publish_at"),
     )
 
 
-class AnnouncementAudience(UUIDMixin, TimestampMixin, Base):
-    __tablename__ = "communication_announcement_audiences"
+class NoticeAudience(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "communication_notice_audiences"
 
-    announcement_id: Mapped[uuid.UUID] = mapped_column(
+    notice_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("communication_announcements.id", ondelete="CASCADE"),
+        ForeignKey("communication_notices.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True
     )
-    audience_type: Mapped[AnnouncementAudienceType] = mapped_column(
+    audience_type: Mapped[NoticeAudienceType] = mapped_column(
         SQLEnum(
-            AnnouncementAudienceType,
-            name="communication_audience_type",
+            NoticeAudienceType,
+            name="communication_notice_audience_type",
             schema=PUBLIC_SCHEMA,
             values_callable=enum_values,
         ),
@@ -255,16 +255,16 @@ class AnnouncementAudience(UUIDMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True
     )
 
-    announcement: Mapped[Announcement] = relationship("Announcement", back_populates="audiences")
+    notice: Mapped[Notice] = relationship("Notice", back_populates="audiences")
 
     __table_args__ = (
         UniqueConstraint(
-            "announcement_id",
+            "notice_id",
             "audience_type",
             "tenant_target_id",
             "actor_id",
             "class_id",
-            name="uq_comm_announcement_audience",
+            name="uq_comm_notice_audience",
         ),
     )
 

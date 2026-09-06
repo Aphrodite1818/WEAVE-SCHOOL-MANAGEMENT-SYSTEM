@@ -13,7 +13,7 @@ router = APIRouter(prefix="/runtime-config", tags=["Runtime Config"])
 class RuntimeFeatureFlags(BaseModel):
     attendance: bool
     messaging: bool
-    announcements: bool = True
+    notices: bool = True
     inbox: bool = True
     simulations: bool = False
 

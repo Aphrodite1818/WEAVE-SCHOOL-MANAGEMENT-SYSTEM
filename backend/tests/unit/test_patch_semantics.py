@@ -8,12 +8,8 @@ from pydantic import ValidationError
 
 from app.modules.attendance.schemas import AttendanceSettingsUpdate, SchoolGeofenceUpdate
 from app.modules.classes.models import AcademicCategory
-from app.modules.classes.schemas import (
-    AcademicLevelUpdate,
-    ArmLabelUpdate,
-    ClassRoomUpdate,
-)
-from app.modules.communications.schemas import AnnouncementUpdate
+from app.modules.classes.schemas import AcademicLevelUpdate, ArmLabelUpdate, ClassRoomUpdate
+from app.modules.communications.schemas import NoticeUpdate
 from app.modules.report_cards.schemas import ReportCardPrincipalCommentUpdate
 from app.modules.school_calendar.calendar_enums import (
     SchoolCalendarEventAudience,
@@ -80,13 +76,11 @@ def test_assessment_component_patch_distinguishes_clearable_code() -> None:
 def test_period_patch_distinguishes_omitted_and_clearable_nulls() -> None:
     _assert_invalid(AcademicSessionUpdate, name=None)
     _assert_invalid(AcademicTermUpdate, name=None)
-
     session = AcademicSessionUpdate(start_date=None, next_academic_session_id=None)
     assert session.model_dump(exclude_unset=True) == {
         "start_date": None,
         "next_academic_session_id": None,
     }
-
     term = AcademicTermUpdate(end_date=None)
     assert term.model_dump(exclude_unset=True) == {"end_date": None}
 
@@ -103,10 +97,7 @@ def test_subject_patch_rejects_empty_or_null_name_and_allows_optional_clears() -
     _assert_invalid(SubjectUpdate)
     _assert_invalid(SubjectUpdate, name=None)
     payload = SubjectUpdate(code=None, description=None)
-    assert payload.model_dump(exclude_unset=True) == {
-        "code": None,
-        "description": None,
-    }
+    assert payload.model_dump(exclude_unset=True) == {"code": None, "description": None}
 
 
 def test_branding_patch_rejects_null_and_empty_updates() -> None:
@@ -122,7 +113,6 @@ def test_user_guide_patch_preserves_clearable_fields_only() -> None:
     _assert_invalid(UserGuideStateUpdate, status=None)
     _assert_invalid(UserGuideStateUpdate, skipped_steps=None)
     _assert_invalid(UserGuideStateUpdate)
-
     payload = UserGuideStateUpdate(current_step=None, remind_after=None)
     assert payload.model_dump(exclude_unset=True) == {
         "current_step": None,
@@ -137,7 +127,6 @@ def test_tenant_patch_rejects_null_core_identity_but_allows_optional_clears() ->
     _assert_invalid(TenantUpdate, country=None)
     _assert_invalid(TenantUpdate, timezone=None)
     _assert_invalid(TenantUpdate, language=None)
-
     payload = TenantUpdate(phone=None, address=None, institution_type=None)
     assert payload.model_dump(exclude_unset=True) == {
         "phone": None,
@@ -153,26 +142,15 @@ def test_tenant_onboarding_patch_is_sparse_and_preserves_omitted_fields() -> Non
     _assert_invalid(TenantOnboardingUpdate, address=None)
     _assert_invalid(TenantOnboardingUpdate, city=None)
     _assert_invalid(TenantOnboardingUpdate, state=None)
-
     payload = TenantOnboardingUpdate(phone=None, city="Lagos")
-    assert payload.model_dump(exclude_unset=True) == {
-        "phone": None,
-        "city": "Lagos",
-    }
+    assert payload.model_dump(exclude_unset=True) == {"phone": None, "city": "Lagos"}
 
 
 def test_calendar_configuration_patch_separates_clearable_times() -> None:
     _assert_invalid(SchoolCalendarConfigurationUpdate, timezone=None)
     _assert_invalid(SchoolCalendarConfigurationUpdate, instructional_weekdays=None)
-    _assert_invalid(
-        SchoolCalendarConfigurationUpdate,
-        default_student_attendance_required=None,
-    )
-
-    payload = SchoolCalendarConfigurationUpdate(
-        default_open_time=None,
-        default_close_time=None,
-    )
+    _assert_invalid(SchoolCalendarConfigurationUpdate, default_student_attendance_required=None)
+    payload = SchoolCalendarConfigurationUpdate(default_open_time=None, default_close_time=None)
     assert payload.model_dump(exclude_unset=True) == {
         "default_open_time": None,
         "default_close_time": None,
@@ -183,10 +161,7 @@ def test_calendar_day_patch_allows_only_intentional_clears() -> None:
     _assert_invalid(SchoolCalendarDayUpdate, day_type=None)
     _assert_invalid(SchoolCalendarDayUpdate, school_open=None)
     payload = SchoolCalendarDayUpdate(
-        title=None,
-        description=None,
-        opens_at=None,
-        closes_at=None,
+        title=None, description=None, opens_at=None, closes_at=None
     )
     assert payload.model_dump(exclude_unset=True) == {
         "title": None,
@@ -203,7 +178,6 @@ def test_calendar_event_patch_allows_description_and_location_to_clear() -> None
     _assert_invalid(SchoolCalendarEventUpdate, ends_at=None)
     _assert_invalid(SchoolCalendarEventUpdate, is_all_day=None)
     _assert_invalid(SchoolCalendarEventUpdate, audience=None)
-
     payload = SchoolCalendarEventUpdate(description=None, location=None)
     assert payload.model_dump(exclude_unset=True) == {
         "description": None,
@@ -211,16 +185,15 @@ def test_calendar_event_patch_allows_description_and_location_to_clear() -> None
     }
 
 
-def test_announcement_patch_rejects_null_core_fields_and_keeps_clearable_schedule() -> None:
-    _assert_invalid(AnnouncementUpdate)
-    _assert_invalid(AnnouncementUpdate, title=None)
-    _assert_invalid(AnnouncementUpdate, body=None)
-    _assert_invalid(AnnouncementUpdate, category=None)
-    _assert_invalid(AnnouncementUpdate, priority=None)
-    _assert_invalid(AnnouncementUpdate, is_pinned=None)
-    _assert_invalid(AnnouncementUpdate, audiences=None)
-
-    payload = AnnouncementUpdate(publish_at=None, expires_at=None)
+def test_notice_patch_rejects_null_core_fields_and_keeps_clearable_schedule() -> None:
+    _assert_invalid(NoticeUpdate)
+    _assert_invalid(NoticeUpdate, title=None)
+    _assert_invalid(NoticeUpdate, body=None)
+    _assert_invalid(NoticeUpdate, category=None)
+    _assert_invalid(NoticeUpdate, priority=None)
+    _assert_invalid(NoticeUpdate, is_pinned=None)
+    _assert_invalid(NoticeUpdate, audiences=None)
+    payload = NoticeUpdate(publish_at=None, expires_at=None)
     assert payload.model_dump(exclude_unset=True) == {
         "publish_at": None,
         "expires_at": None,
@@ -231,11 +204,8 @@ def test_report_card_principal_comment_update_requires_explicit_text() -> None:
     _assert_invalid(ReportCardPrincipalCommentUpdate)
     _assert_invalid(ReportCardPrincipalCommentUpdate, principal_comment=None)
     _assert_invalid(ReportCardPrincipalCommentUpdate, principal_comment="")
-
     payload = ReportCardPrincipalCommentUpdate(principal_comment="Keep improving.")
-    assert payload.model_dump(exclude_unset=True) == {
-        "principal_comment": "Keep improving."
-    }
+    assert payload.model_dump(exclude_unset=True) == {"principal_comment": "Keep improving."}
 
 
 def test_attendance_settings_update_rejects_null_config_and_allows_time_clear() -> None:
@@ -243,11 +213,7 @@ def test_attendance_settings_update_rejects_null_config_and_allows_time_clear() 
     _assert_invalid(AttendanceSettingsUpdate, timezone=None)
     _assert_invalid(AttendanceSettingsUpdate, require_geofence_for_workforce=None)
     _assert_invalid(AttendanceSettingsUpdate, geofence_accuracy_threshold_m=None)
-
-    payload = AttendanceSettingsUpdate(
-        student_marking_opens_at=None,
-        student_marking_closes_at=None,
-    )
+    payload = AttendanceSettingsUpdate(student_marking_opens_at=None, student_marking_closes_at=None)
     assert payload.model_dump(exclude_unset=True) == {
         "student_marking_opens_at": None,
         "student_marking_closes_at": None,
@@ -261,25 +227,17 @@ def test_geofence_patch_rejects_null_core_fields_and_allows_description_clear() 
     _assert_invalid(SchoolGeofenceUpdate, longitude=None)
     _assert_invalid(SchoolGeofenceUpdate, radius_m=None)
     _assert_invalid(SchoolGeofenceUpdate, is_primary=None)
-
     payload = SchoolGeofenceUpdate(description=None)
     assert payload.model_dump(exclude_unset=True) == {"description": None}
 
 
 def test_valid_non_null_patch_values_remain_accepted() -> None:
     level = AcademicLevelUpdate(
-        name="JSS 1",
-        category=AcademicCategory.JUNIOR_SECONDARY,
-        position=1,
+        name="JSS 1", category=AcademicCategory.JUNIOR_SECONDARY, position=1
     )
     assert set(level.model_fields_set) == {"name", "category", "position"}
-
-    component = AssessmentComponentUpdate(
-        name="CA 1",
-        maximum_score=Decimal("20"),
-    )
+    component = AssessmentComponentUpdate(name="CA 1", maximum_score=Decimal("20"))
     assert component.model_dump(exclude_unset=True)["name"] == "CA 1"
-
     event = SchoolCalendarEventUpdate(
         title="Open Day",
         event_type=SchoolCalendarEventType.OTHER,
@@ -289,6 +247,5 @@ def test_valid_non_null_patch_values_remain_accepted() -> None:
         audience=SchoolCalendarEventAudience.ALL,
     )
     assert event.model_dump(exclude_unset=True)["title"] == "Open Day"
-
     term = AcademicTermUpdate(name=AcademicTermName.FIRST_TERM)
     assert term.model_dump(exclude_unset=True)["name"] == AcademicTermName.FIRST_TERM

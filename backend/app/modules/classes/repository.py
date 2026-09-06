@@ -18,7 +18,7 @@ from app.modules.classes.models import (
     ClassRoom,
     Department,
 )
-from app.modules.communications.models import AnnouncementAudience
+from app.modules.communications.models import NoticeAudience
 from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
@@ -739,10 +739,10 @@ class ClassRoomRepository:
             )
             .scalar_subquery()
         )
-        announcement_audiences_total = count_subquery(
-            AnnouncementAudience,
-            AnnouncementAudience.tenant_id == tenant_id,
-            AnnouncementAudience.class_id == class_id,
+        notice_audiences_total = count_subquery(
+            NoticeAudience,
+            NoticeAudience.tenant_id == tenant_id,
+            NoticeAudience.class_id == class_id,
         )
 
         row = (
@@ -765,7 +765,7 @@ class ClassRoomRepository:
                     report_cards_live.label("report_cards_live"),
                     progression_items_total.label("progression_items_total"),
                     progression_items_live.label("progression_items_live"),
-                    announcement_audiences_total.label("announcement_audiences_total"),
+                    notice_audiences_total.label("notice_audiences_total"),
                 )
             )
         ).one()
@@ -787,5 +787,5 @@ class ClassRoomRepository:
             "report_cards_live": int(row.report_cards_live),
             "progression_items_total": int(row.progression_items_total),
             "progression_items_live": int(row.progression_items_live),
-            "announcement_audiences_total": int(row.announcement_audiences_total),
+            "notice_audiences_total": int(row.notice_audiences_total),
         }

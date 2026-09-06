@@ -24,8 +24,6 @@ PAID_PLAN_CODES = {
     SubscriptionPlan.ENTERPRISE,
 }
 
-# Recurring Paystack plan codes are intentionally unsupported. Kept as an
-# empty mapping only while legacy ledger readers are removed from old history.
 PAYSTACK_PLAN_SETTING_FIELDS: dict = {}
 
 PAYSTACK_AMOUNT_SETTING_FIELDS = {
@@ -43,7 +41,7 @@ PAYSTACK_AMOUNT_SETTING_FIELDS = {
 WRITE_GATED_FEATURES = {
     FeatureCode.ACADEMIC_SETUP,
     FeatureCode.REPORT_CARDS,
-    FeatureCode.ANNOUNCEMENTS,
+    FeatureCode.NOTICES,
     FeatureCode.AI_ASSISTANT,
     FeatureCode.BULK_IMPORT,
 }

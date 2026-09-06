@@ -10,10 +10,9 @@ from sqlalchemy.orm import selectinload
 
 from app.modules.communications.enums import CommunicationActorType, NotificationStatus
 from app.modules.communications.models import (
-    Announcement,
     Conversation,
     ConversationParticipant,
-    Message,
+    Notice,
     NotificationDelivery,
 )
 
@@ -84,7 +83,9 @@ class CommunicationRepository:
                     ConversationParticipant.tenant_id == tenant_id,
                 )
             )
-        total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+        total = int(
+            (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+        )
         rows = (
             (
                 await db.execute(
@@ -101,7 +102,7 @@ class CommunicationRepository:
             .scalars()
             .all()
         )
-        return list(rows), int(total)
+        return list(rows), total
 
     @staticmethod
     async def find_direct_conversation(
@@ -113,19 +114,28 @@ class CommunicationRepository:
         recipient_id: uuid.UUID,
         tenant_id: uuid.UUID | None,
     ) -> Conversation | None:
-        left = ConversationParticipant
+        participant = ConversationParticipant
         subquery = (
-            select(left.conversation_id)
+            select(participant.conversation_id)
             .where(
-                left.actor_type.in_([sender_type, recipient_type]),
-                left.actor_id.in_([sender_id, recipient_id]),
-                left.left_at.is_(None),
+                or_(
+                    and_(
+                        participant.actor_type == sender_type,
+                        participant.actor_id == sender_id,
+                    ),
+                    and_(
+                        participant.actor_type == recipient_type,
+                        participant.actor_id == recipient_id,
+                    ),
+                ),
+                participant.left_at.is_(None),
             )
-            .group_by(left.conversation_id)
-            .having(func.count(func.distinct(left.id)) == 2)
+            .group_by(participant.conversation_id)
+            .having(func.count(participant.id) == 2)
         )
         stmt = select(Conversation).where(
-            Conversation.id.in_(subquery), Conversation.closed_at.is_(None)
+            Conversation.id.in_(subquery),
+            Conversation.closed_at.is_(None),
         )
         if tenant_id is not None:
             stmt = stmt.where(Conversation.tenant_id == tenant_id)
@@ -171,18 +181,32 @@ class CommunicationRepository:
         if source_type:
             filters.append(NotificationDelivery.source_type == source_type)
         stmt = select(NotificationDelivery).where(and_(*filters))
-        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-        unread = (
-            await db.execute(
-                select(func.count())
-                .select_from(NotificationDelivery)
-                .where(
-                    NotificationDelivery.recipient_actor_type == actor_type,
-                    NotificationDelivery.recipient_actor_id == actor_id,
-                    NotificationDelivery.status == NotificationStatus.UNREAD,
+        total = int(
+            (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+        )
+        unread_filters = [
+            NotificationDelivery.recipient_actor_type == actor_type,
+            NotificationDelivery.recipient_actor_id == actor_id,
+            NotificationDelivery.status == NotificationStatus.UNREAD,
+        ]
+        if tenant_id is not None:
+            unread_filters.append(
+                or_(
+                    NotificationDelivery.tenant_id == tenant_id,
+                    NotificationDelivery.tenant_id.is_(None),
                 )
             )
-        ).scalar_one()
+        if source_type:
+            unread_filters.append(NotificationDelivery.source_type == source_type)
+        unread = int(
+            (
+                await db.execute(
+                    select(func.count())
+                    .select_from(NotificationDelivery)
+                    .where(*unread_filters)
+                )
+            ).scalar_one()
+        )
         rows = (
             (
                 await db.execute(
@@ -194,7 +218,7 @@ class CommunicationRepository:
             .scalars()
             .all()
         )
-        return list(rows), int(total), int(unread)
+        return list(rows), total, unread
 
     @staticmethod
     async def get_notification_for_actor(
@@ -215,13 +239,13 @@ class CommunicationRepository:
         ).scalar_one_or_none()
 
     @staticmethod
-    async def get_announcement(db: AsyncSession, announcement_id: uuid.UUID) -> Announcement | None:
+    async def get_notice(db: AsyncSession, notice_id: uuid.UUID) -> Notice | None:
         return (
             (
                 await db.execute(
-                    select(Announcement)
-                    .options(selectinload(Announcement.audiences))
-                    .where(Announcement.id == announcement_id)
+                    select(Notice)
+                    .options(selectinload(Notice.audiences))
+                    .where(Notice.id == notice_id)
                 )
             )
             .unique()

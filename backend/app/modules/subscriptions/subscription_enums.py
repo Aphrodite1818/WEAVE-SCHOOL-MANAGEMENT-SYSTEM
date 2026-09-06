@@ -9,7 +9,7 @@ class FeatureCode(StrEnum):
     PARENT_PORTAL = "parent_portal"
     ACADEMIC_SETUP = "academic_setup"
     REPORT_CARDS = "report_cards"
-    ANNOUNCEMENTS = "announcements"
+    NOTICES = "notices"
     ATTENDANCE = "attendance"
     GEOFENCING = "geofencing"
     ADVANCED_ANALYTICS = "advanced_analytics"

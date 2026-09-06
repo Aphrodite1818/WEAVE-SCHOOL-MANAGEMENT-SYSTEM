@@ -8,12 +8,12 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.communications.enums import (
-    AnnouncementAudienceType,
-    AnnouncementCategory,
-    AnnouncementPriority,
-    AnnouncementStatus,
     CommunicationActorType,
     ConversationType,
+    NoticeAudienceType,
+    NoticeCategory,
+    NoticePriority,
+    NoticeStatus,
     NotificationSourceType,
     NotificationStatus,
 )
@@ -109,35 +109,35 @@ class ConversationListResponse(OutputBase):
     unread_count: int
 
 
-class AnnouncementAudienceCreate(InputBase):
-    audience_type: AnnouncementAudienceType
+class NoticeAudienceCreate(InputBase):
+    audience_type: NoticeAudienceType
     tenant_target_id: uuid.UUID | None = None
     actor_id: uuid.UUID | None = None
     class_id: uuid.UUID | None = None
 
 
-class AnnouncementCreate(InputBase):
+class NoticeCreate(InputBase):
     title: str = Field(..., min_length=3, max_length=200)
     body: str = Field(..., min_length=3, max_length=10000)
-    category: AnnouncementCategory = AnnouncementCategory.GENERAL
-    priority: AnnouncementPriority = AnnouncementPriority.NORMAL
+    category: NoticeCategory = NoticeCategory.GENERAL
+    priority: NoticePriority = NoticePriority.NORMAL
     publish_at: datetime | None = None
     expires_at: datetime | None = None
     is_pinned: bool = False
-    audiences: list[AnnouncementAudienceCreate] = Field(..., min_length=1)
+    audiences: list[NoticeAudienceCreate] = Field(..., min_length=1)
 
 
-class AnnouncementUpdate(InputBase):
-    """Sparse announcement update; schedule timestamps may be cleared explicitly."""
+class NoticeUpdate(InputBase):
+    """Sparse notice update; schedule timestamps may be cleared explicitly."""
 
     title: str | None = Field(default=None, min_length=3, max_length=200)
     body: str | None = Field(default=None, min_length=3, max_length=10000)
-    category: AnnouncementCategory | None = None
-    priority: AnnouncementPriority | None = None
+    category: NoticeCategory | None = None
+    priority: NoticePriority | None = None
     publish_at: datetime | None = None
     expires_at: datetime | None = None
     is_pinned: bool | None = None
-    audiences: list[AnnouncementAudienceCreate] | None = Field(default=None, min_length=1)
+    audiences: list[NoticeAudienceCreate] | None = Field(default=None, min_length=1)
 
     @field_validator(
         "title",
@@ -155,48 +155,72 @@ class AnnouncementUpdate(InputBase):
         return value
 
     @model_validator(mode="after")
-    def require_patch_field(self) -> "AnnouncementUpdate":
+    def require_patch_field(self) -> "NoticeUpdate":
         if not self.model_fields_set:
-            raise ValueError("at least one announcement field must be provided")
+            raise ValueError("at least one notice field must be provided")
         return self
 
 
-class AnnouncementPublishRequest(InputBase):
+class NoticePublishRequest(InputBase):
     publish_at: datetime | None = None
 
 
-class AnnouncementAudienceResponse(OutputBase):
+class NoticeAudienceResponse(OutputBase):
     id: uuid.UUID
-    announcement_id: uuid.UUID
+    notice_id: uuid.UUID
     tenant_id: uuid.UUID | None = None
-    audience_type: AnnouncementAudienceType
+    audience_type: NoticeAudienceType
     tenant_target_id: uuid.UUID | None = None
     actor_id: uuid.UUID | None = None
     class_id: uuid.UUID | None = None
 
 
-class AnnouncementResponse(OutputBase):
+class NoticeResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID | None = None
     created_by_actor_type: CommunicationActorType
     created_by_actor_id: uuid.UUID
     title: str
     body: str
-    category: AnnouncementCategory
-    priority: AnnouncementPriority
-    status: AnnouncementStatus
+    category: NoticeCategory
+    priority: NoticePriority
+    status: NoticeStatus
     publish_at: datetime | None = None
     expires_at: datetime | None = None
     is_pinned: bool
     archived_at: datetime | None = None
-    audiences: list[AnnouncementAudienceResponse] = Field(default_factory=list)
+    audiences: list[NoticeAudienceResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
 
-class AnnouncementListResponse(OutputBase):
-    items: list[AnnouncementResponse]
+class NoticeListResponse(OutputBase):
+    items: list[NoticeResponse]
     total: int
+
+
+class ReceivedNoticeResponse(OutputBase):
+    id: uuid.UUID
+    tenant_id: uuid.UUID | None = None
+    created_by_actor_type: CommunicationActorType
+    created_by_actor_id: uuid.UUID
+    title: str
+    body: str
+    category: NoticeCategory
+    priority: NoticePriority
+    publish_at: datetime | None = None
+    expires_at: datetime | None = None
+    is_pinned: bool
+    delivery_id: uuid.UUID
+    delivery_status: NotificationStatus
+    delivered_at: datetime
+    read_at: datetime | None = None
+
+
+class ReceivedNoticeListResponse(OutputBase):
+    items: list[ReceivedNoticeResponse]
+    total: int
+    unread_count: int
 
 
 class RecipientPreviewResponse(OutputBase):

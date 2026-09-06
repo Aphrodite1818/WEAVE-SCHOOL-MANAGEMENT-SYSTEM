@@ -9,17 +9,10 @@ from uuid import UUID
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
-from app.core.cache.events import (
-    CACHE_INVALIDATION_EVENTS,
-    CacheInvalidationEvent,
-)
+from app.core.cache.events import CACHE_INVALIDATION_EVENTS, CacheInvalidationEvent
 from app.core.cache.base import build_cache_key, tenant_prefix
 from app.modules.communications.enums import CommunicationActorType
-from app.modules.communications.models import (
-    Announcement,
-    AnnouncementAudience,
-    NotificationDelivery,
-)
+from app.modules.communications.models import Notice, NoticeAudience, NotificationDelivery
 from app.modules.classes.models import AcademicLevel, ClassRoom
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
@@ -50,8 +43,8 @@ from app.tenant_management.models import Tenant
 TENANT_ADMIN_METRIC_MODELS = (
     AcademicSession,
     AcademicTerm,
-    Announcement,
-    AnnouncementAudience,
+    Notice,
+    NoticeAudience,
     NotificationDelivery,
     ClassRoom,
     AcademicLevel,

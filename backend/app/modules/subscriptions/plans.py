@@ -23,7 +23,7 @@ def _features(
     parent_portal: bool = True,
     academic_setup: bool = True,
     report_cards: bool = True,
-    announcements: bool = True,
+    notices: bool = True,
     attendance: bool = True,
     geofencing: bool = True,
     advanced_analytics: bool = True,
@@ -39,7 +39,7 @@ def _features(
         FeatureCode.PARENT_PORTAL: parent_portal,
         FeatureCode.ACADEMIC_SETUP: academic_setup,
         FeatureCode.REPORT_CARDS: report_cards,
-        FeatureCode.ANNOUNCEMENTS: announcements,
+        FeatureCode.NOTICES: notices,
         FeatureCode.ATTENDANCE: attendance,
         FeatureCode.GEOFENCING: geofencing,
         FeatureCode.ADVANCED_ANALYTICS: advanced_analytics,
@@ -94,58 +94,34 @@ _FREE_ENTITLEMENTS = PlanEntitlements(
 
 PLAN_ENTITLEMENTS: dict[str, PlanEntitlements] = {
     SubscriptionPlan.FREE.value: _FREE_ENTITLEMENTS,
-    # Legacy rows can still contain ``free_trial``. Runtime semantics collapse
-    # them to the permanent Free tier rather than exposing a second free state.
     SubscriptionPlan.FREE_TRIAL.value: _FREE_ENTITLEMENTS,
     SubscriptionPlan.PLUS.value: PlanEntitlements(
         features=_paid_features(),
-        limits=_limits(
-            students=500,
-            teachers=50,
-            parents=300,
-            cbt_servers=0,
-        ),
+        limits=_limits(students=500, teachers=50, parents=300, cbt_servers=0),
     ),
     SubscriptionPlan.PROFESSIONAL.value: PlanEntitlements(
         features=_paid_features(tenant_branding=True, cbt_pairing=True),
-        limits=_limits(
-            students=1000,
-            teachers=100,
-            parents=1000,
-            cbt_servers=5,
-        ),
+        limits=_limits(students=1000, teachers=100, parents=1000, cbt_servers=5),
     ),
     SubscriptionPlan.ENTERPRISE.value: PlanEntitlements(
         features=_paid_features(tenant_branding=True, cbt_pairing=True),
-        limits=_limits(
-            students=None,
-            teachers=None,
-            parents=None,
-            cbt_servers=10,
-        ),
+        limits=_limits(students=None, teachers=None, parents=None, cbt_servers=10),
     ),
 }
 
 
 def coerce_subscription_plan(plan: Any) -> SubscriptionPlan:
-    """Convert enum/string inputs into the canonical tenant plan enum."""
-
     if isinstance(plan, SubscriptionPlan):
         return SubscriptionPlan.FREE if plan == SubscriptionPlan.FREE_TRIAL else plan
-
     raw_value = getattr(plan, "value", plan)
     normalized = str(raw_value or "").strip().lower()
-
     if not normalized or normalized == SubscriptionPlan.FREE_TRIAL.value:
         return SubscriptionPlan.FREE
-
     resolved = PLAN_ALIASES.get(normalized, SubscriptionPlan.FREE)
     return SubscriptionPlan.FREE if resolved == SubscriptionPlan.FREE_TRIAL else resolved
 
 
 def normalize_plan_code(plan: Any) -> str:
-    """Return a stable lowercase plan code."""
-
     return coerce_subscription_plan(plan).value
 
 

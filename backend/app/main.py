@@ -41,11 +41,14 @@ from app.modules.classes.academic_levels_router import router as academic_levels
 from app.modules.classes.departments_router import router as departments_router
 from app.modules.classes.router import router as class_router
 from app.modules.communications.router import (
+    inbox_router,
     messages_router,
+    notices_router,
     notifications_router,
     router as communication_router,
-    superadmin_announcement_router,
-    tenant_admin_announcement_router,
+    superadmin_notice_router,
+    teacher_notice_router,
+    tenant_admin_notice_router,
 )
 from app.modules.email_outbox.router import router as email_outbox_router
 from app.modules.legal_compliance.router import router as legal_compliance_router
@@ -239,9 +242,12 @@ def create_app() -> FastAPI:
     app.include_router(departments_router, prefix=API_V1_PREFIX)
     app.include_router(communication_router, prefix=API_V1_PREFIX)
     app.include_router(messages_router, prefix=API_V1_PREFIX)
+    app.include_router(inbox_router, prefix=API_V1_PREFIX)
     app.include_router(notifications_router, prefix=API_V1_PREFIX)
-    app.include_router(superadmin_announcement_router, prefix=API_V1_PREFIX)
-    app.include_router(tenant_admin_announcement_router, prefix=API_V1_PREFIX)
+    app.include_router(notices_router, prefix=API_V1_PREFIX)
+    app.include_router(superadmin_notice_router, prefix=API_V1_PREFIX)
+    app.include_router(tenant_admin_notice_router, prefix=API_V1_PREFIX)
+    app.include_router(teacher_notice_router, prefix=API_V1_PREFIX)
     app.include_router(metrics_router, prefix=API_V1_PREFIX)
     app.include_router(assessment_teacher_router, prefix=API_V1_PREFIX)
     app.include_router(curriculum_router, prefix=API_V1_PREFIX)
