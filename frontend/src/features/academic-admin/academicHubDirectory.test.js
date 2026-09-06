@@ -9,14 +9,23 @@ import {
 test("academic hub directory keeps every supported entity in workflow order", () => {
   const rows = buildAcademicHubDirectory({});
 
-  assert.equal(rows.length, 14);
-  assert.deepEqual(rows.slice(0, 4).map((row) => row.key), [
+  assert.deepEqual(rows.map((row) => row.key), [
     "sessions",
     "terms",
     "levels",
     "arm-labels",
+    "classes",
+    "departments",
+    "subjects",
+    "curriculum",
+    "assignments",
+    "school-calendar",
+    "grading",
+    "comment-templates",
+    "results",
+    "report-cards",
+    "progression",
   ]);
-  assert.equal(rows.at(-1).key, "progression");
 });
 
 test("academic hub directory derives only backend-grounded live states", () => {
