@@ -12,6 +12,8 @@ const CommunicationInboxPage = lazy(
   () => import("../pages/shared/CommunicationInboxPage"),
 );
 const MessagesPage = lazy(() => import("../pages/shared/MessagesPage"));
+const NoticeManagementPage = lazy(() => import("../pages/shared/NoticeManagementPage"));
+const NoticesPage = lazy(() => import("../pages/shared/NoticesPage"));
 const RoleAnalyticsPage = lazy(
   () => import("../pages/shared/RoleAnalyticsPage"),
 );
@@ -92,6 +94,8 @@ export const teacherRoutes = (
             </RuntimeFeatureRoute>
           }
         />
+        <Route path="/teacher/notices" element={<NoticeManagementPage mode="teacher" />} />
+        <Route path="/teacher/notices/received" element={<NoticesPage />} />
         <Route
           path="/teacher/settings"
           element={<RoleSettingsPage role="teacher" />}
