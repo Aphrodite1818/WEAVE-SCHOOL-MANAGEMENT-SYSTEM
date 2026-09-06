@@ -31,8 +31,8 @@ from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
 
 _NOTICE_PATHS = {
-    CommunicationActorType.TENANT_ADMIN: "/admin/notices",
-    CommunicationActorType.TEACHER: "/teacher/notices",
+    CommunicationActorType.TENANT_ADMIN: "/admin/notices/received",
+    CommunicationActorType.TEACHER: "/teacher/notices/received",
     CommunicationActorType.STUDENT: "/student/notices",
     CommunicationActorType.PARENT: "/parent/notices",
 }
