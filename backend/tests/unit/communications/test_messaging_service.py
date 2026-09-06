@@ -16,6 +16,7 @@ class FakeSession:
     def __init__(self) -> None:
         self.added = []
         self.added_many = []
+        self.info = {}
 
     def add(self, row) -> None:
         self.added.append(row)
@@ -24,7 +25,9 @@ class FakeSession:
         self.added_many.extend(rows)
 
     async def flush(self) -> None:
-        return None
+        for row in self.added:
+            if getattr(row, "id", None) is None:
+                row.id = uuid.uuid4()
 
     async def refresh(self, _row) -> None:
         return None
@@ -85,6 +88,25 @@ async def test_create_conversation_uses_new_participants_for_first_message(
         body="Hello from admin",
     )
 
-    await MessagingService.create_conversation(db, actor=sender, payload=payload)
+    conversation = await MessagingService.create_conversation(
+        db, actor=sender, payload=payload
+    )
 
-    assert any(isinstance(row, Message) for row in db.added)
+    message = next(row for row in db.added if isinstance(row, Message))
+    assert conversation.id is not None
+    assert message.id is not None
+
+    realtime_messages = db.info["weave_pending_realtime_messages"]
+    assert len(realtime_messages) == 2
+    assert {item.event.type for item in realtime_messages} == {"message.created"}
+    assert {item.audience.actor_id for item in realtime_messages} == {
+        sender.id,
+        recipient.actor_id,
+    }
+    for realtime_message in realtime_messages:
+        assert realtime_message.event.data["conversation_id"] == str(conversation.id)
+        assert realtime_message.event.data["message_id"] == str(message.id)
+        assert realtime_message.event.data["sender_actor_type"] == "tenant_admin"
+        assert realtime_message.event.data["sender_actor_id"] == str(sender.id)
+        assert realtime_message.event.data["body"] == "Hello from admin"
+        assert realtime_message.event.data["created_at"]
