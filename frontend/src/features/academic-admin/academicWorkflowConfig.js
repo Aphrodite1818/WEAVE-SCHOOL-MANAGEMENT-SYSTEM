@@ -219,7 +219,6 @@ export const academicWorkflowConfig = {
     tabs: [
       { id: "overview", label: "Results" },
       { id: "entry", label: "Create Result" },
-      { id: "bulk-actions", label: "Bulk Actions" },
     ],
   },
   "report-cards": {
@@ -234,8 +233,6 @@ export const academicWorkflowConfig = {
       { id: "overview", label: "Reports" },
       { id: "ready", label: "Student Readiness" },
       { id: "generate", label: "Generate Reports" },
-      { id: "bulk-actions", label: "Bulk Actions" },
-      { id: "override-audit", label: "Override Audit" },
     ],
   },
   "school-calendar": {
