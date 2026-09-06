@@ -30,3 +30,20 @@ test("messages workspace exposes animated bubbles without call controls", async 
   assert.match(styles, /prefers-reduced-motion/);
   assert.doesNotMatch(page, /PhoneCall|Video|Start call|Video call/);
 });
+
+test("communication navigation uses notices and exposes received notice routes", async () => {
+  const [nav, studentRoutes, parentRoutes] = await Promise.all([
+    readSource("src/components/layout/navConfig.js"),
+    readSource("src/routes/studentRoutes.jsx"),
+    readSource("src/routes/parentRoutes.jsx"),
+  ]);
+
+  assert.doesNotMatch(nav, /Announcements|\/announcements/);
+  assert.match(nav, /\/admin\/notices/);
+  assert.match(nav, /\/superadmin\/notices/);
+  assert.match(nav, /\/teacher\/notices/);
+  assert.match(nav, /\/student\/notices/);
+  assert.match(nav, /\/parent\/notices/);
+  assert.match(studentRoutes, /path="\/student\/notices"/);
+  assert.match(parentRoutes, /path="\/parent\/notices"/);
+});
