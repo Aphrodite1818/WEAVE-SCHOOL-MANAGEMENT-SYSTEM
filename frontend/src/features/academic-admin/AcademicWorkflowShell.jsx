@@ -12,36 +12,23 @@ import {
 import { academicWorkflowConfig } from "./academicWorkflowConfig";
 
 const lifecycleSteps = [
-  {
-    id: "draft",
-    label: "Draft",
-    helper: "Setup can still change before school work starts.",
-  },
-  {
-    id: "open",
-    label: "Open",
-    helper: "This period is active for normal academic work.",
-  },
-  {
-    id: "closing",
-    label: "Closing",
-    helper: "Final checks are being completed before closure.",
-  },
-  {
-    id: "closed",
-    label: "Closed",
-    helper: "This period is read-only for history and reports.",
-  },
+  { id: "draft", label: "Draft", helper: "Setup can still change before school work starts." },
+  { id: "open", label: "Open", helper: "This period is active for normal academic work." },
+  { id: "closing", label: "Closing", helper: "Final checks are being completed before closure." },
+  { id: "closed", label: "Closed", helper: "This period is read-only for history and reports." },
 ];
 
-const createActionWorkflows = new Set([
-  "sessions",
-  "terms",
-  "levels",
-  "arm-labels",
-  "classes",
-  "subjects",
-]);
+const secondaryActionTabs = {
+  sessions: new Set(["create"]),
+  terms: new Set(["create"]),
+  levels: new Set(["create"]),
+  "arm-labels": new Set(["create"]),
+  classes: new Set(["create"]),
+  subjects: new Set(["create"]),
+  assignments: new Set(["assign"]),
+  results: new Set(["entry"]),
+  "report-cards": new Set(["generate"]),
+};
 
 const normalizeTab = (workflow, tab) => {
   const config = academicWorkflowConfig[workflow];
@@ -64,9 +51,8 @@ function AcademicWorkflowShell({
     workflow,
     searchParams.get("view") || searchParams.get("tab"),
   );
-  const visibleTabs = config.tabs.filter(
-    (tab) => !(tab.id === "create" && createActionWorkflows.has(workflow)),
-  );
+  const hiddenTabs = secondaryActionTabs[workflow] || new Set();
+  const visibleTabs = config.tabs.filter((tab) => !hiddenTabs.has(tab.id));
 
   const selectTab = (tabId) => {
     const next = new URLSearchParams(searchParams);
@@ -95,18 +81,12 @@ function AcademicWorkflowShell({
             <span className="hidden h-5 w-px bg-border sm:block" />
             <AcademicStatusBadge
               label="Session"
-              status={
-                currentSession?.status ||
-                (currentSession ? "ready" : "not configured")
-              }
+              status={currentSession?.status || (currentSession ? "ready" : "not configured")}
               helper={currentSession?.name || ""}
             />
             <AcademicStatusBadge
               label="Term"
-              status={
-                currentTerm?.status ||
-                (currentTerm ? "ready" : "not configured")
-              }
+              status={currentTerm?.status || (currentTerm ? "ready" : "not configured")}
               helper={currentTerm?.display_name || currentTerm?.name || ""}
             />
           </div>
@@ -158,10 +138,7 @@ function AcademicWorkflowShell({
 
         {children(activeTab)}
       </section>
-      <AcademicOrbitNavigator
-        currentWorkflow={workflow}
-        workflows={availableWorkflows}
-      />
+      <AcademicOrbitNavigator currentWorkflow={workflow} workflows={availableWorkflows} />
     </DashboardLayout>
   );
 }
