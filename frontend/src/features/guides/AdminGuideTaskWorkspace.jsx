@@ -1,5 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { ROLE_GUIDES } from "./roleGuideConfig";
+import AdminCalendarSetupWorkspace from "./AdminCalendarSetupWorkspace";
 import SubjectsWorkspace from "../academic-admin/SubjectsWorkspace";
 import AcademicPeriodsWorkspace from "../academic-admin/AcademicPeriodsWorkspace";
 import AcademicLevelsWorkspace from "../academic-admin/AcademicLevelsWorkspace";
@@ -9,7 +10,6 @@ import CurriculumWorkspace from "../academic-admin/CurriculumWorkspace";
 import DepartmentsWorkspace from "../academic-admin/DepartmentsWorkspace";
 import ProgressionWorkspace from "../academic-admin/ProgressionWorkspace";
 import TeacherAssignmentsWorkspace from "../academic-admin/TeacherAssignmentsWorkspace";
-import SchoolCalendarWorkspace from "../schoolCalendar/components/SchoolCalendarWorkspace";
 import TenantBrandingPage from "../../pages/admin/TenantBrandingPage";
 
 const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
@@ -76,14 +76,10 @@ function AdminGuideTaskWorkspace({
   if (config.kind === "progression") return <ProgressionWorkspace />;
   if (config.kind === "calendar") {
     return (
-      <div className="space-y-4">
-        <SchoolCalendarWorkspace
-          guided
-          activeTab="setup"
-          onSaved={onSaved}
-          setupTermId={setupTermId}
-        />
-      </div>
+      <AdminCalendarSetupWorkspace
+        setupTermId={setupTermId}
+        onSaved={onSaved}
+      />
     );
   }
 
