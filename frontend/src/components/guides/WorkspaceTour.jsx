@@ -1,9 +1,12 @@
 import { ArrowLeft, ArrowRight, Check, Compass, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { navGroups } from "../layout/navConfig";
+import { filterAvailableItems } from "../../features/navigation/featureAvailability";
+import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { tourContentForItem } from "../../features/guides/workspaceTourContent";
-import { getErrorMessage } from "../../services/api";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
+import { authSession, getErrorMessage } from "../../services/api";
 import Button from "../ui/Button";
 import WorkspaceTourSnapshot from "./WorkspaceTourSnapshot";
 import "./workspaceTour.css";
@@ -28,6 +31,24 @@ function connectorGeometry(card, target) {
 }
 
 export default function WorkspaceTour({ role, onClose, onSetup }) {
+  const subscription = useSubscription();
+  const runtimeConfig = useRuntimeConfig();
+  const user = authSession.getUser() || {};
+  const actorType = String(user?.actor_type || "").toLowerCase();
+  const isAccountScope =
+    ["parent_account", "teacher_account"].includes(actorType) && !user?.tenant_id;
+  const configuredItems = useMemo(
+    () =>
+      filterAvailableItems(
+        (navGroups[role] || []).flatMap((group) => group.items),
+        {
+          subscription,
+          runtimeFeatures: runtimeConfig?.features || {},
+          isAccountScope,
+        },
+      ),
+    [isAccountScope, role, runtimeConfig, subscription],
+  );
   const [steps, setSteps] = useState([]);
   const [index, setIndex] = useState(-1);
   const [geometry, setGeometry] = useState(null);
@@ -44,20 +65,19 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
   const visibleRoutes = steps.map((item) => item.to);
 
   useLayoutEffect(() => {
-    const configured = (navGroups[role] || []).flatMap((group) => group.items);
-    // The rendered navigation is the canonical release/plan view for the tour.
-    // Hidden desktop/mobile duplicates and runtime-disabled features are ignored.
+    // Intersect canonical availability with what is actually rendered so every
+    // guided step has a real, visible anchor in the active navigation surface.
     const rendered = new Set(
       Array.from(document.querySelectorAll("[data-tour-target]"))
         .filter((node) => node.getBoundingClientRect().width > 0)
         .map((node) => node.dataset.tourTarget),
     );
     setSteps(
-      configured
+      configuredItems
         .filter((item) => rendered.has(item.to))
         .map((item) => tourContentForItem(role, item)),
     );
-  }, [role]);
+  }, [configuredItems, role]);
 
   useEffect(() => {
     const previousFocus = document.activeElement;
