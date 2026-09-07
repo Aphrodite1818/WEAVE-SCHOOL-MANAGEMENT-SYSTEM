@@ -58,4 +58,5 @@
   [data-tour-navigation="true"] nav { padding-top: 8px; }
   [data-tour-navigation="true"] nav > div > p { display: none; }
 }
-.workspace-tour button { background-image: none; min-height: 44px; }
+.workspace-tour button { min-height: 44px; }
+.workspace-tour-close, .workspace-tour-secondary-action { background-image: none; }
