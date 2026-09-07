@@ -2,7 +2,7 @@ import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
+import { isFeatureAvailable } from "../../features/navigation/featureAvailability";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { authSession } from "../../services/api";
@@ -21,23 +21,6 @@ function resolveWorkspaceLogo(user) {
     user?.logo_url ||
     null
   );
-}
-
-function shouldHideNavItem(item, subscription, runtimeConfig) {
-  if (item.runtimeFeature && runtimeConfig?.features?.[item.runtimeFeature] === false) {
-    return true;
-  }
-
-  if (!item.featureCode) return false;
-
-  const featureGuard = subscription.getFeatureGuard(item.featureCode);
-  const planCode = String(subscription.planCode || "").trim().toLowerCase();
-
-  if (item.featureCode === FEATURE_CODES.BULK_IMPORT && planCode === "free_trial") {
-    return true;
-  }
-
-  return featureGuard.pending || featureGuard.allowed === false;
 }
 
 export default function SidebarContent({
@@ -61,13 +44,17 @@ export default function SidebarContent({
   const [failedWorkspaceLogo, setFailedWorkspaceLogo] = useState(null);
   const hasCustomWorkspaceLogo = Boolean(workspaceLogo) && failedWorkspaceLogo !== workspaceLogo;
   const workspaceLogoAlt = `${schoolName || "School"} logo`;
+  const availabilityContext = {
+    subscription,
+    runtimeFeatures: runtimeConfig?.features || {},
+    isAccountScope,
+  };
   const groups = (navGroups[role] || navGroups.admin)
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (isAccountScope && !item.accountScope) return false;
-        return !shouldHideNavItem(item, subscription, runtimeConfig);
-      }),
+      items: group.items.filter((item) =>
+        isFeatureAvailable(item, availabilityContext),
+      ),
     }))
     .filter((group) => group.items.length > 0);
   const navRef = useRef(null);
