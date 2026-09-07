@@ -159,6 +159,13 @@ const buildFormData = (statusData, role) => {
   }, {});
 };
 
+const readOnlyDisplayValue = (field, value) => {
+  if (field.type === "select") {
+    return field.options?.find((option) => option.value === value)?.label || value;
+  }
+  return value;
+};
+
 function ReadOnlyField({ field, value }) {
   return (
     <div>
@@ -166,7 +173,7 @@ function ReadOnlyField({ field, value }) {
         {field.label}
       </label>
       <div className="min-h-11 rounded-xl border border-border bg-surface-muted px-3 py-3 text-sm text-text-soft">
-        {value || "Not available"}
+        {readOnlyDisplayValue(field, value) || "Not available"}
       </div>
     </div>
   );
@@ -294,6 +301,7 @@ function ProfileCompletionForm({
   onProfileStateResolved,
   initialStatusData = null,
   showMediaPreview = true,
+  institutionTypeReadOnly = false,
 }) {
   const normalizedRole = onboardingService.normalizeRole(role);
   const callbacksRef = useRef({ onSaved, onProfileStateResolved });
@@ -307,10 +315,28 @@ function ProfileCompletionForm({
   const [isLoading, setIsLoading] = useState(!initialStatusData);
   const { showSuccess, showError } = useToast();
 
-  const sections = useMemo(
-    () => getRoleSections(normalizedRole),
-    [normalizedRole],
-  );
+  const sections = useMemo(() => {
+    const shouldLockInstitutionType =
+      normalizedRole === "admin" &&
+      (institutionTypeReadOnly || statusData?.onboarding_required === false);
+
+    return getRoleSections(normalizedRole).map((section) => {
+      if (section.key !== "institution_type" || !shouldLockInstitutionType) {
+        return section;
+      }
+      return {
+        ...section,
+        description:
+          "Current institution type. Use Settings → Institution type for a controlled structure change.",
+        fields: section.fields.map((field) => ({
+          ...field,
+          label: "Institution type",
+          readOnly: true,
+          required: false,
+        })),
+      };
+    });
+  }, [institutionTypeReadOnly, normalizedRole, statusData?.onboarding_required]);
 
   useEffect(() => {
     callbacksRef.current = { onSaved, onProfileStateResolved };
