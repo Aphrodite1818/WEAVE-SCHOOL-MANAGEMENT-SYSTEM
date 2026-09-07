@@ -17,6 +17,7 @@ on:
       - "ci/**"
       - staging
       - master
+      - feat/workspace-welcome-tour
     paths:
       - "frontend/**"
       - "backend/app/main.py"
