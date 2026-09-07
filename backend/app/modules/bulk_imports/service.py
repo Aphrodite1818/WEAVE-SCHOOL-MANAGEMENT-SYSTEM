@@ -79,10 +79,7 @@ from app.modules.classes.repository import (
     ArmLabelRepository,
     ClassRoomRepository,
 )
-from app.modules.classes.department_repository import (
-    AcademicLevelDepartmentRepository,
-    CanonicalDepartmentRepository,
-)
+from app.modules.classes.department_repository import AcademicLevelDepartmentRepository
 from app.modules.classes.models import AcademicLevelStatus
 from app.modules.parents.repository import ParentAccountRepository
 from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
@@ -495,7 +492,7 @@ class BulkImportService:
         tenant_id: UUID,
         validation_results: list[ImportRowValidationResult],
     ) -> None:
-        """Resolve level + arm to class and validate current-term specialization."""
+        """Resolve level + arm to class and derive current-term specialization."""
 
         current_term = await StudentAcademicRepository.get_current_term(db, tenant_id)
 
@@ -503,7 +500,6 @@ class BulkImportService:
             normalized_row = validation_result.normalized_row
             level_name = normalized_row.get("level")
             arm_name = normalized_row.get("arm")
-            department_name = normalized_row.get("department")
 
             if _is_blank(level_name) or _is_blank(arm_name):
                 continue
@@ -591,18 +587,7 @@ class BulkImportService:
             normalized_row["class_id"] = str(classroom.id)
 
             if current_term is None:
-                if not _is_blank(department_name):
-                    append_validation_error(
-                        validation_result=validation_result,
-                        field_name="department",
-                        error_code="department_term_unavailable",
-                        error_message=(
-                            "Department placement cannot be validated because there is no "
-                            "current academic term."
-                        ),
-                    )
-                else:
-                    normalized_row["department"] = None
+                normalized_row["department"] = None
                 continue
 
             assignment = await BulkImportService._get_class_term_department_assignment(
@@ -613,18 +598,7 @@ class BulkImportService:
             )
 
             if assignment is None:
-                if not _is_blank(department_name):
-                    append_validation_error(
-                        validation_result=validation_result,
-                        field_name="department",
-                        error_code="department_not_applicable",
-                        error_message=(
-                            f"Class {class_reference} is General for the current term. "
-                            "Leave department blank."
-                        ),
-                    )
-                else:
-                    normalized_row["department"] = None
+                normalized_row["department"] = None
                 continue
 
             assigned_link = await AcademicLevelDepartmentRepository.get_by_id(
@@ -642,81 +616,16 @@ class BulkImportService:
             ):
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="department",
-                    error_code="department_assignment_invalid",
+                    field_name="arm",
+                    error_code="class_department_assignment_invalid",
                     error_message=(
                         f"Class {class_reference} has an invalid current-term department assignment. "
                         "Fix the academic setup before importing students."
                     ),
                 )
                 continue
-            assigned_department = assigned_link.department
 
-            if _is_blank(department_name):
-                append_validation_error(
-                    validation_result=validation_result,
-                    field_name="department",
-                    error_code="department_required",
-                    error_message=(
-                        f"Department is required for class {class_reference} in the current term. "
-                        f"Enter {assigned_department.name}."
-                    ),
-                )
-                continue
-
-            supplied_department = await CanonicalDepartmentRepository.get_by_normalized_name(
-                db,
-                tenant_id,
-                str(department_name).strip().casefold(),
-            )
-            if supplied_department is None:
-                append_validation_error(
-                    validation_result=validation_result,
-                    field_name="department",
-                    error_code="department_not_found",
-                    error_message=(
-                        f"Department {department_name} does not exist for academic level {level.name}."
-                    ),
-                )
-                continue
-            supplied_link = (
-                await AcademicLevelDepartmentRepository.get_for_level_department(
-                    db,
-                    tenant_id,
-                    level.id,
-                    supplied_department.id,
-                )
-                if supplied_department is not None
-                else None
-            )
-            if (
-                supplied_department is None
-                or supplied_link is None
-                or not supplied_link.is_active
-                or supplied_link.archived_at is not None
-                or not supplied_department.is_active
-                or supplied_department.archived_at is not None
-            ):
-                append_validation_error(
-                    validation_result=validation_result,
-                    field_name="department",
-                    error_code="department_inactive",
-                    error_message=f"Department {supplied_department.name} is inactive or archived.",
-                )
-                continue
-            if supplied_link.id != assigned_link.id:
-                append_validation_error(
-                    validation_result=validation_result,
-                    field_name="department",
-                    error_code="department_mismatch",
-                    error_message=(
-                        f"Class {class_reference} is assigned to {assigned_department.name} "
-                        f"for the current term, not {supplied_department.name}."
-                    ),
-                )
-                continue
-
-            normalized_row["department"] = assigned_department.name
+            normalized_row["department"] = assigned_link.department.name
 
     @staticmethod
     async def preflight_student_parent_invitations(
@@ -850,6 +759,22 @@ class BulkImportService:
         """Process one validated row."""
 
         if resource_type == ImportResourceType.STUDENTS:
+            # Re-resolve at the actual creation boundary so the background worker
+            # never trusts a department value staged during dry-run. Class and
+            # current-term specialization remain the source of truth.
+            validation_result.errors.clear()
+            await BulkImportService.resolve_student_class_references(
+                db=db,
+                tenant_id=actor.tenant_id,
+                validation_results=[validation_result],
+            )
+            if validation_result.errors:
+                raise ConflictException(
+                    detail="; ".join(
+                        error.error_message for error in validation_result.errors
+                    )
+                )
+
             created = await BulkImportService.create_student_from_row(
                 db=db,
                 actor=actor,
