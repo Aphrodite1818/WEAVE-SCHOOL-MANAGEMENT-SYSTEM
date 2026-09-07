@@ -26,4 +26,20 @@ export const tenantService = {
     tenantsById.set(key, mergePatchResult(current, changes, response));
     return response;
   },
+
+  previewInstitutionTypeTransition: (tenantId, institutionType) =>
+    api.get(
+      `/tenants/${tenantId}/institution-type-transition?institution_type=${encodeURIComponent(
+        institutionType,
+      )}`,
+    ),
+
+  applyInstitutionTypeTransition: async (tenantId, payload) => {
+    const response = await api.post(
+      `/tenants/${tenantId}/institution-type-transition`,
+      payload,
+    );
+    tenantsById.delete(String(tenantId));
+    return response;
+  },
 };
