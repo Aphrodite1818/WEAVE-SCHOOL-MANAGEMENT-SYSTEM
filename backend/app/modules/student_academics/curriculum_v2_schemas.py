@@ -68,6 +68,13 @@ class SetupReadinessResponse(BaseModel):
     term_name: str | None
     session_name: str | None
     note: str
+    academic_session_id: uuid.UUID | None = None
+    session_status: str | None = None
+    session_is_current: bool = False
+    term_status: str | None = None
+    term_is_current: bool = False
+    session_dates_ready: bool = False
+    term_dates_ready: bool = False
 
 
 class CurriculumSubjectUpdate(BaseModel):

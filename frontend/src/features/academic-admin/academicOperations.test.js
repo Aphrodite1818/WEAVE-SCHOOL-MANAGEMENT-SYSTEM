@@ -14,19 +14,20 @@ test("draft purchases remain scheduled even when entitlement status is active", 
   assert.equal(termEntitlementLabel({ status: "expired" }, { status: "open", is_current: true }), "expired");
 });
 
-test("Free onboarding excludes branding without removing required operational setup", () => {
-  const steps = visibleGuideSteps(ROLE_GUIDES.admin.steps, { attendanceEnabled: false, features: { tenant_branding: false }, role: "admin", completionMap: { departments: null } });
-  assert.ok(!steps.some((step) => step.id === "school_logo" || step.id === "departments"));
-  for (const id of ["school_basics", "session", "term", "levels", "students", "teachers", "grading", "readiness"]) {
-    assert.ok(steps.some((step) => step.id === id && !step.optional));
+test("initial admin setup is the same three foundations on Free and paid plans", () => {
+  for (const features of [undefined, { tenant_branding: false }, { tenant_branding: true }]) {
+    const steps = visibleGuideSteps(ROLE_GUIDES.admin.steps, { attendanceEnabled: false, features, role: "admin", completionMap: { departments: null } });
+    assert.deepEqual(steps.map((step) => step.id), ["session", "term", "calendar"]);
+    assert.ok(steps.every((step) => !step.optional && !step.feature));
   }
 });
 
-test("released branding is optional for entitled schools; unknown entitlement fails closed", () => {
+test("optional guide features still fail closed without their entitlement", () => {
+  const steps = [{ id: "school_logo", feature: "tenant_branding", optional: true }];
   const options = { attendanceEnabled: false, role: "admin" };
-  assert.equal(visibleGuideSteps(ROLE_GUIDES.admin.steps, options).some((step) => step.feature), false);
-  const branded = visibleGuideSteps(ROLE_GUIDES.admin.steps, { ...options, features: { tenant_branding: true } });
-  assert.equal(branded.find((step) => step.id === "school_logo").optional, true);
+  assert.deepEqual(visibleGuideSteps(steps, options), []);
+  assert.deepEqual(visibleGuideSteps(steps, { ...options, features: { tenant_branding: false } }), []);
+  assert.deepEqual(visibleGuideSteps(steps, { ...options, features: { tenant_branding: true } }), steps);
 });
 
 test("unreleased attendance stays out of every role guide", () => {

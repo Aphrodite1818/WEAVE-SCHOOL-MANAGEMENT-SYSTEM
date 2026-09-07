@@ -1,0 +1,26 @@
+{
+  "name": "Weave School Management",
+  "short_name": "Weave",
+  "description": "Weave school management workspace for admins, teachers, students, and parents.",
+  "start_url": "/login",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg?v=weave-mark-1",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/weave-maskable.svg?v=weave-mark-1",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

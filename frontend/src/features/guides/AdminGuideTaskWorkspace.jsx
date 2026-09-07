@@ -9,9 +9,9 @@ import CurriculumWorkspace from "../academic-admin/CurriculumWorkspace";
 import DepartmentsWorkspace from "../academic-admin/DepartmentsWorkspace";
 import ProgressionWorkspace from "../academic-admin/ProgressionWorkspace";
 import TeacherAssignmentsWorkspace from "../academic-admin/TeacherAssignmentsWorkspace";
-import SchoolCalendarGuide from "../schoolCalendar/components/SchoolCalendarGuide";
 import SchoolCalendarWorkspace from "../schoolCalendar/components/SchoolCalendarWorkspace";
 import TenantBrandingPage from "../../pages/admin/TenantBrandingPage";
+import AdminStartTermWorkspace from "./AdminStartTermWorkspace";
 
 const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
   school_logo: { kind: "branding" },
@@ -28,16 +28,17 @@ const ADMIN_GUIDE_WORKSPACE_CONFIG = Object.freeze({
   progression: { kind: "progression" },
 });
 
-function AdminGuideTaskWorkspace({ stepId }) {
+function AdminGuideTaskWorkspace({ stepId, onSaved, setupTermId, setupSessionId, setupSessionName }) {
   const [searchParams] = useSearchParams();
   const config = ADMIN_GUIDE_WORKSPACE_CONFIG[stepId];
   const activeTab = searchParams.get("view") || config?.activeTab;
+  if (stepId === "start_term") return <AdminStartTermWorkspace termId={setupTermId} onSaved={onSaved} />;
   if (!config) {
     const step = ROLE_GUIDES.admin.steps.find((item) => item.id === stepId);
     return step ? <Link className="inline-flex rounded-lg bg-primary px-4 py-3 font-semibold text-white" to={step.to}>{step.actionLabel}</Link> : null;
   }
   if (config.kind === "subjects") return <SubjectsWorkspace activeTab={activeTab} />;
-  if (config.kind === "periods") return <AcademicPeriodsWorkspace domain={config.domain} activeTab={activeTab} />;
+  if (config.kind === "periods") return <AcademicPeriodsWorkspace key={stepId} domain={config.domain} activeTab={activeTab} guided onSaved={onSaved} setupSessionName={setupSessionName} setupRecordId={stepId === "session" ? setupSessionId : setupTermId} />;
 
   if (config.kind === "branding") return <TenantBrandingPage embedded />;
   if (config.kind === "levels")
@@ -56,8 +57,7 @@ function AdminGuideTaskWorkspace({ stepId }) {
   if (config.kind === "calendar") {
     return (
       <div className="space-y-4">
-        <SchoolCalendarGuide activeTab={activeTab} />
-        <SchoolCalendarWorkspace activeTab={activeTab} />
+        <SchoolCalendarWorkspace guided onSaved={onSaved} setupTermId={setupTermId} />
       </div>
     );
   }

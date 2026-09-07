@@ -1,0 +1,1 @@
+import{r as e}from"./Button-Dt31Dr6g.js";var t=e(`Ban`,[[`circle`,{cx:`12`,cy:`12`,r:`10`,key:`1mglay`}],[`path`,{d:`m4.9 4.9 14.2 14.2`,key:`1m5liu`}]]);export{t};

@@ -116,6 +116,10 @@ async def get_setup_readiness(db, tenant_id):
             "students": False,
             "assignments": False,
             "readiness": False,
+            "start_term": bool(
+                session and session.status == "open" and session.is_current
+                and term and term.status == "open" and term.is_current
+            ),
         }
     )
     from app.modules.subjects.models import Subject
@@ -175,5 +179,12 @@ async def get_setup_readiness(db, tenant_id):
         "academic_term_id": term.id if term else None,
         "term_name": term.name if term else None,
         "session_name": session.name if session else None,
+        "academic_session_id": session.id if session else None,
+        "session_status": session.status if session else None,
+        "session_is_current": bool(session and session.is_current),
+        "term_status": term.status if term else None,
+        "term_is_current": bool(term and term.is_current),
+        "session_dates_ready": bool(session and session.start_date and session.end_date),
+        "term_dates_ready": bool(term and term.start_date and term.end_date),
         "note": "Configuration evidence is checked for the current open term, or the first draft term in the open or first draft session. Review all classes and teacher coverage before operating.",
     }

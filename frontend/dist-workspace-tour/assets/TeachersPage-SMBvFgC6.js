@@ -1,0 +1,1 @@
+import{i as e}from"./Button-Dt31Dr6g.js";import{t}from"./MembershipDirectoryPage-Jk4d5yi0.js";var n=e();function r(){return(0,n.jsx)(t,{role:`teacher`})}export{r as default};

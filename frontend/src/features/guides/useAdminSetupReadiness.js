@@ -15,7 +15,14 @@ export function useAdminSetupReadiness() {
     setError("");
     try {
       const response = await academicService.getSetupReadiness();
-      if (request === generation.current) setData(response);
+      if (request === generation.current) setData({
+        ...response,
+        completion: {
+          ...response.completion,
+          session: response.completion?.session === true && response.session_dates_ready === true,
+          term: response.completion?.term === true && response.term_dates_ready === true,
+        },
+      });
     } catch (err) {
       if (request === generation.current) {
         setData(null);

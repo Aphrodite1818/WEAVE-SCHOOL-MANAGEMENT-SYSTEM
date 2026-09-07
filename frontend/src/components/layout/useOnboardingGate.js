@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { onboardingService } from "../../services/onboardingService";
+import { guideService } from "../../services/guideService";
+import { queueInitialTour } from "../../features/guides/workspaceTourState";
 
 const GETTING_STARTED_ROUTE_BY_ROLE = {
-  admin: "/admin/getting-started",
-  teacher: "/teacher/getting-started",
-  parent: "/parent/getting-started",
-  student: "/student/getting-started",
+  admin: "/admin/dashboard",
+  teacher: "/teacher/dashboard",
+  parent: "/parent/dashboard",
+  student: "/student/dashboard",
 };
 
 export default function useOnboardingGate({ role, enabled = true }) {
@@ -15,6 +17,7 @@ export default function useOnboardingGate({ role, enabled = true }) {
   const normalizedRole = onboardingService.normalizeRole(role);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileMode, setProfileMode] = useState("onboarding");
+  const [preparingWelcome, setPreparingWelcome] = useState(false);
   const [onboardingState, setOnboardingState] = useState({
     loading: true,
     required: false,
@@ -67,10 +70,21 @@ export default function useOnboardingGate({ role, enabled = true }) {
     if (!required) setProfileModalOpen(false);
   };
 
-  const handleProfileSaved = (status) => {
+  const handleProfileSaved = async (status) => {
     const required = Boolean(status?.onboarding_required);
     const completedInitialOnboarding =
-      profileMode === "onboarding" && !required;
+      profileMode === "onboarding" && onboardingState.required && !required;
+
+    if (completedInitialOnboarding) {
+      setPreparingWelcome(true);
+      try {
+        await queueInitialTour(normalizedRole, completedInitialOnboarding, guideService);
+      } catch {
+        // An unavailable tour must not block a successfully saved profile.
+      } finally {
+        setPreparingWelcome(false);
+      }
+    }
 
     setOnboardingState({ loading: false, required, status: status || null });
     if (!required) setProfileModalOpen(false);
@@ -86,6 +100,7 @@ export default function useOnboardingGate({ role, enabled = true }) {
   };
 
   return {
+    preparingWelcome,
     onboardingState,
     profileModalOpen,
     setProfileModalOpen,

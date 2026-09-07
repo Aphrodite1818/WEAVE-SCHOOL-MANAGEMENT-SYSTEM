@@ -85,6 +85,10 @@ function AcademicPeriodsWorkspace({
   domain,
   activeTab = "overview",
   onContextChange,
+  guided = false,
+  onSaved,
+  setupSessionName,
+  setupRecordId,
 }) {
   const isSessions = domain === "sessions";
   const { showError, showSuccess } = useToast();
@@ -105,10 +109,20 @@ function AcademicPeriodsWorkspace({
         academicService.listSessions({ limit: 100 }),
         academicService.listTerms({ limit: 100 }),
       ]);
-      const sessionRows = asItems(sessionResponse);
+      const sessionRows = guided && setupSessionName
+        ? asItems(sessionResponse).filter((item) => item.name === setupSessionName)
+        : asItems(sessionResponse);
       const termRows = asItems(termResponse);
       setSessions(sessionRows);
       setTerms(termRows);
+      if (guided && setupRecordId) {
+        const record = (isSessions ? sessionRows : termRows).find((item) => item.id === setupRecordId);
+        if (record) {
+          setEditing({ type: isSessions ? "session" : "term", id: record.id });
+          if (isSessions) setSessionForm({ ...BLANK_SESSION, ...record });
+          else setTermForm({ ...BLANK_TERM, ...record });
+        }
+      }
 
       const currentSession = sessionRows.find((item) => item.is_current) || null;
       const currentTerm = termRows.find((item) => item.is_current) || null;
@@ -131,7 +145,7 @@ function AcademicPeriodsWorkspace({
         ),
       );
     }
-  }, [isSessions, onContextChange, showError]);
+  }, [isSessions, onContextChange, showError, guided, setupSessionName, setupRecordId]);
 
   useEffect(() => {
     load();
@@ -195,8 +209,9 @@ function AcademicPeriodsWorkspace({
       if (row) await academicService.updateSession(row.id, payload);
       else await academicService.createSession(payload);
       showSuccess(row ? "Academic session updated." : "Academic session created.");
-      finishAcademicCreation(submission, () => setSessionForm(BLANK_SESSION), closeEditor, Boolean(editing));
+      if (!guided) finishAcademicCreation(submission, () => setSessionForm(BLANK_SESSION), closeEditor, Boolean(editing));
       await load();
+      if (guided) await onSaved?.();
     } catch (error) {
       showError(getErrorMessage(error, "Could not save academic session."));
     } finally {
@@ -224,8 +239,9 @@ function AcademicPeriodsWorkspace({
       showSuccess(
         editing?.type === "term" ? "Academic term updated." : "Academic term created.",
       );
-      finishAcademicCreation(submission, () => setTermForm((current) => ({ ...BLANK_TERM, academic_session_id: current.academic_session_id })), closeEditor, Boolean(editing));
+      if (!guided) finishAcademicCreation(submission, () => setTermForm((current) => ({ ...BLANK_TERM, academic_session_id: current.academic_session_id })), closeEditor, Boolean(editing));
       await load();
+      if (guided) await onSaved?.();
     } catch (error) {
       showError(getErrorMessage(error, "Could not save academic term."));
     } finally {
@@ -423,7 +439,7 @@ function AcademicPeriodsWorkspace({
             : "Edit session"
           : "Create session"
       }
-      description="Session dates become immutable after opening. An open session may only change its next-session progression target."
+      description={guided ? "Name the school year and choose its dates." : "Session dates become immutable after opening. An open session may only change its next-session progression target."}
     >
       <form className="space-y-3" onSubmit={saveSession}>
         <fieldset disabled={Boolean(saving)} className="space-y-3">
@@ -443,6 +459,7 @@ function AcademicPeriodsWorkspace({
             <Input
               label="Start date"
               type="date"
+              required={guided}
               value={sessionForm.start_date}
               onChange={(event) =>
                 setSessionForm((current) => ({
@@ -455,6 +472,7 @@ function AcademicPeriodsWorkspace({
             <Input
               label="End date"
               type="date"
+              required={guided}
               value={sessionForm.end_date}
               onChange={(event) =>
                 setSessionForm((current) => ({
@@ -465,7 +483,7 @@ function AcademicPeriodsWorkspace({
               disabled={sessionById.get(editing?.id)?.status === "open"}
             />
           </div>
-          <SelectControl
+          {!guided ? <SelectControl
             label="Next session"
             value={sessionForm.next_academic_session_id}
             onChange={(value) =>
@@ -479,13 +497,13 @@ function AcademicPeriodsWorkspace({
               .map((item) => ({ value: item.id, label: item.name }))}
             clearable
             placeholder="Optional progression target"
-          />
+          /> : null}
           <FormActions
             submitting={saving === "session"}
-            submitLabel={editing ? "Save session" : "Create session"}
-            repeatable
+            submitLabel={guided ? "Save and continue" : editing ? "Save session" : "Create session"}
+            repeatable={!guided}
             editing={Boolean(editing)}
-            onCancel={closeEditor}
+            onCancel={guided ? undefined : closeEditor}
           />
         </fieldset>
       </form>
@@ -493,7 +511,7 @@ function AcademicPeriodsWorkspace({
   ) : (
     <WorkspacePanel
       title={editing?.type === "term" ? "Edit term" : "Create term"}
-      description="Terms belong to one academic session. A plan is deliberately selected only when the term is opened."
+      description={guided ? "Choose a term and its dates within the school year." : "Terms belong to one academic session. A plan is deliberately selected only when the term is opened."}
     >
       <form className="space-y-3" onSubmit={saveTerm}>
         <fieldset disabled={Boolean(saving)} className="space-y-3">
@@ -527,6 +545,7 @@ function AcademicPeriodsWorkspace({
             <Input
               label="Start date"
               type="date"
+              required={guided}
               value={termForm.start_date}
               onChange={(event) =>
                 setTermForm((current) => ({
@@ -538,6 +557,7 @@ function AcademicPeriodsWorkspace({
             <Input
               label="End date"
               type="date"
+              required={guided}
               value={termForm.end_date}
               onChange={(event) =>
                 setTermForm((current) => ({
@@ -549,15 +569,17 @@ function AcademicPeriodsWorkspace({
           </div>
           <FormActions
             submitting={saving === "term"}
-            submitLabel={editing ? "Save term" : "Create term"}
-            repeatable
+            submitLabel={guided ? "Save and continue" : editing ? "Save term" : "Create term"}
+            repeatable={!guided}
             editing={Boolean(editing)}
-            onCancel={closeEditor}
+            onCancel={guided ? undefined : closeEditor}
           />
         </fieldset>
       </form>
     </WorkspacePanel>
   );
+
+  if (guided) return <div className="school-year-form">{editor}</div>;
 
   return (
     <>

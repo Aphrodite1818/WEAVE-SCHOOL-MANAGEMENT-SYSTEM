@@ -1,0 +1,1 @@
+import{i as e}from"./Button-Dt31Dr6g.js";import{t}from"./AttendanceWorkspace-C0g9cqoi.js";var n=e();function r(){return(0,n.jsx)(t,{role:`student`})}export{r as default};

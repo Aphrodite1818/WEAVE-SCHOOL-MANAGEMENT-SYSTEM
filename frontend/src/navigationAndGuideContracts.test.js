@@ -38,9 +38,10 @@ test("admin guided setup keeps configuration inside the selected step", () => {
   assert.match(overview, /navigate\(`\/admin\/getting-started\/\$\{step\.id\}`\)/);
   assert.match(stepPage, /<AdminGuideTaskWorkspace stepId=\{step\.id\}/);
   assert.doesNotMatch(stepPage, /navigate\(step\.to\)/);
-  assert.match(stepPage, /Previous:/);
-  assert.match(stepPage, /Skip for now/);
-  assert.match(stepPage, /Next:/);
+  assert.match(stepPage, /SchoolYearProgress/);
+  assert.match(stepPage, /progress\.canOpen\(step\.id\)/);
+  assert.match(stepPage, /Continue to/);
+  assert.doesNotMatch(stepPage, /Skip for now|What this page controls/);
   assert.match(workspace, /levels: \{ kind: "levels", activeTab: "create" \}/);
   assert.match(workspace, /assignments: \{ kind: "assignments", activeTab: "assign" \}/);
   assert.match(workspace, /calendar: \{ kind: "calendar", activeTab: "setup" \}/);
@@ -136,7 +137,7 @@ test("paid-only admin features are hidden instead of rendered for ineligible pla
   assert.doesNotMatch(adminDashboard, /FEATURE_CODES\.ADVANCED_ANALYTICS/);
 });
 
-test("new tenant admins enter assisted setup immediately after onboarding", () => {
+test("new tenant admins enter the dashboard tour after initial profile onboarding", () => {
   const onboardingGate = readSource(
     "components",
     "layout",
@@ -147,7 +148,7 @@ test("new tenant admins enter assisted setup immediately after onboarding", () =
   assert.match(onboardingGate, /profileMode === "onboarding"/);
   assert.match(
     onboardingGate,
-    /admin: "\/admin\/getting-started"/,
+    /admin: "\/admin\/dashboard"/,
   );
 });
 
@@ -161,9 +162,9 @@ test("linked-school role guides auto-show once with the intended persistence sco
   const banner = readSource("components", "guides", "GettingStartedBanner.jsx");
   const guideService = readSource("services", "guideService.js");
 
-  assert.match(onboardingGate, /teacher: "\/teacher\/getting-started"/);
-  assert.match(onboardingGate, /parent: "\/parent\/getting-started"/);
-  assert.match(onboardingGate, /student: "\/student\/getting-started"/);
+  assert.match(onboardingGate, /teacher: "\/teacher\/dashboard"/);
+  assert.match(onboardingGate, /parent: "\/parent\/dashboard"/);
+  assert.match(onboardingGate, /student: "\/student\/dashboard"/);
   assert.match(onboardingGate, /completedInitialOnboarding/);
   assert.match(dashboardLayout, /hasValidSchoolContext/);
   assert.match(dashboardLayout, /role === "admin" \|\| Boolean\(user\.tenant_id\)/);
@@ -175,42 +176,34 @@ test("linked-school role guides auto-show once with the intended persistence sco
   assert.match(banner, /Do not show again/);
 });
 
-test("tenant admin guide exits always leave the full-screen setup shell", () => {
+test("admin setup exits directly and completion requires saved foundation evidence", () => {
   const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
-  const adminRoutes = readSource("routes", "adminRoutes.jsx");
-  const roleGuide = readSource("features", "guides", "useRoleGuide.js");
-
-  assert.match(setupRoute, /label === "finish later"/);
-  assert.match(setupRoute, /label === "complete setup"/);
-  assert.match(setupRoute, /label === "back to dashboard"/);
-  assert.match(setupRoute, /await finish\(\)/);
-  assert.match(setupRoute, /leaveAdminSetup\("\/admin\/dashboard"\)/);
-  assert.match(roleGuide, /!hasGuideExitSuppression\(role\)/);
-  assert.match(
-    adminRoutes,
-    /path="\/admin\/getting-started"[\s\S]*element=\{<AdminGettingStartedRoute \/>\}/,
-  );
+  const shell = readSource("components", "layout", "DashboardLayout.jsx");
+  assert.match(setupRoute, /schoolYearProgress\(setup\.data\?\.completion\)\.complete/);
+  assert.match(setupRoute, /await guide\.finish\(\)/);
+  assert.match(setupRoute, /leaveGuideRoute\("admin", "\/admin\/dashboard"/);
+  assert.doesNotMatch(setupRoute, /document\.addEventListener\("click"/);
+  assert.match(shell, /Finish later/);
+  assert.doesNotMatch(shell, /shouldAutoRedirect|startRoleGuide/);
 });
 
-test("other actor guide exits return to the configured dashboard", () => {
+test("other role introductions offer an explicit tour and return to their dashboard", () => {
   const roleGuide = readSource("pages", "shared", "RoleGettingStartedPage.jsx");
-
-  assert.match(roleGuide, /navigate\(guide\.config\.dashboardRoute, \{ replace: true \}\)/);
-  assert.match(roleGuide, /onClick=\{\(\) => navigate\(guide\.config\.dashboardRoute\)\}/);
+  const shell = readSource("components", "layout", "DashboardLayout.jsx");
+  assert.match(roleGuide, /requestWorkspaceTour\(role\)/);
+  assert.match(roleGuide, /navigate\(`\/\$\{role\}\/dashboard`, \{ replace: true \}\)/);
+  assert.match(shell, /if \(role !== "admin"\) navigate/);
+  assert.doesNotMatch(roleGuide, /markComplete|skipCurrent|guide\.start/);
 });
 
 test("terminal guide completion must be confirmed before leaving setup", () => {
   const guideService = readSource("services", "guideService.js");
   const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
-
   assert.match(guideService, /const terminalWrite = TERMINAL_STATUSES\.has\(requestedStatus\)/);
   assert.match(guideService, /ensureTerminalConfirmation\(requestedStatus, response\)/);
   assert.match(guideService, /throw error;/);
-  assert.doesNotMatch(setupRoute, /finally\s*\{\s*leaveAdminSetup/);
-  assert.match(
-    setupRoute,
-    /await finish\(\);\s*leaveAdminSetup\("\/admin\/dashboard"\)/,
-  );
+  assert.match(setupRoute, /await guide\.finish\(\);\s*leaveGuideRoute/);
+  assert.doesNotMatch(setupRoute, /finally\s*\{\s*leaveGuideRoute/);
 });
 
 test("teacher and parent guide fallback state is account-global while student and admin stay tenant-scoped", () => {

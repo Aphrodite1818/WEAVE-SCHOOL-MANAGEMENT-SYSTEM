@@ -1,0 +1,22 @@
+.workspace-tour { position: fixed; inset: 0; z-index: 160; isolation: isolate; overscroll-behavior: contain; }
+.workspace-tour-dimmer { position: absolute; inset: 0; background: rgb(15 23 42 / 48%); }
+.workspace-tour-spotlight { position: fixed; border: 2px solid rgb(var(--color-primary, 59 130 246)); border-radius: 10px; box-shadow: 0 0 0 9999px rgb(15 23 42 / 48%); pointer-events: none; }
+.workspace-tour-card { position: fixed; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; border: 1px solid rgb(var(--color-border)); border-radius: 20px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); box-shadow: 0 16px 48px rgb(0 0 0 / 16%); }
+.workspace-tour-body { padding: 24px 28px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+.workspace-tour-close { display: grid; place-items: center; min-width: 36px; min-height: 36px; border-radius: 8px; }
+.workspace-tour-close:hover { background: rgb(var(--color-surface-muted)); }
+.workspace-tour-close:focus-visible, .workspace-tour-footer button:focus-visible { outline: 2px solid rgb(var(--color-primary)); outline-offset: 3px; }
+.workspace-tour-preview { margin-top: 24px; padding: 18px 20px; border: 1px solid rgb(var(--color-border)); border-radius: 12px; background: rgb(var(--color-surface-muted)); }
+.workspace-tour-footer { flex-shrink: 0; padding: 18px 24px 22px; border-top: 1px solid rgb(var(--color-border)); }
+.workspace-tour-arrow { position: absolute; left: -24px; width: 24px; height: 20px; color: rgb(var(--color-surface)); }
+@media (max-width: 767px) {
+  .workspace-tour-card { left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: auto; max-height: calc(100dvh - max(110px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom))); border-radius: 18px; }
+  .workspace-tour-body { padding: 18px 22px; }
+  .workspace-tour-footer { padding: 16px 18px; }
+  .workspace-tour-preview { margin-top: 18px; padding: 14px 16px; }
+  [data-tour-navigation="true"] [data-sidebar-brand], [data-tour-navigation="true"] [data-sidebar-workspace], [data-tour-navigation="true"] > div:first-child { display: none; }
+  [data-tour-navigation="true"] nav { padding-top: 8px; }
+  [data-tour-navigation="true"] nav > div > p { display: none; }
+}
+
+.workspace-tour button { background-image: none; min-height: 44px; }

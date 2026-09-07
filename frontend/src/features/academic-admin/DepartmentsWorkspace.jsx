@@ -26,7 +26,7 @@ const normalizeName = (value) =>
     .replace(/\s+/g, " ")
     .toLocaleLowerCase();
 
-export default function DepartmentsWorkspace({ activeTab = "pool" }) {
+export default function DepartmentsWorkspace({ activeTab = "pool", setupTermId }) {
   const { showError, showSuccess } = useToast();
   const [levels, setLevels] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -388,7 +388,7 @@ export default function DepartmentsWorkspace({ activeTab = "pool" }) {
   }
 
   if (activeTab === "placements") {
-    return <div className="space-y-4">{loadFeedback}<ClassSpecializationWorkspace levels={eligibleLevels} availability={levelDepartmentsByLevel} /></div>;
+    return <div className="space-y-4">{loadFeedback}<ClassSpecializationWorkspace levels={eligibleLevels} availability={levelDepartmentsByLevel} setupTermId={setupTermId} /></div>;
   }
 
   return (

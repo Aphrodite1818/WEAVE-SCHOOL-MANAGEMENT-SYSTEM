@@ -29,6 +29,8 @@ import AiChatLauncher from "../ai/AiChatLauncher";
 import WeaveIcon from "../brand/WeaveIcon";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import GettingStartedBanner from "../guides/GettingStartedBanner";
+import WorkspaceTour from "../guides/WorkspaceTour";
+import useWorkspaceTour from "../../features/guides/useWorkspaceTour";
 import Button from "../ui/Button";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
@@ -102,7 +104,7 @@ function DashboardShellFrame({
   const navigate = useNavigate();
   const { showError } = useToast();
   const role = getRole(user, roleProp);
-  const guidePageActive = location.pathname.endsWith("/getting-started");
+  const guidePageActive = role === "admin" && location.pathname.startsWith("/admin/getting-started");
   const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
   const academicHubActive = location.pathname.startsWith("/admin/academic");
   const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
@@ -154,6 +156,7 @@ function DashboardShellFrame({
   );
   const {
     onboardingState,
+    preparingWelcome,
     profileModalOpen,
     setProfileModalOpen,
     profileMode,
@@ -166,6 +169,7 @@ function DashboardShellFrame({
   const roleGuide = useRoleGuide({
     role,
     enabled:
+      role === "admin" &&
       onboardingModalEnabled &&
       hasValidSchoolContext &&
       !legalBlocksProgression &&
@@ -174,8 +178,13 @@ function DashboardShellFrame({
       !profileModalOpen,
   });
   const gettingStartedRoute = roleGuide.config?.route || "";
-  const startRoleGuide = roleGuide.start;
-  const shouldAutoRedirect = roleGuide.shouldAutoRedirect;
+  const tour = useWorkspaceTour({
+    role,
+    pathname: location.pathname,
+    navigationKey: location.key,
+    enabled: onboardingModalEnabled && hasValidSchoolContext && !legalBlocksProgression &&
+      !onboardingState.loading && !onboardingState.required && !preparingWelcome && !profileModalOpen && !guidePageActive,
+  });
   const showGettingStartedBanner = Boolean(
     roleGuide.shouldShowBanner &&
     roleGuide.config?.dashboardRoute === location.pathname &&
@@ -223,30 +232,6 @@ function DashboardShellFrame({
   useEffect(() => {
     if (legalState.required) setProfileModalOpen(false);
   }, [legalState.required, setProfileModalOpen]);
-
-  useEffect(() => {
-    if (
-      !shouldAutoRedirect ||
-      !gettingStartedRoute ||
-      location.pathname === gettingStartedRoute
-    ) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    startRoleGuide().then(() => {
-      if (!cancelled) navigate(gettingStartedRoute, { replace: true });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    gettingStartedRoute,
-    location.pathname,
-    navigate,
-    shouldAutoRedirect,
-    startRoleGuide,
-  ]);
 
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
@@ -589,12 +574,12 @@ function DashboardShellFrame({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-sidebar-border bg-sidebar-background text-sidebar-text transition-all duration-300 md:block",
-          sidebarCollapsed ? "w-[4.25rem]" : "w-[13rem] xl:w-[14rem]",
+          (sidebarCollapsed && !tour.open) ? "w-[4.25rem]" : "w-[13rem] xl:w-[14rem]",
         )}
       >
         <SidebarContent
           role={role}
-          collapsed={sidebarCollapsed}
+          collapsed={tour.open ? false : sidebarCollapsed}
           schoolName={schoolName}
           schoolLogoUrl={workspaceBranding.logoUrl}
           onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
@@ -602,7 +587,8 @@ function DashboardShellFrame({
       </aside>
 
       <MobileDrawer
-        open={mobileNavOpen}
+        open={mobileNavOpen || tour.open}
+        tourMode={tour.open}
         role={role}
         schoolName={schoolName}
         schoolLogoUrl={workspaceBranding.logoUrl}
@@ -612,7 +598,7 @@ function DashboardShellFrame({
       <div
         className={cn(
           "flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300",
-          sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[13rem] xl:pl-[14rem]",
+          (sidebarCollapsed && !tour.open) ? "md:pl-[4.25rem]" : "md:pl-[13rem] xl:pl-[14rem]",
         )}
       >
         <Topbar
@@ -720,6 +706,12 @@ function DashboardShellFrame({
           </main>
         </div>
       </div>
+
+      {tour.open ? <WorkspaceTour role={role} onClose={async (completed) => {
+        await tour.close(completed);
+        setMobileNavOpen(false);
+        if (role !== "admin") navigate(`/${role}/dashboard`, { replace: true });
+      }} onSetup={() => navigate("/admin/getting-started")} /> : null}
 
       <BottomNav role={role} onOpenMenu={() => setMobileNavOpen(true)} />
 

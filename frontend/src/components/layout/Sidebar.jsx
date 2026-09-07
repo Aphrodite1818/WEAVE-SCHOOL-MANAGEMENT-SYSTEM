@@ -9,6 +9,7 @@ import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import WeaveIcon from "../brand/WeaveIcon";
 import { navGroups, roleLabels } from "./navConfig";
+import { requestWorkspaceTour, tourKeyForRole } from "../../features/guides/workspaceTourState";
 
 function isRouteActive(pathname, itemPath) {
   return pathname === itemPath || (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
@@ -113,6 +114,7 @@ export default function SidebarContent({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
+        data-sidebar-brand="true"
         className={cn(
           "relative flex h-[4.5rem] shrink-0 items-center border-b border-border/60 transition-all duration-300",
           mobile && "h-[5rem]",
@@ -164,7 +166,7 @@ export default function SidebarContent({
       </div>
 
       {!collapsed && (
-        <div className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
+        <div data-sidebar-workspace="true" className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
           <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-text/55">Workspace</p>
           <p className="mt-1 truncate text-[13px] font-semibold text-sidebar-text">
             {isAccountScope ? "Select a school" : schoolName || "School workspace"}
@@ -194,6 +196,7 @@ export default function SidebarContent({
                   <Link
                     key={`${group.label}-${item.label}`}
                     to={item.to}
+                    data-tour-target={item.to}
                     onClick={() => {
                       persistSidebarScroll();
                       onNavigate?.();
@@ -222,6 +225,14 @@ export default function SidebarContent({
           </div>
         ))}
       </nav>
+
+      {tourKeyForRole(role) ? (
+        <button type="button" onClick={() => requestWorkspaceTour(role)}
+          title="Replay tour" aria-label="Replay tour"
+          className="m-2.5 flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-sidebar-text hover:bg-sidebar-active/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+          <HelpCircle className="h-4 w-4" />{!collapsed && "Replay tour"}
+        </button>
+      ) : null}
 
       {!collapsed && (
         <div className="shrink-0 border-t border-border/60 p-2.5">

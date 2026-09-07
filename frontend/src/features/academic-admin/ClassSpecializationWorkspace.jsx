@@ -5,7 +5,7 @@ import { curriculumService } from "../../services/curriculumService";
 import { getErrorMessage } from "../../services/api";
 import { SelectControl, WorkspacePanel } from "./AcademicWorkspacePrimitives";
 
-export default function ClassSpecializationWorkspace({ levels, availability }) {
+export default function ClassSpecializationWorkspace({ levels, availability, setupTermId }) {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [sessionId, setSessionId] = useState("");
@@ -29,8 +29,10 @@ export default function ClassSpecializationWorkspace({ levels, availability }) {
     setLoading(true);
     Promise.all([academicService.listSessions({ limit: 100 }), academicService.listTerms({ limit: 100 })]).then(([sessionResult, termResult]) => {
       if (!active) return;
-      const sessionRows = sessionResult?.items || sessionResult || [];
-      const termRows = termResult?.items || termResult || [];
+      const allTerms = termResult?.items || termResult || [];
+      const termRows = setupTermId ? allTerms.filter((row) => row.id === setupTermId) : allTerms;
+      const allSessions = sessionResult?.items || sessionResult || [];
+      const sessionRows = setupTermId ? allSessions.filter((row) => row.id === termRows[0]?.academic_session_id) : allSessions;
       setSessions(sessionRows);
       setTerms(termRows);
       const current = termRows.find((row) => row.is_current) || termRows[0];
@@ -44,7 +46,7 @@ export default function ClassSpecializationWorkspace({ levels, availability }) {
       }
     });
     return () => { active = false; };
-  }, [contextAttempt]);
+  }, [contextAttempt, setupTermId]);
   const load = useCallback(async () => {
     const request = ++generation.current;
     setRows([]);
