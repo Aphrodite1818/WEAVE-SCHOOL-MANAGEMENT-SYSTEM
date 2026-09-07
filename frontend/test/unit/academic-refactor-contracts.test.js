@@ -42,7 +42,7 @@ test("teacher assignment payload is curriculum-subject only", async () => {
   assert.match(curriculumService, /getEligibleClasses/);
   assert.match(curriculumService, /createTeacherAssignmentsBulk/);
   assert.match(workspace, /class_ids: selectedClassIds/);
-  assert.match(workspace, /curriculumService\.getEligibleClasses/);
+  assert.match(workspace, /curriculumService\s*\.\s*getEligibleClasses\s*\(/);
 });
 
 test("normal and guided level creation share the institution-scoped levels workspace", async () => {
