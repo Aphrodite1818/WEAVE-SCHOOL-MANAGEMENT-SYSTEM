@@ -158,3 +158,13 @@ test("teacher multi-class assignment preserves backend eligibility and audit fie
   assert.match(text, /reason: reason.trim\(\)/);
   assert.match(text, /beginAcademicSubmission/);
 });
+
+test("session lifecycle actions own editing without duplicate fallback buttons", async () => {
+  const periods = await source("AcademicPeriodsWorkspace.jsx");
+  const primitives = await source("AcademicWorkspacePrimitives.jsx");
+
+  assert.match(primitives, /showDefaultEditAction = true/);
+  assert.match(primitives, /showDefaultEditAction &&\s*Boolean\(onEdit\)/);
+  assert.match(periods, /showDefaultEditAction=\{!isSessions\}/);
+  assert.match(periods, /function SessionActions\(\{ item, busy, onConfirm, onEdit \}\)/);
+});

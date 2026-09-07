@@ -136,28 +136,52 @@ const copy = {
   ],
 };
 
-export function tourContentForItem(role, item) {
+const upgradeCopy = {
+  imports: [
+    "Bulk import is now available",
+    "Your plan now includes bulk import, so admins can bring supported school records into Weave with review before anything is saved.",
+    ["New on this plan", "Review before import", "Faster setup work"],
+  ],
+  cbt: [
+    "CBT pairing is now available",
+    "Your plan now includes CBT server pairing, so admins can connect computer-based testing to this school workspace when the server is ready.",
+    ["New on this plan", "Server pairing", "Connection status"],
+  ],
+  branding: [
+    "School branding is now available",
+    "Your plan now includes school branding, so admins can apply the school's shared identity and colour palette across the workspace.",
+    ["New on this plan", "School identity", "Shared palette"],
+  ],
+};
+
+export function tourContentForItem(role, item, { dedicated = false } = {}) {
   const segment = item.to.split("/").filter(Boolean).at(-1);
-  let entry = copy[segment] || copy.dashboard;
-  if (role === "teacher" && segment === "students")
+  let entry = dedicated
+    ? upgradeCopy[segment] || [
+        `${item.label} is now available`,
+        `Your plan now includes ${String(item.label || "this feature").toLowerCase()}. This update points out where admins can find it in the workspace.`,
+        ["New on this plan", "Available now", "Admin workspace"],
+      ]
+    : copy[segment] || copy.dashboard;
+  if (!dedicated && role === "teacher" && segment === "students")
     entry = [
       "Meet the students you teach",
       "Find the students in your teaching rosters and their class context.",
       ["Teaching rosters", "Your students", "Class context"],
     ];
-  if (role === "teacher" && segment === "subjects")
+  if (!dedicated && role === "teacher" && segment === "subjects")
     entry = [
       "See your teaching assignments",
       "Find the subjects assigned to you and open the teaching work available for each one.",
       ["Assigned subjects", "Class assignments", "Teaching work"],
     ];
-  if (role === "teacher" && segment === "classes")
+  if (!dedicated && role === "teacher" && segment === "classes")
     entry = [
       "Your class-teacher workspace",
       "If you are assigned as a class teacher, find your class and the duties available to you here.",
       ["Your assigned class", "Class roster", "Class-teacher duties"],
     ];
-  if (role === "admin" && segment === "report-cards")
+  if (!dedicated && role === "admin" && segment === "report-cards")
     entry = [
       "Bring term reports together",
       "Review your school's report-card workflow when you are ready to work with results.",

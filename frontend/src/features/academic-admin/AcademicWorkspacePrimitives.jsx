@@ -320,11 +320,13 @@ function DefaultRecordInspector({
   renderActions,
   onEdit,
   canEdit,
+  showDefaultEditAction = true,
 }) {
   const status = renderStatus?.(item);
   const statusMeta = lifecycleStatusMeta(status);
   const StatusIcon = statusMeta.Icon;
-  const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
+  const showEdit =
+    showDefaultEditAction && Boolean(onEdit) && (canEdit ? canEdit(item) : true);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
@@ -409,6 +411,7 @@ export function RecordList({
   renderInspector,
   onEdit,
   canEdit,
+  showDefaultEditAction = true,
   actions,
   listClassName,
   showInspector = true,
@@ -483,7 +486,10 @@ export function RecordList({
                 <tbody className="divide-y divide-border/70">
                   {items.map((item) => {
                     const status = renderStatus?.(item);
-                    const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
+                    const showEdit =
+                      showDefaultEditAction &&
+                      Boolean(onEdit) &&
+                      (canEdit ? canEdit(item) : true);
                     const selected = String(item.id) === String(selectedItem?.id);
                     return (
                       <tr
@@ -540,7 +546,10 @@ export function RecordList({
             <div className="mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 lg:hidden">
               {items.map((item) => {
                 const status = renderStatus?.(item);
-                const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
+                const showEdit =
+                  showDefaultEditAction &&
+                  Boolean(onEdit) &&
+                  (canEdit ? canEdit(item) : true);
                 return (
                   <div
                     key={item.id}
@@ -603,6 +612,7 @@ export function RecordList({
                   renderActions={renderActions}
                   onEdit={onEdit}
                   canEdit={canEdit}
+                  showDefaultEditAction={showDefaultEditAction}
                 />
               )}
             </aside>

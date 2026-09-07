@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarCheck2, RefreshCw, ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import Button from "../../components/ui/Button";
@@ -52,6 +52,7 @@ export default function AdminCalendarSetupWorkspace({ setupTermId, onSaved }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [confirmActivation, setConfirmActivation] = useState(false);
+  const activationInFlightRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!setupTermId) {
@@ -158,13 +159,19 @@ export default function AdminCalendarSetupWorkspace({ setupTermId, onSaved }) {
   };
 
   const activate = async () => {
-    if (!calendar?.id) return;
-    const succeeded = await run(
-      "activate",
-      () => schoolCalendarService.activateCalendar(calendar.id),
-      "Could not activate the term calendar.",
-    );
-    if (succeeded) setConfirmActivation(false);
+    if (!calendar?.id || activationInFlightRef.current) return;
+    const calendarId = calendar.id;
+    activationInFlightRef.current = true;
+    setConfirmActivation(false);
+    try {
+      await run(
+        "activate",
+        () => schoolCalendarService.activateCalendar(calendarId),
+        "Could not activate the term calendar.",
+      );
+    } finally {
+      activationInFlightRef.current = false;
+    }
   };
 
   if (loading) {
@@ -367,6 +374,7 @@ export default function AdminCalendarSetupWorkspace({ setupTermId, onSaved }) {
                 type="button"
                 disabled={
                   Boolean(busy) ||
+                  confirmActivation ||
                   !calendar?.can_activate ||
                   !configurationCurrent
                 }

@@ -85,6 +85,17 @@ export default function useWorkspaceTour({
     return acceptState(nextState);
   }, [acceptState, enabled, key]);
 
+  useEffect(() => {
+    claimed.current = false;
+    setOpen(false);
+    setResumeIndex(-1);
+    setFocusTo(null);
+    setPendingRequest(null);
+    setDedicated(false);
+    setUpgradeQueue(null);
+    setState(null);
+  }, [identityKey, key]);
+
   const checkWelcome = useCallback(async () => {
     if (
       !enabled ||
@@ -137,7 +148,7 @@ export default function useWorkspaceTour({
     return () => {
       cancelled = true;
     };
-  }, [checkWelcome, navigationKey, queueVersion]);
+  }, [checkWelcome, identityKey, navigationKey, queueVersion]);
 
   useEffect(() => {
     if (!enabled || !key) return;
@@ -204,17 +215,6 @@ export default function useWorkspaceTour({
     window.addEventListener(TOUR_REQUEST_EVENT, replay);
     return () => window.removeEventListener(TOUR_REQUEST_EVENT, replay);
   }, [enabled, key, navigate, pathname, refreshState, role]);
-
-  useEffect(() => {
-    claimed.current = false;
-    setOpen(false);
-    setResumeIndex(-1);
-    setFocusTo(null);
-    setPendingRequest(null);
-    setDedicated(false);
-    setUpgradeQueue(null);
-    setState(null);
-  }, [identityKey, key]);
 
   const close = async ({ outcome = "paused", index = -1 } = {}) => {
     if (!key) {

@@ -65,12 +65,34 @@ test("stale guide reads cannot trigger a second automatic tutorial", () => {
 
 test("workspace tours reset when the authenticated actor changes", () => {
   const workspaceTour = readSource("features", "guides", "useWorkspaceTour.js");
+  const resetIndex = workspaceTour.indexOf("[identityKey, key]");
+  const welcomeIndex = workspaceTour.indexOf("Promise.resolve(checkWelcome())");
 
   assert.match(workspaceTour, /authSession\.getUser\(\)/);
   assert.match(workspaceTour, /const authIdentityKey = \(user\) =>/);
   assert.match(workspaceTour, /\}, \[identityKey, key\]\);/);
   assert.match(workspaceTour, /claimed\.current = false/);
   assert.match(workspaceTour, /setUpgradeQueue\(null\)/);
+  assert.match(
+    workspaceTour,
+    /\}, \[checkWelcome, identityKey, navigationKey, queueVersion\]\);/,
+  );
+  assert.ok(resetIndex >= 0);
+  assert.ok(welcomeIndex >= 0);
+  assert.ok(resetIndex < welcomeIndex);
+});
+
+test("upgrade tutors use feature-tour completion copy", () => {
+  const workspaceTour = readSource("components", "guides", "WorkspaceTour.jsx");
+  const workspaceTourCss = readSource("components", "guides", "workspaceTour.css");
+
+  assert.match(workspaceTour, /dedicated/);
+  assert.match(workspaceTour, /dedicated\s*\?\s*"Done"/);
+  assert.match(workspaceTour, /dedicated\s*\?\s*"Close update"/);
+  assert.match(workspaceTour, /!\s*dedicated/);
+  assert.match(workspaceTour, /tourContentForItem\(role, item, \{ dedicated \}\)/);
+  assert.match(workspaceTourCss, /workspace-tour-card-upgrade/);
+  assert.match(workspaceTour, /"Go to dashboard"/);
 });
 
 test("role guides follow runtime attendance exposure", () => {

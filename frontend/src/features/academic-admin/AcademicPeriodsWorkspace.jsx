@@ -629,6 +629,7 @@ function AcademicPeriodsWorkspace({
                 ? ["draft", "open"].includes(item.status)
                 : item.status === "draft"
             }
+            showDefaultEditAction={!isSessions}
             onEdit={isSessions ? editSession : editTerm}
             renderActions={(item) =>
               isSessions ? (

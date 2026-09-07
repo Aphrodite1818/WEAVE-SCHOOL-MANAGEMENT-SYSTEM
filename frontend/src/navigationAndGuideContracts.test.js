@@ -187,6 +187,23 @@ test("admin setup exits directly and completion requires saved foundation eviden
   assert.doesNotMatch(shell, /shouldAutoRedirect|startRoleGuide/);
 });
 
+test("calendar activation confirmation is closed before the lifecycle request runs", () => {
+  const calendarSetup = readSource(
+    "features",
+    "guides",
+    "AdminCalendarSetupWorkspace.jsx",
+  );
+
+  assert.match(calendarSetup, /activationInFlightRef = useRef\(false\)/);
+  assert.match(calendarSetup, /if \(!calendar\?\.id \|\| activationInFlightRef\.current\) return/);
+  assert.match(
+    calendarSetup,
+    /setConfirmActivation\(false\);[\s\S]*await run\(\s*"activate"/,
+  );
+  assert.match(calendarSetup, /activationInFlightRef\.current = false/);
+  assert.match(calendarSetup, /Boolean\(busy\) \|\|\s*confirmActivation/);
+});
+
 test("other role introductions offer an explicit tour and return to their dashboard", () => {
   const roleGuide = readSource("pages", "shared", "RoleGettingStartedPage.jsx");
   const shell = readSource("components", "layout", "DashboardLayout.jsx");

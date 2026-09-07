@@ -107,6 +107,30 @@ test("tour copy covers every sidebar destination for all four roles", () => {
   }
 });
 
+test("dedicated upgrade tours explain newly unlocked plan features", () => {
+  const imports = tourContentForItem(
+    "admin",
+    { label: "Imports", to: "/admin/imports" },
+    { dedicated: true },
+  );
+  const cbt = tourContentForItem(
+    "admin",
+    { label: "CBT Servers", to: "/admin/cbt" },
+    { dedicated: true },
+  );
+  const branding = tourContentForItem(
+    "admin",
+    { label: "School branding", to: "/admin/settings/branding" },
+    { dedicated: true },
+  );
+
+  for (const content of [imports, cbt, branding]) {
+    assert.match(content.title, /now available/);
+    assert.match(content.description, /Your plan now includes/);
+    assert.equal(content.preview[0], "New on this plan");
+  }
+});
+
 test("tour uses visible sidebar targets and restores keyboard access on exit", () => {
   const source = readFileSync(new URL("../../components/guides/WorkspaceTour.jsx", import.meta.url), "utf8");
   assert.match(source, /rendered\.has\(item\.to\)/);

@@ -97,13 +97,13 @@ export default function WorkspaceTour({
       Array.from(document.querySelectorAll("[data-tour-target]"))
         .filter((node) => node.getBoundingClientRect().width > 0)
         .map((node) => node.dataset.tourTarget),
-    );
+      );
     setSteps(
       configuredItems
         .filter((item) => rendered.has(item.to))
-        .map((item) => tourContentForItem(role, item)),
+        .map((item) => tourContentForItem(role, item, { dedicated })),
     );
-  }, [configuredItems, role]);
+  }, [configuredItems, dedicated, role]);
 
   useEffect(() => {
     if (restoredIndex.current || !steps.length) return;
@@ -339,7 +339,7 @@ export default function WorkspaceTour({
         aria-modal="true"
         aria-labelledby="workspace-tour-title"
         aria-describedby="workspace-tour-description"
-        className="workspace-tour-card"
+        className={`workspace-tour-card${dedicated ? " workspace-tour-card-upgrade" : ""}`}
         style={geometry?.card}
       >
         <div className="workspace-tour-body">
@@ -399,7 +399,7 @@ export default function WorkspaceTour({
           >
             {step?.description ||
               (dedicated
-                ? "Here are the features newly available on your plan."
+                ? "These plan features are now available for your school. This quick update points out where admins can find them."
                 : onSetup
                   ? "Take a quick look around your workspace. Then we’ll help you prepare your session, first term, and calendar."
                   : "Get to know the places you’ll use in your school workspace. There’s nothing to fill in—just take a look around.")}
@@ -407,7 +407,7 @@ export default function WorkspaceTour({
           {step ? (
             <div className="workspace-tour-preview">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                A quick look inside {step.label}
+                {dedicated ? `What's new in ${step.label}` : `A quick look inside ${step.label}`}
               </p>
               <WorkspaceTourSnapshot
                 step={step}
@@ -507,7 +507,9 @@ export default function WorkspaceTour({
                       : last
                         ? onSetup
                           ? "Set up school year"
-                          : "Go to dashboard"
+                          : dedicated
+                            ? "Done"
+                            : "Go to dashboard"
                         : "Next"}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -519,17 +521,23 @@ export default function WorkspaceTour({
                   onClick={() => finish("paused", Boolean(onSetup))}
                   className="workspace-tour-secondary-action"
                 >
-                  {onSetup ? "Skip to school setup" : "Skip for now"}
+                  {dedicated
+                    ? "Close update"
+                    : onSetup
+                      ? "Skip to school setup"
+                      : "Skip for now"}
                 </button>
               ) : null}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setConfirmDismiss(true)}
-                className="workspace-tour-dismiss-action"
-              >
-                Don't show this tour again
-              </button>
+              {!dedicated ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirmDismiss(true)}
+                  className="workspace-tour-dismiss-action"
+                >
+                  Don't show this tour again
+                </button>
+              ) : null}
             </>
           )}
         </footer>

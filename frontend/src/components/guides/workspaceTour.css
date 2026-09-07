@@ -7,11 +7,13 @@
 .workspace-tour-connector-line { stroke: rgb(var(--color-primary, 59 130 246)); stroke-width: 4; }
 .workspace-tour-arrowhead { fill: rgb(var(--color-primary, 59 130 246)); }
 .workspace-tour-card { position: fixed; z-index: 3; width: min(500px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; border: 1px solid rgb(var(--color-border)); border-radius: 22px; background: rgb(var(--color-surface)); color: rgb(var(--color-text)); box-shadow: 0 22px 70px rgb(0 0 0 / 24%); }
+.workspace-tour-card-upgrade { border-color: rgb(var(--color-primary) / 32%); }
 .workspace-tour-body { padding: 24px 28px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
 .workspace-tour-close { display: grid; place-items: center; min-width: 36px; min-height: 36px; border-radius: 8px; color: rgb(var(--color-text)); }
 .workspace-tour-close:hover { background: rgb(var(--color-surface-muted)); }
 .workspace-tour-close:focus-visible, .workspace-tour-footer button:focus-visible { outline: 2px solid rgb(var(--color-primary)); outline-offset: 3px; }
 .workspace-tour-preview { margin-top: 20px; padding: 16px; border: 1px solid rgb(var(--color-border)); border-radius: 14px; background: rgb(var(--color-surface-muted)); }
+.workspace-tour-card-upgrade .workspace-tour-preview { border-color: rgb(var(--color-primary) / 24%); background: rgb(var(--color-primary) / 8%); }
 .workspace-tour-footer { flex-shrink: 0; padding: 17px 24px 20px; border-top: 1px solid rgb(var(--color-border)); background: rgb(var(--color-surface)); border-radius: 0 0 22px 22px; }
 .workspace-tour-secondary-action, .workspace-tour-dismiss-action { display: block; margin: 14px auto 0; min-height: 38px !important; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 650; text-underline-offset: 4px; }
 .workspace-tour-secondary-action { color: rgb(var(--color-text)); text-decoration: underline; }
