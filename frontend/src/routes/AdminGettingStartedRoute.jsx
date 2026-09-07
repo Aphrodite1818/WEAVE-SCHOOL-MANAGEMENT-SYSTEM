@@ -20,7 +20,18 @@ export default function AdminGettingStartedRoute() {
   const { step } = useParams();
 
   const onFinish = async () => {
-    if (setup.loading || setup.error || !schoolYearProgress(completion).complete) return;
+    const backendFoundationComplete = schoolYearProgress(
+      setup.data?.completion,
+    ).complete;
+    const lifecycleFoundationComplete = schoolYearProgress(completion).complete;
+    if (
+      setup.loading ||
+      setup.error ||
+      !backendFoundationComplete ||
+      !lifecycleFoundationComplete
+    ) {
+      return;
+    }
     try {
       await guide.finish();
       leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
