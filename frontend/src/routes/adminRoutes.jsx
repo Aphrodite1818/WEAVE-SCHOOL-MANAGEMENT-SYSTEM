@@ -25,6 +25,9 @@ const CBTPairingCodePage = lazy(
   () => import("../pages/admin/CBTPairingCodePage"),
 );
 const CBTServersPage = lazy(() => import("../pages/admin/CBTServersPage"));
+const InstitutionTypeSettingsPage = lazy(
+  () => import("../pages/admin/InstitutionTypeSettingsPage"),
+);
 const ParentLinkManagementPage = lazy(
   () => import("../pages/admin/ParentLinkManagementPage"),
 );
@@ -146,6 +149,10 @@ export const adminRoutes = (
       <Route path="/admin/notices" element={<NoticeManagementPage mode="tenant-admin" />} />
       <Route path="/admin/notices/received" element={<NoticesPage />} />
       <Route path="/admin/settings" element={<RoleSettingsPage role="admin" />} />
+      <Route
+        path="/admin/settings/institution-type"
+        element={<InstitutionTypeSettingsPage />}
+      />
       <Route
         path="/admin/settings/branding"
         element={
