@@ -13,12 +13,17 @@ test("teacher assignment requests use the canonical lifecycle statuses", () => {
   assert.match(source, /value:\s*["']scheduled["'], label:\s*["']Scheduled["']/);
   assert.match(source, /value:\s*["']current["'], label:\s*["']Current["']/);
   assert.match(source, /value:\s*["']ended["'], label:\s*["']Ended["']/);
-  assert.match(source, /activeTab === ["']reassign["'] \|\| activeTab === ["']end["']/);
+
+  // Reassign/end are lifecycle actions on CURRENT records, not navigation tabs.
+  assert.match(source, /if \(status === ["']current["']\)/);
+  assert.match(source, /open=\{Boolean\(reassigning\)\}/);
+  assert.match(source, /open=\{Boolean\(ending\)\}/);
   assert.match(source, /\? ["']current["']/);
 });
 
 test("assignment creation delegates existing coverage to the eligible-class contract", () => {
-  assert.match(source, /curriculumService\.getEligibleClasses\(/);
+  // Keep this formatting-insensitive: the service chain may wrap across lines.
+  assert.match(source, /curriculumService\s*\.\s*getEligibleClasses\s*\(/);
   assert.match(source, /already_assigned/);
   assert.match(source, /filter\(\(item\) => !item\.already_assigned\)/);
 });
