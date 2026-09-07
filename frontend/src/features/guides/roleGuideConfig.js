@@ -3,7 +3,6 @@ import {
   CalendarCheck2,
   CalendarDays,
   ClipboardCheck,
-  CreditCard,
   FileText,
   School,
   Users,
@@ -11,33 +10,40 @@ import {
 
 export const ROLE_GUIDES = {
   admin: {
-    key: "tenant_admin_academic_setup_v2",
+    key: "tenant_admin_academic_setup_v3",
     route: "/admin/getting-started",
     dashboardRoute: "/admin/dashboard",
     eyebrow: "School year setup",
     title: "Set up your school year",
     description:
-      "Configure one responsibility per page and return whenever you need to continue.",
+      "Prepare the session, first term, and calendar in the lifecycle order Weave requires.",
     steps: [
       {
-        id: "session", shortLabel: "Session", label: "Create your school year",
-        description: "Give your academic session a name and set its start and end dates.",
-        actionLabel: "Set up session", to: "/admin/academic/sessions", icon: CalendarDays,
+        id: "session",
+        shortLabel: "Session",
+        label: "Create your school year",
+        description: "Give your academic session a name and set its start and end dates. It stays draft until your first term exists.",
+        actionLabel: "Set up session",
+        to: "/admin/academic/sessions",
+        icon: CalendarDays,
       },
       {
-        id: "term", shortLabel: "Term", label: "Add your first term",
-        description: "Choose the term you want to prepare within your school year.",
-        actionLabel: "Set up term", to: "/admin/academic/terms", icon: CalendarCheck2,
+        id: "term",
+        shortLabel: "Term",
+        label: "Add your first term and open the session",
+        description: "Create the first term inside the session. Then Weave will help you open the session before calendar activation.",
+        actionLabel: "Set up term",
+        to: "/admin/academic/terms",
+        icon: CalendarCheck2,
       },
       {
-        id: "calendar", shortLabel: "Calendar", label: "Plan your school days",
-        description: "Save your school week, open the session, then generate and activate your calendar. We will guide you in order.",
-        actionLabel: "Set up calendar", to: "/admin/academic/school-calendar", icon: CalendarDays,
-      },
-      {
-        id: "start_term", shortLabel: "Start term", label: "Choose a plan and start your term",
-        description: "Review the resources you need, choose an eligible term plan, and open your term when everything is ready.",
-        actionLabel: "Start your term", to: "/admin/academic/terms", icon: CreditCard,
+        id: "calendar",
+        shortLabel: "Calendar",
+        label: "Prepare your term calendar",
+        description: "Configure the school week, generate the first-term calendar, resolve any lifecycle blockers, and activate it while the term is still draft.",
+        actionLabel: "Set up calendar",
+        to: "/admin/academic/school-calendar",
+        icon: CalendarDays,
       },
     ],
   },
@@ -48,14 +54,14 @@ export const ROLE_GUIDES = {
     eyebrow: "Teacher workspace",
     title: "Learn your teaching workspace",
     description:
-      "A short, practical introduction to the areas you will use during normal school operations.",
+      "A short, practical introduction to the areas currently available during normal school operations.",
     steps: [
       {
         id: "classes",
         shortLabel: "Classes",
         label: "Review your assigned classes",
         description:
-          "Confirm your class and subject assignments before taking attendance or reviewing academic results.",
+          "Confirm your class and subject assignments before entering scores or reviewing academic work.",
         actionLabel: "Open my classes",
         to: "/teacher/classes",
         icon: School,
@@ -79,6 +85,7 @@ export const ROLE_GUIDES = {
         actionLabel: "Open attendance",
         to: "/teacher/attendance",
         icon: Users,
+        runtimeFeature: "attendance",
       },
       {
         id: "calendar",
@@ -99,7 +106,7 @@ export const ROLE_GUIDES = {
     eyebrow: "Parent workspace",
     title: "Follow your child’s school progress",
     description:
-      "Learn where to find linked children, attendance, report cards, and school dates.",
+      "Learn where to find linked children, published reports, and school dates in the workspace available to you.",
     steps: [
       {
         id: "children",
@@ -120,6 +127,7 @@ export const ROLE_GUIDES = {
         actionLabel: "View attendance",
         to: "/parent/attendance",
         icon: ClipboardCheck,
+        runtimeFeature: "attendance",
       },
       {
         id: "reports",
@@ -150,7 +158,7 @@ export const ROLE_GUIDES = {
     eyebrow: "Student workspace",
     title: "Find your academic information quickly",
     description:
-      "A short introduction to subjects, attendance, report cards, and school dates.",
+      "A short introduction to the academic information and school dates currently available to you.",
     steps: [
       {
         id: "subjects",
@@ -171,6 +179,7 @@ export const ROLE_GUIDES = {
         actionLabel: "View attendance",
         to: "/student/attendance",
         icon: ClipboardCheck,
+        runtimeFeature: "attendance",
       },
       {
         id: "reports",
