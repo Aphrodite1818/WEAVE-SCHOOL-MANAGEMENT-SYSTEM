@@ -14,6 +14,10 @@ import {
   clearGuideReturn,
   readGuideReturn,
 } from "../../features/guides/guideNavigation";
+import {
+  isPausedTourState,
+  requestWorkspaceTour,
+} from "../../features/guides/workspaceTourState";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
@@ -30,6 +34,7 @@ import WeaveIcon from "../brand/WeaveIcon";
 import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import GettingStartedBanner from "../guides/GettingStartedBanner";
 import WorkspaceTour from "../guides/WorkspaceTour";
+import WorkspaceTourResumeBanner from "../guides/WorkspaceTourResumeBanner";
 import useWorkspaceTour from "../../features/guides/useWorkspaceTour";
 import Button from "../ui/Button";
 import Modal from "../ui/Modal";
@@ -189,6 +194,11 @@ function DashboardShellFrame({
     roleGuide.shouldShowBanner &&
     roleGuide.config?.dashboardRoute === location.pathname &&
     gettingStartedRoute !== location.pathname,
+  );
+  const showWorkspaceTourReminder = Boolean(
+    location.pathname === `/${role}/dashboard` &&
+    !tour.open &&
+    isPausedTourState(tour.state),
   );
 
   useEffect(() => {
@@ -695,6 +705,13 @@ function DashboardShellFrame({
                 </div>
               </section>
             ) : null}
+            {showWorkspaceTourReminder ? (
+              <WorkspaceTourResumeBanner
+                role={role}
+                state={tour.state}
+                onResume={() => requestWorkspaceTour(role, { resume: true })}
+              />
+            ) : null}
             {showGettingStartedBanner ? (
               <GettingStartedBanner
                 guide={roleGuide}
@@ -707,11 +724,20 @@ function DashboardShellFrame({
         </div>
       </div>
 
-      {tour.open ? <WorkspaceTour role={role} onClose={async (completed) => {
-        await tour.close(completed);
-        setMobileNavOpen(false);
-        if (role !== "admin") navigate(`/${role}/dashboard`, { replace: true });
-      }} onSetup={() => navigate("/admin/getting-started")} /> : null}
+      {tour.open ? (
+        <WorkspaceTour
+          role={role}
+          initialIndex={tour.resumeIndex}
+          onClose={async (result) => {
+            await tour.close(result);
+            setMobileNavOpen(false);
+            if (role !== "admin") {
+              navigate(`/${role}/dashboard`, { replace: true });
+            }
+          }}
+          onSetup={() => navigate("/admin/getting-started")}
+        />
+      ) : null}
 
       <BottomNav role={role} onOpenMenu={() => setMobileNavOpen(true)} />
 
