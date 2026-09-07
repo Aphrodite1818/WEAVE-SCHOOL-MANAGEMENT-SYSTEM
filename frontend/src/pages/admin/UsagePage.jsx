@@ -1,3 +1,4 @@
+import { shouldShowUsage } from "../../features/subscriptions/usageVisibility";
 import { Activity } from "lucide-react";
 import {
   Bar,
@@ -49,7 +50,7 @@ function getUsagePercent(usage) {
 function buildUsageItems(entitlements) {
   return USAGE_FIELDS.map((field) => {
     const usage = entitlements?.usage?.[field.key];
-    if (!usage) return null;
+    if (!shouldShowUsage(usage)) return null;
 
     const used = Number(usage.used || 0);
     const limit =

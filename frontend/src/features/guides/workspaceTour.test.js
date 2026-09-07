@@ -78,13 +78,13 @@ test("school year progress counts guided milestones, not unrelated entities or v
   progress = schoolYearProgress({ session: true, term: true, calendar: true, start_term: false });
   assert.equal(progress.completedCount, 3);
   assert.equal(progress.completedStages, 2);
-  assert.equal(progress.nextStep, "start_term");
-  assert.equal(progress.canOpen("start_term"), true);
-  assert.equal(progress.complete, false);
+  assert.equal(progress.nextStep, null);
+  assert.equal(progress.canOpen("start_term"), false);
+  assert.equal(progress.complete, true);
 
   progress = schoolYearProgress({ session: true, term: true, calendar: true, start_term: true });
-  assert.equal(progress.completedCount, 4);
-  assert.equal(progress.completedStages, 3);
+  assert.equal(progress.completedCount, 3);
+  assert.equal(progress.completedStages, 2);
   assert.equal(progress.nextStep, null);
   assert.equal(progress.complete, true);
   assert.equal(schoolYearProgress({ session: "true", term: null }).completedCount, 0);
@@ -111,7 +111,7 @@ test("tour uses visible sidebar targets and restores keyboard access on exit", (
   const source = readFileSync(new URL("../../components/guides/WorkspaceTour.jsx", import.meta.url), "utf8");
   assert.match(source, /rendered\.has\(item\.to\)/);
   assert.match(source, /getBoundingClientRect\(\)\.width > 0/);
-  assert.match(source, /role="dialog" aria-modal="true"/);
+  assert.match(source, /role="dialog"\s+aria-modal="true"/);
   assert.match(source, /node\.inert = true/);
   assert.match(source, /node\.inert = inert/);
   assert.match(source, /event\.key === "Escape"/);

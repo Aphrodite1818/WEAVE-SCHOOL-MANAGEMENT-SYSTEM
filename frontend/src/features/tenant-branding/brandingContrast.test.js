@@ -32,6 +32,6 @@ test("workspace tour does not strip primary button backgrounds", () => {
   assert.doesNotMatch(css, /\.workspace-tour button\s*\{[^}]*background-image:\s*none/);
   assert.match(
     css,
-    /\.workspace-tour-close, \.workspace-tour-secondary-action \{ background-image: none; \}/,
+    /\.workspace-tour-close, \.workspace-tour-secondary-action, \.workspace-tour-dismiss-action \{ background-image: none; \}/,
   );
 });

@@ -27,7 +27,7 @@ test("workspace tour distinguishes temporary pause, completion, and explicit dis
 test("admin skip-to-setup remains a pause rather than completion", () => {
   assert.match(
     tourSource,
-    /finish\("paused", role === "admin"\)/,
+    /finish\("paused", Boolean\(onSetup\)\)/,
   );
   assert.match(tourSource, /Skip to school setup/);
 });
@@ -42,4 +42,24 @@ test("paused workspace tour gets a dashboard resume indicator", () => {
 
 test("dismissed tours are not represented by the incomplete banner", () => {
   assert.match(bannerSource, /state\?\.status !== "in_progress"/);
+});
+
+const hookSource = readFileSync(new URL("../../src/features/guides/useWorkspaceTour.js", import.meta.url), "utf8");
+const readinessSource = readFileSync(new URL("../../src/features/guides/useAdminSetupReadiness.js", import.meta.url), "utf8");
+
+test("only the initial welcome offers school setup; replay and resume are tour-only", () => {
+  assert.match(hookSource, /setInitialWelcome\(true\)/);
+  const replay = hookSource.slice(hookSource.indexOf("const replay ="), hookSource.indexOf('window.addEventListener(TOUR_REQUEST_EVENT'));
+  assert.match(replay, /setInitialWelcome\(false\)/);
+  assert.match(shellSource, /onSetup=\{tour\.initialWelcome && schoolSetupIncomplete/);
+  assert.match(shellSource, /!setupEnabled \|\| !schoolSetup\.loading/);
+});
+
+test("finish later leaves a record-based reminder regardless of tour or guide dismissal", () => {
+  const bannerCondition = shellSource.slice(shellSource.indexOf("const showGettingStartedBanner"), shellSource.indexOf("const showWorkspaceTourReminder"));
+  assert.match(bannerCondition, /schoolSetupIncomplete/);
+  assert.doesNotMatch(bannerCondition, /shouldShowBanner|guideState/);
+  assert.match(shellSource, /schoolYearProgress\(adminSchoolYearCompletion\(schoolSetup\.data\)\)\.complete/);
+  assert.doesNotMatch(shellSource, /onDismiss=\{dismissGettingStartedBanner\}/);
+  assert.match(readinessSource, /weave:dashboard-cache-invalidated/);
 });

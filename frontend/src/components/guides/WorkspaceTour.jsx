@@ -263,7 +263,7 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
             {step?.title || "Find your way around."}
           </h2>
           <p id="workspace-tour-description" className="mt-3 text-sm leading-7 text-text-muted">
-            {step?.description || (role === "admin"
+            {step?.description || (onSetup
               ? "Take a quick look around your workspace. Then we’ll help you prepare your session, first term, and calendar."
               : "Get to know the places you’ll use in your school workspace. There’s nothing to fill in—just take a look around.")}
           </p>
@@ -310,12 +310,12 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
                   disabled={busy}
                   onClick={() =>
                     welcome
-                      ? finish("paused", role === "admin")
+                      ? finish("paused", Boolean(onSetup))
                       : setIndex(index - 1)
                   }
                 >
                   {welcome
-                    ? role === "admin"
+                    ? onSetup
                       ? "Skip to setup"
                       : "Skip for now"
                     : <><ArrowLeft className="h-4 w-4" />Back</>}
@@ -324,7 +324,7 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
                   disabled={busy || (welcome && !steps.length)}
                   onClick={() =>
                     last && !welcome
-                      ? finish("completed", role === "admin")
+                      ? finish("completed", Boolean(onSetup))
                       : setIndex(index + 1)
                   }
                 >
@@ -333,7 +333,7 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
                     : welcome
                       ? "Show me around"
                       : last
-                        ? role === "admin"
+                        ? onSetup
                           ? "Set up school year"
                           : "Go to dashboard"
                         : "Next"}
@@ -344,10 +344,10 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => finish("paused", role === "admin")}
+                  onClick={() => finish("paused", Boolean(onSetup))}
                   className="workspace-tour-secondary-action"
                 >
-                  {role === "admin" ? "Skip to school setup" : "Skip for now"}
+                  {onSetup ? "Skip to school setup" : "Skip for now"}
                 </button>
               ) : null}
               <button

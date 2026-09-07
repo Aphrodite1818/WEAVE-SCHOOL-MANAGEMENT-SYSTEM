@@ -34,8 +34,8 @@ test("Academic Hub replaces student-choice placement with read-only level transi
   assert.match(progression, /Automatic level transitions/);
   assert.match(progression, /class, arm, and department never affect it/);
   assert.match(progression, /Graduate/);
-  assert.match(guided, /Review progression order/);
-  assert.match(guided, /Level ordering and terminal-level review/);
+  assert.match(guided, /id: "session"/);
+  assert.doesNotMatch(guided, /id: "progression"/);
 });
 
 test("frontend services use level enrollment, canonical class placement, and staged closure contracts", async () => {

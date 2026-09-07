@@ -1,3 +1,6 @@
+import { useAdminSetupReadiness } from "../../features/guides/useAdminSetupReadiness";
+import { adminSchoolYearCompletion } from "../../features/guides/adminSchoolYearCompletion";
+import { schoolYearProgress } from "../../features/guides/schoolYearProgress";
 import {
   createContext,
   useCallback,
@@ -23,7 +26,7 @@ import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
-import { authSession, getErrorMessage } from "../../services/api";
+import { authSession } from "../../services/api";
 import { clearDashboardSessionCache } from "../../services/dashboardSessionCache";
 import { legalComplianceService } from "../../services/legalComplianceService";
 import { cn } from "../../utils/cn";
@@ -45,7 +48,6 @@ import Topbar from "./Topbar";
 import { onboardingModalCopy } from "./navConfig";
 import useOnboardingGate from "./useOnboardingGate";
 import useRoleGuide from "../../features/guides/useRoleGuide";
-import { useToast } from "../../hooks/useToast";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
@@ -107,7 +109,6 @@ function DashboardShellFrame({
   const user = useMemo(() => authSession.getUser() || {}, []);
   const location = useLocation();
   const navigate = useNavigate();
-  const { showError } = useToast();
   const role = getRole(user, roleProp);
   const guidePageActive = role === "admin" && location.pathname.startsWith("/admin/getting-started");
   const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
@@ -171,6 +172,11 @@ function DashboardShellFrame({
     role,
     enabled: onboardingModalEnabled && !legalBlocksProgression,
   });
+  const setupEnabled = role === "admin" && onboardingModalEnabled && !legalBlocksProgression &&
+    !onboardingState.loading && !onboardingState.required && !profileModalOpen;
+  const schoolSetup = useAdminSetupReadiness({ enabled: setupEnabled });
+  const schoolSetupIncomplete = Boolean(schoolSetup.data) &&
+    !schoolYearProgress(adminSchoolYearCompletion(schoolSetup.data)).complete;
   const roleGuide = useRoleGuide({
     role,
     enabled:
@@ -188,10 +194,11 @@ function DashboardShellFrame({
     pathname: location.pathname,
     navigationKey: location.key,
     enabled: onboardingModalEnabled && hasValidSchoolContext && !legalBlocksProgression &&
+      (!setupEnabled || !schoolSetup.loading) &&
       !onboardingState.loading && !onboardingState.required && !preparingWelcome && !profileModalOpen && !guidePageActive,
   });
   const showGettingStartedBanner = Boolean(
-    roleGuide.shouldShowBanner &&
+    setupEnabled && !schoolSetup.loading && !schoolSetup.error && schoolSetupIncomplete && !tour.open &&
     roleGuide.config?.dashboardRoute === location.pathname &&
     gettingStartedRoute !== location.pathname,
   );
@@ -494,20 +501,6 @@ function DashboardShellFrame({
     clearGuideReturn();
     setGuideReturn(null);
   };
-  const dismissGettingStartedBanner = async () => {
-    try {
-      await roleGuide.dismiss();
-      clearGuideReturn();
-      setGuideReturn(null);
-    } catch (error) {
-      showError(
-        getErrorMessage(
-          error,
-          "Could not dismiss the setup guide. Please try again.",
-        ),
-      );
-    }
-  };
   const handleLegalAccepted = (status) => {
     setLegalState({
       loading: false,
@@ -716,7 +709,6 @@ function DashboardShellFrame({
               <GettingStartedBanner
                 guide={roleGuide}
                 onContinue={() => navigate(gettingStartedRoute)}
-                onDismiss={dismissGettingStartedBanner}
               />
             ) : null}
             {children}
@@ -735,7 +727,9 @@ function DashboardShellFrame({
               navigate(`/${role}/dashboard`, { replace: true });
             }
           }}
-          onSetup={() => navigate("/admin/getting-started")}
+          onSetup={tour.initialWelcome && schoolSetupIncomplete
+            ? () => navigate("/admin/getting-started")
+            : undefined}
         />
       ) : null}
 

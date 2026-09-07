@@ -83,7 +83,7 @@ test("class report generation always uses the admins per-grade principal default
 
   assert.match(workspace, /if \(generationTarget === "class"\)/);
   assert.match(workspace, /payload\.apply_default_principal_template = true/);
-  assert.match(workspace, /Each generated student uses your default principal comment for their own calculated grade/);
+  assert.match(workspace, /Each student receives your\s+default principal comment for their calculated grade/);
 });
 
 test("individual principal comment choices are scoped to the students calculated grade", () => {

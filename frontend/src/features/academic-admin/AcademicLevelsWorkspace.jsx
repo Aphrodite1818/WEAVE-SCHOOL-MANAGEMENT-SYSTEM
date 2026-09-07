@@ -489,7 +489,9 @@ function AcademicLevelsWorkspace({ activeTab = "overview" }) {
       <ConfirmDialog
         open={Boolean(pendingAction)}
         title={actionConfig?.[0]}
-        description={`${pendingAction?.item?.name || "This level"} will move through the supported academic-level lifecycle. The backend will reject the transition if live dependencies make it unsafe.`}
+        description={pendingAction?.action === "activate"
+          ? `Cross-check ${pendingAction.item.name} before activating. Category, progression position, and department specialization timing become permanently locked after activation, even if you deactivate the level later. You can still edit its name. Structural mistakes cannot be undone.`
+          : `${pendingAction?.item?.name || "This level"} will move through the supported academic-level lifecycle. The backend will reject the transition if live dependencies make it unsafe.`}
         confirmLabel={actionConfig?.[1]}
         variant={["deactivate", "archive", "delete"].includes(pendingAction?.action) ? "danger" : "primary"}
         isLoading={saving === pendingAction?.item?.id}

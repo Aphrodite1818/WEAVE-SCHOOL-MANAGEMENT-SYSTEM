@@ -13,6 +13,7 @@ import {
 } from "./workspaceTourState";
 
 export default function useWorkspaceTour({ role, enabled, pathname, navigationKey }) {
+  const [initialWelcome, setInitialWelcome] = useState(false);
   const [open, setOpen] = useState(false);
   const [resumeIndex, setResumeIndex] = useState(-1);
   const [state, setState] = useState(null);
@@ -66,6 +67,7 @@ export default function useWorkspaceTour({ role, enabled, pathname, navigationKe
       remind_after: null,
     });
     if (!saved?.sync_pending) {
+      setInitialWelcome(true);
       setResumeIndex(-1);
       setOpen(true);
     } else {
@@ -113,6 +115,7 @@ export default function useWorkspaceTour({ role, enabled, pathname, navigationKe
     const replay = async (event) => {
       if (!enabled || !key || event.detail?.role !== role) return;
       claimed.current = true;
+      setInitialWelcome(false);
       let nextState = null;
       if (event.detail?.resume) {
         nextState = await refreshState();
@@ -163,6 +166,7 @@ export default function useWorkspaceTour({ role, enabled, pathname, navigationKe
 
   return {
     open: open && enabled,
+    initialWelcome,
     close,
     resumeIndex,
     state,

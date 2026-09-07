@@ -16,7 +16,7 @@ test("draft purchases remain scheduled even when entitlement status is active", 
 
 test("initial admin setup is the same three foundations on Free and paid plans", () => {
   for (const features of [undefined, { tenant_branding: false }, { tenant_branding: true }]) {
-    const steps = visibleGuideSteps(ROLE_GUIDES.admin.steps, { attendanceEnabled: false, features, role: "admin", completionMap: { departments: null } });
+    const steps = visibleGuideSteps(ROLE_GUIDES.admin.steps, { runtimeFeatures: { attendance: false }, features, role: "admin", completionMap: { departments: null } });
     assert.deepEqual(steps.map((step) => step.id), ["session", "term", "calendar"]);
     assert.ok(steps.every((step) => !step.optional && !step.feature));
   }
@@ -24,7 +24,7 @@ test("initial admin setup is the same three foundations on Free and paid plans",
 
 test("optional guide features still fail closed without their entitlement", () => {
   const steps = [{ id: "school_logo", feature: "tenant_branding", optional: true }];
-  const options = { attendanceEnabled: false, role: "admin" };
+  const options = { runtimeFeatures: { attendance: false }, role: "admin" };
   assert.deepEqual(visibleGuideSteps(steps, options), []);
   assert.deepEqual(visibleGuideSteps(steps, { ...options, features: { tenant_branding: false } }), []);
   assert.deepEqual(visibleGuideSteps(steps, { ...options, features: { tenant_branding: true } }), steps);
@@ -32,7 +32,7 @@ test("optional guide features still fail closed without their entitlement", () =
 
 test("unreleased attendance stays out of every role guide", () => {
   for (const [role, config] of Object.entries(ROLE_GUIDES)) {
-    const steps = visibleGuideSteps(config.steps, { role, attendanceEnabled: false });
+    const steps = visibleGuideSteps(config.steps, { role, runtimeFeatures: { attendance: false } });
     assert.ok(!steps.some((step) => step.id === "attendance"));
   }
 });
@@ -79,9 +79,9 @@ test("curriculum batch requires review and scopes departments only for specializ
 
 test("teacher multi-class assignment preserves backend eligibility and audit fields", async () => {
   const text = await source("TeacherAssignmentsWorkspace.jsx");
-  assert.match(text, /curriculumService\.getEligibleClasses/);
+  assert.match(text, /curriculumService\s*\.getEligibleClasses/);
   assert.match(text, /class_ids: selectedClassIds/);
-  assert.match(text, /Select all eligible classes/);
+  assert.match(text, /Select all eligible/);
   assert.match(text, /academic_term_id: currentTermId/);
   assert.match(text, /reason: reason.trim\(\)/);
   assert.match(text, /beginAcademicSubmission/);

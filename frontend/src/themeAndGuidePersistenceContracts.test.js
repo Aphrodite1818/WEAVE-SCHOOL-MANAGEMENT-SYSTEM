@@ -64,14 +64,11 @@ test("role guides follow runtime attendance exposure", () => {
   const roleGuide = readSource("features", "guides", "useRoleGuide.js");
 
   assert.match(roleGuide, /useRuntimeConfig/);
-  assert.match(
-    roleGuide,
-    /runtimeConfig\?\.features\?\.attendance !== false/,
-  );
+  const visibility = readSource("features", "guides", "guideStepVisibility.js");
+  assert.match(roleGuide, /runtimeFeatures = runtimeConfig\?\.features/);
   assert.match(roleGuide, /visibleGuideSteps\(baseConfig.steps/);
-  assert.match(roleGuide, /ATTENDANCE_HIDDEN_DESCRIPTIONS/);
-  assert.match(roleGuide, /ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS/);
-  assert.match(roleGuide, /before entering scores/);
+  assert.match(visibility, /isFeatureAvailable\(step,/);
+  assert.match(visibility, /runtimeFeatures,/);
   assert.match(roleGuide, /const storedIndex = baseConfig\.steps\.findIndex/);
   assert.match(roleGuide, /baseIndex < storedIndex/);
 });

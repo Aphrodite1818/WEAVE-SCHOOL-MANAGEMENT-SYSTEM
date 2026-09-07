@@ -1,3 +1,5 @@
+import MultiSelect from "../../components/ui/MultiSelect";
+import { createClassArms } from "./classArmBatch";
 import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -46,6 +48,7 @@ function ClassesWorkspace({ activeTab = "overview" }) {
   const [armLabels, setArmLabels] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [classForm, setClassForm] = useState(emptyClassForm);
+  const [selectedArms, setSelectedArms] = useState([]);
   const [editingClassId, setEditingClassId] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -102,6 +105,7 @@ function ClassesWorkspace({ activeTab = "overview" }) {
   };
 
   const closeEditor = () => {
+    setSelectedArms([]);
     setEditingClassId("");
     setClassForm(emptyClassForm);
     selectView(searchParams.get("returnView") || (activeTab === "create" ? "overview" : activeTab));
@@ -110,6 +114,10 @@ function ClassesWorkspace({ activeTab = "overview" }) {
   const saveClass = async (event) => {
     event.preventDefault();
     const wasEditing = Boolean(editingClassId);
+    if (!wasEditing && (!classForm.academic_level_id || !selectedArms.length)) {
+      showError("Choose an academic level and at least one arm.");
+      return;
+    }
     const submission = beginAcademicSubmission(event, Boolean(saving));
     if (!submission) return;
     setSaving(true);
@@ -121,9 +129,15 @@ function ClassesWorkspace({ activeTab = "overview" }) {
       if (wasEditing) {
         await classService.updateClass(editingClassId, payload);
       } else {
-        await classService.createClass(payload);
+        const result = await createClassArms(classService.createClass, classForm.academic_level_id, selectedArms);
+        setSelectedArms(result.failed.map((item) => item.armLabelId));
+        if (result.failed.length) {
+          showError(`${result.created.length} classes created; ${result.failed.length} could not be created. ${getErrorMessage(result.failed[0].error, "Review the selected arms and retry.")}`);
+          await load();
+          return;
+        }
       }
-      showSuccess(wasEditing ? "Class arm updated." : "Class arm created.");
+      showSuccess(wasEditing ? "Class arm updated." : `${selectedArms.length} classes created.`);
       finishAcademicCreation(submission, () => { setClassForm((current) => ({ ...emptyClassForm, academic_level_id: current.academic_level_id })); }, closeEditor, wasEditing);
       await load();
     } catch (error) {
@@ -169,23 +183,21 @@ function ClassesWorkspace({ activeTab = "overview" }) {
         showEditor ? (
           <WorkspacePanel
             title={editingClassId ? "Edit class" : "Create class"}
-            description="Choose the authoritative level and reusable arm label for this class group."
+            description={editingClassId ? "Update this class and its teacher." : "Choose a level, then select all the arms you want to create. Assign class teachers afterwards."}
           >
             <form className="space-y-3" onSubmit={saveClass}>
               <fieldset disabled={Boolean(saving)} className="space-y-3">
                 <SelectControl
                   label="Academic level"
                   value={classForm.academic_level_id}
-                  onChange={(value) =>
-                    setClassForm((current) => ({
-                      ...current,
-                      academic_level_id: value,
-                    }))
-                  }
+                  onChange={(value) => {
+                    setSelectedArms([]);
+                    setClassForm((current) => ({ ...current, academic_level_id: value }));
+                  }}
                   options={levelOptions}
                   required
                 />
-                <SelectControl
+                {editingClassId ? <SelectControl
                   label="Arm"
                   value={classForm.arm_label_id}
                   onChange={(value) =>
@@ -197,8 +209,19 @@ function ClassesWorkspace({ activeTab = "overview" }) {
                   options={armLabelOptions}
                   placeholder="Select arm"
                   required
-                />
-                <SelectControl
+                /> : <MultiSelect
+                  label="Arms"
+                  value={selectedArms}
+                  options={armLabelOptions.filter((option) => !classes.some((item) =>
+                    item.academic_level_id === classForm.academic_level_id && item.arm_label_id === option.value))}
+                  onChange={(event) => setSelectedArms(event.target.value)}
+                  disabled={!classForm.academic_level_id || Boolean(saving)}
+                  placeholder="Select arms to create"
+                  searchPlaceholder="Search arms"
+                  required
+                />}
+                {!editingClassId ? <p className="text-xs text-text-muted">{selectedArms.length} arms selected. Existing class arms are excluded, including archived classes.</p> : null}
+                {editingClassId ? <SelectControl
                   label="Class teacher"
                   value={classForm.teacher_membership_id}
                   onChange={(value) =>
@@ -209,10 +232,10 @@ function ClassesWorkspace({ activeTab = "overview" }) {
                   }
                   options={teacherOptions}
                   clearable
-                />
+                /> : null}
                 <FormActions
                   submitting={Boolean(saving)}
-                  submitLabel={editingClassId ? "Save class" : "Create class"}
+                  submitLabel={editingClassId ? "Save class" : `Create classes (${selectedArms.length})`}
                   repeatable
                   editing={Boolean(editingClassId)}
                   onCancel={closeEditor}

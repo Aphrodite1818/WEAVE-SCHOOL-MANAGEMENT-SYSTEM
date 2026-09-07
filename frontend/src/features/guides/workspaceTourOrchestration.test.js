@@ -78,7 +78,7 @@ test("all first-entry actor boundaries queue or consume the workspace tour", () 
   const teacherRoutes = readSource("routes", "teacherRoutes.jsx");
   const parentRoutes = readSource("routes", "parentRoutes.jsx");
 
-  assert.match(onboardingGate, /queueInitialTour\(normalizedRole, completedInitialOnboarding, guideService\)/);
+  assert.match(onboardingGate, /queueInitialTour\(\s*normalizedRole,\s*completedInitialOnboarding,\s*guideService,?\s*\)/);
   assert.match(invitation, /queueInitialTour\(role, true, guideService\)/);
   assert.match(studentPassword, /queueInitialTour\("student", true, guideService\)/);
   assert.match(tourHook, /pathname !== `\/\$\{role\}\/dashboard`/);

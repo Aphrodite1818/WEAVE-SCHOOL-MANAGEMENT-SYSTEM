@@ -3,13 +3,14 @@ import { useLocation } from "react-router-dom";
 import { academicService } from "../../services/academicService";
 import { getErrorMessage } from "../../services/api";
 
-export function useAdminSetupReadiness() {
+export function useAdminSetupReadiness({ enabled = true } = {}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const generation = useRef(0);
   const { pathname } = useLocation();
   const refresh = useCallback(async () => {
+    if (!enabled) { setLoading(false); return; }
     const request = ++generation.current;
     setLoading(true);
     setError("");
@@ -31,13 +32,13 @@ export function useAdminSetupReadiness() {
     } finally {
       if (request === generation.current) setLoading(false);
     }
-  }, []);
+  }, [enabled]);
   useEffect(() => {
     refresh();
-    window.addEventListener("weave:dashboard-cache-clear", refresh);
+    window.addEventListener("weave:dashboard-cache-invalidated", refresh);
     return () => {
       generation.current += 1;
-      window.removeEventListener("weave:dashboard-cache-clear", refresh);
+      window.removeEventListener("weave:dashboard-cache-invalidated", refresh);
     };
   }, [refresh, pathname]);
   return { data, error, loading, refresh };

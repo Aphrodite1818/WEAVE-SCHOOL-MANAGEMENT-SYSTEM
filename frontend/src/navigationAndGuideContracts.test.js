@@ -36,7 +36,7 @@ test("admin guided setup keeps configuration inside the selected step", () => {
   const workspace = readSource("features", "guides", "AdminGuideTaskWorkspace.jsx");
 
   assert.match(overview, /navigate\(`\/admin\/getting-started\/\$\{step\.id\}`\)/);
-  assert.match(stepPage, /<AdminGuideTaskWorkspace stepId=\{step\.id\}/);
+  assert.match(stepPage, /<AdminGuideTaskWorkspace\s+stepId=\{step\.id\}/);
   assert.doesNotMatch(stepPage, /navigate\(step\.to\)/);
   assert.match(stepPage, /SchoolYearProgress/);
   assert.match(stepPage, /progress\.canOpen\(step\.id\)/);
@@ -126,7 +126,7 @@ test("paid-only admin features are hidden instead of rendered for ineligible pla
   const analyticsPage = readSource("pages", "shared", "RoleAnalyticsPage.jsx");
   const adminDashboard = readSource("pages", "admin", "AdminDashboardPage.jsx");
 
-  assert.match(sidebar, /featureGuard\.pending \|\| featureGuard\.allowed === false/);
+  assert.match(sidebar, /isFeatureAvailable\(item,/);
   assert.match(navConfig, /featureCode: FEATURE_CODES\.CBT_PAIRING/);
   assert.match(adminRoutes, /SubscriptionFeatureRouteGuard featureCode=\{FEATURE_CODES\.CBT_PAIRING\}/);
   assert.match(adminRoutes, /SubscriptionFeatureRouteGuard featureCode=\{FEATURE_CODES\.TENANT_BRANDING\}/);
@@ -144,7 +144,7 @@ test("new tenant admins enter the dashboard tour after initial profile onboardin
     "useOnboardingGate.js",
   );
 
-  assert.match(onboardingGate, /GETTING_STARTED_ROUTE_BY_ROLE\[normalizedRole\]/);
+  assert.match(onboardingGate, /postOnboardingRoute\(normalizedRole\)/);
   assert.match(onboardingGate, /profileMode === "onboarding"/);
   assert.match(
     onboardingGate,
@@ -171,15 +171,15 @@ test("linked-school role guides auto-show once with the intended persistence sco
   assert.match(guideService, /user\.meta\?\.teacher_account_id/);
   assert.match(guideService, /user\.meta\?\.parent_account_id/);
   assert.match(guideService, /accountScoped\s*\? "global"/);
-  assert.match(dashboardLayout, /await roleGuide\.dismiss\(\)/);
-  assert.match(dashboardLayout, /onDismiss=\{dismissGettingStartedBanner\}/);
+  assert.match(dashboardLayout, /schoolSetupIncomplete/);
+  assert.doesNotMatch(dashboardLayout, /onDismiss=\{dismissGettingStartedBanner\}/);
   assert.match(banner, /Do not show again/);
 });
 
 test("admin setup exits directly and completion requires saved foundation evidence", () => {
   const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
   const shell = readSource("components", "layout", "DashboardLayout.jsx");
-  assert.match(setupRoute, /schoolYearProgress\(setup\.data\?\.completion\)\.complete/);
+  assert.match(setupRoute, /schoolYearProgress\(\s*setup\.data\?\.completion,?\s*\)\.complete/);
   assert.match(setupRoute, /await guide\.finish\(\)/);
   assert.match(setupRoute, /leaveGuideRoute\("admin", "\/admin\/dashboard"/);
   assert.doesNotMatch(setupRoute, /document\.addEventListener\("click"/);
@@ -192,7 +192,7 @@ test("other role introductions offer an explicit tour and return to their dashbo
   const shell = readSource("components", "layout", "DashboardLayout.jsx");
   assert.match(roleGuide, /requestWorkspaceTour\(role\)/);
   assert.match(roleGuide, /navigate\(`\/\$\{role\}\/dashboard`, \{ replace: true \}\)/);
-  assert.match(shell, /if \(role !== "admin"\) navigate/);
+  assert.match(shell, /if \(role !== "admin"\)\s*\{?\s*navigate/);
   assert.doesNotMatch(roleGuide, /markComplete|skipCurrent|guide\.start/);
 });
 

@@ -18,7 +18,7 @@ test("teacher assignment requests use the canonical lifecycle statuses", () => {
   assert.match(source, /if \(status === ["']current["']\)/);
   assert.match(source, /open=\{Boolean\(reassigning\)\}/);
   assert.match(source, /open=\{Boolean\(ending\)\}/);
-  assert.match(source, /\? ["']current["']/);
+  assert.match(source, /status: filters\.status \|\| undefined/);
 });
 
 test("assignment creation delegates existing coverage to the eligible-class contract", () => {
