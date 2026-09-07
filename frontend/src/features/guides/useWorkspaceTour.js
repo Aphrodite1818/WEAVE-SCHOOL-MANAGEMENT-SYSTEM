@@ -8,38 +8,56 @@ import {
   TOUR_QUEUED_EVENT,
   TOUR_REQUEST_EVENT,
   TOUR_SEEN_STEP,
+  TOUR_STATE_CHANGED_EVENT,
   tourKeyForRole,
 } from "./workspaceTourState";
 
 export default function useWorkspaceTour({ role, enabled, pathname, navigationKey }) {
   const [open, setOpen] = useState(false);
   const [resumeIndex, setResumeIndex] = useState(-1);
+  const [state, setState] = useState(null);
   const [queueVersion, setQueueVersion] = useState(0);
   const claimed = useRef(false);
   const key = tourKeyForRole(role);
+
+  const acceptState = useCallback(
+    (nextState) => {
+      setState(nextState || null);
+      publishTourState(role, nextState);
+      return nextState;
+    },
+    [role],
+  );
 
   const saveState = useCallback(
     async (payload) => {
       if (!key) return null;
       const saved = await guideService.updateState(key, payload);
-      publishTourState(role, saved);
-      return saved;
+      return acceptState(saved);
     },
-    [key, role],
+    [acceptState, key],
   );
+
+  const refreshState = useCallback(async () => {
+    if (!enabled || !key) return null;
+    let nextState = await guideService.getState(key);
+    if (
+      nextState?.sync_pending &&
+      typeof navigator !== "undefined" &&
+      navigator.onLine
+    ) {
+      nextState = await guideService.retryPendingState(key);
+    }
+    return acceptState(nextState);
+  }, [acceptState, enabled, key]);
 
   const checkWelcome = useCallback(async () => {
     if (!enabled || !key || pathname !== `/${role}/dashboard` || claimed.current) {
       return;
     }
 
-    let state = await guideService.getState(key);
-    publishTourState(role, state);
-    if (state?.sync_pending && typeof navigator !== "undefined" && navigator.onLine) {
-      state = await guideService.retryPendingState(key);
-      publishTourState(role, state);
-    }
-    if (!canAutoShowTour(state) || claimed.current) return;
+    const nextState = await refreshState();
+    if (!canAutoShowTour(nextState) || claimed.current) return;
 
     claimed.current = true;
     const saved = await saveState({
@@ -51,11 +69,9 @@ export default function useWorkspaceTour({ role, enabled, pathname, navigationKe
       setResumeIndex(-1);
       setOpen(true);
     } else {
-      // The invitation was not durably consumed. Allow a later online/dashboard
-      // retry instead of permanently suppressing the first tour in this mount.
       claimed.current = false;
     }
-  }, [enabled, key, pathname, role, saveState]);
+  }, [enabled, key, pathname, refreshState, role, saveState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,15 +84,27 @@ export default function useWorkspaceTour({ role, enabled, pathname, navigationKe
   }, [checkWelcome, navigationKey, queueVersion]);
 
   useEffect(() => {
+    if (!enabled || !key) return;
+    refreshState().catch(() => {});
+  }, [enabled, key, refreshState]);
+
+  useEffect(() => {
     const queued = (event) => {
       if (!key || event.detail?.role !== role) return;
+      if (event.detail?.state) setState(event.detail.state);
       setQueueVersion((value) => value + 1);
+    };
+    const changed = (event) => {
+      if (!key || event.detail?.role !== role) return;
+      setState(event.detail?.state || null);
     };
     const online = () => setQueueVersion((value) => value + 1);
     window.addEventListener(TOUR_QUEUED_EVENT, queued);
+    window.addEventListener(TOUR_STATE_CHANGED_EVENT, changed);
     window.addEventListener("online", online);
     return () => {
       window.removeEventListener(TOUR_QUEUED_EVENT, queued);
+      window.removeEventListener(TOUR_STATE_CHANGED_EVENT, changed);
       window.removeEventListener("online", online);
     };
   }, [key, role]);
@@ -85,24 +113,22 @@ export default function useWorkspaceTour({ role, enabled, pathname, navigationKe
     const replay = async (event) => {
       if (!enabled || !key || event.detail?.role !== role) return;
       claimed.current = true;
-      let state = null;
+      let nextState = null;
       if (event.detail?.resume) {
-        state = await guideService.getState(key);
-        publishTourState(role, state);
+        nextState = await refreshState();
       }
-      setResumeIndex(event.detail?.resume ? resumeIndexFromState(state) : -1);
+      setResumeIndex(event.detail?.resume ? resumeIndexFromState(nextState) : -1);
       setOpen(true);
     };
     window.addEventListener(TOUR_REQUEST_EVENT, replay);
     return () => window.removeEventListener(TOUR_REQUEST_EVENT, replay);
-  }, [enabled, key, role]);
+  }, [enabled, key, refreshState, role]);
 
   useEffect(() => {
-    // Role/account switches remount most shells, but resetting here makes the
-    // hook correct even if React preserves the shell instance.
     claimed.current = false;
     setOpen(false);
     setResumeIndex(-1);
+    setState(null);
   }, [key]);
 
   const close = async ({ outcome = "paused", index = -1 } = {}) => {
@@ -135,5 +161,14 @@ export default function useWorkspaceTour({ role, enabled, pathname, navigationKe
     setResumeIndex(-1);
   };
 
-  return { open: open && enabled, close, resumeIndex };
+  return {
+    open: open && enabled,
+    close,
+    resumeIndex,
+    state,
+    refreshState,
+    incomplete: state?.status === "in_progress",
+    dismissed: state?.status === "dismissed",
+    completed: state?.status === "completed",
+  };
 }
