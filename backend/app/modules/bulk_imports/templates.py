@@ -24,7 +24,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v7",
+    ImportResourceType.STUDENTS: "students_v8",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -35,7 +35,6 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "gender",
         "level",
         "arm",
-        "department",
         "state_of_origin",
         "parent_email_1",
         "parent_relationship_1",
@@ -130,16 +129,6 @@ def create_student_template() -> ImportTemplateDefinition:
                 description="Required. Enter the arm label only, such as A or B. The backend derives the class from level + arm.",
             ),
             create_template_column(
-                name="department",
-                label="Department",
-                required=False,
-                example="Science",
-                description=(
-                    "Leave blank for a General class. When the resolved class has a department "
-                    "assignment for the current term, enter that department exactly."
-                ),
-            ),
-            create_template_column(
                 name="state_of_origin",
                 label="State of Origin",
                 required=False,
@@ -180,7 +169,7 @@ def create_student_template() -> ImportTemplateDefinition:
             "Date of birth is required because students cannot edit it later.",
             "Academic level and arm are required. The backend derives the actual class from level + arm.",
             "Do not enter combined class names such as JSS1 A. Enter level=JSS1 and arm=A instead.",
-            "Department is term-specific. Leave it blank for General classes; when the class is specialized for the current term, it must match that assignment.",
+            "Department is derived automatically from the resolved class and current academic term. Do not include a department column.",
             "Parent or guardian emails are optional in the current student-creation workflow. If an email is supplied, its matching relationship column is required.",
             "A maximum of two parents or guardians is supported per imported student.",
             "Accepted date formats include YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY, MM-DD-YYYY, and YYYY/MM/DD.",
@@ -269,6 +258,12 @@ def list_template_responses(
     """Return all supported import templates."""
 
     return [
+        convert_column_to_response(
+            column=column,
+        )
+        for template in []
+        for column in template.columns
+    ] if False else [
         convert_template_to_response(
             template=template,
             file_type=file_type,
