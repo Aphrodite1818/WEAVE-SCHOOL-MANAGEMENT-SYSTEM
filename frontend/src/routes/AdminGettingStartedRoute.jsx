@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import { adminSchoolYearCompletion } from "../features/guides/adminSchoolYearCompletion";
 import { leaveGuideRoute } from "../features/guides/guideNavigation";
 import useRoleGuide from "../features/guides/useRoleGuide";
 import { useAdminSetupReadiness } from "../features/guides/useAdminSetupReadiness";
@@ -10,11 +11,16 @@ import { getErrorMessage } from "../services/api";
 
 export default function AdminGettingStartedRoute() {
   const setup = useAdminSetupReadiness();
-  const guide = useRoleGuide({ role: "admin", completionMap: setup.loading || setup.error ? null : setup.data?.completion });
+  const completion = adminSchoolYearCompletion(setup.data);
+  const guide = useRoleGuide({
+    role: "admin",
+    completionMap: setup.loading || setup.error ? null : completion,
+  });
   const { showError } = useToast();
   const { step } = useParams();
+
   const onFinish = async () => {
-    if (setup.loading || setup.error || !schoolYearProgress(setup.data?.completion).complete) return;
+    if (setup.loading || setup.error || !schoolYearProgress(completion).complete) return;
     try {
       await guide.finish();
       leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
@@ -22,5 +28,10 @@ export default function AdminGettingStartedRoute() {
       showError(getErrorMessage(error, "Could not save setup completion. Please try again."));
     }
   };
-  return step ? <AdminGettingStartedStepPage setup={setup} /> : <AdminGettingStartedPage setup={setup} onFinish={onFinish} />;
+
+  return step ? (
+    <AdminGettingStartedStepPage setup={setup} />
+  ) : (
+    <AdminGettingStartedPage setup={setup} onFinish={onFinish} />
+  );
 }
