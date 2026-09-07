@@ -292,13 +292,28 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     }
   };
 
-  const editApplicability = (row) => {
-    if (!specializationEnabled || !levelDepartments.length) return;
-    setScopeSubjectId(row.id);
-    setSelectedDepartmentIds(
-      (row.departments || []).map((item) => item.academic_level_department_id),
-    );
-    setEditorMode("applicability");
+  const editApplicability = async (row) => {
+    if (!specializationEnabled || !levelId || saving) return;
+    try {
+      const departmentResponse = await departmentService.getLevelDepartments(levelId, {
+        activeOnly: true,
+      });
+      const activeDepartments = items(departmentResponse);
+      setLevelDepartments(activeDepartments);
+      if (!activeDepartments.length) {
+        showError(
+          "Configure department specializations for this level before assigning a subject to a specialization.",
+        );
+        return;
+      }
+      setScopeSubjectId(row.id);
+      setSelectedDepartmentIds(
+        (row.departments || []).map((item) => item.academic_level_department_id),
+      );
+      setEditorMode("applicability");
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not load department specializations."));
+    }
   };
 
   const levelControl = (
@@ -312,86 +327,86 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     />
   );
 
+  const applicabilityEditorOpen =
+    editorMode === "applicability" && specializationEnabled;
+  const applicabilityEditor = applicabilityEditorOpen ? (
+    <WorkspacePanel
+      title="Subject applicability"
+      description="Choose which specializations receive this subject once specialization is active. With no departments selected, the subject is general and remains available to every class."
+    >
+      <form className="space-y-4" onSubmit={saveApplicability}>
+        <fieldset disabled={Boolean(saving)} className="space-y-4">
+          <SelectControl
+            label="Curriculum subject"
+            value={scopeSubjectId}
+            onChange={setScopeSubjectId}
+            options={curriculumSubjects
+              .filter((row) => row.is_active !== false)
+              .map((row) => ({ value: row.id, label: row.subject_name }))}
+            required
+          />
+
+          {levelDepartments.length ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-text">Available to</p>
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outline"
+                  onClick={() => setSelectedDepartmentIds([])}
+                >
+                  All specializations
+                </Button>
+              </div>
+              <div className="space-y-2 rounded-xl border border-border bg-surface-muted p-3">
+                {levelDepartments.map((row) => (
+                  <label
+                    key={row.id}
+                    className="flex items-center gap-3 text-sm text-text"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedDepartmentIds.includes(row.id)}
+                      onChange={() => toggleDepartment(row.id)}
+                    />
+                    <span>{row.department_name || "Department"}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs leading-5 text-text-muted">
+                {selectedDepartmentIds.length === 0
+                  ? "General subject — available to every specialization."
+                  : "Specialization-scoped subject — available only to the selected departments after specialization begins."}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm leading-6 text-text-muted">
+              This level has no department specializations. Subjects are available to every class in the level.
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              disabled={saving === "applicability" || !scopeSubjectId}
+            >
+              {saving === "applicability" ? "Saving…" : "Save changes"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setEditorMode("")}>
+              Cancel
+            </Button>
+          </div>
+        </fieldset>
+      </form>
+    </WorkspacePanel>
+  ) : null;
+
   if (activeTab === "applicability") {
-    const editorOpen =
-      editorMode === "applicability" && specializationEnabled;
     return (
       <>
       <WorkspaceGrid
-        editor={
-          editorOpen ? (
-            <WorkspacePanel
-              title="Subject applicability"
-              description="Choose which specializations receive this subject once specialization is active. With no departments selected, the subject is general and remains available to every class."
-            >
-              <form className="space-y-4" onSubmit={saveApplicability}>
-                <fieldset disabled={Boolean(saving)} className="space-y-4">
-                <SelectControl
-                  label="Curriculum subject"
-                  value={scopeSubjectId}
-                  onChange={setScopeSubjectId}
-                  options={curriculumSubjects
-                    .filter((row) => row.is_active !== false)
-                    .map((row) => ({ value: row.id, label: row.subject_name }))}
-                  required
-                />
-
-                {levelDepartments.length ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-text">Available to</p>
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        onClick={() => setSelectedDepartmentIds([])}
-                      >
-                        All specializations
-                      </Button>
-                    </div>
-                    <div className="space-y-2 rounded-xl border border-border bg-surface-muted p-3">
-                      {levelDepartments.map((row) => (
-                        <label
-                          key={row.id}
-                          className="flex items-center gap-3 text-sm text-text"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedDepartmentIds.includes(row.id)}
-                            onChange={() => toggleDepartment(row.id)}
-                          />
-                          <span>{row.department_name || "Department"}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <p className="text-xs leading-5 text-text-muted">
-                      {selectedDepartmentIds.length === 0
-                        ? "General subject — available to every specialization."
-                        : "Specialization-scoped subject — available only to the selected departments after specialization begins."}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm leading-6 text-text-muted">
-                    This level has no department specializations. Subjects are available to every class in the level.
-                  </p>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="submit"
-                    disabled={saving === "applicability" || !scopeSubjectId}
-                  >
-                    {saving === "applicability" ? "Saving…" : "Save changes"}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setEditorMode("")}>
-                    Cancel
-                  </Button>
-                </div>
-                </fieldset>
-              </form>
-            </WorkspacePanel>
-          ) : null
-        }
+        editor={applicabilityEditor}
         content={
           <RecordList
             title="Subject applicability"
@@ -402,9 +417,9 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
             }
             actions={<div className="min-w-[18rem]">{levelControl}</div>}
             loading={loading}
-          error={loadError}
-          onRetry={loadLevel}
-          items={curriculumSubjects}
+            error={loadError}
+            onRetry={loadLevel}
+            items={curriculumSubjects}
             emptyTitle="No curriculum subjects"
             emptyDescription="Add subjects to this level before configuring specialization applicability."
             renderTitle={(row) => row.subject_name}
@@ -415,13 +430,13 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                 : "General — available to every class in this level."
             }
             renderStatus={(row) => (row.is_active === false ? "inactive" : "active")}
-            showInspector={!editorOpen}
+            showInspector={!applicabilityEditorOpen}
             renderActions={(row) =>
-              specializationEnabled && levelDepartments.length ? (
+              specializationEnabled ? (
                 <Button
                   size="small"
                   variant="outline"
-                  disabled={row.is_active === false}
+                  disabled={row.is_active === false || Boolean(saving)}
                   onClick={() => editApplicability(row)}
                 >
                   Edit applicability
@@ -450,7 +465,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     );
   }
 
-  const editorOpen = ["subject", "copy"].includes(editorMode);
+  const editorOpen = ["subject", "copy", "applicability"].includes(editorMode);
   return (
     <>
     <WorkspaceGrid
@@ -459,6 +474,8 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
           <CurriculumCopyPanel key={levelId} levels={levels} target={selectedLevel}
             targetSubjects={curriculumSubjects} targetDepartments={levelDepartments}
             saving={Boolean(saving)} onCopy={copyCurriculum} onCancel={() => setEditorMode("")} />
+        ) : editorMode === "applicability" ? (
+          applicabilityEditor
         ) : editorOpen ? (
           <WorkspacePanel
             title="Add subjects to curriculum"
@@ -546,6 +563,16 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
           showInspector={!editorOpen}
           renderActions={(row) => (
             <>
+              {specializationEnabled ? (
+                <Button
+                  size="small"
+                  variant="outline"
+                  disabled={row.is_active === false || Boolean(saving)}
+                  onClick={() => editApplicability(row)}
+                >
+                  Edit scope
+                </Button>
+              ) : null}
               <Button
                 size="small"
                 variant="outline"
