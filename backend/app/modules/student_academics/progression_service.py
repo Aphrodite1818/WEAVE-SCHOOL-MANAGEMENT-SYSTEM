@@ -16,7 +16,6 @@ from app.modules.classes.category_catalog import categories_for
 from app.modules.classes.models import AcademicLevel, AcademicLevelStatus
 from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.parents.repository import ParentMembershipRepository
-from app.modules.school_calendar.repository import SchoolCalendarRepository
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
     StudentProgressionRepository,
@@ -76,15 +75,6 @@ class AcademicProgressionService:
                 end_date=session.end_date,
                 require_complete=True,
             )
-            if await SchoolCalendarRepository.get_configuration(db, actor.tenant_id) is None:
-                raise ConflictException(
-                    "Configure the school calendar before opening an academic session.",
-                    payload={
-                        "blocker_messages": [
-                            "School calendar configuration is required before session opening."
-                        ]
-                    },
-                )
             preview = await StudentAcademicService.academic_session_dependency_preview(
                 db, actor.tenant_id, session.id
             )
