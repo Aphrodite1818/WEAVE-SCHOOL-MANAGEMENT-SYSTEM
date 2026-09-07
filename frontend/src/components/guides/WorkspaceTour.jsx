@@ -30,7 +30,7 @@ function connectorGeometry(card, target) {
   };
 }
 
-export default function WorkspaceTour({ role, onClose, onSetup }) {
+export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -1 }) {
   const subscription = useSubscription();
   const runtimeConfig = useRuntimeConfig();
   const user = authSession.getUser() || {};
@@ -54,10 +54,12 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
   const [geometry, setGeometry] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmDismiss, setConfirmDismiss] = useState(false);
   const overlayRef = useRef(null);
   const cardRef = useRef(null);
   const headingRef = useRef(null);
   const actionLock = useRef(false);
+  const restoredIndex = useRef(false);
   const step = steps[index];
   const welcome = index < 0;
   const last = index === steps.length - 1;
@@ -65,8 +67,6 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
   const visibleRoutes = steps.map((item) => item.to);
 
   useLayoutEffect(() => {
-    // Intersect canonical availability with what is actually rendered so every
-    // guided step has a real, visible anchor in the active navigation surface.
     const rendered = new Set(
       Array.from(document.querySelectorAll("[data-tour-target]"))
         .filter((node) => node.getBoundingClientRect().width > 0)
@@ -78,6 +78,14 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
         .map((item) => tourContentForItem(role, item)),
     );
   }, [configuredItems, role]);
+
+  useEffect(() => {
+    if (restoredIndex.current || !steps.length) return;
+    restoredIndex.current = true;
+    if (Number.isInteger(initialIndex) && initialIndex >= 0) {
+      setIndex(Math.min(initialIndex, steps.length - 1));
+    }
+  }, [initialIndex, steps.length]);
 
   useEffect(() => {
     const previousFocus = document.activeElement;
@@ -167,14 +175,14 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
     };
   }, [step, welcome]);
 
-  const finish = async (completed, setup = false) => {
+  const finish = async (outcome = "paused", setup = false) => {
     if (actionLock.current) return;
     actionLock.current = true;
     setBusy(true);
     setError("");
     try {
-      await onClose(completed);
-      if (setup) onSetup();
+      await onClose({ outcome, index });
+      if (setup) onSetup?.();
     } catch (err) {
       setError(getErrorMessage(err, "Could not save your tour preference. Please try again."));
     } finally {
@@ -184,7 +192,11 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
   };
 
   const onKeyDown = (event) => {
-    if (event.key === "Escape") { event.preventDefault(); finish(false); }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (confirmDismiss) setConfirmDismiss(false);
+      else finish("paused");
+    }
     if (event.key !== "Tab") return;
     const controls = Array.from(cardRef.current?.querySelectorAll(focusable) || []);
     const first = controls[0];
@@ -234,7 +246,7 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
             <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
               {welcome ? "Welcome to Weave" : `Your workspace · ${index + 1} of ${steps.length}`}
             </span>
-            <button type="button" disabled={busy} onClick={() => finish(false)} aria-label="Close tour" className="workspace-tour-close">
+            <button type="button" disabled={busy} onClick={() => finish("paused")} aria-label="Close tour and finish later" className="workspace-tour-close">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -268,24 +280,86 @@ export default function WorkspaceTour({ role, onClose, onSetup }) {
               </ul>
             </div>
           ) : (
-            <p className="mt-6 text-sm font-medium text-text">You can skip this tour or replay it later from Settings.</p>
+            <p className="mt-6 text-sm font-medium text-text">
+              Skip for now and Weave will keep a Resume tour reminder on your dashboard. You can also replay the tour later from Settings.
+            </p>
           )}
           {error ? <p role="alert" className="mt-4 text-sm text-error">{error}</p> : null}
         </div>
         <footer className="workspace-tour-footer">
-          <div className="flex items-center justify-between gap-2">
-            <Button variant="ghost" disabled={busy} onClick={() => welcome ? finish(false, role === "admin") : setIndex(index - 1)}>
-              {welcome ? (role === "admin" ? "Skip to setup" : "Skip tour") : <><ArrowLeft className="h-4 w-4" />Back</>}
-            </Button>
-            <Button disabled={busy || (welcome && !steps.length)} onClick={() => last && !welcome ? finish(true, role === "admin") : setIndex(index + 1)}>
-              {busy ? "Saving…" : welcome ? "Show me around" : last ? (role === "admin" ? "Set up school year" : "Go to dashboard") : "Next"}<ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-          {!welcome ? (
-            <button type="button" disabled={busy} onClick={() => finish(false, role === "admin")} className="workspace-tour-secondary-action">
-              {role === "admin" ? "Skip to school setup" : "Skip tour"}
-            </button>
-          ) : null}
+          {confirmDismiss ? (
+            <div className="rounded-xl border border-border bg-surface-muted/45 p-4">
+              <p className="text-sm font-semibold text-text">Stop showing the workspace tour?</p>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                Weave will remove the incomplete reminder and will not open this tour automatically again. You can still replay it manually from Settings.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button variant="ghost" size="small" disabled={busy} onClick={() => setConfirmDismiss(false)}>
+                  Cancel
+                </Button>
+                <Button variant="outline" size="small" disabled={busy} onClick={() => finish("dismissed")}>
+                  {busy ? "Saving..." : "Don't show again"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() =>
+                    welcome
+                      ? finish("paused", role === "admin")
+                      : setIndex(index - 1)
+                  }
+                >
+                  {welcome
+                    ? role === "admin"
+                      ? "Skip to setup"
+                      : "Skip for now"
+                    : <><ArrowLeft className="h-4 w-4" />Back</>}
+                </Button>
+                <Button
+                  disabled={busy || (welcome && !steps.length)}
+                  onClick={() =>
+                    last && !welcome
+                      ? finish("completed", role === "admin")
+                      : setIndex(index + 1)
+                  }
+                >
+                  {busy
+                    ? "Saving…"
+                    : welcome
+                      ? "Show me around"
+                      : last
+                        ? role === "admin"
+                          ? "Set up school year"
+                          : "Go to dashboard"
+                        : "Next"}
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+              {!welcome ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => finish("paused", role === "admin")}
+                  className="workspace-tour-secondary-action"
+                >
+                  {role === "admin" ? "Skip to school setup" : "Skip for now"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setConfirmDismiss(true)}
+                className="workspace-tour-dismiss-action"
+              >
+                Don't show this tour again
+              </button>
+            </>
+          )}
         </footer>
       </section>
     </div>,
