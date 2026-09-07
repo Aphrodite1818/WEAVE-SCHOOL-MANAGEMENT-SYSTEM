@@ -69,6 +69,7 @@ def _response(row):
 
 def _dependencies(**overrides):
     values = {
+        "department_links_total": 0,
         "teacher_assignments_total": 0,
         "teacher_assignments_active": 0,
         "teacher_assignment_audits_total": 0,
@@ -311,6 +312,39 @@ async def test_unused_curriculum_subject_can_be_hard_deleted() -> None:
             CurriculumSubjectRepository,
             "count_dependencies",
             new=AsyncMock(return_value=_dependencies()),
+        ),
+        patch.object(CurriculumSubjectRepository, "delete", new=AsyncMock()) as delete,
+        patch.object(
+            AcademicCurriculumService,
+            "_curriculum_subject_response",
+            new=AsyncMock(side_effect=lambda _db, value, _subject=None: _response(value)),
+        ),
+    ):
+        response = await AcademicCurriculumService.hard_delete_subject(db, row.tenant_id, row.id)
+
+    assert response.id == row.id
+    delete.assert_awaited_once_with(db, row)
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_department_scopes_do_not_block_unused_curriculum_subject_hard_delete() -> None:
+    row = _row()
+    db = AsyncMock()
+    with (
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.ensure_academic_write_window",
+            new=AsyncMock(),
+        ),
+        patch.object(
+            AcademicCurriculumService,
+            "_curriculum_subject_context",
+            new=AsyncMock(return_value=_context(row)),
+        ),
+        patch.object(
+            CurriculumSubjectRepository,
+            "count_dependencies",
+            new=AsyncMock(return_value=_dependencies(department_links_total=2)),
         ),
         patch.object(CurriculumSubjectRepository, "delete", new=AsyncMock()) as delete,
         patch.object(

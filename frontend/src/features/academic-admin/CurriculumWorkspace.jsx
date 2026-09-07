@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Button from "../../components/ui/Button";
 import { useToast } from "../../hooks/useToast";
 import { academicLevelService } from "../../services/academicsService";
-import { getErrorMessage } from "../../services/api";
+import { getErrorMessage, parseApiError } from "../../services/api";
 import { curriculumService } from "../../services/curriculumService";
 import { departmentService } from "../../services/departmentService";
 import { subjectService } from "../../services/subject.service";
@@ -18,6 +18,7 @@ import {
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
 import { levelSupportsSpecialization } from "./academicDepartmentCapability";
+import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
 const items = (value) => (Array.isArray(value) ? value : value?.items || []);
 
@@ -28,6 +29,26 @@ const scopeLabel = (row) => {
     .map((item) => item.department_name || "Department")
     .filter(Boolean)
     .join(" · ");
+};
+
+const dependencyLabel = (key) =>
+  ({
+    teacher_assignments_total: "Teacher assignments",
+    teacher_assignment_audits_total: "Teacher assignment history",
+    results_total: "Result records",
+  })[key] || key.replaceAll("_", " ");
+
+const errorWithDependencies = (error, fallback) => {
+  const parsed = parseApiError(error, fallback);
+  const counts =
+    parsed.data?.dependency_counts ||
+    parsed.data?.detail?.dependency_counts ||
+    parsed.data?.payload?.dependency_counts ||
+    {};
+  const blockers = Object.entries(counts)
+    .filter(([, count]) => Number(count) > 0)
+    .map(([key, count]) => `${dependencyLabel(key)}: ${count}`);
+  return blockers.length ? `${parsed.message} ${blockers.join("; ")}` : parsed.message;
 };
 
 export default function CurriculumWorkspace({ activeTab = "subjects" }) {
@@ -49,6 +70,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const [selectedDepartmentIds, setSelectedDepartmentIds] = useState([]);
   const [editorMode, setEditorMode] = useState("");
   const [saving, setSaving] = useState("");
+  const [pendingDelete, setPendingDelete] = useState(null);
 
   const loadBase = useCallback(async () => {
     try {
@@ -217,6 +239,26 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     }
   };
 
+  const deleteCurriculumSubject = async () => {
+    if (!pendingDelete || saving) return;
+    setSaving(pendingDelete.id);
+    try {
+      await curriculumService.deleteSubject(pendingDelete.id);
+      showSuccess("Unused curriculum subject deleted.");
+      setPendingDelete(null);
+      await loadLevel();
+    } catch (error) {
+      showError(
+        errorWithDependencies(
+          error,
+          "Could not delete curriculum subject. Deactivate it instead if academic history exists.",
+        ),
+      );
+    } finally {
+      setSaving("");
+    }
+  };
+
   const toggleDepartment = (departmentId) => {
     setSelectedDepartmentIds((current) =>
       current.includes(departmentId)
@@ -274,6 +316,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     const editorOpen =
       editorMode === "applicability" && specializationEnabled;
     return (
+      <>
       <WorkspaceGrid
         editor={
           editorOpen ? (
@@ -388,11 +431,28 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
           />
         }
       />
+      <TypedConfirmationDialog
+        open={Boolean(pendingDelete)}
+        title="Delete unused curriculum subject"
+        description={
+          pendingDelete
+            ? `Permanently remove ${pendingDelete.subject_name || "this subject"} from this level curriculum. This only succeeds while the curriculum subject has no teacher assignments, assignment history, or result records.`
+            : ""
+        }
+        confirmationText="DELETE_CURRICULUM_SUBJECT"
+        confirmLabel="Delete if unused"
+        variant="danger"
+        isLoading={saving === pendingDelete?.id}
+        onConfirm={deleteCurriculumSubject}
+        onCancel={() => setPendingDelete(null)}
+      />
+      </>
     );
   }
 
   const editorOpen = ["subject", "copy"].includes(editorMode);
   return (
+    <>
     <WorkspaceGrid
       editor={
         editorMode === "copy" && selectedLevel ? (
@@ -504,10 +564,34 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
               >
                 {row.is_active === false ? "Activate" : "Deactivate"}
               </Button>
+              <Button
+                size="small"
+                variant="danger"
+                disabled={Boolean(saving)}
+                onClick={() => setPendingDelete(row)}
+              >
+                Delete if unused
+              </Button>
             </>
           )}
         />
       }
     />
+    <TypedConfirmationDialog
+      open={Boolean(pendingDelete)}
+      title="Delete unused curriculum subject"
+      description={
+        pendingDelete
+          ? `Permanently remove ${pendingDelete.subject_name || "this subject"} from this level curriculum. This only succeeds while the curriculum subject has no teacher assignments, assignment history, or result records.`
+          : ""
+      }
+      confirmationText="DELETE_CURRICULUM_SUBJECT"
+      confirmLabel="Delete if unused"
+      variant="danger"
+      isLoading={saving === pendingDelete?.id}
+      onConfirm={deleteCurriculumSubject}
+      onCancel={() => setPendingDelete(null)}
+    />
+    </>
   );
 }

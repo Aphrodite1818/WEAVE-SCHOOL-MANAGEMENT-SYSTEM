@@ -75,6 +75,10 @@ test("curriculum batch requires review and scopes departments only for specializ
   assert.match(text, /This level does not specialize\. Every curriculum subject is General/);
   assert.match(text, /Already added/);
   assert.match(text, /Select all matching available subjects/);
+  assert.match(text, /curriculumService\.deleteSubject\(pendingDelete\.id\)/);
+  assert.match(text, /DELETE_CURRICULUM_SUBJECT/);
+  assert.match(text, /Delete if unused/);
+  assert.match(text, /teacher assignments, assignment history, or result records/);
 });
 
 test("teacher multi-class assignment preserves backend eligibility and audit fields", async () => {
