@@ -2,6 +2,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Card from "../../components/ui/Card";
 import Avatar from "../../components/ui/Avatar";
 import ReplayWorkspaceTourSetting from "../../components/guides/ReplayWorkspaceTourSetting";
+import InstitutionTypeSetting from "../../components/settings/InstitutionTypeSetting";
 import ProfileCompletionForm from "../../components/shared/ProfileCompletionForm";
 import ProfileMediaManager from "../../components/shared/ProfileMediaManager";
 import { authSession } from "../../services/api";
@@ -56,6 +57,7 @@ function ProfileSettingsPage() {
           </div>
         </Card>
 
+        <InstitutionTypeSetting role={role} />
         <ReplayWorkspaceTourSetting role={role} />
       </div>
     </DashboardLayout>
