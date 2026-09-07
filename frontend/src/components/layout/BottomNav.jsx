@@ -344,7 +344,7 @@ function BottomNav({ role, onOpenMenu }) {
         >
           <span
             aria-hidden="true"
-            className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary/10"
+            className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary shadow-sm shadow-primary/20"
             style={indicatorStyle}
           />
 
@@ -363,7 +363,9 @@ function BottomNav({ role, onOpenMenu }) {
                 aria-label={item.label}
                 className={cn(
                   "relative z-10 flex min-h-[3.45rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.75rem] px-1.5 py-1.5 text-center transition-colors duration-150 ease-out",
-                  isActive ? "text-primary" : "text-text-muted hover:text-text",
+                  isActive
+                    ? "text-primary-foreground"
+                    : "text-text-muted hover:text-text",
                 )}
               >
                 <span className="flex h-6 w-6 items-center justify-center">
@@ -377,7 +379,7 @@ function BottomNav({ role, onOpenMenu }) {
                 <span
                   className={cn(
                     "max-w-full truncate text-[10.5px] font-semibold leading-none transition-colors duration-150",
-                    isActive ? "text-primary" : "text-text-muted",
+                    isActive ? "text-primary-foreground" : "text-text-muted",
                   )}
                 >
                   {item.label}
