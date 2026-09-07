@@ -9,7 +9,6 @@ import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import WeaveIcon from "../brand/WeaveIcon";
 import { navGroups, roleLabels } from "./navConfig";
-import { requestWorkspaceTour, tourKeyForRole } from "../../features/guides/workspaceTourState";
 
 function isRouteActive(pathname, itemPath) {
   return pathname === itemPath || (itemPath !== "/" && pathname.startsWith(`${itemPath}/`));
@@ -205,7 +204,7 @@ export default function SidebarContent({
                     className={cn(
                       "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
                       isActive
-                ? "bg-sidebar-active text-sidebar-active-text shadow-sm"
+                        ? "bg-sidebar-active text-sidebar-active-text shadow-sm"
                         : "text-sidebar-text/80 hover:bg-sidebar-active/10 hover:text-sidebar-text",
                       collapsed && "justify-center px-2"
                     )}
@@ -225,14 +224,6 @@ export default function SidebarContent({
           </div>
         ))}
       </nav>
-
-      {tourKeyForRole(role) ? (
-        <button type="button" onClick={() => requestWorkspaceTour(role)}
-          title="Replay tour" aria-label="Replay tour"
-          className="m-2.5 flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-sidebar-text hover:bg-sidebar-active/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
-          <HelpCircle className="h-4 w-4" />{!collapsed && "Replay tour"}
-        </button>
-      ) : null}
 
       {!collapsed && (
         <div className="shrink-0 border-t border-border/60 p-2.5">
