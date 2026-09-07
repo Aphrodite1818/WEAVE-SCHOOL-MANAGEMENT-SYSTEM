@@ -9,17 +9,6 @@ import { guideForRole } from "./roleGuideConfig";
 
 export const GUIDE_STATE_CHANGED_EVENT = "weave:guide-state-changed";
 
-const ATTENDANCE_HIDDEN_DESCRIPTIONS = {
-  parent: "Learn where to find linked children, report cards, and school dates.",
-  student: "A short introduction to subjects, report cards, and school dates.",
-};
-
-const ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS = {
-  teacher: {
-    classes: "Confirm your class and subject assignments before entering scores.",
-  },
-};
-
 const hasOwn = (value, key) =>
   Boolean(value) && Object.prototype.hasOwnProperty.call(value, key);
 
@@ -35,24 +24,20 @@ export function useRoleGuide({
   const entitledFeatures = subscription?.entitlements?.features;
   const baseConfig = guideForRole(normalizedRole);
   const runtimeConfig = useRuntimeConfig();
-  const attendanceEnabled = runtimeConfig?.features?.attendance !== false;
+  const runtimeFeatures = runtimeConfig?.features || {};
   const config = useMemo(() => {
     if (!baseConfig) return baseConfig;
 
-    const stepDescriptionOverrides =
-      ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS[normalizedRole] || {};
-
     return {
       ...baseConfig,
-      description:
-        ATTENDANCE_HIDDEN_DESCRIPTIONS[normalizedRole] || baseConfig.description,
-      steps: visibleGuideSteps(baseConfig.steps, { attendanceEnabled, features: entitledFeatures, completionMap, role: normalizedRole })
-        .map((step) => ({
-          ...step,
-          description: stepDescriptionOverrides[step.id] || step.description,
-        })),
+      steps: visibleGuideSteps(baseConfig.steps, {
+        runtimeFeatures,
+        features: entitledFeatures,
+        completionMap,
+        role: normalizedRole,
+      }),
     };
-  }, [attendanceEnabled, baseConfig, normalizedRole, entitledFeatures, completionMap]);
+  }, [baseConfig, normalizedRole, entitledFeatures, completionMap, runtimeFeatures]);
   const [guideState, setGuideState] = useState(null);
   const [loading, setLoading] = useState(Boolean(config && enabled));
   const stateVersionRef = useRef(0);
@@ -141,8 +126,10 @@ export function useRoleGuide({
         ...step,
         complete: hasOwn(completionMap, step.id)
           ? Boolean(completionMap[step.id])
-          : normalizedRole === "admin" ? false : guideState?.status === "completed" ||
-            (storedIndex >= 0 && baseIndex >= 0 && baseIndex < storedIndex),
+          : normalizedRole === "admin"
+            ? false
+            : guideState?.status === "completed" ||
+              (storedIndex >= 0 && baseIndex >= 0 && baseIndex < storedIndex),
         skipped: skipped.has(step.id),
       };
     });
@@ -182,7 +169,13 @@ export function useRoleGuide({
     ? Math.round((resolvedCount / steps.length) * 100)
     : 0;
   const allResolved =
-    steps.length > 0 && steps.filter((step) => !step.optional).every((step) => step.complete || (normalizedRole !== "admin" && step.skipped));
+    steps.length > 0 &&
+    steps
+      .filter((step) => !step.optional)
+      .every(
+        (step) =>
+          step.complete || (normalizedRole !== "admin" && step.skipped),
+      );
   const syncPending = Boolean(guideState?.sync_pending);
 
   useEffect(() => {
