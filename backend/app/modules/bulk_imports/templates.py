@@ -258,12 +258,6 @@ def list_template_responses(
     """Return all supported import templates."""
 
     return [
-        convert_column_to_response(
-            column=column,
-        )
-        for template in []
-        for column in template.columns
-    ] if False else [
         convert_template_to_response(
             template=template,
             file_type=file_type,
