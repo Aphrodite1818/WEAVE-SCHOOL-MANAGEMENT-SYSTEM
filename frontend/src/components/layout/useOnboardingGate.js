@@ -1,16 +1,34 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { onboardingService } from "../../services/onboardingService";
-import { guideService } from "../../services/guideService";
 import { queueInitialTour } from "../../features/guides/workspaceTourState";
+import { authSession } from "../../services/api";
+import { guideService } from "../../services/guideService";
+import { onboardingService } from "../../services/onboardingService";
 
-const GETTING_STARTED_ROUTE_BY_ROLE = {
+const DASHBOARD_ROUTE_BY_ROLE = {
   admin: "/admin/dashboard",
   teacher: "/teacher/dashboard",
   parent: "/parent/dashboard",
   student: "/student/dashboard",
 };
+
+const SCHOOL_SELECTION_ROUTE_BY_ROLE = {
+  teacher: "/teacher/schools",
+  parent: "/parent/schools",
+};
+
+function postOnboardingRoute(role) {
+  const user = authSession.getUser() || {};
+  const actorType = String(user.actor_type || user.account_type || "").toLowerCase();
+  const accountScoped =
+    ["teacher_account", "parent_account"].includes(actorType) && !user.tenant_id;
+
+  if (accountScoped && SCHOOL_SELECTION_ROUTE_BY_ROLE[role]) {
+    return SCHOOL_SELECTION_ROUTE_BY_ROLE[role];
+  }
+  return DASHBOARD_ROUTE_BY_ROLE[role] || null;
+}
 
 export default function useOnboardingGate({ role, enabled = true }) {
   const navigate = useNavigate();
@@ -78,7 +96,11 @@ export default function useOnboardingGate({ role, enabled = true }) {
     if (completedInitialOnboarding) {
       setPreparingWelcome(true);
       try {
-        await queueInitialTour(normalizedRole, completedInitialOnboarding, guideService);
+        await queueInitialTour(
+          normalizedRole,
+          completedInitialOnboarding,
+          guideService,
+        );
       } catch {
         // An unavailable tour must not block a successfully saved profile.
       } finally {
@@ -89,13 +111,11 @@ export default function useOnboardingGate({ role, enabled = true }) {
     setOnboardingState({ loading: false, required, status: status || null });
     if (!required) setProfileModalOpen(false);
 
-    if (
-      completedInitialOnboarding &&
-      GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole]
-    ) {
-      navigate(GETTING_STARTED_ROUTE_BY_ROLE[normalizedRole], {
-        replace: true,
-      });
+    if (completedInitialOnboarding) {
+      const nextRoute = postOnboardingRoute(normalizedRole);
+      if (nextRoute) {
+        navigate(nextRoute, { replace: true });
+      }
     }
   };
 
