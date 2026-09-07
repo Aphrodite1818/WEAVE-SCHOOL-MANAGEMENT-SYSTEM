@@ -7,6 +7,7 @@ import AdminGuideTaskWorkspace from "../../features/guides/AdminGuideTaskWorkspa
 import { adminSchoolYearCompletion } from "../../features/guides/adminSchoolYearCompletion";
 import { ROLE_GUIDES } from "../../features/guides/roleGuideConfig";
 import { schoolYearProgress } from "../../features/guides/schoolYearProgress";
+import { academicService } from "../../services/academicService";
 
 export default function AdminGettingStartedStepPage({ setup }) {
   const navigate = useNavigate();
@@ -25,8 +26,18 @@ export default function AdminGettingStartedStepPage({ setup }) {
     navigate(next ? `/admin/getting-started/${next.id}` : "/admin/getting-started");
 
   const onSaved = async () => {
-    const refreshed = await setup.refresh();
-    const data = refreshed || setup.data;
+    let data = (await setup.refresh()) || setup.data;
+
+    if (
+      step.id === "term" &&
+      data?.completion?.term === true &&
+      data?.academic_session_id &&
+      data?.session_status === "draft"
+    ) {
+      await academicService.openSession(data.academic_session_id);
+      data = (await setup.refresh()) || data;
+    }
+
     const refreshedCompletion = adminSchoolYearCompletion(data);
     if (step.id !== "calendar" && refreshedCompletion?.[step.id] === true) {
       goNext();
