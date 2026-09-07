@@ -1,4 +1,5 @@
-import { ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
@@ -7,11 +8,18 @@ import AdminGuideTaskWorkspace from "../../features/guides/AdminGuideTaskWorkspa
 import { adminSchoolYearCompletion } from "../../features/guides/adminSchoolYearCompletion";
 import { ROLE_GUIDES } from "../../features/guides/roleGuideConfig";
 import { schoolYearProgress } from "../../features/guides/schoolYearProgress";
+import TypedConfirmationDialog from "../../features/academic-admin/TypedConfirmationDialog";
 import { academicService } from "../../services/academicService";
+import { getErrorMessage } from "../../services/api";
+
+const OPEN_SESSION_CONFIRMATION = "OPEN_ACADEMIC_SESSION";
 
 export default function AdminGettingStartedStepPage({ setup }) {
   const navigate = useNavigate();
   const { step: stepId } = useParams();
+  const [confirmOpenSession, setConfirmOpenSession] = useState(false);
+  const [openingSession, setOpeningSession] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState("");
   const steps = ROLE_GUIDES.admin.steps;
   const index = steps.findIndex((item) => item.id === stepId);
   const step = steps[index];
@@ -26,25 +34,40 @@ export default function AdminGettingStartedStepPage({ setup }) {
     navigate(next ? `/admin/getting-started/${next.id}` : "/admin/getting-started");
 
   const onSaved = async () => {
-    let data = (await setup.refresh()) || setup.data;
-
-    if (
-      step.id === "term" &&
-      data?.completion?.term === true &&
-      data?.academic_session_id &&
-      data?.session_status === "draft"
-    ) {
-      await academicService.openSession(data.academic_session_id);
-      data = (await setup.refresh()) || data;
-    }
-
+    const data = (await setup.refresh()) || setup.data;
     const refreshedCompletion = adminSchoolYearCompletion(data);
     if (step.id !== "calendar" && refreshedCompletion?.[step.id] === true) {
       goNext();
     }
   };
 
+  const openParentSession = async () => {
+    if (!setup.data?.academic_session_id || openingSession) return;
+    setOpeningSession(true);
+    setLifecycleError("");
+    try {
+      await academicService.openSession(setup.data.academic_session_id);
+      const data = (await setup.refresh()) || setup.data;
+      if (adminSchoolYearCompletion(data).term === true) goNext();
+    } catch (error) {
+      setLifecycleError(
+        getErrorMessage(
+          error,
+          "The academic session could not be opened. Review the lifecycle blockers and try again.",
+        ),
+      );
+    } finally {
+      setOpeningSession(false);
+      setConfirmOpenSession(false);
+    }
+  };
+
   const complete = completion?.[step.id] === true;
+  const needsSessionOpen =
+    step.id === "term" &&
+    setup.data?.completion?.term === true &&
+    setup.data?.session_status === "draft" &&
+    !complete;
 
   return (
     <DashboardLayout role="admin">
@@ -106,11 +129,37 @@ export default function AdminGettingStartedStepPage({ setup }) {
                 ? setup.data.session_name
                 : step.id === "term"
                   ? `${setup.data.term_name?.replaceAll("_", " ")} is created and the session is open.`
-                  : "Your term calendar is active. The term remains closed until the rest of the academic setup is ready."}
+                  : "Your term calendar is active. The term remains draft until the rest of the academic setup is ready."}
             </p>
             <Button className="mt-6" onClick={goNext}>
               {next ? `Continue to ${next.shortLabel.toLowerCase()}` : "Finish setup"}
               <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : needsSessionOpen ? (
+          <div className="rounded-2xl border border-border bg-surface p-7">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-lg font-semibold text-text">Open the academic session</h2>
+                <p className="mt-2 text-sm leading-6 text-text-muted">
+                  {setup.data?.term_name?.replaceAll("_", " ") || "Your first term"} is saved. Opening {setup.data?.session_name || "the session"} makes it the current school year and unlocks calendar setup. The term itself stays draft.
+                </p>
+              </div>
+            </div>
+            {lifecycleError ? (
+              <p role="alert" className="mt-4 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+                {lifecycleError}
+              </p>
+            ) : null}
+            <Button
+              className="mt-6"
+              disabled={openingSession}
+              onClick={() => setConfirmOpenSession(true)}
+            >
+              {openingSession ? "Opening session..." : "Review and open session"}
             </Button>
           </div>
         ) : (
@@ -123,6 +172,18 @@ export default function AdminGettingStartedStepPage({ setup }) {
           />
         )}
       </section>
+
+      <TypedConfirmationDialog
+        open={confirmOpenSession}
+        title="Open academic session"
+        description="This makes the session current. The first term remains draft so you can prepare its calendar and finish the rest of the academic setup before term opening."
+        confirmationText={OPEN_SESSION_CONFIRMATION}
+        confirmLabel="Open session"
+        variant="primary"
+        isLoading={openingSession}
+        onConfirm={openParentSession}
+        onCancel={() => setConfirmOpenSession(false)}
+      />
     </DashboardLayout>
   );
 }
