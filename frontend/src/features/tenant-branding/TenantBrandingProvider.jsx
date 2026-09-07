@@ -12,6 +12,7 @@ import {
   writeCachedBranding,
 } from "./tenantBranding";
 import { TenantBrandingContext } from "./useTenantBranding";
+import "./brandingContrast.css";
 
 function currentAppearance() {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
