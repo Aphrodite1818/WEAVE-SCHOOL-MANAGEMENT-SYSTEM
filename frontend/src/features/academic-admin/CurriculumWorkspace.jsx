@@ -1,3 +1,4 @@
+import CurriculumCopyPanel from "./CurriculumCopyPanel";
 import { beginAcademicSubmission, endAcademicSubmission, finishAcademicCreation } from "./academicSubmission";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -164,6 +165,23 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
       await loadLevel();
     } catch (error) {
       showError(getErrorMessage(error, "Could not confirm subjects were saved. Refresh the curriculum before retrying."));
+    } finally {
+      endAcademicSubmission(submission);
+      setSaving("");
+    }
+  };
+
+  const copyCurriculum = async (event, sourceLevelId) => {
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
+    setSaving("copy");
+    try {
+      const result = await curriculumService.copyCurriculum(levelId, sourceLevelId);
+      showSuccess(`${result.created} subjects copied. ${result.skipped_existing} already present; ${result.skipped_inactive} inactive subjects skipped.`);
+      setEditorMode("");
+      await loadLevel();
+    } catch (error) {
+      showError(getErrorMessage(error, "Could not confirm the curriculum was copied. Refresh before retrying."));
     } finally {
       endAcademicSubmission(submission);
       setSaving("");
@@ -373,11 +391,15 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     );
   }
 
-  const editorOpen = editorMode === "subject";
+  const editorOpen = ["subject", "copy"].includes(editorMode);
   return (
     <WorkspaceGrid
       editor={
-        editorOpen ? (
+        editorMode === "copy" && selectedLevel ? (
+          <CurriculumCopyPanel key={levelId} levels={levels} target={selectedLevel}
+            targetSubjects={curriculumSubjects} targetDepartments={levelDepartments}
+            saving={Boolean(saving)} onCopy={copyCurriculum} onCancel={() => setEditorMode("")} />
+        ) : editorOpen ? (
           <WorkspacePanel
             title="Add subjects to curriculum"
             description={
@@ -437,12 +459,17 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
           title={curriculum?.level_name ? `${curriculum.level_name} curriculum` : "Curriculum"}
           description="The persistent level subject set used by teacher assignments, results, CBT, and report cards."
           actions={
-            <div className="flex min-w-[18rem] flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="min-w-0 flex-1">{levelControl}</div>
+            <div className="flex w-full min-w-0 flex-col gap-3 sm:w-72">
+              <div className="w-full min-w-0">{levelControl}</div>
               {!editorOpen ? (
-                <Button type="button" disabled={loading || Boolean(loadError) || !curriculum} onClick={() => setEditorMode("subject")}>
-                  Add subjects
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" disabled={loading || Boolean(loadError) || !curriculum} onClick={() => setEditorMode("copy")}>
+                    Copy curriculum
+                  </Button>
+                  <Button type="button" disabled={loading || Boolean(loadError) || !curriculum} onClick={() => setEditorMode("subject")}>
+                    Add subjects
+                  </Button>
+                </div>
               ) : null}
             </div>
           }

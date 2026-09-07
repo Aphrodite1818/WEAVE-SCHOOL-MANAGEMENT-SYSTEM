@@ -5,6 +5,10 @@ export const curriculumService = {
     api.get(`/tenant-admin/academics/terms/${termId}/specialization-workspace`),
   addSubjects: (levelId, payload) =>
     api.post(`/tenant-admin/academics/levels/${levelId}/curriculum/subjects/bulk`, payload),
+  copyCurriculum: (levelId, sourceLevelId) =>
+    api.post(`/tenant-admin/academics/levels/${levelId}/curriculum/copy`, {
+      source_academic_level_id: sourceLevelId,
+    }),
   getCurriculum: (levelId) =>
     api.get(`/tenant-admin/academics/levels/${levelId}/curriculum`),
   addSubject: (levelId, payload) =>

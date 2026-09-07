@@ -45,6 +45,18 @@ class CurriculumSubjectsBulkResponse(BaseModel):
     created: int
 
 
+class CurriculumCopyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_academic_level_id: uuid.UUID
+
+
+class CurriculumCopyResponse(BaseModel):
+    created: int
+    skipped_existing: int
+    skipped_inactive: int
+
+
 class ClassSpecializationReadiness(BaseModel):
     class_id: uuid.UUID
     academic_level_id: uuid.UUID

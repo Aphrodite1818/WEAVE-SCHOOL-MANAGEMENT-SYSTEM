@@ -13,6 +13,8 @@ from app.modules.student_academics.curriculum_v2_schemas import (
     ClassTermDepartmentResponse,
     ClassTermDepartmentSet,
     CurriculumResponse,
+    CurriculumCopyRequest,
+    CurriculumCopyResponse,
     CurriculumSubjectCreate,
     CurriculumSubjectsBulkCreate,
     CurriculumSubjectsBulkResponse,
@@ -27,6 +29,7 @@ from app.modules.student_academics.curriculum_v2_schemas import (
 )
 from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 from app.modules.student_academics.curriculum_bulk_service import add_curriculum_subjects
+from app.modules.student_academics.curriculum_copy_service import copy_curriculum
 from app.modules.student_academics.specialization_workspace import specialization_workspace
 from app.modules.student_academics.setup_readiness import get_setup_readiness
 from app.modules.student_academics.service import StudentAcademicService
@@ -92,6 +95,21 @@ async def bulk_add_curriculum_subjects(
     current_admin: CurrentTenantAdmin,
 ):
     return await add_curriculum_subjects(db, current_admin.tenant_id, academic_level_id, payload)
+
+
+@router.post(
+    "/levels/{academic_level_id}/curriculum/copy",
+    response_model=CurriculumCopyResponse,
+)
+async def copy_level_curriculum(
+    academic_level_id: uuid.UUID,
+    payload: CurriculumCopyRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await copy_curriculum(
+        db, current_admin.tenant_id, academic_level_id, payload.source_academic_level_id
+    )
 
 
 @router.patch(
