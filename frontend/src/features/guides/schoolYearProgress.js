@@ -1,8 +1,7 @@
-export const SCHOOL_YEAR_STEPS = ["session", "term", "calendar", "start_term"];
+export const SCHOOL_YEAR_STEPS = ["session", "term", "calendar"];
 export const SCHOOL_YEAR_STAGES = [
   { id: "year", label: "School year", steps: ["session", "term"] },
   { id: "calendar", label: "Calendar", steps: ["calendar"] },
-  { id: "start_term", label: "Start term", steps: ["start_term"] },
 ];
 
 export function schoolYearProgress(completion = {}) {
