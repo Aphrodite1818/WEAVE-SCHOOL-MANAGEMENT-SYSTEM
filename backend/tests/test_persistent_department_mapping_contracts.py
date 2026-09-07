@@ -86,3 +86,7 @@ def test_bulk_import_resolves_department_through_level_mapping() -> None:
         assert "AcademicLevelDepartment" in source
         assert "academic_level_department_id" in source
         assert "assignment.department_id" not in source
+
+    optimized_source = getsource(resolve_student_class_references_batch)
+    assert "department_required" not in optimized_source
+    assert 'normalized_row["department"] = assigned_department.name' in optimized_source

@@ -8,6 +8,7 @@ import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Modal from "../../components/ui/Modal";
+import { savePendingUpgradeTour } from "../../features/guides/workspaceTourState";
 import {
   LANDING_PRICING_PLANS,
   formatPlanName,
@@ -60,6 +61,7 @@ function SubscriptionOptionsPage() {
 
   const [term, setTerm] = useState(null);
   const [planOptions, setPlanOptions] = useState(null);
+  const [planHistory, setPlanHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const checkoutLock = useRef(false);
   const [busyPlan, setBusyPlan] = useState("");
@@ -88,11 +90,13 @@ function SubscriptionOptionsPage() {
         );
       }
 
-      const options = await subscriptionService.getTermPlanOptions(
-        selectedTerm.id,
-      );
+      const [options, history] = await Promise.all([
+        subscriptionService.getTermPlanOptions(selectedTerm.id),
+        subscriptionService.getTermPlanHistory(),
+      ]);
       setTerm(selectedTerm);
       setPlanOptions(options);
+      setPlanHistory(Array.isArray(history) ? history : []);
     } catch (loadError) {
       setError(
         parseApiError(
@@ -121,7 +125,14 @@ function SubscriptionOptionsPage() {
   );
 
   const handlePlan = async (option) => {
-    if (checkoutLock.current || busyPlan || !term || !option || option.transition === "current") return;
+    if (
+      checkoutLock.current ||
+      busyPlan ||
+      !term ||
+      !option ||
+      option.transition === "current"
+    )
+      return;
     if (!option.eligible) {
       setEligibilityWarning({
         planName: formatPlanName(option.plan_code),
@@ -134,6 +145,11 @@ function SubscriptionOptionsPage() {
     setError("");
 
     try {
+      const upgradeTour = subscriptionService.upgradeTourForPlan({
+        targetPlan: option.plan_code,
+        fromPlan: planOptions?.current_plan || "free",
+        history: planHistory,
+      });
       if (option.requires_payment || Number(option.amount_due_kobo || 0) > 0) {
         const checkout = await subscriptionService.initializeTermCheckout({
           academic_term_id: term.id,
@@ -145,6 +161,7 @@ function SubscriptionOptionsPage() {
           origin,
           returnPath,
           postPaymentAction,
+          upgradeTour,
         });
         window.location.assign(
           subscriptionService.checkoutRedirectUrl(checkout),
@@ -168,6 +185,9 @@ function SubscriptionOptionsPage() {
       }
 
       await refreshSubscriptionState({ silent: true });
+      if (upgradeTour) {
+        savePendingUpgradeTour({ ...upgradeTour, dedicated: true });
+      }
       navigate(returnPath, { replace: true });
     } catch (actionError) {
       checkoutLock.current = false;
@@ -193,7 +213,10 @@ function SubscriptionOptionsPage() {
               </h2>
               {planOptions?.current_plan ? (
                 <Badge variant="success">
-                  {formatPlanName(planOptions.current_plan)} ? {String(planOptions.term_status).toLowerCase() === "draft" ? "Purchased for this term" : "Plan for this term"}
+                  {formatPlanName(planOptions.current_plan)} ?{" "}
+                  {String(planOptions.term_status).toLowerCase() === "draft"
+                    ? "Purchased for this term"
+                    : "Plan for this term"}
                 </Badge>
               ) : null}
             </div>
@@ -312,7 +335,6 @@ function SubscriptionOptionsPage() {
                           )}
                         </p>
                       </div>
-
 
                       <Button
                         className="mt-7 min-h-12 w-full rounded-xl"

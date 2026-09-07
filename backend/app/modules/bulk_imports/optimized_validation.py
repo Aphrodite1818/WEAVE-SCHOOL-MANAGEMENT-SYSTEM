@@ -38,9 +38,9 @@ async def resolve_student_class_references_batch(
 ) -> None:
     """Resolve all student import hierarchy references with bounded queries.
 
-    The spreadsheet keeps a human-readable department name. The authoritative
-    specialization identity is the AcademicLevelDepartment mapping selected by the
-    current class-term assignment; no department identity is copied onto the student.
+    The authoritative specialization identity is the AcademicLevelDepartment
+    mapping selected by the current class-term assignment; the resolved
+    department name is output for reporting and is not copied onto the student.
     """
 
     current_term = await StudentAcademicRepository.get_current_term(db, tenant_id)
@@ -156,10 +156,6 @@ async def resolve_student_class_references_batch(
         else []
     )
     mappings_by_id = {link.id: (link, department) for link, department in mapping_rows}
-    mappings_by_level_name = {
-        (link.academic_level_id, department.normalized_name): (link, department)
-        for link, department in mapping_rows
-    }
 
     def mapping_is_available(link: AcademicLevelDepartment, department: Department) -> bool:
         return bool(
@@ -173,7 +169,6 @@ async def resolve_student_class_references_batch(
         normalized_row = validation_result.normalized_row
         level_name = normalized_row.get("level")
         arm_name = normalized_row.get("arm")
-        department_name = normalized_row.get("department")
 
         if _is_blank(level_name) or _is_blank(arm_name):
             continue
@@ -248,34 +243,12 @@ async def resolve_student_class_references_batch(
 
         normalized_row["class_id"] = str(classroom.id)
         if current_term is None:
-            if not _is_blank(department_name):
-                append_validation_error(
-                    validation_result=validation_result,
-                    field_name="department",
-                    error_code="department_term_unavailable",
-                    error_message=(
-                        "Department placement cannot be validated because there is no "
-                        "current academic term."
-                    ),
-                )
-            else:
-                normalized_row["department"] = None
+            normalized_row["department"] = None
             continue
 
         assignment = assignments_by_class.get(classroom.id)
         if assignment is None:
-            if not _is_blank(department_name):
-                append_validation_error(
-                    validation_result=validation_result,
-                    field_name="department",
-                    error_code="department_not_applicable",
-                    error_message=(
-                        f"Class {class_reference} is General for the current term. "
-                        "Leave department blank."
-                    ),
-                )
-            else:
-                normalized_row["department"] = None
+            normalized_row["department"] = None
             continue
 
         assigned_pair = mappings_by_id.get(assignment.academic_level_department_id)
@@ -301,53 +274,6 @@ async def resolve_student_class_references_batch(
                 error_message=(
                     f"Class {class_reference} has an unavailable current-term department assignment. "
                     "Fix the academic setup before importing students."
-                ),
-            )
-            continue
-
-        if _is_blank(department_name):
-            append_validation_error(
-                validation_result=validation_result,
-                field_name="department",
-                error_code="department_required",
-                error_message=(
-                    f"Department is required for class {class_reference} in the current term. "
-                    f"Enter {assigned_department.name}."
-                ),
-            )
-            continue
-
-        supplied_key = str(department_name).strip().casefold()
-        supplied_pair = mappings_by_level_name.get((level.id, supplied_key))
-        if supplied_pair is None:
-            append_validation_error(
-                validation_result=validation_result,
-                field_name="department",
-                error_code="department_not_found",
-                error_message=(
-                    f"Department {department_name} is not available for academic level {level.name}."
-                ),
-            )
-            continue
-        supplied_link, supplied_department = supplied_pair
-        if not mapping_is_available(supplied_link, supplied_department):
-            append_validation_error(
-                validation_result=validation_result,
-                field_name="department",
-                error_code="department_inactive",
-                error_message=(
-                    f"Department {supplied_department.name} is inactive for academic level {level.name}."
-                ),
-            )
-            continue
-        if supplied_link.id != assigned_link.id:
-            append_validation_error(
-                validation_result=validation_result,
-                field_name="department",
-                error_code="department_mismatch",
-                error_message=(
-                    f"Class {class_reference} is assigned to {assigned_department.name} "
-                    f"for the current term, not {supplied_department.name}."
                 ),
             )
             continue

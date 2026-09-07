@@ -1,6 +1,4 @@
-import { useAdminSetupReadiness } from "../../features/guides/useAdminSetupReadiness";
-import { adminSchoolYearCompletion } from "../../features/guides/adminSchoolYearCompletion";
-import { schoolYearProgress } from "../../features/guides/schoolYearProgress";
+import { ArrowLeft, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -10,22 +8,26 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowLeft, X } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { adminSchoolYearCompletion } from "../../features/guides/adminSchoolYearCompletion";
+import { schoolYearProgress } from "../../features/guides/schoolYearProgress";
+import { useAdminSetupReadiness } from "../../features/guides/useAdminSetupReadiness";
 
 import {
   clearGuideReturn,
   readGuideReturn,
 } from "../../features/guides/guideNavigation";
+import useRoleGuide from "../../features/guides/useRoleGuide";
+import useWorkspaceTour from "../../features/guides/useWorkspaceTour";
 import {
   isPausedTourState,
   requestWorkspaceTour,
 } from "../../features/guides/workspaceTourState";
+import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
-import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
 import { authSession } from "../../services/api";
 import { clearDashboardSessionCache } from "../../services/dashboardSessionCache";
 import { legalComplianceService } from "../../services/legalComplianceService";
@@ -34,11 +36,10 @@ import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 import { scheduleThemeChromeSync } from "../../utils/themeChromeSync";
 import AiChatLauncher from "../ai/AiChatLauncher";
 import WeaveIcon from "../brand/WeaveIcon";
-import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import GettingStartedBanner from "../guides/GettingStartedBanner";
 import WorkspaceTour from "../guides/WorkspaceTour";
 import WorkspaceTourResumeBanner from "../guides/WorkspaceTourResumeBanner";
-import useWorkspaceTour from "../../features/guides/useWorkspaceTour";
+import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import Button from "../ui/Button";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
@@ -47,7 +48,6 @@ import SidebarContent from "./Sidebar";
 import Topbar from "./Topbar";
 import { onboardingModalCopy } from "./navConfig";
 import useOnboardingGate from "./useOnboardingGate";
-import useRoleGuide from "../../features/guides/useRoleGuide";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
@@ -110,7 +110,8 @@ function DashboardShellFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const role = getRole(user, roleProp);
-  const guidePageActive = role === "admin" && location.pathname.startsWith("/admin/getting-started");
+  const guidePageActive =
+    role === "admin" && location.pathname.startsWith("/admin/getting-started");
   const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
   const academicHubActive = location.pathname.startsWith("/admin/academic");
   const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
@@ -172,10 +173,16 @@ function DashboardShellFrame({
     role,
     enabled: onboardingModalEnabled && !legalBlocksProgression,
   });
-  const setupEnabled = role === "admin" && onboardingModalEnabled && !legalBlocksProgression &&
-    !onboardingState.loading && !onboardingState.required && !profileModalOpen;
+  const setupEnabled =
+    role === "admin" &&
+    onboardingModalEnabled &&
+    !legalBlocksProgression &&
+    !onboardingState.loading &&
+    !onboardingState.required &&
+    !profileModalOpen;
   const schoolSetup = useAdminSetupReadiness({ enabled: setupEnabled });
-  const schoolSetupIncomplete = Boolean(schoolSetup.data) &&
+  const schoolSetupIncomplete =
+    Boolean(schoolSetup.data) &&
     !schoolYearProgress(adminSchoolYearCompletion(schoolSetup.data)).complete;
   const roleGuide = useRoleGuide({
     role,
@@ -193,12 +200,23 @@ function DashboardShellFrame({
     role,
     pathname: location.pathname,
     navigationKey: location.key,
-    enabled: onboardingModalEnabled && hasValidSchoolContext && !legalBlocksProgression &&
+    enabled:
+      onboardingModalEnabled &&
+      hasValidSchoolContext &&
+      !legalBlocksProgression &&
       (!setupEnabled || !schoolSetup.loading) &&
-      !onboardingState.loading && !onboardingState.required && !preparingWelcome && !profileModalOpen && !guidePageActive,
+      !onboardingState.loading &&
+      !onboardingState.required &&
+      !preparingWelcome &&
+      !profileModalOpen &&
+      !guidePageActive,
   });
   const showGettingStartedBanner = Boolean(
-    setupEnabled && !schoolSetup.loading && !schoolSetup.error && schoolSetupIncomplete && !tour.open &&
+    setupEnabled &&
+    !schoolSetup.loading &&
+    !schoolSetup.error &&
+    schoolSetupIncomplete &&
+    !tour.open &&
     roleGuide.config?.dashboardRoute === location.pathname &&
     gettingStartedRoute !== location.pathname,
   );
@@ -577,7 +595,9 @@ function DashboardShellFrame({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-sidebar-border bg-sidebar-background text-sidebar-text transition-all duration-300 md:block",
-          (sidebarCollapsed && !tour.open) ? "w-[4.25rem]" : "w-[13rem] xl:w-[14rem]",
+          sidebarCollapsed && !tour.open
+            ? "w-[4.25rem]"
+            : "w-[13rem] xl:w-[14rem]",
         )}
       >
         <SidebarContent
@@ -601,7 +621,9 @@ function DashboardShellFrame({
       <div
         className={cn(
           "flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300",
-          (sidebarCollapsed && !tour.open) ? "md:pl-[4.25rem]" : "md:pl-[13rem] xl:pl-[14rem]",
+          sidebarCollapsed && !tour.open
+            ? "md:pl-[4.25rem]"
+            : "md:pl-[13rem] xl:pl-[14rem]",
         )}
       >
         <Topbar
@@ -720,6 +742,8 @@ function DashboardShellFrame({
         <WorkspaceTour
           role={role}
           initialIndex={tour.resumeIndex}
+          focusTo={tour.focusTo}
+          dedicated={tour.dedicated}
           onClose={async (result) => {
             await tour.close(result);
             setMobileNavOpen(false);
@@ -727,9 +751,11 @@ function DashboardShellFrame({
               navigate(`/${role}/dashboard`, { replace: true });
             }
           }}
-          onSetup={tour.initialWelcome && schoolSetupIncomplete
-            ? () => navigate("/admin/getting-started")
-            : undefined}
+          onSetup={
+            tour.initialWelcome && schoolSetupIncomplete
+              ? () => navigate("/admin/getting-started")
+              : undefined
+          }
         />
       ) : null}
 

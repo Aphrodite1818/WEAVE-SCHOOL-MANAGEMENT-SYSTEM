@@ -50,6 +50,7 @@ export const inboxService = {
   list: (params) => api.get(withQuery("/inbox", params)),
   unreadCount: () => api.get("/inbox/unread-count"),
   markRead: (id) => api.post(`/inbox/${id}/read`, {}),
+  dismiss: (id) => api.delete(`/notifications/${id}`),
 };
 
 export const messageService = {
@@ -102,7 +103,10 @@ export const communicationNoticeService = {
     return rememberRecord(noticeSnapshots, response);
   },
   archive: async (mode, id) => {
-    const response = await api.post(`${noticeBasePath(mode)}/${id}/archive`, {});
+    const response = await api.post(
+      `${noticeBasePath(mode)}/${id}/archive`,
+      {},
+    );
     return rememberRecord(noticeSnapshots, response);
   },
   cancel: async (mode, id) => {

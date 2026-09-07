@@ -339,7 +339,7 @@ async def list_inbox(
         db,
         actor=current,
         status=status_filter,
-        source_type=NotificationSourceType.MESSAGE.value,
+        source_type=None,
         offset=skip,
         limit=limit,
     )
@@ -359,7 +359,7 @@ async def inbox_unread_count(
         db,
         actor=current,
         status=None,
-        source_type=NotificationSourceType.MESSAGE.value,
+        source_type=None,
         offset=0,
         limit=1,
     )
@@ -374,8 +374,6 @@ async def mark_inbox_item_read(
     delivery = await NotificationService.get_for_actor(
         db, actor=current, notification_id=notification_id
     )
-    if delivery.source_type != NotificationSourceType.MESSAGE:
-        raise ForbiddenException("This delivery is not an inbox message")
     delivery = await NotificationService.update_status(
         db,
         actor=current,

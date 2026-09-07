@@ -1,18 +1,19 @@
 import { ArrowLeft, ArrowRight, Check, Compass, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { navGroups } from "../layout/navConfig";
+import { tourContentForItem } from "../../features/guides/workspaceTourContent";
 import { filterAvailableItems } from "../../features/navigation/featureAvailability";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { tourContentForItem } from "../../features/guides/workspaceTourContent";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { authSession, getErrorMessage } from "../../services/api";
+import { navGroups } from "../layout/navConfig";
 import Button from "../ui/Button";
 import WorkspaceTourSnapshot from "./WorkspaceTourSnapshot";
 import "./workspaceTour.css";
 
 const focusable = 'button:not([disabled]), a[href], [tabindex="0"]';
-const clamp = (value, min, max) => Math.max(min, Math.min(value, Math.max(min, max)));
+const clamp = (value, min, max) =>
+  Math.max(min, Math.min(value, Math.max(min, max)));
 
 function connectorGeometry(card, target) {
   if (!card || !target) return null;
@@ -20,35 +21,60 @@ function connectorGeometry(card, target) {
   const targetY = target.top + target.height / 2;
   const targetIsLeft = targetX < card.left;
   const startX = targetIsLeft ? card.left - 8 : card.left + card.width + 8;
-  const startY = card.top + Math.min(Math.max(card.height * 0.42, 100), card.height - 90);
+  const startY =
+    card.top + Math.min(Math.max(card.height * 0.42, 100), card.height - 90);
   const distance = Math.abs(startX - targetX);
   const bend = Math.max(80, distance * 0.48);
   const controlOneX = targetIsLeft ? startX - bend : startX + bend;
-  const controlTwoX = targetIsLeft ? targetX + Math.max(52, distance * 0.24) : targetX - Math.max(52, distance * 0.24);
+  const controlTwoX = targetIsLeft
+    ? targetX + Math.max(52, distance * 0.24)
+    : targetX - Math.max(52, distance * 0.24);
   return {
     path: `M ${startX} ${startY} C ${controlOneX} ${startY}, ${controlTwoX} ${targetY}, ${targetX} ${targetY}`,
   };
 }
 
-export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -1 }) {
+export default function WorkspaceTour({
+  role,
+  onClose,
+  onSetup,
+  initialIndex = -1,
+  focusTo = null,
+  dedicated = false,
+}) {
   const subscription = useSubscription();
   const runtimeConfig = useRuntimeConfig();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
-    ["parent_account", "teacher_account"].includes(actorType) && !user?.tenant_id;
-  const configuredItems = useMemo(
-    () =>
-      filterAvailableItems(
-        (navGroups[role] || []).flatMap((group) => group.items),
-        {
-          subscription,
-          runtimeFeatures: runtimeConfig?.features || {},
-          isAccountScope,
-        },
-      ),
-    [isAccountScope, role, runtimeConfig, subscription],
-  );
+    ["parent_account", "teacher_account"].includes(actorType) &&
+    !user?.tenant_id;
+  const configuredItems = useMemo(() => {
+    const availableItems = filterAvailableItems(
+      (navGroups[role] || []).flatMap((group) => group.items),
+      {
+        subscription,
+        runtimeFeatures: runtimeConfig?.features || {},
+        isAccountScope,
+      },
+    );
+    if (!focusTo) return availableItems;
+    const settingsItem = availableItems.find(
+      (item) => item.to === "/admin/settings",
+    );
+    const focusedItem = availableItems.find((item) => item.to === focusTo);
+    if (focusedItem) return [focusedItem];
+    if (!settingsItem) return availableItems;
+    return [
+      {
+        ...settingsItem,
+        to: focusTo,
+        label: focusTo.endsWith("/branding")
+          ? "School branding"
+          : settingsItem.label,
+      },
+    ];
+  }, [focusTo, isAccountScope, role, runtimeConfig, subscription]);
   const [steps, setSteps] = useState([]);
   const [index, setIndex] = useState(-1);
   const [geometry, setGeometry] = useState(null);
@@ -90,29 +116,44 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
   useEffect(() => {
     const previousFocus = document.activeElement;
     const siblings = Array.from(document.body.children)
-      .filter((node) => node !== overlayRef.current && node instanceof HTMLElement)
+      .filter(
+        (node) => node !== overlayRef.current && node instanceof HTMLElement,
+      )
       .map((node) => [node, node.inert]);
-    siblings.forEach(([node]) => { node.inert = true; });
+    siblings.forEach(([node]) => {
+      node.inert = true;
+    });
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     headingRef.current?.focus({ preventScroll: true });
     return () => {
-      siblings.forEach(([node, inert]) => { node.inert = inert; });
+      siblings.forEach(([node, inert]) => {
+        node.inert = inert;
+      });
       document.body.style.overflow = previousOverflow;
-      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+      if (previousFocus?.isConnected)
+        previousFocus.focus({ preventScroll: true });
     };
   }, []);
 
   useLayoutEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
     let frame;
-    const getTarget = () => step && Array.from(document.querySelectorAll("[data-tour-target]"))
-      .find((node) => node.dataset.tourTarget === step.to && node.getBoundingClientRect().width > 0);
+    const getTarget = () =>
+      step &&
+      Array.from(document.querySelectorAll("[data-tour-target]")).find(
+        (node) =>
+          node.dataset.tourTarget === step.to &&
+          node.getBoundingClientRect().width > 0,
+      );
     const target = getTarget();
     const nav = target?.closest("nav");
     const originalScroll = nav?.scrollTop;
     if (target && nav) {
-      nav.scrollTop += target.getBoundingClientRect().top - nav.getBoundingClientRect().top - 12;
+      nav.scrollTop +=
+        target.getBoundingClientRect().top -
+        nav.getBoundingClientRect().top -
+        12;
     }
 
     const measure = () => {
@@ -123,33 +164,58 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
       const top = viewport?.offsetTop || 0;
       const mobile = width < 768;
       const navRect = nav?.parentElement?.getBoundingClientRect();
-      const usableLeft = mobile ? 0 : Math.max(16, Math.min(navRect?.right || 0, width * 0.34) + 20);
+      const usableLeft = mobile
+        ? 0
+        : Math.max(16, Math.min(navRect?.right || 0, width * 0.34) + 20);
       const availableWidth = Math.max(320, width - usableLeft - 32);
       const cardWidth = Math.min(500, availableWidth);
       const cardHeight = cardRef.current?.offsetHeight || 520;
-      const hasTarget = Boolean(rect && rect.bottom > top && rect.top < top + height);
-      const cardLeft = mobile ? 0 : clamp(
-        usableLeft + (width - usableLeft - cardWidth) / 2,
-        usableLeft + 16,
-        width - cardWidth - 16,
+      const hasTarget = Boolean(
+        rect && rect.bottom > top && rect.top < top + height,
       );
-      const cardTop = mobile ? 0 : clamp(
-        top + (height - cardHeight) / 2,
-        top + 20,
-        top + height - cardHeight - 20,
-      );
+      const cardLeft = mobile
+        ? 0
+        : clamp(
+            usableLeft + (width - usableLeft - cardWidth) / 2,
+            usableLeft + 16,
+            width - cardWidth - 16,
+          );
+      const cardTop = mobile
+        ? 0
+        : clamp(
+            top + (height - cardHeight) / 2,
+            top + 20,
+            top + height - cardHeight - 20,
+          );
       const targetBox = hasTarget
-        ? { left: rect.left - 5, top: rect.top - 5, width: rect.width + 10, height: rect.height + 10 }
+        ? {
+            left: rect.left - 5,
+            top: rect.top - 5,
+            width: rect.width + 10,
+            height: rect.height + 10,
+          }
         : null;
-      const cardBox = mobile ? null : { left: cardLeft, top: cardTop, width: cardWidth, height: cardHeight };
+      const cardBox = mobile
+        ? null
+        : {
+            left: cardLeft,
+            top: cardTop,
+            width: cardWidth,
+            height: cardHeight,
+          };
       const next = {
         mobile,
         viewport: { width, height },
         target: targetBox,
         card: mobile ? {} : { width: cardWidth, left: cardLeft, top: cardTop },
-        connector: !mobile && targetBox && !welcome ? connectorGeometry(cardBox, targetBox) : null,
+        connector:
+          !mobile && targetBox && !welcome
+            ? connectorGeometry(cardBox, targetBox)
+            : null,
       };
-      setGeometry((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+      setGeometry((current) =>
+        JSON.stringify(current) === JSON.stringify(next) ? current : next,
+      );
     };
 
     const schedule = () => {
@@ -184,7 +250,12 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
       await onClose({ outcome, index });
       if (setup) onSetup?.();
     } catch (err) {
-      setError(getErrorMessage(err, "Could not save your tour preference. Please try again."));
+      setError(
+        getErrorMessage(
+          err,
+          "Could not save your tour preference. Please try again.",
+        ),
+      );
     } finally {
       actionLock.current = false;
       setBusy(false);
@@ -198,10 +269,16 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
       else finish("paused");
     }
     if (event.key !== "Tab") return;
-    const controls = Array.from(cardRef.current?.querySelectorAll(focusable) || []);
+    const controls = Array.from(
+      cardRef.current?.querySelectorAll(focusable) || [],
+    );
     const first = controls[0];
     const final = controls.at(-1);
-    if (event.shiftKey && (document.activeElement === first || document.activeElement === headingRef.current)) {
+    if (
+      event.shiftKey &&
+      (document.activeElement === first ||
+        document.activeElement === headingRef.current)
+    ) {
       event.preventDefault();
       final?.focus();
     } else if (!event.shiftKey && document.activeElement === final) {
@@ -212,9 +289,15 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
 
   return createPortal(
     <div ref={overlayRef} className="workspace-tour" onKeyDown={onKeyDown}>
-      {geometry?.target && !welcome
-        ? <div aria-hidden="true" className="workspace-tour-spotlight" style={geometry.target} />
-        : <div className="workspace-tour-dimmer" />}
+      {geometry?.target && !welcome ? (
+        <div
+          aria-hidden="true"
+          className="workspace-tour-spotlight"
+          style={geometry.target}
+        />
+      ) : (
+        <div className="workspace-tour-dimmer" />
+      )}
       {geometry?.connector ? (
         <svg
           aria-hidden="true"
@@ -224,12 +307,30 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
           viewBox={`0 0 ${geometry.viewport.width} ${geometry.viewport.height}`}
         >
           <defs>
-            <marker id="workspace-tour-arrowhead" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto" markerUnits="strokeWidth">
-              <path d="M 0 0 L 10 6 L 0 12 z" className="workspace-tour-arrowhead" />
+            <marker
+              id="workspace-tour-arrowhead"
+              markerWidth="12"
+              markerHeight="12"
+              refX="9"
+              refY="6"
+              orient="auto"
+              markerUnits="strokeWidth"
+            >
+              <path
+                d="M 0 0 L 10 6 L 0 12 z"
+                className="workspace-tour-arrowhead"
+              />
             </marker>
           </defs>
-          <path className="workspace-tour-connector-shadow" d={geometry.connector.path} />
-          <path className="workspace-tour-connector-line" d={geometry.connector.path} markerEnd="url(#workspace-tour-arrowhead)" />
+          <path
+            className="workspace-tour-connector-shadow"
+            d={geometry.connector.path}
+          />
+          <path
+            className="workspace-tour-connector-line"
+            d={geometry.connector.path}
+            markerEnd="url(#workspace-tour-arrowhead)"
+          />
         </svg>
       ) : null}
       <section
@@ -244,60 +345,124 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
         <div className="workspace-tour-body">
           <div className="flex items-center justify-between gap-4">
             <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
-              {welcome ? "Welcome to Weave" : `Your workspace · ${index + 1} of ${steps.length}`}
+              {dedicated
+                ? `What's new · ${index + 1} of ${steps.length}`
+                : welcome
+                  ? "Welcome to Weave"
+                  : `Your workspace · ${index + 1} of ${steps.length}`}
             </span>
-            <button type="button" disabled={busy} onClick={() => finish("paused")} aria-label="Close tour and finish later" className="workspace-tour-close">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => finish("paused")}
+              aria-label="Close tour and finish later"
+              className="workspace-tour-close"
+            >
               <X className="h-5 w-5" />
             </button>
           </div>
           {!welcome ? (
-            <div className="mt-4 h-1 overflow-hidden rounded-full bg-surface-muted" role="progressbar" aria-label="Tour progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={index + 1}>
-              <div className="h-full bg-primary motion-safe:transition-[width]" style={{ width: `${((index + 1) / steps.length) * 100}%` }} />
+            <div
+              className="mt-4 h-1 overflow-hidden rounded-full bg-surface-muted"
+              role="progressbar"
+              aria-label="Tour progress"
+              aria-valuemin={0}
+              aria-valuemax={steps.length}
+              aria-valuenow={index + 1}
+            >
+              <div
+                className="h-full bg-primary motion-safe:transition-[width]"
+                style={{ width: `${((index + 1) / steps.length) * 100}%` }}
+              />
             </div>
           ) : null}
           <div className="mt-6 flex items-center gap-3 text-primary">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary-soft"><Icon className="h-5 w-5" /></span>
-            <span className="text-sm font-semibold">{step?.label || "A little guidance, a confident start"}</span>
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary-soft">
+              <Icon className="h-5 w-5" />
+            </span>
+            <span className="text-sm font-semibold">
+              {step?.label || "A little guidance, a confident start"}
+            </span>
           </div>
-          <h2 ref={headingRef} tabIndex={-1} id="workspace-tour-title" className="mt-4 text-2xl font-semibold leading-tight tracking-tight text-text outline-none">
-            {step?.title || "Find your way around."}
+          <h2
+            ref={headingRef}
+            tabIndex={-1}
+            id="workspace-tour-title"
+            className="mt-4 text-2xl font-semibold leading-tight tracking-tight text-text outline-none"
+          >
+            {step?.title ||
+              (dedicated ? "New features are ready" : "Find your way around.")}
           </h2>
-          <p id="workspace-tour-description" className="mt-3 text-sm leading-7 text-text-muted">
-            {step?.description || (onSetup
-              ? "Take a quick look around your workspace. Then we’ll help you prepare your session, first term, and calendar."
-              : "Get to know the places you’ll use in your school workspace. There’s nothing to fill in—just take a look around.")}
+          <p
+            id="workspace-tour-description"
+            className="mt-3 text-sm leading-7 text-text-muted"
+          >
+            {step?.description ||
+              (dedicated
+                ? "Here are the features newly available on your plan."
+                : onSetup
+                  ? "Take a quick look around your workspace. Then we’ll help you prepare your session, first term, and calendar."
+                  : "Get to know the places you’ll use in your school workspace. There’s nothing to fill in—just take a look around.")}
           </p>
           {step ? (
             <div className="workspace-tour-preview">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">A quick look inside {step.label}</p>
-              <WorkspaceTourSnapshot step={step} visibleRoutes={visibleRoutes} />
+              <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                A quick look inside {step.label}
+              </p>
+              <WorkspaceTourSnapshot
+                step={step}
+                visibleRoutes={visibleRoutes}
+              />
               <ul className="mt-4 grid gap-2 sm:grid-cols-3">
                 {step.preview.map((label) => (
-                  <li key={label} className="flex items-center gap-2 text-xs font-medium text-text">
-                    <Check className="h-3.5 w-3.5 shrink-0 text-primary" />{label}
+                  <li
+                    key={label}
+                    className="flex items-center gap-2 text-xs font-medium text-text"
+                  >
+                    <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    {label}
                   </li>
                 ))}
               </ul>
             </div>
           ) : (
             <p className="mt-6 text-sm font-medium text-text">
-              Skip for now and Weave will keep a Resume tour reminder on your dashboard. You can also replay the tour later from Settings.
+              Skip for now and Weave will keep a Resume tour reminder on your
+              dashboard. You can also replay the tour later from Settings.
             </p>
           )}
-          {error ? <p role="alert" className="mt-4 text-sm text-error">{error}</p> : null}
+          {error ? (
+            <p role="alert" className="mt-4 text-sm text-error">
+              {error}
+            </p>
+          ) : null}
         </div>
         <footer className="workspace-tour-footer">
           {confirmDismiss ? (
             <div className="rounded-xl border border-border bg-surface-muted/45 p-4">
-              <p className="text-sm font-semibold text-text">Stop showing the workspace tour?</p>
+              <p className="text-sm font-semibold text-text">
+                Stop showing the workspace tour?
+              </p>
               <p className="mt-1 text-xs leading-5 text-text-muted">
-                Weave will remove the incomplete reminder and will not open this tour automatically again. You can still replay it manually from Settings.
+                Weave will remove the incomplete reminder and will not open this
+                tour automatically again. You can still replay it manually from
+                Settings.
               </p>
               <div className="mt-4 flex justify-end gap-2">
-                <Button variant="ghost" size="small" disabled={busy} onClick={() => setConfirmDismiss(false)}>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  disabled={busy}
+                  onClick={() => setConfirmDismiss(false)}
+                >
                   Cancel
                 </Button>
-                <Button variant="outline" size="small" disabled={busy} onClick={() => finish("dismissed")}>
+                <Button
+                  variant="outline"
+                  size="small"
+                  disabled={busy}
+                  onClick={() => finish("dismissed")}
+                >
                   {busy ? "Saving..." : "Don't show again"}
                 </Button>
               </div>
@@ -314,11 +479,18 @@ export default function WorkspaceTour({ role, onClose, onSetup, initialIndex = -
                       : setIndex(index - 1)
                   }
                 >
-                  {welcome
-                    ? onSetup
-                      ? "Skip to setup"
-                      : "Skip for now"
-                    : <><ArrowLeft className="h-4 w-4" />Back</>}
+                  {welcome ? (
+                    onSetup ? (
+                      "Skip to setup"
+                    ) : (
+                      "Skip for now"
+                    )
+                  ) : (
+                    <>
+                      <ArrowLeft className="h-4 w-4" />
+                      Back
+                    </>
+                  )}
                 </Button>
                 <Button
                   disabled={busy || (welcome && !steps.length)}

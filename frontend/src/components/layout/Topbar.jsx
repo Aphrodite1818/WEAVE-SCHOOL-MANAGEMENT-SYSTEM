@@ -17,6 +17,8 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { formatPlanName } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { authSession } from "../../services/api";
+import { authService } from "../../services/auth.service";
 import {
   NOTIFICATIONS_CHANGED_EVENT,
   NOTIFICATION_REALTIME_EVENTS,
@@ -24,17 +26,15 @@ import {
   notificationService,
 } from "../../services/communicationService";
 import { realtimeClient } from "../../services/realtimeClient";
-import { authSession } from "../../services/api";
-import { authService } from "../../services/auth.service";
-import { cn } from "../../utils/cn";
 import {
   applyAccessibilityPreferences,
   getSavedAccessibilityPreferences,
   saveAccessibilityPreferences,
 } from "../../utils/accessibilityPreferences";
+import { cn } from "../../utils/cn";
 import {
-  displayName as resolveDisplayName,
   getUserAvatarSrc,
+  displayName as resolveDisplayName,
 } from "../../utils/user";
 import WeaveIcon from "../brand/WeaveIcon";
 import Avatar from "../ui/Avatar";
@@ -68,6 +68,27 @@ const roleSettingsPaths = {
 const schoolSwitchPaths = {
   teacher: "/teacher/schools",
   parent: "/parent/schools",
+};
+
+const notificationPanelClearedKey = (user) =>
+  `weave:notification-panel-cleared:${user?.tenant_id || user?.id || "global"}`;
+
+const readPanelClearedIds = (user) => {
+  try {
+    const value = JSON.parse(
+      window.sessionStorage.getItem(notificationPanelClearedKey(user)) || "[]",
+    );
+    return new Set(Array.isArray(value) ? value.map(String) : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const savePanelClearedIds = (user, ids) => {
+  window.sessionStorage.setItem(
+    notificationPanelClearedKey(user),
+    JSON.stringify([...ids]),
+  );
 };
 
 export default function Topbar({
@@ -132,11 +153,14 @@ export default function Topbar({
       setNotificationsLoading(true);
       setNotificationsError("");
       try {
-        const response = await notificationService.list({ limit: 5 });
+        const response = await notificationService.list({ limit: 100 });
         if (!mounted) return;
-        const items = response?.items || [];
+        const clearedIds = readPanelClearedIds(user);
+        const items = (response?.items || []).filter(
+          (item) => !clearedIds.has(String(item.id)),
+        );
         setNotifications(items.slice(0, 5));
-        setUnreadCount(Number(response?.unread_count || 0));
+        setUnreadCount(items.filter((item) => item.status === "unread").length);
       } catch {
         if (!mounted) return;
         setNotifications([]);
@@ -234,6 +258,14 @@ export default function Topbar({
     } catch {
       setNotificationsError("Could not delete notification.");
     }
+  };
+
+  const clearAllNotifications = () => {
+    const clearedIds = readPanelClearedIds(user);
+    notifications.forEach((item) => clearedIds.add(String(item.id)));
+    savePanelClearedIds(user, clearedIds);
+    setNotifications([]);
+    setUnreadCount(0);
   };
 
   return (
@@ -336,13 +368,24 @@ export default function Topbar({
                   <p className="text-sm font-semibold text-text">
                     Notifications
                   </p>
-                  <Link
-                    to={notificationPath}
-                    className="text-xs font-semibold text-primary"
-                    onClick={() => setNotificationsOpen(false)}
-                  >
-                    View all
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    {notifications.length > 0 ? (
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-text-muted transition hover:text-text"
+                        onClick={clearAllNotifications}
+                      >
+                        Clear all
+                      </button>
+                    ) : null}
+                    <Link
+                      to={notificationPath}
+                      className="text-xs font-semibold text-primary"
+                      onClick={() => setNotificationsOpen(false)}
+                    >
+                      View all
+                    </Link>
+                  </div>
                 </div>
                 {notificationsLoading ? (
                   <p className="rounded-xl border border-border px-3 py-4 text-sm text-text-muted">

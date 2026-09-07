@@ -1,11 +1,11 @@
+import { Check, Inbox, MailOpen, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Check, Inbox, MailOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
-import Button from "../../components/ui/Button";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
+import Button from "../../components/ui/Button";
 import { authSession, getErrorMessage } from "../../services/api";
 import {
   NOTIFICATION_REALTIME_EVENTS,
@@ -90,6 +90,15 @@ export default function CommunicationInboxPage() {
     }
   };
 
+  const deleteNotification = async (item) => {
+    try {
+      await inboxService.dismiss(item.id);
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err, "Could not delete this notification."));
+    }
+  };
+
   const pageCount = Math.max(1, Math.ceil(total / INBOX_PAGE_SIZE));
 
   return (
@@ -98,7 +107,11 @@ export default function CommunicationInboxPage() {
       title="Inbox"
       description={`${unreadCount} unread message${unreadCount === 1 ? "" : "s"}`}
       actions={
-        <Button variant="outline" className="manual-refresh-action" onClick={load}>
+        <Button
+          variant="outline"
+          className="manual-refresh-action"
+          onClick={load}
+        >
           Refresh
         </Button>
       }
@@ -118,7 +131,7 @@ export default function CommunicationInboxPage() {
           />
         ) : null}
         {!loading && !error && items.length ? (
-          <div className="mobile-scroll-list divide-y divide-border rounded-2xl border border-border bg-surface">
+          <div className="divide-y divide-border rounded-2xl border border-border bg-surface">
             {items.map((item) => {
               const isUnread = item.status === "unread";
               return (
@@ -132,7 +145,9 @@ export default function CommunicationInboxPage() {
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h2 className="text-sm font-bold text-text">{item.title}</h2>
+                          <h2 className="text-sm font-bold text-text">
+                            {item.title}
+                          </h2>
                           {isUnread ? (
                             <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-bold text-primary">
                               Unread
@@ -149,13 +164,28 @@ export default function CommunicationInboxPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {isUnread ? (
-                        <Button size="sm" variant="outline" onClick={() => markRead(item)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => markRead(item)}
+                        >
                           <Check className="h-4 w-4" /> Mark read
                         </Button>
                       ) : null}
-                      <Button size="sm" onClick={() => openMessage(item)} disabled={!item.action_path}>
-                        <MailOpen className="h-4 w-4" /> Open message
-                      </Button>
+                      {item.action_path ? (
+                        <Button size="sm" onClick={() => openMessage(item)}>
+                          <MailOpen className="h-4 w-4" /> Open notification
+                        </Button>
+                      ) : null}
+                      {item.status !== "unread" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => deleteNotification(item)}
+                        >
+                          <Trash2 className="h-4 w-4" /> Delete
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 </article>
@@ -182,7 +212,9 @@ export default function CommunicationInboxPage() {
               size="small"
               variant="outline"
               disabled={loading || page >= pageCount}
-              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+              onClick={() =>
+                setPage((current) => Math.min(pageCount, current + 1))
+              }
             >
               Next
             </Button>

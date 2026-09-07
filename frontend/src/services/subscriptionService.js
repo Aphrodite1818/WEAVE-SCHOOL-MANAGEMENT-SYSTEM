@@ -77,7 +77,9 @@ const getPublicPlans = async ({ force = false } = {}) => {
 const resolveCurrentOpenTermId = async (explicitTermId) => {
   if (explicitTermId) return explicitTermId;
 
-  const termsResponse = await api.get("/tenant-admin/academics/terms?limit=100");
+  const termsResponse = await api.get(
+    "/tenant-admin/academics/terms?limit=100",
+  );
   const terms = termsResponse?.items || termsResponse || [];
   const currentTerms = terms.filter(
     (item) => item.is_current && item.status === "open",
@@ -115,6 +117,7 @@ const saveTermPaymentIntent = ({
   origin = "billing",
   returnPath = "/admin/billing",
   postPaymentAction = "none",
+  upgradeTour = null,
 } = {}) => {
   if (typeof window === "undefined" || !academicTermId || !reference) return;
 
@@ -127,6 +130,7 @@ const saveTermPaymentIntent = ({
       returnPath: safeReturnPath(returnPath),
       postPaymentAction:
         postPaymentAction === "open_term" ? "open_term" : "none",
+      upgradeTour: upgradeTour || null,
     }),
   );
 };
@@ -151,6 +155,7 @@ const consumeTermPaymentIntent = ({ academicTermId, reference } = {}) => {
       returnPath: safeReturnPath(intent?.returnPath),
       postPaymentAction:
         intent?.postPaymentAction === "open_term" ? "open_term" : "none",
+      upgradeTour: intent?.upgradeTour || null,
     };
   } catch {
     window.sessionStorage.removeItem(TERM_PAYMENT_INTENT_KEY);
@@ -166,6 +171,51 @@ const checkoutRedirectUrl = (checkout = {}) => {
     );
   }
   return value;
+};
+
+const upgradeTourForPlan = ({
+  targetPlan,
+  fromPlan = "free",
+  history = [],
+} = {}) => {
+  const plan = String(targetPlan || "").toLowerCase();
+  const previous = String(fromPlan || "free").toLowerCase();
+  const completedHistory = history.filter((item) =>
+    ["active", "closed", "expired"].includes(
+      String(item?.status || "").toLowerCase(),
+    ),
+  );
+  if (
+    !plan ||
+    completedHistory.some(
+      (item) => String(item?.plan_code || "").toLowerCase() === plan,
+    )
+  ) {
+    return null;
+  }
+  const sidebarTargets = [];
+  if (
+    previous === "free" &&
+    ["plus", "professional", "enterprise"].includes(plan)
+  ) {
+    sidebarTargets.push("/admin/imports");
+  }
+  if (
+    ["plus", "free"].includes(previous) &&
+    ["professional", "enterprise"].includes(plan)
+  ) {
+    sidebarTargets.push("/admin/cbt");
+  }
+  return sidebarTargets.length ||
+    (previous === "free" && plan === "professional")
+    ? {
+        sidebarTargets,
+        settingsRoute: "/admin/settings",
+        settingsTarget: ["professional", "enterprise"].includes(plan)
+          ? "/admin/settings/branding"
+          : null,
+      }
+    : null;
 };
 
 export const subscriptionService = {
@@ -233,6 +283,7 @@ export const subscriptionService = {
   safeReturnPath,
   saveTermPaymentIntent,
   consumeTermPaymentIntent,
+  upgradeTourForPlan,
 
   saveTermPaymentOpenIntent: ({ academicTermId, reference } = {}) =>
     saveTermPaymentIntent({

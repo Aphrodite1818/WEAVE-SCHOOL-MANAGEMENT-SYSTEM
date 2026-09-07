@@ -57,7 +57,20 @@ test("stale guide reads cannot trigger a second automatic tutorial", () => {
     roleGuide,
     /\["completed", "dismissed"\]\.includes\(guideState\?\.status\)/,
   );
-  assert.match(roleGuide, /window\.addEventListener\("online", retryPendingState\)/);
+  assert.match(
+    roleGuide,
+    /window\.addEventListener\("online", retryPendingState\)/,
+  );
+});
+
+test("workspace tours reset when the authenticated actor changes", () => {
+  const workspaceTour = readSource("features", "guides", "useWorkspaceTour.js");
+
+  assert.match(workspaceTour, /authSession\.getUser\(\)/);
+  assert.match(workspaceTour, /const authIdentityKey = \(user\) =>/);
+  assert.match(workspaceTour, /\}, \[identityKey, key\]\);/);
+  assert.match(workspaceTour, /claimed\.current = false/);
+  assert.match(workspaceTour, /setUpgradeQueue\(null\)/);
 });
 
 test("role guides follow runtime attendance exposure", () => {

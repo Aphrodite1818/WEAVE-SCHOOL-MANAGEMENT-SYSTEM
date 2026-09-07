@@ -6,6 +6,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import { savePendingUpgradeTour } from "../../features/guides/workspaceTourState";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { academicService } from "../../services/academicService";
 import { parseApiError } from "../../services/api";
@@ -25,7 +26,6 @@ function SubscriptionVerifyPage() {
   useEffect(() => {
     let mounted = true;
 
-
     async function verifyPayment() {
       if (!reference) {
         setStatus("error");
@@ -36,8 +36,14 @@ function SubscriptionVerifyPage() {
       }
 
       try {
-        if (!verification.current || verification.current.reference !== reference) {
-          verification.current = { reference, promise: subscriptionService.verifyTermPayment(reference) };
+        if (
+          !verification.current ||
+          verification.current.reference !== reference
+        ) {
+          verification.current = {
+            reference,
+            promise: subscriptionService.verifyTermPayment(reference),
+          };
         }
         const entitlement = await verification.current.promise;
         if (!mounted) return;
@@ -45,12 +51,17 @@ function SubscriptionVerifyPage() {
           academicTermId: entitlement?.academic_term_id,
           reference,
         });
+        if (paymentIntent?.upgradeTour) {
+          savePendingUpgradeTour({
+            ...paymentIntent.upgradeTour,
+            dedicated: true,
+          });
+        }
         const returnPath = subscriptionService.safeReturnPath(
           paymentIntent?.returnPath,
           "/admin/billing",
         );
-        const shouldOpenTerm =
-          paymentIntent?.postPaymentAction === "open_term";
+        const shouldOpenTerm = paymentIntent?.postPaymentAction === "open_term";
         let openedTerm = false;
         let openTermError = "";
 
@@ -84,7 +95,6 @@ function SubscriptionVerifyPage() {
               : `${openTermError} Return to the term workflow to resolve it; your payment is already recorded.`
             : `Payment verified. ${entitlement?.plan_code || "Your plan"} was purchased for the selected academic term. Feature access follows the current open term; a purchase for a draft term is scheduled until that term opens.`,
         );
-
       } catch (error) {
         if (!mounted) return;
         verification.current = null;
@@ -112,7 +122,6 @@ function SubscriptionVerifyPage() {
 
     return () => {
       mounted = false;
-
     };
   }, [reference, refreshSubscriptionState, retry]);
 
@@ -161,13 +170,27 @@ function SubscriptionVerifyPage() {
             <p className="mt-2 text-sm leading-6 text-text-muted">{message}</p>
 
             <div className="mt-6 flex justify-center gap-3">
-              {status === "error" && reference ? <Button type="button" onClick={() => { setStatus("loading"); setMessage("Verifying your payment..."); setRetry((value) => value + 1); }}>Retry verification</Button> : null}
+              {status === "error" && reference ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setStatus("loading");
+                    setMessage("Verifying your payment...");
+                    setRetry((value) => value + 1);
+                  }}
+                >
+                  Retry verification
+                </Button>
+              ) : null}
               <Button
                 variant={isSuccess || needsReview ? "primary" : "outline"}
                 onClick={() =>
-                  navigate(isSuccess || needsReview ? successRoute : "/admin/billing", {
-                    replace: true,
-                  })
+                  navigate(
+                    isSuccess || needsReview ? successRoute : "/admin/billing",
+                    {
+                      replace: true,
+                    },
+                  )
                 }
               >
                 {isSuccess

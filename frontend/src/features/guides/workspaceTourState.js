@@ -4,6 +4,7 @@ export const TOUR_STATE_CHANGED_EVENT = "weave:workspace-tour-state-changed";
 export const TOUR_QUEUED_STEP = "welcome_pending";
 export const TOUR_SEEN_STEP = "welcome_seen";
 export const TOUR_PAUSED_PREFIX = "paused:";
+const UPGRADE_TOUR_PENDING_KEY = "weave:pending-upgrade-tour";
 
 export const tourKeyForRole = (role) =>
   ["admin", "teacher", "student", "parent"].includes(role)
@@ -44,6 +45,27 @@ export function publishTourState(role, state) {
   );
 }
 
+export function savePendingUpgradeTour(payload) {
+  if (typeof window === "undefined" || !payload) return;
+  window.sessionStorage.setItem(
+    UPGRADE_TOUR_PENDING_KEY,
+    JSON.stringify(payload),
+  );
+}
+
+export function consumePendingUpgradeTour() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(UPGRADE_TOUR_PENDING_KEY);
+    if (!raw) return null;
+    window.sessionStorage.removeItem(UPGRADE_TOUR_PENDING_KEY);
+    return JSON.parse(raw);
+  } catch {
+    window.sessionStorage.removeItem(UPGRADE_TOUR_PENDING_KEY);
+    return null;
+  }
+}
+
 export async function queueInitialTour(role, shouldQueue, service) {
   const key = tourKeyForRole(role);
   if (!shouldQueue || !key || !service) return false;
@@ -68,9 +90,19 @@ export async function queueInitialTour(role, shouldQueue, service) {
   return queued;
 }
 
-export function requestWorkspaceTour(role, { resume = false } = {}) {
+export function requestWorkspaceTour(
+  role,
+  {
+    resume = false,
+    focusTo = null,
+    destination = null,
+    dedicated = false,
+  } = {},
+) {
   if (typeof window === "undefined" || !tourKeyForRole(role)) return;
   window.dispatchEvent(
-    new CustomEvent(TOUR_REQUEST_EVENT, { detail: { role, resume } }),
+    new CustomEvent(TOUR_REQUEST_EVENT, {
+      detail: { role, resume, focusTo, destination, dedicated },
+    }),
   );
 }
