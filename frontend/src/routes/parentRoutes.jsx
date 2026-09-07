@@ -24,7 +24,7 @@ const SchoolSwitchPage = lazy(() => import("../pages/shared/SchoolSwitchPage"));
 
 export const parentRoutes = (
   <Route element={<RoleGuard allowedRoles={["PARENT"]} />}>
-    <Route element={<DashboardShell role="parent" onboardingModalEnabled={false} />}>
+    <Route element={<DashboardShell role="parent" />}>
       <Route path="/parent/schools" element={<SchoolSwitchPage role="parent" />} />
     </Route>
     <Route element={<MembershipScopeGuard role="parent" />}>
