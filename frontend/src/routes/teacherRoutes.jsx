@@ -43,9 +43,7 @@ const TeacherDashboardPage = lazy(
 
 export const teacherRoutes = (
   <Route element={<RoleGuard allowedRoles={["TEACHER"]} />}>
-    <Route
-      element={<DashboardShell role="teacher" onboardingModalEnabled={false} />}
-    >
+    <Route element={<DashboardShell role="teacher" />}>
       <Route
         path="/teacher/schools"
         element={<SchoolSwitchPage role="teacher" />}
