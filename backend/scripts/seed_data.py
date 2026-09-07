@@ -1,22 +1,22 @@
 """
 Generates fake student data as an Excel (.xlsx) file, using the Faker library.
 
-Academic placement is expressed as three independent fields — level, arm,
-and (where applicable) department — matching Weave's current student
-import contract. Full class display names like "JSS1 A" or "SS1 B" are
-NOT written anywhere; the import template expects level/arm/department
-as separate columns instead.
+Academic placement is expressed as two independent fields — level and
+arm — matching Weave's current student import contract. Full class
+display names like "JSS1 A" or "SS1 B" are NOT written anywhere; the
+import template expects level/arm as separate columns instead.
 
 Columns (in this order):
-first_name, last_name, date_of_birth, gender, level, arm, department,
+first_name, last_name, date_of_birth, gender, level, arm,
 state_of_origin, parent_email_1, parent_relationship_1, parent_email_2,
 parent_relationship_2
 
-Class / arm / department rules (from the school's actual data):
+Class / arm rules (from the school's actual data):
 - Levels: JSS1, JSS2, JSS3, SS1, SS2, SS3
 - Arms: A, B, C for every level (18 classes total)
-- Departments only apply to SS2/SS3: SCIENCE, ART, COMMERCIAL.
-  SS1 and all JSS levels have no department (left blank).
+
+Department is no longer part of the import contract, so this script
+does not generate or write a department column at all.
 
 Parent email coverage:
 - We do NOT want every student to have a parent email — just enough to
@@ -57,7 +57,7 @@ NUM_ROWS = 1000  # how many fake students to generate
 # or forward slashes. Without it, backslash sequences like \U, \t, \n
 # get interpreted as escape codes and can crash the script or silently
 # mangle the path.
-OUTPUT_FILE = r"c:\Users\taiwo\Downloads\students_import_template (6).xlsx"
+OUTPUT_FILE = r"c:\Users\taiwo\Downloads\students_import_template (8).xlsx"
 
 # Arms available — A, B, C for every level.
 ARMS_BY_LEVEL = {
@@ -67,14 +67,6 @@ ARMS_BY_LEVEL = {
     "SS1": ["A", "B", "C"],
     "SS2": ["A", "B", "C"],
     "SS3": ["A", "B", "C"],
-}
-
-# Departments only exist at SS2/SS3. SS1 and all JSS levels are
-# intentionally absent from this dict — generate_row() leaves department
-# blank for them.
-DEPARTMENTS_BY_LEVEL = {
-    "SS2": ["SCIENCE", "ART", "COMMERCIAL"],
-    "SS3": ["SCIENCE", "ART", "COMMERCIAL"],
 }
 
 # Roughly the age (in years) a student in each level would be
@@ -118,7 +110,6 @@ FIELDNAMES = [
     "gender",
     "level",
     "arm",
-    "department",
     "state_of_origin",
     "parent_email_1",
     "parent_relationship_1",
@@ -157,8 +148,6 @@ def generate_row(level=None, arm=None, parent_email=None):
     if arm is None:
         arm = random.choice(ARMS_BY_LEVEL[level])
 
-    department = random.choice(DEPARTMENTS_BY_LEVEL[level]) if level in DEPARTMENTS_BY_LEVEL else ""
-
     gender = random.choice(["Male", "Female"])
     first_name = fake.first_name_male() if gender == "Male" else fake.first_name_female()
 
@@ -176,7 +165,6 @@ def generate_row(level=None, arm=None, parent_email=None):
         "gender": gender,
         "level": level,
         "arm": arm,
-        "department": department,
         "state_of_origin": random.choice(STATES_OF_ORIGIN),
         "parent_email_1": parent_email_1,
         "parent_relationship_1": parent_relationship_1,
@@ -237,7 +225,7 @@ def main():
             raise ValueError(
                 f"The downloaded template's header row is missing these "
                 f"expected column(s): {missing}. This usually means the "
-                f"template predates the level/arm/department import "
+                f"template predates the current level/arm import "
                 f"contract. Download a fresh template from Weave and rerun "
                 f"this script against it — do NOT rename or add columns "
                 f"in the existing file to work around this."
@@ -265,7 +253,7 @@ def main():
         for row_data in rows:
             ws.append([row_data[name] for name in FIELDNAMES])
 
-        widths = [14, 14, 14, 10, 8, 8, 12, 16, 26, 20, 22, 20]
+        widths = [14, 14, 14, 10, 8, 8, 16, 26, 20, 22, 20]
         for col_idx, width in enumerate(widths, start=1):
             ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
 
