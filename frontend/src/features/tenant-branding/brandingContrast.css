@@ -1,0 +1,39 @@
+/*
+ * Tenant branding may change the primary/accent/sidebar palette at runtime.
+ * Any control painted with a semantic background must therefore use the
+ * corresponding semantic foreground token rather than assuming white text.
+ * These rules are a safety net for legacy utility combinations while new code
+ * should prefer text-primary-foreground / text-accent-foreground directly.
+ */
+[data-tenant-branding-scope="true"] .nav-item-active,
+[data-tenant-branding-scope="true"] .bg-primary.text-white,
+[data-tenant-branding-scope="true"] .bg-primary.text-text-inverse {
+  color: rgb(var(--color-on-primary)) !important;
+}
+
+[data-tenant-branding-scope="true"] .bg-accent.text-white,
+[data-tenant-branding-scope="true"] .bg-accent.text-text-inverse {
+  color: rgb(var(--color-on-accent)) !important;
+}
+
+[data-tenant-branding-scope="true"] .bg-sidebar-active,
+[data-tenant-branding-scope="true"] .bg-sidebar-active.text-white,
+[data-tenant-branding-scope="true"] .bg-sidebar-active.text-text-inverse {
+  color: rgb(var(--color-sidebar-active-text)) !important;
+}
+
+/* Active descendants frequently carry their own legacy white/inverse class. */
+[data-tenant-branding-scope="true"] .bg-primary .text-white,
+[data-tenant-branding-scope="true"] .bg-primary .text-text-inverse {
+  color: rgb(var(--color-on-primary)) !important;
+}
+
+[data-tenant-branding-scope="true"] .bg-accent .text-white,
+[data-tenant-branding-scope="true"] .bg-accent .text-text-inverse {
+  color: rgb(var(--color-on-accent)) !important;
+}
+
+[data-tenant-branding-scope="true"] .bg-sidebar-active .text-white,
+[data-tenant-branding-scope="true"] .bg-sidebar-active .text-text-inverse {
+  color: rgb(var(--color-sidebar-active-text)) !important;
+}
