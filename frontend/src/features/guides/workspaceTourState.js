@@ -15,6 +15,10 @@ export const pausedTourStep = (index = -1) => {
   return `${TOUR_PAUSED_PREFIX}${Number.isInteger(parsed) ? Math.max(-1, parsed) : -1}`;
 };
 
+export const isPausedTourState = (state) =>
+  state?.status === "in_progress" &&
+  String(state?.current_step || "").startsWith(TOUR_PAUSED_PREFIX);
+
 export const resumeIndexFromState = (state) => {
   const value = String(state?.current_step || "");
   if (!value.startsWith(TOUR_PAUSED_PREFIX)) return -1;
@@ -57,7 +61,7 @@ export async function queueInitialTour(role, shouldQueue, service) {
   if (queued && typeof window !== "undefined") {
     publishTourState(role, saved);
     window.dispatchEvent(
-      new CustomEvent(TOUR_QUEUED_EVENT, { detail: { role } }),
+      new CustomEvent(TOUR_QUEUED_EVENT, { detail: { role, state: saved } }),
     );
   }
 
