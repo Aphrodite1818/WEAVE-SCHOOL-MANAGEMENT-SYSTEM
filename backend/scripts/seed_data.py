@@ -57,7 +57,7 @@ NUM_ROWS = 1000  # how many fake students to generate
 # or forward slashes. Without it, backslash sequences like \U, \t, \n
 # get interpreted as escape codes and can crash the script or silently
 # mangle the path.
-OUTPUT_FILE = r"c:\Users\taiwo\Downloads\students_import_template (8).xlsx"
+OUTPUT_FILE = r"c:\Users\taiwo\Downloads\students_import_template (6).xlsx"
 
 # Arms available — A, B, C for every level.
 ARMS_BY_LEVEL = {
