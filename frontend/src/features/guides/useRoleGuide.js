@@ -33,11 +33,19 @@ export function useRoleGuide({
       steps: visibleGuideSteps(baseConfig.steps, {
         runtimeFeatures,
         features: entitledFeatures,
+        subscription,
         completionMap,
         role: normalizedRole,
       }),
     };
-  }, [baseConfig, normalizedRole, entitledFeatures, completionMap, runtimeFeatures]);
+  }, [
+    baseConfig,
+    normalizedRole,
+    entitledFeatures,
+    subscription,
+    completionMap,
+    runtimeFeatures,
+  ]);
   const [guideState, setGuideState] = useState(null);
   const [loading, setLoading] = useState(Boolean(config && enabled));
   const stateVersionRef = useRef(0);
