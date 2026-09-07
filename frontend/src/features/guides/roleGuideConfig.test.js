@@ -5,7 +5,7 @@ import { ROLE_GUIDES, guideForRole } from "./roleGuideConfig.js";
 
 const expectedRoles = ["admin", "teacher", "parent", "student"];
 const expectedStepCounts = {
-  admin: 4,
+  admin: 3,
   teacher: 4,
   parent: 4,
   student: 4,
@@ -43,13 +43,17 @@ test("unknown roles do not receive a guide", () => {
   assert.equal(guideForRole(""), null);
 });
 
-test("admin setup contains the four guided school-year milestones", () => {
+test("admin setup contains only the three initial school-year milestones", () => {
   assert.deepEqual(
     ROLE_GUIDES.admin.steps.map((step) => step.id),
-    ["session", "term", "calendar", "start_term"],
+    ["session", "term", "calendar"],
   );
-  assert.equal(ROLE_GUIDES.admin.key, "tenant_admin_academic_setup_v2");
+  assert.equal(ROLE_GUIDES.admin.key, "tenant_admin_academic_setup_v3");
   assert.ok(ROLE_GUIDES.admin.steps.every((step) => !step.optional && !step.feature));
+  assert.equal(
+    ROLE_GUIDES.admin.steps.some((step) => step.id === "start_term"),
+    false,
+  );
 });
 
 test("teacher guide exposes class-teacher comments without score-entry authority", () => {
