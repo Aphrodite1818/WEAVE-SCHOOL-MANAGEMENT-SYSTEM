@@ -60,20 +60,33 @@ test("profile edits, returning users and failed reads never enrol in a tour", as
   assert.equal(offline.writes.length, 0);
 });
 
-test("school year progress counts saved foundations, not other entities or visits", () => {
+test("school year progress counts guided milestones, not unrelated entities or visits", () => {
   let progress = schoolYearProgress({ subjects: true, students: true, readiness: true });
   assert.equal(progress.completedCount, 0);
   assert.equal(progress.nextStep, "session");
   assert.equal(progress.canOpen("session"), true);
   assert.equal(progress.canOpen("term"), false);
   assert.equal(progress.canOpen("calendar"), false);
-  assert.equal(progress.canOpen("departments"), false);
-  progress = schoolYearProgress({ session: true, term: true, calendar: false });
+  assert.equal(progress.canOpen("start_term"), false);
+
+  progress = schoolYearProgress({ session: true, term: true, calendar: false, start_term: false });
   assert.equal(progress.completedCount, 2);
   assert.equal(progress.nextStep, "calendar");
   assert.equal(progress.canOpen("calendar"), true);
   assert.equal(progress.complete, false);
-  assert.equal(schoolYearProgress({ session: true, term: true, calendar: true }).complete, true);
+
+  progress = schoolYearProgress({ session: true, term: true, calendar: true, start_term: false });
+  assert.equal(progress.completedCount, 3);
+  assert.equal(progress.completedStages, 2);
+  assert.equal(progress.nextStep, "start_term");
+  assert.equal(progress.canOpen("start_term"), true);
+  assert.equal(progress.complete, false);
+
+  progress = schoolYearProgress({ session: true, term: true, calendar: true, start_term: true });
+  assert.equal(progress.completedCount, 4);
+  assert.equal(progress.completedStages, 3);
+  assert.equal(progress.nextStep, null);
+  assert.equal(progress.complete, true);
   assert.equal(schoolYearProgress({ session: "true", term: null }).completedCount, 0);
 });
 

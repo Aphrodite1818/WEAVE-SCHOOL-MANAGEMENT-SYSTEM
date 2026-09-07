@@ -71,6 +71,7 @@ celerybeat-schedule
 # Frontend build artifacts
 frontend/node_modules/
 frontend/dist/
+frontend/dist-*/
 
 # Frontend test runner caches
 frontend/.vite-test-cache-*/

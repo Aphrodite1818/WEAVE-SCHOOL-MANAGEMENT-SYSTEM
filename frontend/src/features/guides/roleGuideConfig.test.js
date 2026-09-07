@@ -5,7 +5,7 @@ import { ROLE_GUIDES, guideForRole } from "./roleGuideConfig.js";
 
 const expectedRoles = ["admin", "teacher", "parent", "student"];
 const expectedStepCounts = {
-  admin: 3,
+  admin: 4,
   teacher: 4,
   parent: 4,
   student: 4,
@@ -43,8 +43,11 @@ test("unknown roles do not receive a guide", () => {
   assert.equal(guideForRole(""), null);
 });
 
-test("admin setup contains only the three school-year foundations", () => {
-  assert.deepEqual(ROLE_GUIDES.admin.steps.map((step) => step.id), ["session", "term", "calendar"]);
+test("admin setup contains the four guided school-year milestones", () => {
+  assert.deepEqual(
+    ROLE_GUIDES.admin.steps.map((step) => step.id),
+    ["session", "term", "calendar", "start_term"],
+  );
   assert.equal(ROLE_GUIDES.admin.key, "tenant_admin_academic_setup_v2");
   assert.ok(ROLE_GUIDES.admin.steps.every((step) => !step.optional && !step.feature));
 });
