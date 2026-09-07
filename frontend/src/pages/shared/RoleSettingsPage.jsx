@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Accessibility,
+  Building2,
   ChevronDown,
   ChevronRight,
+  Compass,
   Eye,
   IdCard,
   Languages,
@@ -22,6 +24,10 @@ import { authSession } from "../../services/api";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import {
+  requestWorkspaceTour,
+  tourKeyForRole,
+} from "../../features/guides/workspaceTourState";
+import {
   applyAccessibilityPreferences,
   getSavedAccessibilityPreferences,
   saveAccessibilityPreferences,
@@ -30,10 +36,10 @@ import { cn } from "../../utils/cn";
 import { getUserDisplayName } from "../../utils/user";
 
 const roleCopy = {
-  admin: { title: "Settings", description: "Manage profile details and device accessibility preferences." },
-  teacher: { title: "Settings", description: "Manage teacher profile and device accessibility preferences." },
-  student: { title: "Settings", description: "Manage student profile and device accessibility preferences." },
-  parent: { title: "Settings", description: "Manage parent profile and device accessibility preferences." },
+  admin: { title: "Settings", description: "Manage profile, school, guidance, and device accessibility settings." },
+  teacher: { title: "Settings", description: "Manage teacher profile, workspace guidance, and device accessibility preferences." },
+  student: { title: "Settings", description: "Manage student profile, workspace guidance, and device accessibility preferences." },
+  parent: { title: "Settings", description: "Manage parent profile, workspace guidance, and device accessibility preferences." },
 };
 
 const themeOptions = [
@@ -44,6 +50,16 @@ const themeOptions = [
 
 const resolveCurrentEmail = (user) => user?.email || user?.email_address || user?.account_email || "";
 const resolveAdmissionNumber = (user) => user?.admission_number || user?.student?.admission_number || user?.profile?.admission_number || "";
+const resolveInstitutionType = (user) =>
+  user?.institution_type ||
+  user?.tenant?.institution_type ||
+  user?.tenant?.tenant?.institution_type ||
+  "";
+const institutionTypeLabel = (value) => {
+  if (value === "PRIMARY_SCHOOL") return "Primary School";
+  if (value === "SECONDARY_SCHOOL") return "Secondary School";
+  return "Not set";
+};
 
 function SettingsGroup({ title, children }) {
   return (
@@ -54,7 +70,7 @@ function SettingsGroup({ title, children }) {
   );
 }
 
-function SettingsRow({ icon: Icon, label, value, description, to }) {
+function SettingsRow({ icon: Icon, label, value, description, to, onClick, actionLabel }) {
   const content = (
     <div className="flex min-h-[3.75rem] items-center gap-3 border-t border-border/70 px-4 py-3 first:border-t-0 sm:px-5">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-muted text-text-soft"><Icon className="h-[18px] w-[18px]" /></span>
@@ -63,10 +79,22 @@ function SettingsRow({ icon: Icon, label, value, description, to }) {
         {description ? <p className="mt-0.5 text-xs leading-5 text-text-muted">{description}</p> : null}
       </div>
       {value ? <p className="max-w-[42%] truncate text-right text-sm text-text-muted">{value}</p> : null}
+      {actionLabel ? <span className="shrink-0 text-xs font-semibold text-primary">{actionLabel}</span> : null}
       {to ? <ChevronRight className="h-4 w-4 shrink-0 text-text-faint" /> : null}
     </div>
   );
-  return to ? <Link to={to} className="block transition hover:bg-surface-muted/45">{content}</Link> : content;
+
+  if (to) {
+    return <Link to={to} className="block transition hover:bg-surface-muted/45">{content}</Link>;
+  }
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="block w-full text-left transition hover:bg-surface-muted/45">
+        {content}
+      </button>
+    );
+  }
+  return content;
 }
 
 function ExpandableSettingsRow({ icon: Icon, label, value, open, onToggle, children }) {
@@ -101,6 +129,8 @@ function RoleSettingsPage({ role }) {
   const displayName = getUserDisplayName(user);
   const currentEmail = resolveCurrentEmail(user);
   const admissionNumber = resolveAdmissionNumber(user);
+  const currentInstitutionType = resolveInstitutionType(user);
+  const supportsWorkspaceTour = Boolean(tourKeyForRole(normalizedRole));
   const [preferences, setPreferences] = useState(() => getSavedAccessibilityPreferences());
   const [accessibilityStatus, setAccessibilityStatus] = useState("");
   const [openPanel, setOpenPanel] = useState("");
@@ -138,11 +168,30 @@ function RoleSettingsPage({ role }) {
             <SettingsRow icon={UserRound} label="Profile" value={profileSummary || "Details and photo"} to="/profile" />
           </SettingsGroup>
 
-          {normalizedRole === "admin" &&
-          tenantBrandingGuard.allowed &&
-          !tenantBrandingGuard.pending ? (
+          {normalizedRole === "admin" ? (
             <SettingsGroup title="School">
-              <SettingsRow icon={Palette} label="School branding" description="Manage the shared school identity and colour palette." to="/admin/settings/branding" />
+              <SettingsRow
+                icon={Building2}
+                label="Institution type"
+                value={institutionTypeLabel(currentInstitutionType)}
+                description="Review the current school structure or start a controlled institution-type change."
+                to="/admin/settings/institution-type"
+              />
+              {tenantBrandingGuard.allowed && !tenantBrandingGuard.pending ? (
+                <SettingsRow icon={Palette} label="School branding" description="Manage the shared school identity and colour palette." to="/admin/settings/branding" />
+              ) : null}
+            </SettingsGroup>
+          ) : null}
+
+          {supportsWorkspaceTour ? (
+            <SettingsGroup title="Guidance">
+              <SettingsRow
+                icon={Compass}
+                label="Workspace tour"
+                description="Replay the introduction using only features currently available in this workspace."
+                actionLabel="Replay"
+                onClick={() => requestWorkspaceTour(normalizedRole)}
+              />
             </SettingsGroup>
           ) : null}
 
