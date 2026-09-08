@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -29,6 +29,13 @@ from app.modules.cbt.enums import (
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
 
 
+def _new_ingestion_reference() -> str:
+    """Generate a compact human-facing reference independent of machine IDs."""
+
+    year = datetime.now(timezone.utc).year
+    return f"CBT-{year}-{uuid.uuid4().hex[:16].upper()}"
+
+
 class CBTResultIngestionBatch(BaseModel):
     """
     Immutable audit record for one result batch received from a paired CBT server.
@@ -52,7 +59,11 @@ class CBTResultIngestionBatch(BaseModel):
     )
 
     batch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    ingestion_reference: Mapped[str] = mapped_column(String(32), nullable=False)
+    ingestion_reference: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=_new_ingestion_reference,
+    )
     source_exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     source_exam_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
