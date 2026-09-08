@@ -227,7 +227,9 @@ class SubjectService:
         target_normalized_code = subject.normalized_code
 
         if "name" in update_data:
-            target_name, target_normalized_name = SubjectService._normalize_name(update_data["name"])
+            target_name, target_normalized_name = SubjectService._normalize_name(
+                update_data["name"]
+            )
         if "code" in update_data:
             target_code = normalize_subject_code(update_data["code"])
             target_normalized_code = target_code

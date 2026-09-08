@@ -226,7 +226,9 @@ async def test_initial_class_placement_rejects_already_classed_student(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_same_level_reassignment_creates_new_segment_and_invalidates_derived_state(monkeypatch, actor, db):
+async def test_same_level_reassignment_creates_new_segment_and_invalidates_derived_state(
+    monkeypatch, actor, db
+):
     session_id = uuid4()
     level_id = uuid4()
     student = SimpleNamespace(id=uuid4(), status=AcademicStatus.ACTIVE)
@@ -263,7 +265,11 @@ async def test_same_level_reassignment_creates_new_segment_and_invalidates_deriv
     monkeypatch.setattr(StudentPlacementService, "_close_segment", close_segment)
     monkeypatch.setattr(StudentPlacementService, "_create_segment", create_segment)
     monkeypatch.setattr(StudentPlacementService, "_invalidate_derived_context", invalidate)
-    monkeypatch.setattr(StudentService, "get_student_profile", AsyncMock(return_value=SimpleNamespace(id=student.id)))
+    monkeypatch.setattr(
+        StudentService,
+        "get_student_profile",
+        AsyncMock(return_value=SimpleNamespace(id=student.id)),
+    )
 
     await StudentPlacementService.reassign_class(
         db,
@@ -329,7 +335,11 @@ async def test_cross_level_reassignment_creates_level_reassigned_segment(monkeyp
     monkeypatch.setattr(StudentPlacementService, "_close_segment", close_segment)
     monkeypatch.setattr(StudentPlacementService, "_create_segment", create_segment)
     monkeypatch.setattr(StudentPlacementService, "_invalidate_derived_context", AsyncMock())
-    monkeypatch.setattr(StudentService, "get_student_profile", AsyncMock(return_value=SimpleNamespace(id=student.id)))
+    monkeypatch.setattr(
+        StudentService,
+        "get_student_profile",
+        AsyncMock(return_value=SimpleNamespace(id=student.id)),
+    )
 
     await StudentPlacementService.reassign_academic_level(
         db,

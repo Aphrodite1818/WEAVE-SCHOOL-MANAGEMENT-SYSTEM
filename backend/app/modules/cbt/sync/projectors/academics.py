@@ -43,10 +43,7 @@ def _visible(row: Any) -> bool:
     status = getattr(row, "status", None)
     if status is not None and _value(status) != "active":
         return False
-    return bool(
-        getattr(row, "is_active", True)
-        and getattr(row, "archived_at", None) is None
-    )
+    return bool(getattr(row, "is_active", True) and getattr(row, "archived_at", None) is None)
 
 
 def project_academic_level(
@@ -65,9 +62,7 @@ def project_academic_level(
         name=row.name,
         category=_value(row.category),
         position=row.position,
-        specialization_required_from_term_position=(
-            row.specialization_required_from_term_position
-        ),
+        specialization_required_from_term_position=(row.specialization_required_from_term_position),
     ).model_dump(mode="json")
 
 

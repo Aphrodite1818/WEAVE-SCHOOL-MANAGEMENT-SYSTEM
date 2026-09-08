@@ -72,9 +72,7 @@ async def test_bulk_generate_uses_canonical_student_generation_and_refreshes_pos
     )
 
     students = [SimpleNamespace(id=student_id) for student_id in student_ids]
-    generated_cards = [
-        ReportCardResponse.model_construct(id=uuid.uuid4()) for _ in student_ids
-    ]
+    generated_cards = [ReportCardResponse.model_construct(id=uuid.uuid4()) for _ in student_ids]
     generate_one = AsyncMock(side_effect=generated_cards)
     apply_positions = AsyncMock()
     get_card = AsyncMock(side_effect=generated_cards)

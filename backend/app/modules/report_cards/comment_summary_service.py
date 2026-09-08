@@ -30,8 +30,7 @@ class TeacherCommentSummaryService:
                 )
                 .join(
                     ArmLabel,
-                    (ArmLabel.id == ClassRoom.arm_label_id)
-                    & (ArmLabel.tenant_id == tenant_id),
+                    (ArmLabel.id == ClassRoom.arm_label_id) & (ArmLabel.tenant_id == tenant_id),
                 )
                 .where(
                     ClassRoom.tenant_id == tenant_id,

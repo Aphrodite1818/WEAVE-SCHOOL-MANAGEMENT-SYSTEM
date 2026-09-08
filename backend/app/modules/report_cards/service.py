@@ -138,14 +138,10 @@ class ReportCardService:
         for item in expected:
             result = by_curriculum_id.get(item.curriculum_subject_id)
             if result is None or result.status != AcademicResultStatus.LOCKED:
-                subject = await SubjectRepository.get_subject_by_id(
-                    db, tenant_id, item.subject_id
-                )
+                subject = await SubjectRepository.get_subject_by_id(db, tenant_id, item.subject_id)
                 missing_names.append(subject.name if subject else str(item.subject_id))
         if missing_names:
-            raise BadRequestException(
-                f"Missing locked scores for: {', '.join(missing_names)}"
-            )
+            raise BadRequestException(f"Missing locked scores for: {', '.join(missing_names)}")
         applicable = [by_curriculum_id[item_id] for item_id in expected_ids]
         return expected, applicable, missing_names
 
@@ -826,7 +822,11 @@ class ReportCardService:
                     principal_comment_status=(
                         "available" if principal_default is not None else "manual"
                     ),
-                    report_readiness="ready" if ready else "override_required" if results_status == "complete" else "waiting_for_results",
+                    report_readiness="ready"
+                    if ready
+                    else "override_required"
+                    if results_status == "complete"
+                    else "waiting_for_results",
                     report_card_id=card.id if card else None,
                     report_card_status=card.status.value if card else None,
                     report_card_version=card.version if card else None,
@@ -854,7 +854,9 @@ class ReportCardService:
         if card.status != ReportCardStatus.DRAFT or card.superseded_at is not None:
             raise BadRequestException("Only the current draft can be published.")
         if card.is_outdated:
-            raise BadRequestException("Outdated report cards must be regenerated before publication.")
+            raise BadRequestException(
+                "Outdated report cards must be regenerated before publication."
+            )
         expected, _, _ = await ReportCardService._ready_results(
             db,
             tenant_id=actor.tenant_id,

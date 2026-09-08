@@ -110,13 +110,14 @@ async def test_historical_assignment_context_can_load_inactive_curriculum_subjec
     result.first.return_value = (curriculum_subject, curriculum)
     db = SimpleNamespace(execute=AsyncMock(return_value=result))
 
-    loaded_subject, loaded_curriculum = (
-        await StudentAcademicService._load_curriculum_subject_context(
-            db,
-            tenant_id=tenant_id,
-            curriculum_subject_id=curriculum_subject.id,
-            require_active=False,
-        )
+    (
+        loaded_subject,
+        loaded_curriculum,
+    ) = await StudentAcademicService._load_curriculum_subject_context(
+        db,
+        tenant_id=tenant_id,
+        curriculum_subject_id=curriculum_subject.id,
+        require_active=False,
     )
 
     assert loaded_subject is curriculum_subject

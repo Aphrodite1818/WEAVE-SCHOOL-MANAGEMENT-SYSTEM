@@ -13,3 +13,20 @@ class CBTServerStatus(str, PyEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
     REVOKED = "revoked"
+
+
+class CBTResultIngestionStatus(str, PyEnum):
+    """Lifecycle state of a CBT result ingestion."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    PROCESSED = "processed"
+    FAILED = "failed"
+
+
+class CBTResultIngestionOutcome(str, PyEnum):
+    """Processing outcome for one student score inside an ingestion batch."""
+
+    APPLIED = "applied"
+    UNCHANGED = "unchanged"
+    REJECTED = "rejected"

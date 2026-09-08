@@ -29,10 +29,7 @@ def _visible(row: Any) -> bool:
     status = getattr(row, "status", None)
     if status is not None and getattr(status, "value", status) != "active":
         return False
-    return bool(
-        getattr(row, "is_active", True)
-        and getattr(row, "archived_at", None) is None
-    )
+    return bool(getattr(row, "is_active", True) and getattr(row, "archived_at", None) is None)
 
 
 def project_subject(
@@ -96,11 +93,7 @@ def project_curriculum_subject(
     if joined is None:
         return None
     curriculum_subject, _curriculum, level, subject = joined
-    if (
-        not _visible(curriculum_subject)
-        or not _visible(level)
-        or not _visible(subject)
-    ):
+    if not _visible(curriculum_subject) or not _visible(level) or not _visible(subject):
         return None
     return CBTCurriculumSubjectSnapshot(
         id=curriculum_subject.id,
@@ -125,15 +118,13 @@ def project_curriculum_subject_department(
         )
         .join(
             CurriculumSubject,
-            CurriculumSubject.id
-            == CurriculumSubjectDepartment.curriculum_subject_id,
+            CurriculumSubject.id == CurriculumSubjectDepartment.curriculum_subject_id,
         )
         .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
         .join(AcademicLevel, AcademicLevel.id == Curriculum.academic_level_id)
         .join(
             AcademicLevelDepartment,
-            AcademicLevelDepartment.id
-            == CurriculumSubjectDepartment.academic_level_department_id,
+            AcademicLevelDepartment.id == CurriculumSubjectDepartment.academic_level_department_id,
         )
         .join(Department, Department.id == AcademicLevelDepartment.department_id)
         .where(
@@ -175,8 +166,7 @@ def curriculum_subject_department_ids_for_level(
             select(CurriculumSubjectDepartment.id)
             .join(
                 CurriculumSubject,
-                CurriculumSubject.id
-                == CurriculumSubjectDepartment.curriculum_subject_id,
+                CurriculumSubject.id == CurriculumSubjectDepartment.curriculum_subject_id,
             )
             .join(Curriculum, Curriculum.id == CurriculumSubject.curriculum_id)
             .where(

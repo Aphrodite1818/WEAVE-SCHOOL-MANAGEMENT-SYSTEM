@@ -86,12 +86,13 @@ def test_curriculum_subject_patch_rejects_direct_lifecycle_changes() -> None:
 
 
 def test_curriculum_subject_history_fks_are_restrict() -> None:
-    assert next(iter(CurriculumSubject.__table__.columns.curriculum_id.foreign_keys)).ondelete == "RESTRICT"
+    assert (
+        next(iter(CurriculumSubject.__table__.columns.curriculum_id.foreign_keys)).ondelete
+        == "RESTRICT"
+    )
     assert (
         next(
-            iter(
-                CurriculumSubjectDepartment.__table__.columns.curriculum_subject_id.foreign_keys
-            )
+            iter(CurriculumSubjectDepartment.__table__.columns.curriculum_subject_id.foreign_keys)
         ).ondelete
         == "CASCADE"
     )
@@ -108,7 +109,9 @@ def test_curriculum_subject_history_fks_are_restrict() -> None:
         == "RESTRICT"
     )
     assert (
-        next(iter(StudentSubjectResult.__table__.columns.curriculum_subject_id.foreign_keys)).ondelete
+        next(
+            iter(StudentSubjectResult.__table__.columns.curriculum_subject_id.foreign_keys)
+        ).ondelete
         == "RESTRICT"
     )
 
@@ -388,8 +391,6 @@ async def test_used_curriculum_subject_can_never_be_hard_deleted() -> None:
         with pytest.raises(ConflictException) as exc_info:
             await AcademicCurriculumService.hard_delete_subject(db, row.tenant_id, row.id)
 
-    assert exc_info.value.payload == {
-        "dependency_counts": {"teacher_assignment_audits_total": 1}
-    }
+    assert exc_info.value.payload == {"dependency_counts": {"teacher_assignment_audits_total": 1}}
     delete.assert_not_awaited()
     db.commit.assert_not_awaited()

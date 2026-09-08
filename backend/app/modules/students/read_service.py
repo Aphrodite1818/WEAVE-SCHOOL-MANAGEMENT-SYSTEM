@@ -160,9 +160,7 @@ class StudentReadService:
                 else None
             )
             level = (
-                level_by_id.get(enrollment.academic_level_id)
-                if enrollment is not None
-                else None
+                level_by_id.get(enrollment.academic_level_id) if enrollment is not None else None
             )
             session = (
                 session_by_id.get(enrollment.academic_session_id)
@@ -172,9 +170,7 @@ class StudentReadService:
 
             student_data = StudentResponse.model_validate(student).model_dump()
             student_data["class_id"] = enrollment.class_id if enrollment else None
-            student_data["academic_level_id"] = (
-                enrollment.academic_level_id if enrollment else None
-            )
+            student_data["academic_level_id"] = enrollment.academic_level_id if enrollment else None
             items.append(
                 StudentDetailResponse(
                     **student_data,
@@ -186,9 +182,7 @@ class StudentReadService:
                     current_academic_session_name=session.name if session else None,
                     current_academic_term_id=current_term.id if current_term else None,
                     current_academic_term_name=(
-                        current_term.name.value
-                        if current_term and current_term.name
-                        else None
+                        current_term.name.value if current_term and current_term.name else None
                     ),
                 )
             )

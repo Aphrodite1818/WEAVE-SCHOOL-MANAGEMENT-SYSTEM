@@ -219,9 +219,7 @@ class Notice(UUIDMixin, TimestampMixin, Base):
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (
-        Index("ix_comm_notices_tenant_status", "tenant_id", "status", "publish_at"),
-    )
+    __table_args__ = (Index("ix_comm_notices_tenant_status", "tenant_id", "status", "publish_at"),)
 
 
 class NoticeAudience(UUIDMixin, TimestampMixin, Base):

@@ -510,9 +510,7 @@ class RecipientResolver:
                 audience_type = RecipientResolver._audience_type(audience.audience_type)
                 if audience_type == NoticeAudienceType.ALL_TEACHERS:
                     recipients.extend(
-                        await RecipientResolver._teachers(
-                            db, sender.tenant_id, group="Teachers"
-                        )
+                        await RecipientResolver._teachers(db, sender.tenant_id, group="Teachers")
                     )
                 elif audience_type == NoticeAudienceType.SELECTED_TEACHERS:
                     if audience.actor_id is None:
@@ -526,9 +524,7 @@ class RecipientResolver:
                     )
                 elif audience_type == NoticeAudienceType.ALL_STUDENTS:
                     recipients.extend(
-                        await RecipientResolver._students(
-                            db, sender.tenant_id, group="Students"
-                        )
+                        await RecipientResolver._students(db, sender.tenant_id, group="Students")
                     )
                 elif audience_type == NoticeAudienceType.SELECTED_STUDENTS:
                     if audience.actor_id is None:
@@ -542,9 +538,7 @@ class RecipientResolver:
                     )
                 elif audience_type == NoticeAudienceType.ALL_PARENTS:
                     recipients.extend(
-                        await RecipientResolver._parents(
-                            db, sender.tenant_id, group="Parents"
-                        )
+                        await RecipientResolver._parents(db, sender.tenant_id, group="Parents")
                     )
                 elif audience_type == NoticeAudienceType.SELECTED_PARENTS:
                     if audience.actor_id is None:

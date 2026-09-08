@@ -46,7 +46,9 @@ class CBTSyncEntityEnumContractTests(unittest.TestCase):
 
     def test_repair_follows_curriculum_cutover_head(self) -> None:
         source = MIGRATION_PATH.read_text(encoding="utf-8")
-        self.assertIn('down_revision: Union[str, Sequence[str], None] = "20260903_curriculum_scopes"', source)
+        self.assertIn(
+            'down_revision: Union[str, Sequence[str], None] = "20260903_curriculum_scopes"', source
+        )
 
 
 if __name__ == "__main__":

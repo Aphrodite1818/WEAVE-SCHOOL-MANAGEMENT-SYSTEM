@@ -331,7 +331,9 @@ class SubjectRepository:
         teacher_assignments_total = (
             select(func.count())
             .select_from(TeacherAssignment)
-            .join(CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id)
+            .join(
+                CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id
+            )
             .where(
                 TeacherAssignment.tenant_id == tenant_id,
                 CurriculumSubject.tenant_id == tenant_id,
@@ -342,7 +344,9 @@ class SubjectRepository:
         teacher_assignments_live = (
             select(func.count())
             .select_from(TeacherAssignment)
-            .join(CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id)
+            .join(
+                CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id
+            )
             .where(
                 TeacherAssignment.tenant_id == tenant_id,
                 TeacherAssignment.is_active.is_(True),
@@ -470,7 +474,9 @@ class SubjectRepository:
         await apply_grouped(
             select(CurriculumSubject.subject_id, func.count())
             .select_from(TeacherAssignment)
-            .join(CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id)
+            .join(
+                CurriculumSubject, CurriculumSubject.id == TeacherAssignment.curriculum_subject_id
+            )
             .where(
                 TeacherAssignment.tenant_id == tenant_id,
                 CurriculumSubject.tenant_id == tenant_id,

@@ -139,11 +139,7 @@ class NoticeService:
             (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
         )
         rows = (
-            (
-                await db.execute(
-                    stmt.order_by(Notice.updated_at.desc()).offset(offset).limit(limit)
-                )
-            )
+            (await db.execute(stmt.order_by(Notice.updated_at.desc()).offset(offset).limit(limit)))
             .unique()
             .scalars()
             .all()
@@ -155,7 +151,10 @@ class NoticeService:
         notice = await CommunicationRepository.get_notice(db, notice_id)
         if notice is None:
             raise NotFoundException("Notice not found")
-        if notice.created_by_actor_type != actor_type_for(actor) or notice.created_by_actor_id != actor.id:
+        if (
+            notice.created_by_actor_type != actor_type_for(actor)
+            or notice.created_by_actor_id != actor.id
+        ):
             raise NotFoundException("Notice not found")
         tenant_id = actor_tenant_id(actor)
         if tenant_id is not None and notice.tenant_id != tenant_id:
@@ -198,9 +197,7 @@ class NoticeService:
 
     @staticmethod
     async def preview(db: AsyncSession, *, actor, audiences):
-        recipients, excluded = await NoticeService._resolve(
-            db, actor=actor, audiences=audiences
-        )
+        recipients, excluded = await NoticeService._resolve(db, actor=actor, audiences=audiences)
         label = recipients[0].group_label or "Audience"
         return label, recipients, excluded
 
@@ -317,9 +314,7 @@ class NoticeService:
         )
         rows = (
             await db.execute(
-                stmt.order_by(NotificationDelivery.delivered_at.desc())
-                .offset(offset)
-                .limit(limit)
+                stmt.order_by(NotificationDelivery.delivered_at.desc()).offset(offset).limit(limit)
             )
         ).all()
         return [(row[0], row[1]) for row in rows], total, unread

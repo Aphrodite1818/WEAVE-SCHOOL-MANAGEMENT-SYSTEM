@@ -126,12 +126,9 @@ class SubscriptionFeatureService:
         )
         active_term = current_terms[0] if current_terms else None
         if active_term is not None:
-            entitlement = await TermPlanEntitlementService.get_active(
-                db, tenant_id, active_term.id
-            )
+            entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, active_term.id)
             if entitlement is not None and (
-                entitlement.safety_expires_at is None
-                or entitlement.safety_expires_at > now
+                entitlement.safety_expires_at is None or entitlement.safety_expires_at > now
             ):
                 return ResolvedSubscriptionState(
                     tenant_id=tenant_id,

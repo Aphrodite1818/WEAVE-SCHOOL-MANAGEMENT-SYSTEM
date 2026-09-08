@@ -535,6 +535,92 @@ class StudentAcademicRepository:
         return await StudentAcademicRepository._save(db, result)
 
     @staticmethod
+    async def save_results_batch(
+        db: AsyncSession, results: list[StudentSubjectResult]
+    ) -> list[StudentSubjectResult]:
+        """Persist new or modified subject results in one flush
+
+        This is used by bulk workflows such as CBT ingestion to avoid
+        flushing one StudentSubjectResult at a time
+        """
+
+        if not results:
+            return []
+
+        db.add_all(results)
+        await db.flush()
+        return results
+
+
+
+    @staticmethod
+    async def get_component_scores_batch(
+        db : AsyncSession,
+        tenant_id : uuid.UUID,
+        result_ids : set[uuid.UUID],
+        assessment_component_id : uuid.UUID,
+        *,
+        lock : bool = False
+    ):# -> dict | dict[UUID, StudentAssessmentScore]:
+        """
+        Load one assessment component score accross many subject results.
+
+        The returned mapping is Keyed by student_subject_result_id
+        """
+
+
+        if not result_ids:
+            return {}
+
+
+        query = select(StudentAssessmentScore).where(
+            StudentAssessmentScore.tenant_id == tenant_id,
+            StudentAssessmentScore.student_subject_result_id.in_(result_ids),
+            StudentAssessmentScore.assessment_component_id == assessment_component_id
+        )
+
+
+        if lock:
+            query = query.with_for_update()
+
+
+        rows  = list(
+            (
+                await db.execute(query)
+            )
+            .scalars()
+            .all()
+        )
+
+        return {
+            score.student_subject_result_id : score
+            for score in rows 
+        }
+
+
+
+    @staticmethod
+    async def add_component_scores_batch(
+        db: AsyncSession,
+        scores: list[StudentAssessmentScore],
+    ) -> list[StudentAssessmentScore]:
+        """
+        Persist new component scores in one flush.
+
+        Callers must only supply scores that have already been classified as
+        safe to insert. This method does not overwrite existing scores.
+        """
+
+        if not scores:
+            return []
+
+        db.add_all(scores)
+        await db.flush()
+
+        return scores
+
+
+    @staticmethod
     async def list_result_component_scores(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -710,6 +796,42 @@ class StudentAcademicRepository:
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
+    async def get_results_by_scope_batch(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        student_ids: set[uuid.UUID],
+        curriculum_subject_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> dict[uuid.UUID, StudentSubjectResult]:
+        """
+        Load canonical subject results for many students in one academic scope.
+
+        The result scope is uniquely identified by tenant, student,
+        curriculum subject, session, and term.
+        """
+
+        if not student_ids:
+            return {}
+
+        query = select(StudentSubjectResult).where(
+            StudentSubjectResult.tenant_id == tenant_id,
+            StudentSubjectResult.student_id.in_(student_ids),
+            StudentSubjectResult.curriculum_subject_id == curriculum_subject_id,
+            StudentSubjectResult.academic_session_id == academic_session_id,
+            StudentSubjectResult.academic_term_id == academic_term_id,
+        )
+
+        if lock:
+            query = query.with_for_update()
+
+        rows = list((await db.execute(query)).scalars().all())
+
+        return {result.student_id: result for result in rows}
+
+    @staticmethod
     async def list_results(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -873,6 +995,44 @@ class StudentAcademicRepository:
         if lock:
             query = query.with_for_update()
         return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def get_teacher_assignments_for_classes_on_date(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_ids: set[uuid.UUID],
+        curriculum_subject_id: uuid.UUID,
+        effective_date: date,
+        *,
+        lock: bool = False,
+    ) -> dict[uuid.UUID, TeacherAssignment]:
+        """
+        Load the teacher assignment effective on a specific date for many classes.
+
+        Teacher ownership is resolved historically using effective_from and
+        effective_to rather than the assignment that happens to be current today.
+        """
+
+        if not class_ids:
+            return {}
+
+        query = select(TeacherAssignment).where(
+            TeacherAssignment.tenant_id == tenant_id,
+            TeacherAssignment.class_id.in_(class_ids),
+            TeacherAssignment.curriculum_subject_id == curriculum_subject_id,
+            TeacherAssignment.effective_from <= effective_date,
+            or_(
+                TeacherAssignment.effective_to.is_(None),
+                TeacherAssignment.effective_to >= effective_date,
+            ),
+        )
+
+        if lock:
+            query = query.with_for_update()
+
+        rows = list((await db.execute(query)).scalars().all())
+
+        return {assignment.class_id: assignment for assignment in rows}
 
     @staticmethod
     async def list_teacher_assignments_for_curriculum_subject(

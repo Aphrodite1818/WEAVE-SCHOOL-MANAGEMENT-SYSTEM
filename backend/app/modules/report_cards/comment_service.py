@@ -394,18 +394,22 @@ class ReportCommentService:
         )
         teacher_ref = (
             await db.execute(
-                select(StudentTermTeacherComment.id).where(
+                select(StudentTermTeacherComment.id)
+                .where(
                     StudentTermTeacherComment.tenant_id == actor.tenant_id,
                     StudentTermTeacherComment.source_template_id == template.id,
-                ).limit(1)
+                )
+                .limit(1)
             )
         ).scalar_one_or_none()
         report_ref = (
             await db.execute(
-                select(ReportCard.id).where(
+                select(ReportCard.id)
+                .where(
                     ReportCard.tenant_id == actor.tenant_id,
                     ReportCard.principal_comment_source_template_id == template.id,
-                ).limit(1)
+                )
+                .limit(1)
             )
         ).scalar_one_or_none()
         if teacher_ref is not None or report_ref is not None:
@@ -476,8 +480,7 @@ class ReportCommentService:
         by_curriculum = {item.curriculum_subject_id: item for item in results}
         expected_ids = {item.curriculum_subject_id for item in expected}
         if not expected_ids.issubset(by_curriculum) or any(
-            by_curriculum[item_id].status != AcademicResultStatus.LOCKED
-            for item_id in expected_ids
+            by_curriculum[item_id].status != AcademicResultStatus.LOCKED for item_id in expected_ids
         ):
             return False, None, None
         applicable = [by_curriculum[item_id] for item_id in expected_ids]
@@ -626,9 +629,7 @@ class ReportCommentService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> TeacherStudentCommentListResponse:
-        await ReportCommentService._require_class_teacher_capability(
-            db, teacher, class_id=class_id
-        )
+        await ReportCommentService._require_class_teacher_capability(db, teacher, class_id=class_id)
         enrollments = await StudentEnrollmentRepository.list_current_for_class_session(
             db,
             teacher.tenant_id,
@@ -650,18 +651,22 @@ class ReportCommentService:
                 academic_term_id=academic_term_id,
             )
             comment = (
-                await db.execute(
-                    select(StudentTermTeacherComment)
-                    .where(
-                        StudentTermTeacherComment.tenant_id == teacher.tenant_id,
-                        StudentTermTeacherComment.student_id == student.id,
-                        StudentTermTeacherComment.student_enrollment_id == enrollment.id,
-                        StudentTermTeacherComment.academic_term_id == academic_term_id,
-                        StudentTermTeacherComment.teacher_membership_id == teacher.id,
+                (
+                    await db.execute(
+                        select(StudentTermTeacherComment)
+                        .where(
+                            StudentTermTeacherComment.tenant_id == teacher.tenant_id,
+                            StudentTermTeacherComment.student_id == student.id,
+                            StudentTermTeacherComment.student_enrollment_id == enrollment.id,
+                            StudentTermTeacherComment.academic_term_id == academic_term_id,
+                            StudentTermTeacherComment.teacher_membership_id == teacher.id,
+                        )
+                        .order_by(StudentTermTeacherComment.updated_at.desc())
                     )
-                    .order_by(StudentTermTeacherComment.updated_at.desc())
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if comment is not None and comment.status == TeacherCommentStatus.SUBMITTED:
                 if (
                     not ready

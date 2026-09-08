@@ -610,9 +610,7 @@ class TeacherMembershipService:
             list(requested),
         )
         active_subject_ids = {
-            subject.id
-            for subject in subjects
-            if subject.is_active and subject.archived_at is None
+            subject.id for subject in subjects if subject.is_active and subject.archived_at is None
         }
         unavailable = requested - active_subject_ids
         if unavailable:

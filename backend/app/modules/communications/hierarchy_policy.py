@@ -195,8 +195,7 @@ class HierarchyMessagingPolicy:
                 for participant in conversation.participants
                 if participant.left_at is None
                 and not (
-                    participant.actor_type == sender_type
-                    and participant.actor_id == sender.id
+                    participant.actor_type == sender_type and participant.actor_id == sender.id
                 )
             ),
             None,

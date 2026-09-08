@@ -78,7 +78,9 @@ async def reassign_academic_level(
     )
 
 
-@router.post("/{student_id}/placement-impact-preview", response_model=PlacementImpactPreviewResponse)
+@router.post(
+    "/{student_id}/placement-impact-preview", response_model=PlacementImpactPreviewResponse
+)
 async def placement_impact_preview(
     student_id: UUID,
     payload: PlacementImpactPreviewRequest,

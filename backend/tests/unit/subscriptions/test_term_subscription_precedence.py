@@ -47,9 +47,7 @@ async def test_current_term_entitlement_takes_precedence_over_free_fallback(
             new=AsyncMock(return_value=entitlement),
         ),
     ):
-        state = await SubscriptionFeatureService._resolve_subscription_state(
-            MagicMock(), tenant_id
-        )
+        state = await SubscriptionFeatureService._resolve_subscription_state(MagicMock(), tenant_id)
 
     assert state.plan_code == SubscriptionPlan.PROFESSIONAL.value
     assert state.status == SubscriptionStatus.ACTIVE
@@ -77,9 +75,7 @@ async def test_no_current_term_resolves_to_permanent_free() -> None:
             new=AsyncMock(),
         ) as get_legacy_subscription,
     ):
-        state = await SubscriptionFeatureService._resolve_subscription_state(
-            MagicMock(), tenant_id
-        )
+        state = await SubscriptionFeatureService._resolve_subscription_state(MagicMock(), tenant_id)
 
     assert state.plan_code == SubscriptionPlan.FREE.value
     assert state.status == SubscriptionStatus.ACTIVE
@@ -116,9 +112,7 @@ async def test_open_term_without_entitlement_falls_back_to_free() -> None:
             new=AsyncMock(return_value=SimpleNamespace(id=tenant_id)),
         ),
     ):
-        state = await SubscriptionFeatureService._resolve_subscription_state(
-            MagicMock(), tenant_id
-        )
+        state = await SubscriptionFeatureService._resolve_subscription_state(MagicMock(), tenant_id)
 
     assert state.plan_code == SubscriptionPlan.FREE.value
     assert state.status == SubscriptionStatus.ACTIVE

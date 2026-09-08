@@ -26,7 +26,9 @@ def _template(*, template_id, grade_id, is_default, status=CommentTemplateStatus
 
 
 @pytest.mark.asyncio
-async def test_cannot_deactivate_default_while_other_active_comment_has_no_default(monkeypatch) -> None:
+async def test_cannot_deactivate_default_while_other_active_comment_has_no_default(
+    monkeypatch,
+) -> None:
     grade_id = uuid4()
     admin = TenantAdmin(tenant_id=uuid4())
     admin.id = uuid4()

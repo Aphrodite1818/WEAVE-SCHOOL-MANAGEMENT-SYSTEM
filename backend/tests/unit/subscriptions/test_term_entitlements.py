@@ -158,16 +158,12 @@ async def test_missing_entitlement_blocks_open_with_plan_selection_context() -> 
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await TermPlanEntitlementService.ensure_open_eligible(
-                MagicMock(), tenant_id, term.id
-            )
+            await TermPlanEntitlementService.ensure_open_eligible(MagicMock(), tenant_id, term.id)
 
     assert exc_info.value.payload["code"] == "TERM_PLAN_SELECTION_REQUIRED"
     assert exc_info.value.payload["suggested_plan"] == "professional"
     assert exc_info.value.payload["payment_required"] is True
-    assert exc_info.value.payload["amount_kobo"] == _price(
-        SubscriptionPlan.PROFESSIONAL
-    )
+    assert exc_info.value.payload["amount_kobo"] == _price(SubscriptionPlan.PROFESSIONAL)
 
 
 @pytest.mark.asyncio
@@ -184,9 +180,7 @@ async def test_missing_preference_defaults_open_prompt_to_free() -> None:
         ),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await TermPlanEntitlementService.ensure_open_eligible(
-                MagicMock(), tenant_id, term.id
-            )
+            await TermPlanEntitlementService.ensure_open_eligible(MagicMock(), tenant_id, term.id)
 
     assert exc_info.value.payload["code"] == "TERM_PLAN_SELECTION_REQUIRED"
     assert exc_info.value.payload["suggested_plan"] == "free"
@@ -221,9 +215,7 @@ async def test_draft_plan_selection_is_blocked_for_future_term() -> None:
         new=AsyncMock(return_value=session),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await TermPlanEntitlementService._ensure_draft_selection_allowed(
-                db, tenant_id, term
-            )
+            await TermPlanEntitlementService._ensure_draft_selection_allowed(db, tenant_id, term)
 
     assert exc_info.value.payload["code"] == "TERM_PLAN_SELECTION_NOT_READY"
 
@@ -240,14 +232,18 @@ async def test_plan_options_quote_only_the_upgrade_difference() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
-        patch.object(TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=paid_to_date)),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", side_effect=usage_and_blockers),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=paid_to_date)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_usage_and_blockers", side_effect=usage_and_blockers
+        ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
     ):
-        options = await TermPlanEntitlementService.get_plan_options(
-            MagicMock(), tenant_id, term.id
-        )
+        options = await TermPlanEntitlementService.get_plan_options(MagicMock(), tenant_id, term.id)
 
     by_plan = {option.plan_code: option for option in options.options}
     professional = by_plan[SubscriptionPlan.PROFESSIONAL]
@@ -255,13 +251,9 @@ async def test_plan_options_quote_only_the_upgrade_difference() -> None:
     free = by_plan[SubscriptionPlan.FREE]
 
     assert professional.transition == "upgrade"
-    assert professional.amount_due_kobo == (
-        _price(SubscriptionPlan.PROFESSIONAL) - paid_to_date
-    )
+    assert professional.amount_due_kobo == (_price(SubscriptionPlan.PROFESSIONAL) - paid_to_date)
     assert professional.requires_payment is True
-    assert enterprise.amount_due_kobo == (
-        _price(SubscriptionPlan.ENTERPRISE) - paid_to_date
-    )
+    assert enterprise.amount_due_kobo == (_price(SubscriptionPlan.ENTERPRISE) - paid_to_date)
     assert free.transition == "downgrade"
     assert free.amount_due_kobo == 0
     assert free.requires_payment is False
@@ -286,18 +278,22 @@ async def test_plan_options_expose_downgrade_blockers() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
-        patch.object(TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=_price(SubscriptionPlan.PROFESSIONAL))),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", side_effect=usage_and_blockers),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
+        patch.object(
+            TermPlanEntitlementService,
+            "_paid_to_date",
+            new=AsyncMock(return_value=_price(SubscriptionPlan.PROFESSIONAL)),
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_usage_and_blockers", side_effect=usage_and_blockers
+        ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
     ):
-        options = await TermPlanEntitlementService.get_plan_options(
-            MagicMock(), tenant_id, term.id
-        )
+        options = await TermPlanEntitlementService.get_plan_options(MagicMock(), tenant_id, term.id)
 
-    free = next(
-        option for option in options.options if option.plan_code == SubscriptionPlan.FREE
-    )
+    free = next(option for option in options.options if option.plan_code == SubscriptionPlan.FREE)
     assert free.transition == "downgrade"
     assert free.eligible is False
     assert free.amount_due_kobo == 0
@@ -320,9 +316,13 @@ async def test_free_activation_is_draft_only_and_never_calls_paystack() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()),
+        patch.object(
+            TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()
+        ),
         patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=None)),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))),
+        patch.object(
+            TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))
+        ),
         patch(
             "app.modules.subscriptions.term_entitlement_service.SubscriptionRepository.get_tenant",
             new=AsyncMock(return_value=tenant),
@@ -356,9 +356,7 @@ async def test_free_activation_rejects_open_term() -> None:
         new=AsyncMock(return_value=term),
     ):
         with pytest.raises(ConflictException, match="still a draft"):
-            await TermPlanEntitlementService.activate_free(
-                MagicMock(), uuid4(), term.id, uuid4()
-            )
+            await TermPlanEntitlementService.activate_free(MagicMock(), uuid4(), term.id, uuid4())
 
 
 @pytest.mark.asyncio
@@ -375,11 +373,21 @@ async def test_checkout_initializes_paystack_with_delta_amount() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))),
-        patch.object(TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=paid_to_date)),
-        patch.object(TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)),
+        patch.object(
+            TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()
+        ),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=paid_to_date)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)
+        ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
         patch(
             "app.modules.subscriptions.term_entitlement_service.PaystackClient.initialize_transaction",
@@ -425,11 +433,17 @@ async def test_checkout_reuses_same_pending_paystack_session() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()),
+        patch.object(
+            TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()
+        ),
         patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=None)),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))),
+        patch.object(
+            TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))
+        ),
         patch.object(TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=0)),
-        patch.object(TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=pending)),
+        patch.object(
+            TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=pending)
+        ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
         patch(
             "app.modules.subscriptions.term_entitlement_service.PaystackClient.initialize_transaction",
@@ -457,8 +471,12 @@ async def test_paid_checkout_is_not_used_for_downgrade() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
+        patch.object(
+            TermPlanEntitlementService, "_ensure_draft_selection_allowed", new=AsyncMock()
+        ),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
     ):
         with pytest.raises(ConflictException) as exc_info:
             await TermPlanEntitlementService.initialize_paid_checkout(
@@ -488,10 +506,20 @@ async def test_mid_term_downgrade_is_free_when_usage_fits() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))),
-        patch.object(TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=_price(SubscriptionPlan.PROFESSIONAL))),
+        patch.object(
+            TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))
+        ),
+        patch.object(
+            TermPlanEntitlementService,
+            "_paid_to_date",
+            new=AsyncMock(return_value=_price(SubscriptionPlan.PROFESSIONAL)),
+        ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
         patch(
             "app.modules.subscriptions.term_entitlement_service.SubscriptionRepository.get_tenant",
@@ -532,9 +560,17 @@ async def test_mid_term_downgrade_is_blocked_when_usage_does_not_fit() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, [blocker]))),
+        patch.object(
+            TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
+        patch.object(
+            TermPlanEntitlementService,
+            "_usage_and_blockers",
+            new=AsyncMock(return_value=({}, [blocker])),
+        ),
     ):
         with pytest.raises(ConflictException) as exc_info:
             await TermPlanEntitlementService.change_plan(
@@ -557,10 +593,20 @@ async def test_zero_cost_change_rejects_upgrade_that_requires_payment() -> None:
 
     with (
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
-        patch.object(TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)),
-        patch.object(TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)),
-        patch.object(TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))),
-        patch.object(TermPlanEntitlementService, "_paid_to_date", new=AsyncMock(return_value=_price(SubscriptionPlan.PLUS))),
+        patch.object(
+            TermPlanEntitlementService, "_get_pending_checkout", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "get_active", new=AsyncMock(return_value=existing)
+        ),
+        patch.object(
+            TermPlanEntitlementService, "_usage_and_blockers", new=AsyncMock(return_value=({}, []))
+        ),
+        patch.object(
+            TermPlanEntitlementService,
+            "_paid_to_date",
+            new=AsyncMock(return_value=_price(SubscriptionPlan.PLUS)),
+        ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
     ):
         with pytest.raises(ConflictException) as exc_info:
@@ -635,7 +681,11 @@ async def test_settlement_rejects_closed_term() -> None:
     term = _term(status=AcademicTermStatus.CLOSED)
 
     with (
-        patch.object(TermPlanEntitlementService, "_get_entitlement_for_transaction", new=AsyncMock(return_value=None)),
+        patch.object(
+            TermPlanEntitlementService,
+            "_get_entitlement_for_transaction",
+            new=AsyncMock(return_value=None),
+        ),
         patch.object(TermPlanEntitlementService, "_term", new=AsyncMock(return_value=term)),
     ):
         with pytest.raises(ConflictException, match="after the academic term is closed"):

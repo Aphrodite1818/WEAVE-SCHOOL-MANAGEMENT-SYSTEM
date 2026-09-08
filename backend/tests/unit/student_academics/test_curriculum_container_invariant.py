@@ -136,9 +136,7 @@ async def test_level_reactivation_reuses_existing_curriculum() -> None:
         )
 
     assert response.status == AcademicLevelStatus.ACTIVE
-    assert not any(
-        isinstance(call.args[0], Curriculum) for call in db.add.call_args_list
-    )
+    assert not any(isinstance(call.args[0], Curriculum) for call in db.add.call_args_list)
     publication_contract.assert_not_awaited()
     assert db.flush.await_count == 1
 

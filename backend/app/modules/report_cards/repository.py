@@ -236,9 +236,7 @@ class ReportCardRepository:
                         ReportCard.academic_session_id == academic_session_id,
                         ReportCard.academic_term_id == academic_term_id,
                         ReportCard.superseded_at.is_(None),
-                        ReportCard.status.in_(
-                            [ReportCardStatus.DRAFT, ReportCardStatus.PUBLISHED]
-                        ),
+                        ReportCard.status.in_([ReportCardStatus.DRAFT, ReportCardStatus.PUBLISHED]),
                     )
                 )
             ).scalars()

@@ -258,7 +258,9 @@ def main():
             ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
 
         wb.save(OUTPUT_FILE)
-        print(f"File didn't exist yet — created it with {len(rows)} fake student rows: {OUTPUT_FILE}")
+        print(
+            f"File didn't exist yet — created it with {len(rows)} fake student rows: {OUTPUT_FILE}"
+        )
 
 
 if __name__ == "__main__":

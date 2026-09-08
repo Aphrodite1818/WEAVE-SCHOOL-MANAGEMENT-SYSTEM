@@ -201,9 +201,7 @@ class CommunicationRepository:
         unread = int(
             (
                 await db.execute(
-                    select(func.count())
-                    .select_from(NotificationDelivery)
-                    .where(*unread_filters)
+                    select(func.count()).select_from(NotificationDelivery).where(*unread_filters)
                 )
             ).scalar_one()
         )

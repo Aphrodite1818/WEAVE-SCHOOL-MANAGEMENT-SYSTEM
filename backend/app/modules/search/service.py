@@ -361,7 +361,9 @@ class TenantSearchService:
                 metadata=(
                     "archived"
                     if department.archived_at
-                    else "active" if department.is_active else "inactive"
+                    else "active"
+                    if department.is_active
+                    else "inactive"
                 ),
                 href="/admin/academic/departments?view=pool",
             )
@@ -393,9 +395,7 @@ class TenantSearchService:
                 label=f"{level.name} · {department.name}",
                 role="level department",
                 metadata=(
-                    "available"
-                    if link.is_active and not link.archived_at
-                    else "unavailable"
+                    "available" if link.is_active and not link.archived_at else "unavailable"
                 ),
                 href="/admin/academic/departments?view=availability",
             )
@@ -540,9 +540,7 @@ class TenantSearchService:
             TenantSearchService._result(
                 label=f"{level.name} {arm.label} · {department.name}",
                 role="class placement",
-                metadata=(
-                    f"{session.name} | {academic_term.name.value.replace('_', ' ').title()}"
-                ),
+                metadata=(f"{session.name} | {academic_term.name.value.replace('_', ' ').title()}"),
                 class_name=f"{level.name} {arm.label}",
                 href="/admin/academic/departments?view=placements",
             )

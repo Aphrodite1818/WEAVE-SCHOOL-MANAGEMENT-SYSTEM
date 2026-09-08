@@ -355,7 +355,9 @@ async def test_student_import_rejects_invalid_class_department_assignment(monkey
 
 
 @pytest.mark.asyncio
-async def test_worker_creation_reresolves_class_department_before_student_creation(monkeypatch) -> None:
+async def test_worker_creation_reresolves_class_department_before_student_creation(
+    monkeypatch,
+) -> None:
     tenant_id = uuid4()
     actor = SimpleNamespace(tenant_id=tenant_id)
     row = ImportRowValidationResult(
@@ -383,9 +385,7 @@ async def test_worker_creation_reresolves_class_department_before_student_creati
                 admission_number="ADM001",
             ),
             setup_code="12345678",
-            access_code_expires_at=SimpleNamespace(
-                isoformat=lambda: "2026-09-08T12:00:00+00:00"
-            ),
+            access_code_expires_at=SimpleNamespace(isoformat=lambda: "2026-09-08T12:00:00+00:00"),
             parent_invitation_count=0,
         )
     )

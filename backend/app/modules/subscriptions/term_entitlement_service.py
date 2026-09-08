@@ -272,8 +272,7 @@ class TermPlanEntitlementService:
         earlier_not_closed = [
             row
             for row in siblings
-            if TERM_ORDER[row.name] < current_position
-            and row.status != AcademicTermStatus.CLOSED
+            if TERM_ORDER[row.name] < current_position and row.status != AcademicTermStatus.CLOSED
         ]
         active_other = [
             row
@@ -419,17 +418,13 @@ class TermPlanEntitlementService:
         term_id: uuid.UUID,
     ) -> TermPlanEntitlement:
         term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
-        entitlement = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         now = datetime.now(timezone.utc)
         if entitlement is None or (
             entitlement.safety_expires_at and entitlement.safety_expires_at <= now
         ):
             tenant = await SubscriptionRepository.get_tenant(db, tenant_id)
-            suggested = coerce_subscription_plan(
-                getattr(tenant, "initial_plan_intent", None)
-            )
+            suggested = coerce_subscription_plan(getattr(tenant, "initial_plan_intent", None))
             raise ConflictException(
                 "Choose a plan for this academic term before opening it.",
                 payload={
@@ -472,9 +467,7 @@ class TermPlanEntitlementService:
                 "Free can only be selected while the academic term is still a draft."
             )
         await TermPlanEntitlementService._ensure_draft_selection_allowed(db, tenant_id, term)
-        existing = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        existing = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         if existing:
             if coerce_subscription_plan(existing.plan_code) == SubscriptionPlan.FREE:
                 return existing
@@ -526,9 +519,7 @@ class TermPlanEntitlementService:
     ) -> SubscriptionCheckoutResponse:
         target = coerce_subscription_plan(plan)
         if target not in PAID_TERM_PLANS:
-            raise ConflictException(
-                "Select Plus, Professional, or Enterprise for paid activation."
-            )
+            raise ConflictException("Select Plus, Professional, or Enterprise for paid activation.")
 
         term = await TermPlanEntitlementService._term(db, tenant_id, term_id, lock=True)
         if term.status not in {AcademicTermStatus.DRAFT, AcademicTermStatus.OPEN}:
@@ -537,9 +528,7 @@ class TermPlanEntitlementService:
             )
         await TermPlanEntitlementService._ensure_draft_selection_allowed(db, tenant_id, term)
 
-        existing = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        existing = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         transition = TermPlanEntitlementService._transition(existing, target)
         if transition in {"current", "downgrade"}:
             raise ConflictException(
@@ -587,8 +576,7 @@ class TermPlanEntitlementService:
         if pending is not None:
             now = datetime.now(timezone.utc)
             reusable = bool(pending.authorization_url) and (
-                pending.created_at is None
-                or pending.created_at >= now - PENDING_CHECKOUT_TTL
+                pending.created_at is None or pending.created_at >= now - PENDING_CHECKOUT_TTL
             )
             if reusable:
                 if pending.plan_code != target:
@@ -602,9 +590,7 @@ class TermPlanEntitlementService:
 
         callback_url = str(settings.PAYSTACK_CALLBACK_URL or "").strip()
         if settings.is_production_like and not callback_url:
-            raise ConflictException(
-                "Paystack callback URL is not configured for this environment."
-            )
+            raise ConflictException("Paystack callback URL is not configured for this environment.")
 
         reference = f"term-{term_id.hex[:12]}-{uuid.uuid4().hex[:16]}"
         transaction = PaymentTransaction(
@@ -682,13 +668,9 @@ class TermPlanEntitlementService:
                 "Complete or wait for the current Paystack checkout to expire before changing plans."
             )
 
-        existing = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        existing = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         if existing is None:
-            raise ConflictException(
-                "The current term does not have a plan entitlement to change."
-            )
+            raise ConflictException("The current term does not have a plan entitlement to change.")
 
         transition = TermPlanEntitlementService._transition(existing, target)
         if transition == "current":
@@ -914,9 +896,7 @@ class TermPlanEntitlementService:
                 "Complete the payment or wait for the checkout to expire before finalizing closure."
             )
 
-        entitlement = await TermPlanEntitlementService.get_active(
-            db, tenant_id, term_id, lock=True
-        )
+        entitlement = await TermPlanEntitlementService.get_active(db, tenant_id, term_id, lock=True)
         if entitlement:
             entitlement.status = TermEntitlementStatus.CLOSED
             entitlement.closed_at = datetime.now(timezone.utc)

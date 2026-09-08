@@ -342,9 +342,7 @@ async def test_historical_usage_permanently_blocks_hard_delete() -> None:
         ),
     ):
         with pytest.raises(ConflictException, match="permanently deleted") as exc_info:
-            await SubjectService.hard_delete_subject(
-                AsyncMock(), _actor(tenant_id), subject.id
-            )
+            await SubjectService.hard_delete_subject(AsyncMock(), _actor(tenant_id), subject.id)
 
     assert exc_info.value.payload == {"dependency_counts": counts}
 

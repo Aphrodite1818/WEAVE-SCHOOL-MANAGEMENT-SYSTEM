@@ -160,9 +160,7 @@ def test_calendar_configuration_patch_separates_clearable_times() -> None:
 def test_calendar_day_patch_allows_only_intentional_clears() -> None:
     _assert_invalid(SchoolCalendarDayUpdate, day_type=None)
     _assert_invalid(SchoolCalendarDayUpdate, school_open=None)
-    payload = SchoolCalendarDayUpdate(
-        title=None, description=None, opens_at=None, closes_at=None
-    )
+    payload = SchoolCalendarDayUpdate(title=None, description=None, opens_at=None, closes_at=None)
     assert payload.model_dump(exclude_unset=True) == {
         "title": None,
         "description": None,
@@ -213,7 +211,9 @@ def test_attendance_settings_update_rejects_null_config_and_allows_time_clear() 
     _assert_invalid(AttendanceSettingsUpdate, timezone=None)
     _assert_invalid(AttendanceSettingsUpdate, require_geofence_for_workforce=None)
     _assert_invalid(AttendanceSettingsUpdate, geofence_accuracy_threshold_m=None)
-    payload = AttendanceSettingsUpdate(student_marking_opens_at=None, student_marking_closes_at=None)
+    payload = AttendanceSettingsUpdate(
+        student_marking_opens_at=None, student_marking_closes_at=None
+    )
     assert payload.model_dump(exclude_unset=True) == {
         "student_marking_opens_at": None,
         "student_marking_closes_at": None,

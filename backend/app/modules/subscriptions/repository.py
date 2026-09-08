@@ -216,9 +216,9 @@ class SubscriptionRepository:
                     PaymentTransaction.tenant_id == tenant_id,
                     PaymentTransaction.academic_term_id == academic_term_id,
                     PaymentTransaction.status == PaymentStatus.SUCCESS,
-                    PaymentTransaction.raw_payload[
-                        "reconciliation_required"
-                    ].as_boolean().is_not(True),
+                    PaymentTransaction.raw_payload["reconciliation_required"]
+                    .as_boolean()
+                    .is_not(True),
                 )
             )
         ).scalar_one()
@@ -426,12 +426,8 @@ class SubscriptionRepository:
                 tenant_id,
                 academic_session_id=academic_session_id,
             ),
-            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(
-                db, tenant_id
-            ),
-            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(
-                db, tenant_id
-            ),
+            ResourceLimitCode.TEACHERS: await SubscriptionRepository.count_teachers(db, tenant_id),
+            ResourceLimitCode.PARENTS: await SubscriptionRepository.count_parents(db, tenant_id),
             ResourceLimitCode.CBT_SERVERS: await SubscriptionRepository.count_cbt_servers(
                 db, tenant_id
             ),

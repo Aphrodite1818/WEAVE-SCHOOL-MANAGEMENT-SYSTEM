@@ -86,9 +86,7 @@ class AcademicLevelRepository:
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_normalized_name(
-        db: AsyncSession, tenant_id: uuid.UUID, name: str
-    ):
+    async def get_by_normalized_name(db: AsyncSession, tenant_id: uuid.UUID, name: str):
         from app.core.utils.normalization import normalized_class_name_key
 
         normalized = normalized_class_name_key(name)
@@ -461,11 +459,7 @@ class ClassRoomRepository:
         if not include_archived:
             query = query.where(ClassRoom.archived_at.is_(None))
         return list(
-            (
-                await db.execute(
-                    query.order_by(ClassRoom.created_at).offset(offset).limit(limit)
-                )
-            )
+            (await db.execute(query.order_by(ClassRoom.created_at).offset(offset).limit(limit)))
             .scalars()
             .unique()
             .all()

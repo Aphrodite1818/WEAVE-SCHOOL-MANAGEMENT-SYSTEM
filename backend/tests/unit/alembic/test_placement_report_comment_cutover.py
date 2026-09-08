@@ -23,14 +23,14 @@ def test_python_enrollment_outcomes_match_canonical_placement_contract() -> None
 def test_placement_migration_adds_the_same_enrollment_outcomes() -> None:
     backend_root = Path(__file__).resolve().parents[3]
     migration = (
-        backend_root
-        / "alembic"
-        / "versions"
-        / "20260905_student_placement_report_comments.py"
+        backend_root / "alembic" / "versions" / "20260905_student_placement_report_comments.py"
     ).read_text(encoding="utf-8")
 
     assert 'revision: str = "20260905_placement_comments"' in migration
-    assert 'down_revision: Union[str, Sequence[str], None] = "20260905_cbt_sync_enum_repair"' in migration
+    assert (
+        'down_revision: Union[str, Sequence[str], None] = "20260905_cbt_sync_enum_repair"'
+        in migration
+    )
     assert "ADD VALUE IF NOT EXISTS 'class_placed'" in migration
     assert "ADD VALUE IF NOT EXISTS 'level_reassigned'" in migration
 
@@ -78,9 +78,7 @@ def test_report_card_versioning_has_one_version_identity_and_separate_current_in
     assert published.unique is True
     assert draft.unique is True
     assert "published" in str(published.dialect_options["postgresql"]["where"])
-    assert "superseded_at IS NULL" in str(
-        published.dialect_options["postgresql"]["where"]
-    )
+    assert "superseded_at IS NULL" in str(published.dialect_options["postgresql"]["where"])
     assert "draft" in str(draft.dialect_options["postgresql"]["where"])
     assert "superseded_at IS NULL" in str(draft.dialect_options["postgresql"]["where"])
 

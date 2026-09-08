@@ -29,7 +29,11 @@ from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
 from app.modules.student_academics.curriculum_service import CurriculumResolutionService
 from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
-from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus, StudentSubjectResult
+from app.modules.student_academics.models import (
+    AcademicSession,
+    AcademicSessionStatus,
+    StudentSubjectResult,
+)
 from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.students.enrollment_schemas import (
     PlacementImpactPreviewRequest,
@@ -129,7 +133,11 @@ class StudentPlacementService:
         session = await AcademicSessionLifecycleRepository.get_by_id(
             db, tenant_id, academic_session_id, lock=True
         )
-        if session is None or not session.is_current or session.status != AcademicSessionStatus.OPEN:
+        if (
+            session is None
+            or not session.is_current
+            or session.status != AcademicSessionStatus.OPEN
+        ):
             raise NotFoundException("Academic session not found or not open.")
         return session
 
@@ -188,7 +196,9 @@ class StudentPlacementService:
         acting_admin_id: UUID,
     ) -> None:
         if ended_on < enrollment.started_on:
-            raise ConflictException("Placement effective date must follow the current segment start.")
+            raise ConflictException(
+                "Placement effective date must follow the current segment start."
+            )
         enrollment.ended_on = ended_on
         enrollment.exit_outcome = outcome
         enrollment.exit_reason = reason
@@ -265,9 +275,7 @@ class StudentPlacementService:
                     "Class placement cannot change the student's academic level."
                 )
             if current.class_id is not None:
-                raise ConflictException(
-                    "Student is already classed; use Reassign Class instead."
-                )
+                raise ConflictException("Student is already classed; use Reassign Class instead.")
 
             # A fresh/today-or-future enrollment has no meaningful unassigned time
             # to preserve. Mutate only class_id and retain ENROLLED/PROMOTED/etc.
@@ -560,7 +568,8 @@ class StudentPlacementService:
         )
         teacher_comment_exists = (
             await db.execute(
-                select(StudentTermTeacherComment.id).where(
+                select(StudentTermTeacherComment.id)
+                .where(
                     StudentTermTeacherComment.tenant_id == tenant_id,
                     StudentTermTeacherComment.student_id == student.id,
                     StudentTermTeacherComment.academic_session_id == payload.academic_session_id,
@@ -568,18 +577,21 @@ class StudentPlacementService:
                     StudentTermTeacherComment.status.in_(
                         [TeacherCommentStatus.SUBMITTED, TeacherCommentStatus.NEEDS_REVIEW]
                     ),
-                ).limit(1)
+                )
+                .limit(1)
             )
         ).scalar_one_or_none() is not None
         report_exists = (
             await db.execute(
-                select(ReportCard.id).where(
+                select(ReportCard.id)
+                .where(
                     ReportCard.tenant_id == tenant_id,
                     ReportCard.student_id == student.id,
                     ReportCard.academic_session_id == payload.academic_session_id,
                     ReportCard.academic_term_id == payload.academic_term_id,
                     ReportCard.superseded_at.is_(None),
-                ).limit(1)
+                )
+                .limit(1)
             )
         ).scalar_one_or_none() is not None
 
@@ -596,7 +608,9 @@ class StudentPlacementService:
             warnings.append(
                 "Existing report cards will be marked affected; published revisions remain immutable."
             )
-        warnings.append("Class ranking context may change and will be recalculated only on a new draft.")
+        warnings.append(
+            "Class ranking context may change and will be recalculated only on a new draft."
+        )
 
         return PlacementImpactPreviewResponse(
             current_academic_level_id=current.academic_level_id,

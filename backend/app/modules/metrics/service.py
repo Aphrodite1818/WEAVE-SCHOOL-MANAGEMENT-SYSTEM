@@ -509,7 +509,9 @@ class MetricsService:
                         for row in class_rows
                     ],
                     "grade_distribution": [
-                        ChartPoint(label=MetricsService._label(row.label, "Ungraded"), value=row.value)
+                        ChartPoint(
+                            label=MetricsService._label(row.label, "Ungraded"), value=row.value
+                        )
                         for row in grade_rows
                     ],
                     "result_status_distribution": [
@@ -573,7 +575,9 @@ class MetricsService:
             performance_trend = await MetricsService._teacher_performance_trend(
                 db, tenant_id=tenant_id, teacher_id=teacher_id
             )
-            status_counts = {item.label: int(item.value or 0) for item in result_status_distribution}
+            status_counts = {
+                item.label: int(item.value or 0) for item in result_status_distribution
+            }
             result_rows_total = sum(status_counts.values())
             result_rows_submitted = status_counts.get(AcademicResultStatus.SUBMITTED.value, 0)
             result_rows_draft = status_counts.get(AcademicResultStatus.DRAFT.value, 0)
@@ -606,7 +610,9 @@ class MetricsService:
                         for row in category_rows
                     ],
                     "grade_distribution": [
-                        ChartPoint(label=MetricsService._label(row.label, "Ungraded"), value=row.value)
+                        ChartPoint(
+                            label=MetricsService._label(row.label, "Ungraded"), value=row.value
+                        )
                         for row in teacher_grade_rows
                     ],
                     "result_status_distribution": result_status_distribution,
@@ -649,7 +655,11 @@ class MetricsService:
     @staticmethod
     async def parent_dashboard(db: AsyncSession, parent: Parent) -> DashboardMetricsResponse:
         async def fetch_dashboard() -> DashboardMetricsResponse:
-            feed_total, read_count, category_rows = await MetricsRepository.notification_summary_for_actor(
+            (
+                feed_total,
+                read_count,
+                category_rows,
+            ) = await MetricsRepository.notification_summary_for_actor(
                 db,
                 tenant_id=parent.tenant_id,
                 actor_type=CommunicationActorType.PARENT,
@@ -674,7 +684,11 @@ class MetricsService:
     @staticmethod
     async def student_dashboard(db: AsyncSession, student: Student) -> DashboardMetricsResponse:
         async def fetch_dashboard() -> DashboardMetricsResponse:
-            feed_total, read_count, category_rows = await MetricsRepository.notification_summary_for_actor(
+            (
+                feed_total,
+                read_count,
+                category_rows,
+            ) = await MetricsRepository.notification_summary_for_actor(
                 db,
                 tenant_id=student.tenant_id,
                 actor_type=CommunicationActorType.STUDENT,

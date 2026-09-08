@@ -71,10 +71,7 @@ class OptimizedBulkImportService:
         source_fingerprint = build_import_source_fingerprint(
             resource_type=resource_type,
             template_version=parsed_file.metadata.get("_import_template_version"),
-            rows=[
-                (row_number, normalized_row)
-                for row_number, _, normalized_row, _ in row_items
-            ],
+            rows=[(row_number, normalized_row) for row_number, _, normalized_row, _ in row_items],
         )
         existing_import = await ImportJobRepository.get_confirmed_job_by_fingerprint(
             db=db,

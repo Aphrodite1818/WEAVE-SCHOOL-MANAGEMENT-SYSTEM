@@ -133,9 +133,7 @@ async def _create_personal_comment(
             name=_derived_internal_name(payload.text),
             text=payload.text,
             grading_scale_ids=[payload.grading_scale_id],
-            default_grading_scale_ids=(
-                [payload.grading_scale_id] if make_default else []
-            ),
+            default_grading_scale_ids=([payload.grading_scale_id] if make_default else []),
         ),
     )
 
@@ -211,9 +209,8 @@ async def _delete_personal_comment(
 ) -> None:
     current = await _find_template(db, actor, template_id)
     grade_id = _single_grade_id(current)
-    if (
-        _status_value(current.status) == CommentTemplateStatus.ACTIVE.value
-        and _is_default(current, grade_id)
+    if _status_value(current.status) == CommentTemplateStatus.ACTIVE.value and _is_default(
+        current, grade_id
     ):
         other_active = [
             item
@@ -446,6 +443,4 @@ async def override_teacher_comment(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherCommentOverrideResponse:
-    return await ReportCommentService.create_override(
-        db, admin=current_admin, payload=payload
-    )
+    return await ReportCommentService.create_override(db, admin=current_admin, payload=payload)

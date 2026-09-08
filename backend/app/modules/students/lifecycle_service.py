@@ -253,12 +253,15 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         )
         if student is None:
             raise NotFoundException("Student not found.")
-        if await StudentEnrollmentRepository.get_current(
-            db,
-            actor.tenant_id,
-            student_id,
-            lock=True,
-        ) is not None:
+        if (
+            await StudentEnrollmentRepository.get_current(
+                db,
+                actor.tenant_id,
+                student_id,
+                lock=True,
+            )
+            is not None
+        ):
             raise ConflictException("Student already has a current enrollment.")
 
         session = await AcademicSessionLifecycleRepository.get_by_id(

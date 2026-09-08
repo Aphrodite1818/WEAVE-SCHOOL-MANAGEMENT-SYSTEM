@@ -193,18 +193,14 @@ class CurriculumResolutionService:
             tenant_id=tenant_id,
             academic_level_id=classroom.academic_level_id,
         )
-        specialization_active = CurriculumResolutionService.specialization_is_active(
-            level, term
-        )
-        level_department_id = (
-            await CurriculumResolutionService.resolve_level_department_for_class(
-                db,
-                tenant_id=tenant_id,
-                class_id=classroom.id,
-                academic_level_id=level.id,
-                academic_term=term,
-                specialization_required=specialization_active,
-            )
+        specialization_active = CurriculumResolutionService.specialization_is_active(level, term)
+        level_department_id = await CurriculumResolutionService.resolve_level_department_for_class(
+            db,
+            tenant_id=tenant_id,
+            class_id=classroom.id,
+            academic_level_id=level.id,
+            academic_term=term,
+            specialization_required=specialization_active,
         )
 
         rows = (
@@ -282,9 +278,7 @@ class CurriculumResolutionService:
             term.academic_session_id,
         )
         if enrollment is None:
-            raise ConflictException(
-                "Student enrollment for this academic session is required."
-            )
+            raise ConflictException("Student enrollment for this academic session is required.")
         if enrollment.class_id is None:
             raise ConflictException("Student must belong to a class for curriculum resolution.")
         return await CurriculumResolutionService.resolve_class_subjects(
@@ -340,9 +334,7 @@ class CurriculumResolutionService:
             student_id=student_id,
             academic_term_id=academic_term_id,
         )
-        elective_ids = {
-            item.curriculum_subject_id for item in subjects if item.is_elective
-        }
+        elective_ids = {item.curriculum_subject_id for item in subjects if item.is_elective}
         if not elective_ids:
             return subjects
 
@@ -352,8 +344,7 @@ class CurriculumResolutionService:
                     select(StudentSubjectResult.curriculum_subject_id)
                     .join(
                         StudentAssessmentScore,
-                        StudentAssessmentScore.student_subject_result_id
-                        == StudentSubjectResult.id,
+                        StudentAssessmentScore.student_subject_result_id == StudentSubjectResult.id,
                     )
                     .where(
                         StudentSubjectResult.tenant_id == tenant_id,

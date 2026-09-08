@@ -10,7 +10,13 @@ from sqlalchemy import and_, select
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_onboarded_student
-from app.modules.classes.models import AcademicLevel, AcademicLevelDepartment, ArmLabel, ClassRoom, Department
+from app.modules.classes.models import (
+    AcademicLevel,
+    AcademicLevelDepartment,
+    ArmLabel,
+    ClassRoom,
+    Department,
+)
 from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
 from app.modules.student_academics.models import AcademicSession, AcademicTerm
 from app.modules.students.models import Student, StudentEnrollment

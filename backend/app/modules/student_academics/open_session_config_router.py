@@ -125,9 +125,7 @@ async def configure_academic_session(
         if next_session is None:
             raise NotFoundException("Next academic session not found.")
         if next_session.status != AcademicSessionStatus.DRAFT:
-            raise ConflictException(
-                "The configured next academic session must be in draft status."
-            )
+            raise ConflictException("The configured next academic session must be in draft status.")
 
     previous_values = {
         "name": session.name,

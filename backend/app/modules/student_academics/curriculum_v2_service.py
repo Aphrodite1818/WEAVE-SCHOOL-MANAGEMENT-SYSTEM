@@ -1295,9 +1295,7 @@ class AcademicCurriculumService:
                 ineligible.append(assignment)
 
         scheduled_conflicts = [
-            assignment
-            for assignment in ineligible
-            if assignment.effective_from >= boundary
+            assignment for assignment in ineligible if assignment.effective_from >= boundary
         ]
         if scheduled_conflicts:
             raise ConflictException(

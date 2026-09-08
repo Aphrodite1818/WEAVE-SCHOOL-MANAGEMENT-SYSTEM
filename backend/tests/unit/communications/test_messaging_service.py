@@ -88,9 +88,7 @@ async def test_create_conversation_uses_new_participants_for_first_message(
         body="Hello from admin",
     )
 
-    conversation = await MessagingService.create_conversation(
-        db, actor=sender, payload=payload
-    )
+    conversation = await MessagingService.create_conversation(db, actor=sender, payload=payload)
 
     message = next(row for row in db.added if isinstance(row, Message))
     assert conversation.id is not None

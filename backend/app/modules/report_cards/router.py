@@ -177,9 +177,7 @@ async def update_principal_comment(
             score=card_model.average_score,
         )
         if grading_scale is None:
-            raise BadRequestException(
-                "The report average does not resolve to a configured grade."
-            )
+            raise BadRequestException("The report average does not resolve to a configured grade.")
         await require_admin_template_for_grade(
             db,
             admin=current_admin,

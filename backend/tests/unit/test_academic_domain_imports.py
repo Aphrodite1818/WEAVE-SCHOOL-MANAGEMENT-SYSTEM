@@ -115,8 +115,6 @@ def test_backend_tests_have_no_imports_from_removed_academic_modules() -> None:
         source = path.read_text(encoding="utf-8")
         for removed_import in REMOVED_TEST_IMPORTS:
             if removed_import in source:
-                offenders.append(
-                    f"{path.relative_to(backend_root)} -> {removed_import}"
-                )
+                offenders.append(f"{path.relative_to(backend_root)} -> {removed_import}")
 
     assert offenders == [], "Tests still import removed academic modules:\n" + "\n".join(offenders)

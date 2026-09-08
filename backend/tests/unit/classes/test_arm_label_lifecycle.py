@@ -136,9 +136,7 @@ async def test_used_arm_label_cannot_be_renamed() -> None:
                 ArmLabelUpdate(label="B"),
             )
 
-    assert exc_info.value.payload == {
-        "dependency_counts": {"classes_total": 2, "classes_live": 0}
-    }
+    assert exc_info.value.payload == {"dependency_counts": {"classes_total": 2, "classes_live": 0}}
 
 
 @pytest.mark.asyncio
@@ -410,10 +408,7 @@ async def test_repository_dependency_snapshot_distinguishes_total_and_live_class
 def test_arm_label_routes_expose_explicit_lifecycle() -> None:
     from app.modules.classes.router import router
 
-    route_methods = {
-        (route.path, frozenset(route.methods or set()))
-        for route in router.routes
-    }
+    route_methods = {(route.path, frozenset(route.methods or set())) for route in router.routes}
     expected = {
         ("/classes/arm-labels/{arm_label_id}/activate", frozenset({"POST"})),
         ("/classes/arm-labels/{arm_label_id}/deactivate", frozenset({"POST"})),

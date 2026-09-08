@@ -31,9 +31,7 @@ def _validate_verified_payment(
         or int(data.get("amount") or -1) != transaction.amount_kobo
         or data.get("currency") != transaction.currency
     ):
-        raise ConflictException(
-            "Paystack verification did not match the expected term payment."
-        )
+        raise ConflictException("Paystack verification did not match the expected term payment.")
 
     metadata = data.get("metadata") or {}
     if (
@@ -91,9 +89,7 @@ async def settle_verified_term_payment(
     transaction.status = PaymentStatus.SUCCESS
     transaction.paid_at = now
     transaction.provider_transaction_id = (
-        str(data.get("id"))
-        if data.get("id") is not None
-        else transaction.provider_transaction_id
+        str(data.get("id")) if data.get("id") is not None else transaction.provider_transaction_id
     )
     transaction.failure_reason = LATE_PAYMENT_RECONCILIATION_REASON
     transaction.raw_payload = {

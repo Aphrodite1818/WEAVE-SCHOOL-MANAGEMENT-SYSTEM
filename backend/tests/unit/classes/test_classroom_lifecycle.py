@@ -284,9 +284,7 @@ async def test_live_dependencies_block_classroom_deactivation(key: str, value: i
         ),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await ClassRoomService.deactivate_classroom(
-                AsyncMock(), _admin(tenant_id), room.id
-            )
+            await ClassRoomService.deactivate_classroom(AsyncMock(), _admin(tenant_id), room.id)
 
     assert exc_info.value.payload == {"dependency_counts": {key: value}}
 
@@ -372,9 +370,7 @@ async def test_activation_fails_when_parent_structure_is_not_operational() -> No
         ),
     ):
         with pytest.raises(BadRequestException, match="Academic level must be active"):
-            await ClassRoomService.activate_classroom(
-                AsyncMock(), _admin(tenant_id), room.id
-            )
+            await ClassRoomService.activate_classroom(AsyncMock(), _admin(tenant_id), room.id)
 
 
 @pytest.mark.asyncio
@@ -403,9 +399,7 @@ async def test_restore_clears_archive_metadata_and_stays_inactive() -> None:
             new=AsyncMock(return_value=room),
         ),
     ):
-        response = await ClassRoomService.restore_classroom(
-            AsyncMock(), actor, room.id
-        )
+        response = await ClassRoomService.restore_classroom(AsyncMock(), actor, room.id)
 
     assert response.is_active is False
     assert response.archived_at is None
@@ -422,9 +416,7 @@ async def test_restore_rejects_non_archived_classroom() -> None:
         new=AsyncMock(return_value=room),
     ):
         with pytest.raises(ConflictException, match="Only archived classrooms"):
-            await ClassRoomService.restore_classroom(
-                AsyncMock(), _admin(tenant_id), room.id
-            )
+            await ClassRoomService.restore_classroom(AsyncMock(), _admin(tenant_id), room.id)
 
 
 @pytest.mark.asyncio
@@ -444,9 +436,7 @@ async def test_historical_usage_permanently_blocks_hard_delete() -> None:
         ),
     ):
         with pytest.raises(ConflictException) as exc_info:
-            await ClassRoomService.purge_setup_classroom(
-                AsyncMock(), _admin(tenant_id), room.id
-            )
+            await ClassRoomService.purge_setup_classroom(AsyncMock(), _admin(tenant_id), room.id)
 
     assert exc_info.value.payload == {"dependency_counts": counts}
 
@@ -472,9 +462,7 @@ async def test_never_used_classroom_can_be_hard_deleted() -> None:
             new=delete,
         ),
     ):
-        response = await ClassRoomService.purge_setup_classroom(
-            db, _admin(tenant_id), room.id
-        )
+        response = await ClassRoomService.purge_setup_classroom(db, _admin(tenant_id), room.id)
 
     assert response.id == room.id
     delete.assert_awaited_once_with(db, room)
@@ -494,9 +482,7 @@ async def test_non_admin_cannot_fetch_inactive_or_archived_classroom_by_id() -> 
             new=AsyncMock(return_value=room),
         ):
             with pytest.raises(NotFoundException, match="Classroom not found"):
-                await ClassRoomService.get_classroom_by_id(
-                    AsyncMock(), actor, room.id
-                )
+                await ClassRoomService.get_classroom_by_id(AsyncMock(), actor, room.id)
 
 
 @pytest.mark.asyncio
@@ -515,21 +501,15 @@ async def test_classroom_dependency_snapshot_exposes_total_and_live_contract() -
     db = AsyncMock()
     db.execute.return_value = result
 
-    snapshot = await ClassRoomRepository.count_class_dependencies(
-        db, uuid.uuid4(), uuid.uuid4()
-    )
+    snapshot = await ClassRoomRepository.count_class_dependencies(db, uuid.uuid4(), uuid.uuid4())
 
     assert snapshot == values
 
 
 def test_classroom_history_foreign_keys_use_restrict() -> None:
-    department_fk = next(
-        iter(ClassTermDepartmentAssignment.__table__.c.class_id.foreign_keys)
-    )
+    department_fk = next(iter(ClassTermDepartmentAssignment.__table__.c.class_id.foreign_keys))
     teacher_fk = next(iter(TeacherAssignment.__table__.c.class_id.foreign_keys))
-    audit_fk = next(
-        iter(TeacherAssignmentLifecycleAudit.__table__.c.class_id.foreign_keys)
-    )
+    audit_fk = next(iter(TeacherAssignmentLifecycleAudit.__table__.c.class_id.foreign_keys))
 
     assert department_fk.ondelete == "RESTRICT"
     assert teacher_fk.ondelete == "RESTRICT"

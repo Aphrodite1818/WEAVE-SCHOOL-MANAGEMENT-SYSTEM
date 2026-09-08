@@ -61,9 +61,7 @@ messages_router = APIRouter(prefix="/messages", tags=["Messages"])
 inbox_router = APIRouter(prefix="/inbox", tags=["Inbox"])
 notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
 notices_router = APIRouter(prefix="/notices", tags=["Notices"])
-superadmin_notice_router = APIRouter(
-    prefix="/superadmin/notices", tags=["Superadmin Notices"]
-)
+superadmin_notice_router = APIRouter(prefix="/superadmin/notices", tags=["Superadmin Notices"])
 tenant_admin_notice_router = APIRouter(
     prefix="/tenant-admin/notices", tags=["Tenant Admin Notices"]
 )
@@ -180,7 +178,9 @@ async def _participant_labels(
     return labels
 
 
-async def _conversation_response(db: DbSession, conversation, current_actor) -> ConversationResponse:
+async def _conversation_response(
+    db: DbSession, conversation, current_actor
+) -> ConversationResponse:
     labels = await _participant_labels(db, conversation.participants)
     response = ConversationResponse.model_validate(conversation)
     response.participants = [
@@ -250,7 +250,10 @@ async def available_recipients(
     for recipient in recipients:
         groups.setdefault(recipient.group_label or "Recipients", []).append(recipient.as_schema())
     return AvailableRecipientsResponse(
-        groups=[AvailableRecipientGroup(label=label, recipients=items) for label, items in groups.items()]
+        groups=[
+            AvailableRecipientGroup(label=label, recipients=items)
+            for label, items in groups.items()
+        ]
     )
 
 
@@ -516,9 +519,7 @@ async def mark_notice_read(
 
 
 def _install_notice_management_routes(management_router: APIRouter, actor_dependency):
-    @management_router.post(
-        "", response_model=NoticeResponse, status_code=status.HTTP_201_CREATED
-    )
+    @management_router.post("", response_model=NoticeResponse, status_code=status.HTTP_201_CREATED)
     async def create_notice(payload: NoticeCreate, db: DbSession, actor=Depends(actor_dependency)):
         return NoticeResponse.model_validate(
             await NoticeService.create(db, actor=actor, payload=payload)

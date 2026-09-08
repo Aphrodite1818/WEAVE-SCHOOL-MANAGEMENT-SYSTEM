@@ -80,13 +80,19 @@ from app.modules.student_academics.assessment_config_router import (
     student_router as assessment_student_router,
     teacher_router as assessment_teacher_router,
 )
-from app.modules.student_academics.bulk_results_router import admin_router as bulk_results_admin_router
+from app.modules.student_academics.bulk_results_router import (
+    admin_router as bulk_results_admin_router,
+)
 from app.modules.student_academics.curriculum_router import router as curriculum_router
-from app.modules.student_academics.grading_readiness_router import router as grading_readiness_router
+from app.modules.student_academics.grading_readiness_router import (
+    router as grading_readiness_router,
+)
 from app.modules.student_academics.grading_scale_lifecycle_router import (
     router as grading_scale_lifecycle_router,
 )
-from app.modules.student_academics.open_session_config_router import router as open_session_config_router
+from app.modules.student_academics.open_session_config_router import (
+    router as open_session_config_router,
+)
 from app.modules.student_academics.router import (
     parent_router as parent_academic_router,
     student_router as student_academic_router,

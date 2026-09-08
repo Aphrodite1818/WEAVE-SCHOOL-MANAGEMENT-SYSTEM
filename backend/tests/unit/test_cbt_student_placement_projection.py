@@ -76,9 +76,7 @@ def test_closed_source_enrollment_projects_as_tombstone():
     tenant_id, enrollment, student, academic_session, level, classroom = (
         _student_enrollment_context(current=False)
     )
-    session = _Session(
-        _Result(first=(enrollment, student, academic_session, level, classroom))
-    )
+    session = _Session(_Result(first=(enrollment, student, academic_session, level, classroom)))
 
     assert project_student_enrollment(session, tenant_id, enrollment.id) is None
 
@@ -93,9 +91,7 @@ def test_destination_enrollment_projects_new_level_and_class_identity():
             class_id=new_class_id,
         )
     )
-    session = _Session(
-        _Result(first=(enrollment, student, academic_session, level, classroom))
-    )
+    session = _Session(_Result(first=(enrollment, student, academic_session, level, classroom)))
 
     payload = project_student_enrollment(session, tenant_id, enrollment.id)
 

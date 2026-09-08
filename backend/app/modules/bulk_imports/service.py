@@ -770,9 +770,7 @@ class BulkImportService:
             )
             if validation_result.errors:
                 raise ConflictException(
-                    detail="; ".join(
-                        error.error_message for error in validation_result.errors
-                    )
+                    detail="; ".join(error.error_message for error in validation_result.errors)
                 )
 
             created = await BulkImportService.create_student_from_row(

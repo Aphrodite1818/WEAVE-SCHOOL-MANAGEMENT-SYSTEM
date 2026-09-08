@@ -524,7 +524,9 @@ class SessionClosureService:
         if session.status != AcademicSessionStatus.CLOSING:
             raise ConflictException("Progression can run only while the session is closing.")
         if next_session.status != AcademicSessionStatus.DRAFT:
-            raise ConflictException("The next academic session must remain draft during progression.")
+            raise ConflictException(
+                "The next academic session must remain draft during progression."
+            )
         date_blockers = SessionClosureService._next_session_date_blockers(
             session=session,
             next_session=next_session,

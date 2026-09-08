@@ -298,15 +298,13 @@ class TeacherOffboardingService:
                 )
                 continue
 
-            replacement_assignment = (
-                await TeacherOffboardingService._create_replacement_assignment(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    source=assignment,
-                    replacement_teacher_membership_id=replacement_id,
-                    effective_from=today + timedelta(days=1),
-                    effective_to=original_effective_to,
-                )
+            replacement_assignment = await TeacherOffboardingService._create_replacement_assignment(
+                db,
+                tenant_id=actor.tenant_id,
+                source=assignment,
+                replacement_teacher_membership_id=replacement_id,
+                effective_from=today + timedelta(days=1),
+                effective_to=original_effective_to,
             )
             await StudentAcademicService._record_teacher_assignment_audit(
                 db,

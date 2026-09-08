@@ -189,14 +189,10 @@ async def get_setup_readiness(db, tenant_id):
         "term_status": term.status if term else None,
         "term_is_current": bool(term and getattr(term, "is_current", False)),
         "session_dates_ready": bool(
-            session
-            and getattr(session, "start_date", None)
-            and getattr(session, "end_date", None)
+            session and getattr(session, "start_date", None) and getattr(session, "end_date", None)
         ),
         "term_dates_ready": bool(
-            term
-            and getattr(term, "start_date", None)
-            and getattr(term, "end_date", None)
+            term and getattr(term, "start_date", None) and getattr(term, "end_date", None)
         ),
         "note": "Configuration evidence is checked for the current open term, or the first draft term in the open or first draft session. Review all classes and teacher coverage before operating.",
     }

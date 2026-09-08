@@ -756,9 +756,7 @@ class StudentAcademicService:
         from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
         from app.modules.school_calendar.service import SchoolCalendarService
 
-        entitlement = await TermPlanEntitlementService.ensure_open_eligible(
-            db, tenant_id, term.id
-        )
+        entitlement = await TermPlanEntitlementService.ensure_open_eligible(db, tenant_id, term.id)
         readiness = await SchoolCalendarService.term_calendar_readiness(
             db, tenant_id=tenant_id, term_id=term.id
         )

@@ -47,9 +47,7 @@ class ReportCardGenerateRequest(InputBase):
         if self.student_id is not None and self.class_id is not None:
             raise ValueError("Provide either student_id or class_id, not both.")
         if self.principal_template_id is not None and self.apply_default_principal_template:
-            raise ValueError(
-                "Choose an explicit principal template or grade defaults, not both."
-            )
+            raise ValueError("Choose an explicit principal template or grade defaults, not both.")
         if self.class_id is not None and (
             self.principal_template_id is not None or self.principal_comment is not None
         ):

@@ -116,9 +116,9 @@ async def test_late_abandoned_payment_is_recorded_but_does_not_create_entitlemen
     assert transaction.reconciliation_required is True
     assert transaction.raw_payload["weave_quote"]["amount_due_kobo"] == 7_500_000
     assert replacement.status == PaymentStatus.ABANDONED
-    assert transaction.reference == replacement.raw_payload[
-        "superseded_by_reconciliation_reference"
-    ]
+    assert (
+        transaction.reference == replacement.raw_payload["superseded_by_reconciliation_reference"]
+    )
     db.flush.assert_awaited_once()
     db.commit.assert_awaited_once()
     invalidate.assert_awaited_once_with(transaction.tenant_id)
