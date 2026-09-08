@@ -124,14 +124,17 @@ test("admin and superadmin consume every result audit route", async () => {
 
   assert.match(service, /tenantAdminBasePath = "\/tenant-admin\/cbt\/result-ingestions"/);
   assert.match(service, /superadminBasePath = "\/superadmin\/cbt\/result-ingestions"/);
+  assert.match(service, /getTenantFilterOptions/);
+  assert.match(service, /getSuperadminFilterOptions/);
+  assert.match(service, /tenantAdminBasePath}\/filter-options/);
+  assert.match(service, /superadminBasePath}\/filter-options/);
+  assert.doesNotMatch(service, /\/cbt\/results\/audit\/filter-options/);
   assert.match(service, /listTenantBatches/);
   assert.match(service, /getTenantBatch/);
   assert.match(service, /listTenantBatchItems/);
   assert.match(service, /listSuperadminBatches/);
   assert.match(service, /getSuperadminBatch/);
   assert.match(service, /listSuperadminBatchItems/);
-  assert.match(service, /auditFilterOptionsPath = "\/cbt\/results\/audit\/filter-options"/);
-  assert.match(service, /getFilterOptions/);
   assert.match(adminRoutes, /path="\/admin\/cbt\/results"/);
   assert.match(adminRoutes, /<CBTHistoricalAccessRouteGuard>/);
   assert.match(superadminRoutes, /path="\/superadmin\/cbt-results"/);
@@ -202,7 +205,9 @@ test("downgraded admins retain historical ledger access without pairing controls
   assert.match(accessHook, /Number\(response\?\.total \|\| 0\) > 0/);
   assert.match(accessHook, /historyState\.tenantKey === tenantKey/);
   assert.match(accessHook, /enabled = true/);
+  assert.match(accessHook, /catch\(\(error\) => \(\{ allowed: false, error \}\)\)/);
   assert.match(routeGuard, /useCbtHistoricalAccess/);
+  assert.match(routeGuard, /CBT access could not be verified/);
   assert.match(nav, /label: "CBT Servers"[\s\S]*allowHistoricalAccess: true/);
   assert.match(serverPage, /navigate\("\/admin\/cbt\/results"\)/);
   assert.match(serverPage, /!featureGuard\.allowed/);
