@@ -60,7 +60,7 @@ export function buildResultLedgerQuery({
     query.assessment_component_id = assessmentComponentId;
   }
   if (filters.ingestionReference?.trim()) {
-    query.ingestion_reference = filters.ingestionReference.trim();
+    query.ingestion_reference = filters.ingestionReference.trim().toUpperCase();
   }
   if (filters.status) query.status = filters.status;
   if (filters.createdFrom) query.created_from = startOfLocalDay(filters.createdFrom);
