@@ -21,6 +21,8 @@ from app.modules.cbt.results.repository import CBTResultIngestionRepository
 from app.modules.cbt.results.schemas import (
     CBTResultAuditFilterOption,
     CBTResultAuditFilterOptionsResponse,
+    CBTResultIngestionBatchResponse,
+    CBTResultIngestionItemResponse,
 )
 from app.modules.classes.models import AcademicLevel
 from app.modules.student_academics.curriculum_models import CurriculumSubject
@@ -71,18 +73,22 @@ class CBTResultIngestionAuditService:
         created_from: datetime | None,
         created_to: datetime | None,
     ) -> None:
-        if created_from is not None and created_to is not None and created_from > created_to:
+        if (
+            created_from is not None
+            and created_to is not None
+            and created_from > created_to
+        ):
             raise BadRequestException("created_from cannot be after created_to.")
 
     @staticmethod
     async def _enrich_batches(
         db: AsyncSession,
         batches: list[CBTResultIngestionBatch],
-    ) -> list[CBTResultIngestionBatch]:
-        """Attach presentation metadata without changing immutable ledger identity."""
+    ) -> list[CBTResultIngestionBatchResponse]:
+        """Create enriched response models without mutating ledger entities."""
 
         if not batches:
-            return batches
+            return []
 
         tenant_ids = {batch.tenant_id for batch in batches}
         server_pairs = {(batch.tenant_id, batch.cbt_server_id) for batch in batches}
@@ -90,7 +96,9 @@ class CBTResultIngestionAuditService:
         term_pairs = {(batch.tenant_id, batch.academic_term_id) for batch in batches}
         level_pairs = {(batch.tenant_id, batch.academic_level_id) for batch in batches}
         subject_pairs = {(batch.tenant_id, batch.curriculum_subject_id) for batch in batches}
-        component_pairs = {(batch.tenant_id, batch.assessment_component_id) for batch in batches}
+        component_pairs = {
+            (batch.tenant_id, batch.assessment_component_id) for batch in batches
+        }
 
         tenant_rows = (
             await db.execute(
@@ -106,16 +114,26 @@ class CBTResultIngestionAuditService:
                 )
             )
         ).all()
-        server_names = {(tenant_id, row_id): name for tenant_id, row_id, name in server_rows}
+        server_names = {
+            (tenant_id, row_id): name for tenant_id, row_id, name in server_rows
+        }
 
         session_rows = (
             await db.execute(
-                select(AcademicSession.tenant_id, AcademicSession.id, AcademicSession.name).where(
-                    tuple_(AcademicSession.tenant_id, AcademicSession.id).in_(session_pairs)
+                select(
+                    AcademicSession.tenant_id,
+                    AcademicSession.id,
+                    AcademicSession.name,
+                ).where(
+                    tuple_(AcademicSession.tenant_id, AcademicSession.id).in_(
+                        session_pairs
+                    )
                 )
             )
         ).all()
-        session_names = {(tenant_id, row_id): name for tenant_id, row_id, name in session_rows}
+        session_names = {
+            (tenant_id, row_id): name for tenant_id, row_id, name in session_rows
+        }
 
         term_rows = (
             await db.execute(
@@ -136,7 +154,9 @@ class CBTResultIngestionAuditService:
                 )
             )
         ).all()
-        level_names = {(tenant_id, row_id): name for tenant_id, row_id, name in level_rows}
+        level_names = {
+            (tenant_id, row_id): name for tenant_id, row_id, name in level_rows
+        }
 
         subject_rows = (
             await db.execute(
@@ -148,10 +168,16 @@ class CBTResultIngestionAuditService:
                         Subject.tenant_id == CurriculumSubject.tenant_id,
                     ),
                 )
-                .where(tuple_(CurriculumSubject.tenant_id, CurriculumSubject.id).in_(subject_pairs))
+                .where(
+                    tuple_(CurriculumSubject.tenant_id, CurriculumSubject.id).in_(
+                        subject_pairs
+                    )
+                )
             )
         ).all()
-        subject_names = {(tenant_id, row_id): name for tenant_id, row_id, name in subject_rows}
+        subject_names = {
+            (tenant_id, row_id): name for tenant_id, row_id, name in subject_rows
+        }
 
         component_rows = (
             await db.execute(
@@ -167,31 +193,44 @@ class CBTResultIngestionAuditService:
             )
         ).all()
         component_names = {
-            (tenant_id, row_id): name for tenant_id, row_id, name in component_rows
+            (tenant_id, row_id): name
+            for tenant_id, row_id, name in component_rows
         }
 
+        responses: list[CBTResultIngestionBatchResponse] = []
         for batch in batches:
             tenant_id = batch.tenant_id
-            batch.tenant_name = tenant_names.get(tenant_id)
-            batch.server_name = server_names.get((tenant_id, batch.cbt_server_id))
-            batch.academic_session_name = session_names.get(
-                (tenant_id, batch.academic_session_id)
-            )
-            batch.academic_term_name = term_names.get((tenant_id, batch.academic_term_id))
-            batch.academic_level_name = level_names.get((tenant_id, batch.academic_level_id))
-            batch.subject_name = subject_names.get((tenant_id, batch.curriculum_subject_id))
-            batch.assessment_component_name = component_names.get(
+            session_name = session_names.get((tenant_id, batch.academic_session_id))
+            term_name = term_names.get((tenant_id, batch.academic_term_id))
+            level_name = level_names.get((tenant_id, batch.academic_level_id))
+            subject_name = subject_names.get((tenant_id, batch.curriculum_subject_id))
+            component_name = component_names.get(
                 (tenant_id, batch.assessment_component_id)
             )
-            batch.source_exam_title = _exam_display_label(
-                subject_name=batch.subject_name,
-                component_name=batch.assessment_component_name,
-                level_name=batch.academic_level_name,
-                term_name=batch.academic_term_name,
-                exam_date=batch.exam_date,
+            responses.append(
+                CBTResultIngestionBatchResponse.model_validate(batch).model_copy(
+                    update={
+                        "tenant_name": tenant_names.get(tenant_id),
+                        "server_name": server_names.get(
+                            (tenant_id, batch.cbt_server_id)
+                        ),
+                        "academic_session_name": session_name,
+                        "academic_term_name": term_name,
+                        "academic_level_name": level_name,
+                        "subject_name": subject_name,
+                        "assessment_component_name": component_name,
+                        "source_exam_title": _exam_display_label(
+                            subject_name=subject_name,
+                            component_name=component_name,
+                            level_name=level_name,
+                            term_name=term_name,
+                            exam_date=batch.exam_date,
+                        ),
+                    }
+                )
             )
 
-        return batches
+        return responses
 
     @staticmethod
     async def _enrich_items(
@@ -199,9 +238,9 @@ class CBTResultIngestionAuditService:
         *,
         tenant_id: UUID,
         items: list[CBTResultIngestionItem],
-    ) -> list[CBTResultIngestionItem]:
+    ) -> list[CBTResultIngestionItemResponse]:
         if not items:
-            return items
+            return []
 
         student_ids = {item.submitted_student_id for item in items}
         rows = (
@@ -222,23 +261,30 @@ class CBTResultIngestionAuditService:
             for student_id, first_name, last_name, admission_number in rows
         }
 
+        responses: list[CBTResultIngestionItemResponse] = []
         for item in items:
             identity = students.get(item.submitted_student_id)
-            if identity is None:
-                item.student_name = None
-                item.student_admission_number = None
-                continue
+            student_name: str | None = None
+            admission_number: str | None = None
+            if identity is not None:
+                first_name, last_name, admission_number = identity
+                display_name = " ".join(
+                    part.strip()
+                    for part in (first_name or "", last_name or "")
+                    if part.strip()
+                )
+                student_name = display_name or admission_number
 
-            first_name, last_name, admission_number = identity
-            display_name = " ".join(
-                part.strip()
-                for part in (first_name or "", last_name or "")
-                if part.strip()
+            responses.append(
+                CBTResultIngestionItemResponse.model_validate(item).model_copy(
+                    update={
+                        "student_name": student_name,
+                        "student_admission_number": admission_number,
+                    }
+                )
             )
-            item.student_name = display_name or admission_number
-            item.student_admission_number = admission_number
 
-        return items
+        return responses
 
     @staticmethod
     async def _filter_options(
@@ -261,8 +307,10 @@ class CBTResultIngestionAuditService:
                 .outerjoin(
                     CurriculumSubject,
                     and_(
-                        CurriculumSubject.id == CBTResultIngestionBatch.curriculum_subject_id,
-                        CurriculumSubject.tenant_id == CBTResultIngestionBatch.tenant_id,
+                        CurriculumSubject.id
+                        == CBTResultIngestionBatch.curriculum_subject_id,
+                        CurriculumSubject.tenant_id
+                        == CBTResultIngestionBatch.tenant_id,
                     ),
                 )
                 .outerjoin(
@@ -277,7 +325,8 @@ class CBTResultIngestionAuditService:
                     and_(
                         AssessmentComponent.id
                         == CBTResultIngestionBatch.assessment_component_id,
-                        AssessmentComponent.tenant_id == CBTResultIngestionBatch.tenant_id,
+                        AssessmentComponent.tenant_id
+                        == CBTResultIngestionBatch.tenant_id,
                     ),
                 )
                 .outerjoin(
@@ -314,7 +363,14 @@ class CBTResultIngestionAuditService:
                     exam_date=exam_date,
                 ),
             )
-            for exam_id, subject_name, component_name, level_name, term_name, exam_date in exam_rows
+            for (
+                exam_id,
+                subject_name,
+                component_name,
+                level_name,
+                term_name,
+                exam_date,
+            ) in exam_rows
         ]
 
         async def options_for(model, id_column, label_column, ledger_column):
@@ -336,7 +392,11 @@ class CBTResultIngestionAuditService:
             return [
                 CBTResultAuditFilterOption(
                     id=row_id,
-                    label=_enum_label(label) if hasattr(label, "value") else str(label),
+                    label=(
+                        _enum_label(label)
+                        if hasattr(label, "value")
+                        else str(label)
+                    ),
                 )
                 for row_id, label in rows
             ]
@@ -378,8 +438,10 @@ class CBTResultIngestionAuditService:
                 .join(
                     CBTResultIngestionBatch,
                     and_(
-                        CBTResultIngestionBatch.curriculum_subject_id == CurriculumSubject.id,
-                        CBTResultIngestionBatch.tenant_id == CurriculumSubject.tenant_id,
+                        CBTResultIngestionBatch.curriculum_subject_id
+                        == CurriculumSubject.id,
+                        CBTResultIngestionBatch.tenant_id
+                        == CurriculumSubject.tenant_id,
                     ),
                 )
                 .join(
@@ -439,7 +501,7 @@ class CBTResultIngestionAuditService:
         created_to: datetime | None = None,
         skip: int = 0,
         limit: int = 50,
-    ):
+    ) -> tuple[list[CBTResultIngestionBatchResponse], int]:
         cls._validate_date_range(created_from, created_to)
         batches, total = await CBTResultIngestionRepository.list_batches(
             db,
@@ -463,7 +525,7 @@ class CBTResultIngestionAuditService:
         created_to: datetime | None = None,
         skip: int = 0,
         limit: int = 50,
-    ):
+    ) -> tuple[list[CBTResultIngestionBatchResponse], int]:
         cls._validate_date_range(created_from, created_to)
         batches, total = await CBTResultIngestionRepository.list_batches(
             db,
@@ -483,7 +545,7 @@ class CBTResultIngestionAuditService:
         *,
         tenant_id: UUID,
         batch_record_id: UUID,
-    ) -> CBTResultIngestionBatch:
+    ) -> CBTResultIngestionBatchResponse:
         batch = await CBTResultIngestionRepository.get_batch_by_id(
             db,
             batch_record_id=batch_record_id,
@@ -491,8 +553,7 @@ class CBTResultIngestionAuditService:
         )
         if batch is None:
             raise NotFoundException("CBT result-ingestion batch not found.")
-        await cls._enrich_batches(db, [batch])
-        return batch
+        return (await cls._enrich_batches(db, [batch]))[0]
 
     @classmethod
     async def get_batch_for_superadmin(
@@ -500,7 +561,7 @@ class CBTResultIngestionAuditService:
         db: AsyncSession,
         *,
         batch_record_id: UUID,
-    ) -> CBTResultIngestionBatch:
+    ) -> CBTResultIngestionBatchResponse:
         batch = await CBTResultIngestionRepository.get_batch_by_id(
             db,
             batch_record_id=batch_record_id,
@@ -508,8 +569,7 @@ class CBTResultIngestionAuditService:
         )
         if batch is None:
             raise NotFoundException("CBT result-ingestion batch not found.")
-        await cls._enrich_batches(db, [batch])
-        return batch
+        return (await cls._enrich_batches(db, [batch]))[0]
 
     @classmethod
     async def list_batch_items_for_admin(
@@ -521,7 +581,7 @@ class CBTResultIngestionAuditService:
         filters: Mapping[str, Any] | None = None,
         skip: int = 0,
         limit: int = 100,
-    ):
+    ) -> tuple[list[CBTResultIngestionItemResponse], int]:
         await cls.get_batch_for_admin(
             db,
             tenant_id=tenant_id,
@@ -547,7 +607,7 @@ class CBTResultIngestionAuditService:
         filters: Mapping[str, Any] | None = None,
         skip: int = 0,
         limit: int = 100,
-    ):
+    ) -> tuple[list[CBTResultIngestionItemResponse], int]:
         batch = await cls.get_batch_for_superadmin(
             db,
             batch_record_id=batch_record_id,
