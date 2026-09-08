@@ -2,7 +2,6 @@ import { api } from "./api";
 
 const tenantAdminBasePath = "/tenant-admin/cbt/result-ingestions";
 const superadminBasePath = "/superadmin/cbt/result-ingestions";
-const auditFilterOptionsPath = "/cbt/results/audit/filter-options";
 
 const withParams = (params, requestOptions = {}) => ({
   ...requestOptions,
@@ -13,8 +12,14 @@ const encodedBatchPath = (basePath, batchRecordId) =>
   `${basePath}/${encodeURIComponent(batchRecordId)}`;
 
 export const cbtResultLedgerService = {
-  getFilterOptions: (params = {}, requestOptions) =>
-    api.get(auditFilterOptionsPath, withParams(params, requestOptions)),
+  getTenantFilterOptions: (requestOptions) =>
+    api.get(`${tenantAdminBasePath}/filter-options`, requestOptions),
+  getSuperadminFilterOptions: (tenantId, requestOptions) =>
+    api.get(
+      `${superadminBasePath}/filter-options`,
+      withParams({ tenant_id: tenantId }, requestOptions),
+    ),
+
   listTenantBatches: (params = {}, requestOptions) =>
     api.get(tenantAdminBasePath, withParams(params, requestOptions)),
   getTenantBatch: (batchRecordId, requestOptions) =>
