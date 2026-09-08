@@ -65,7 +65,6 @@ class CBTResultIngestionBatch(BaseModel):
         default=_new_ingestion_reference,
     )
     source_exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    source_exam_title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
     academic_session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
