@@ -48,7 +48,6 @@ class CBTResultBulkRequest(CBTResultInputBase):
 
     batch_id: UUID
     source_exam_id: UUID
-    source_exam_title: str | None = Field(default=None, min_length=1, max_length=200)
     academic_session_id: UUID
     academic_term_id: UUID
     academic_level_id: UUID
@@ -147,7 +146,6 @@ class CBTResultIngestionBatchResponse(CBTResultOutputBase):
     created_at: datetime
     updated_at: datetime
 
-    # Read-side display metadata. UUIDs above remain authoritative.
     server_name: str | None = None
     tenant_name: str | None = None
     academic_session_name: str | None = None
