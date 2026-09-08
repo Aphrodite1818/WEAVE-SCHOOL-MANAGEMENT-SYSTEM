@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +39,30 @@ def _enum_label(value: Any) -> str:
     return str(raw or "").replace("_", " ").title()
 
 
+def _exam_display_label(
+    *,
+    subject_name: str | None,
+    component_name: str | None,
+    level_name: str | None,
+    term_name: Any,
+    exam_date: date,
+) -> str:
+    """Build a stable human label without exposing the source exam UUID."""
+
+    context = " · ".join(
+        part
+        for part in (
+            subject_name,
+            component_name,
+            level_name,
+            _enum_label(term_name) if term_name is not None else None,
+        )
+        if part
+    )
+    date_label = exam_date.strftime("%d %b %Y")
+    return f"{context} · {date_label}" if context else f"CBT exam · {date_label}"
+
+
 class CBTResultIngestionAuditService:
     """Tenant-safe read access to immutable CBT ingestion evidence."""
 
@@ -55,7 +79,7 @@ class CBTResultIngestionAuditService:
         db: AsyncSession,
         batches: list[CBTResultIngestionBatch],
     ) -> list[CBTResultIngestionBatch]:
-        """Attach human-readable read metadata without changing ledger identity."""
+        """Attach presentation metadata without changing immutable ledger identity."""
 
         if not batches:
             return batches
@@ -147,28 +171,25 @@ class CBTResultIngestionAuditService:
         }
 
         for batch in batches:
-            key = batch.tenant_id
-            batch.tenant_name = tenant_names.get(key)
-            batch.server_name = server_names.get((key, batch.cbt_server_id))
-            batch.academic_session_name = session_names.get((key, batch.academic_session_id))
-            batch.academic_term_name = term_names.get((key, batch.academic_term_id))
-            batch.academic_level_name = level_names.get((key, batch.academic_level_id))
-            batch.subject_name = subject_names.get((key, batch.curriculum_subject_id))
-            batch.assessment_component_name = component_names.get(
-                (key, batch.assessment_component_id)
+            tenant_id = batch.tenant_id
+            batch.tenant_name = tenant_names.get(tenant_id)
+            batch.server_name = server_names.get((tenant_id, batch.cbt_server_id))
+            batch.academic_session_name = session_names.get(
+                (tenant_id, batch.academic_session_id)
             )
-            if not batch.source_exam_title:
-                context_parts = [
-                    batch.subject_name,
-                    batch.assessment_component_name,
-                    batch.academic_level_name,
-                    batch.academic_term_name,
-                ]
-                context = " · ".join(part for part in context_parts if part)
-                date_label = batch.exam_date.strftime("%d %b %Y")
-                batch.source_exam_title = (
-                    f"{context} · {date_label}" if context else f"CBT exam · {date_label}"
-                )
+            batch.academic_term_name = term_names.get((tenant_id, batch.academic_term_id))
+            batch.academic_level_name = level_names.get((tenant_id, batch.academic_level_id))
+            batch.subject_name = subject_names.get((tenant_id, batch.curriculum_subject_id))
+            batch.assessment_component_name = component_names.get(
+                (tenant_id, batch.assessment_component_id)
+            )
+            batch.source_exam_title = _exam_display_label(
+                subject_name=batch.subject_name,
+                component_name=batch.assessment_component_name,
+                level_name=batch.academic_level_name,
+                term_name=batch.academic_term_name,
+                exam_date=batch.exam_date,
+            )
 
         return batches
 
@@ -200,18 +221,23 @@ class CBTResultIngestionAuditService:
             student_id: (first_name, last_name, admission_number)
             for student_id, first_name, last_name, admission_number in rows
         }
+
         for item in items:
             identity = students.get(item.submitted_student_id)
             if identity is None:
                 item.student_name = None
                 item.student_admission_number = None
                 continue
+
             first_name, last_name, admission_number = identity
             display_name = " ".join(
-                part.strip() for part in (first_name or "", last_name or "") if part.strip()
+                part.strip()
+                for part in (first_name or "", last_name or "")
+                if part.strip()
             )
             item.student_name = display_name or admission_number
             item.student_admission_number = admission_number
+
         return items
 
     @staticmethod
@@ -226,7 +252,6 @@ class CBTResultIngestionAuditService:
             await db.execute(
                 select(
                     CBTResultIngestionBatch.source_exam_id,
-                    CBTResultIngestionBatch.source_exam_title,
                     Subject.name,
                     AssessmentComponent.name,
                     AcademicLevel.name,
@@ -278,24 +303,19 @@ class CBTResultIngestionAuditService:
             )
         ).all()
 
-        exams: list[CBTResultAuditFilterOption] = []
-        for exam_id, stored_title, subject, component, level, term, exam_date in exam_rows:
-            if stored_title:
-                label = stored_title
-            else:
-                context = " · ".join(
-                    part
-                    for part in (
-                        subject,
-                        component,
-                        level,
-                        _enum_label(term) if term is not None else None,
-                    )
-                    if part
-                )
-                date_label = exam_date.strftime("%d %b %Y")
-                label = f"{context} · {date_label}" if context else f"CBT exam · {date_label}"
-            exams.append(CBTResultAuditFilterOption(id=exam_id, label=label))
+        exams = [
+            CBTResultAuditFilterOption(
+                id=exam_id,
+                label=_exam_display_label(
+                    subject_name=subject_name,
+                    component_name=component_name,
+                    level_name=level_name,
+                    term_name=term_name,
+                    exam_date=exam_date,
+                ),
+            )
+            for exam_id, subject_name, component_name, level_name, term_name, exam_date in exam_rows
+        ]
 
         async def options_for(model, id_column, label_column, ledger_column):
             rows = (
