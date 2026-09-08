@@ -1,4 +1,4 @@
-"""Add human-facing CBT result-ingestion audit metadata.
+"""Add human-facing CBT result-ingestion audit references.
 
 Revision ID: 20260908_cbt_audit_display
 Revises: 20260908_cbt_result_ingestion
@@ -20,11 +20,6 @@ def upgrade() -> None:
     op.add_column(
         "cbt_result_ingestion_batches",
         sa.Column("ingestion_reference", sa.String(length=32), nullable=True),
-        schema="public",
-    )
-    op.add_column(
-        "cbt_result_ingestion_batches",
-        sa.Column("source_exam_title", sa.String(length=200), nullable=True),
         schema="public",
     )
 
@@ -59,11 +54,6 @@ def downgrade() -> None:
         "uq_cbt_result_ingestion_tenant_reference",
         "cbt_result_ingestion_batches",
         type_="unique",
-        schema="public",
-    )
-    op.drop_column(
-        "cbt_result_ingestion_batches",
-        "source_exam_title",
         schema="public",
     )
     op.drop_column(
