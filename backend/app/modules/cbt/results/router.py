@@ -20,6 +20,7 @@ from app.modules.cbt.enums import (
 )
 from app.modules.cbt.results.audit_service import CBTResultIngestionAuditService
 from app.modules.cbt.results.schemas import (
+    CBTResultAuditFilterOptionsResponse,
     CBTResultBulkRequest,
     CBTResultBulkResponse,
     CBTResultIngestionBatchListResponse,
@@ -35,16 +36,11 @@ CurrentTenantAdmin = Annotated[TenantAdmin, Depends(get_current_tenant_admin)]
 CurrentSuperadmin = Annotated[SuperAdmin, Depends(get_current_superadmin)]
 
 
-router = APIRouter(
-    prefix="/results",
-    tags=["CBT Results"],
-)
-
+router = APIRouter(prefix="/results", tags=["CBT Results"])
 tenant_admin_router = APIRouter(
     prefix="/tenant-admin/cbt/result-ingestions",
     tags=["Tenant Admin CBT Result Audit"],
 )
-
 superadmin_router = APIRouter(
     prefix="/superadmin/cbt/result-ingestions",
     tags=["Superadmin CBT Result Audit"],
@@ -54,6 +50,7 @@ superadmin_router = APIRouter(
 def _batch_filters(
     *,
     batch_id: UUID | None,
+    ingestion_reference: str | None,
     source_exam_id: UUID | None,
     cbt_server_id: UUID | None,
     academic_session_id: UUID | None,
@@ -66,6 +63,7 @@ def _batch_filters(
 ) -> dict[str, object]:
     return {
         "batch_id": batch_id,
+        "ingestion_reference": ingestion_reference,
         "source_exam_id": source_exam_id,
         "cbt_server_id": cbt_server_id,
         "academic_session_id": academic_session_id,
@@ -107,13 +105,28 @@ async def ingest_results(
     payload: CBTResultBulkRequest,
     response: Response,
 ) -> CBTResultBulkResponse:
-    """Apply one authenticated CBT component-score batch to Weave."""
-
     response.headers["Cache-Control"] = "no-store"
     return await CBTResultIngestionService.ingest(
         db,
         server=current_server,
         payload=payload,
+    )
+
+
+@tenant_admin_router.get(
+    "/filter-options",
+    response_model=CBTResultAuditFilterOptionsResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_tenant_ingestion_filter_options(
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+    response: Response,
+) -> CBTResultAuditFilterOptionsResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return await CBTResultIngestionAuditService.get_filter_options_for_admin(
+        db,
+        tenant_id=current_admin.tenant_id,
     )
 
 
@@ -127,6 +140,7 @@ async def list_tenant_ingestion_batches(
     current_admin: CurrentTenantAdmin,
     response: Response,
     batch_id: UUID | None = None,
+    ingestion_reference: str | None = Query(default=None, max_length=32),
     source_exam_id: UUID | None = None,
     cbt_server_id: UUID | None = None,
     academic_session_id: UUID | None = None,
@@ -147,6 +161,7 @@ async def list_tenant_ingestion_batches(
         tenant_id=current_admin.tenant_id,
         filters=_batch_filters(
             batch_id=batch_id,
+            ingestion_reference=ingestion_reference,
             source_exam_id=source_exam_id,
             cbt_server_id=cbt_server_id,
             academic_session_id=academic_session_id,
@@ -162,12 +177,7 @@ async def list_tenant_ingestion_batches(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionBatchListResponse(
-        items=items,
-        total=total,
-        skip=skip,
-        limit=limit,
-    )
+    return CBTResultIngestionBatchListResponse(items=items, total=total, skip=skip, limit=limit)
 
 
 @tenant_admin_router.get(
@@ -222,11 +232,25 @@ async def list_tenant_ingestion_items(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionItemListResponse(
-        items=items,
-        total=total,
-        skip=skip,
-        limit=limit,
+    return CBTResultIngestionItemListResponse(items=items, total=total, skip=skip, limit=limit)
+
+
+@superadmin_router.get(
+    "/filter-options",
+    response_model=CBTResultAuditFilterOptionsResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_superadmin_ingestion_filter_options(
+    db: DbSession,
+    current_superadmin: CurrentSuperadmin,
+    response: Response,
+    tenant_id: UUID,
+) -> CBTResultAuditFilterOptionsResponse:
+    _ = current_superadmin
+    response.headers["Cache-Control"] = "no-store"
+    return await CBTResultIngestionAuditService.get_filter_options_for_superadmin(
+        db,
+        tenant_id=tenant_id,
     )
 
 
@@ -241,6 +265,7 @@ async def list_superadmin_ingestion_batches(
     response: Response,
     tenant_id: UUID | None = None,
     batch_id: UUID | None = None,
+    ingestion_reference: str | None = Query(default=None, max_length=32),
     source_exam_id: UUID | None = None,
     cbt_server_id: UUID | None = None,
     academic_session_id: UUID | None = None,
@@ -262,6 +287,7 @@ async def list_superadmin_ingestion_batches(
         tenant_id=tenant_id,
         filters=_batch_filters(
             batch_id=batch_id,
+            ingestion_reference=ingestion_reference,
             source_exam_id=source_exam_id,
             cbt_server_id=cbt_server_id,
             academic_session_id=academic_session_id,
@@ -277,12 +303,7 @@ async def list_superadmin_ingestion_batches(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionBatchListResponse(
-        items=items,
-        total=total,
-        skip=skip,
-        limit=limit,
-    )
+    return CBTResultIngestionBatchListResponse(items=items, total=total, skip=skip, limit=limit)
 
 
 @superadmin_router.get(
@@ -337,9 +358,4 @@ async def list_superadmin_ingestion_items(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionItemListResponse(
-        items=items,
-        total=total,
-        skip=skip,
-        limit=limit,
-    )
+    return CBTResultIngestionItemListResponse(items=items, total=total, skip=skip, limit=limit)
