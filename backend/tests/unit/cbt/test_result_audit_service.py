@@ -1,12 +1,26 @@
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from app.core.exceptions import BadRequestException, NotFoundException
-from app.modules.cbt.results.audit_service import CBTResultIngestionAuditService
+from app.modules.cbt.results.audit_service import (
+    CBTResultIngestionAuditService,
+    _exam_display_label,
+)
+
+
+def test_exam_display_label_uses_human_academic_context() -> None:
+    assert _exam_display_label(
+        subject_name="Mathematics",
+        component_name="Examination",
+        level_name="SS2",
+        term_name="first_term",
+        exam_date=date(2026, 9, 8),
+    ) == "Mathematics · Examination · SS2 · First Term · 08 Sep 2026"
 
 
 @pytest.mark.asyncio
@@ -92,8 +106,6 @@ async def test_admin_item_list_forces_requested_batch_scope() -> None:
 
 
 def test_audit_service_rejects_reversed_date_range() -> None:
-    from datetime import datetime, timezone
-
     with pytest.raises(BadRequestException):
         CBTResultIngestionAuditService._validate_date_range(
             datetime(2026, 9, 9, tzinfo=timezone.utc),
