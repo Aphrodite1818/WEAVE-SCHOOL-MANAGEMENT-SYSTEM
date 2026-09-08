@@ -61,9 +61,12 @@ def _batch_filters(
     exam_date: date | None,
     ingestion_status: CBTResultIngestionStatus | None,
 ) -> dict[str, object]:
+    normalized_reference = (
+        ingestion_reference.strip().upper() if ingestion_reference else None
+    )
     return {
         "batch_id": batch_id,
-        "ingestion_reference": ingestion_reference,
+        "ingestion_reference": normalized_reference,
         "source_exam_id": source_exam_id,
         "cbt_server_id": cbt_server_id,
         "academic_session_id": academic_session_id,
@@ -149,7 +152,10 @@ async def list_tenant_ingestion_batches(
     curriculum_subject_id: UUID | None = None,
     assessment_component_id: UUID | None = None,
     exam_date: date | None = None,
-    ingestion_status: CBTResultIngestionStatus | None = Query(default=None, alias="status"),
+    ingestion_status: CBTResultIngestionStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     skip: int = Query(default=0, ge=0),
@@ -177,7 +183,12 @@ async def list_tenant_ingestion_batches(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionBatchListResponse(items=items, total=total, skip=skip, limit=limit)
+    return CBTResultIngestionBatchListResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @tenant_admin_router.get(
@@ -232,7 +243,12 @@ async def list_tenant_ingestion_items(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionItemListResponse(items=items, total=total, skip=skip, limit=limit)
+    return CBTResultIngestionItemListResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @superadmin_router.get(
@@ -274,7 +290,10 @@ async def list_superadmin_ingestion_batches(
     curriculum_subject_id: UUID | None = None,
     assessment_component_id: UUID | None = None,
     exam_date: date | None = None,
-    ingestion_status: CBTResultIngestionStatus | None = Query(default=None, alias="status"),
+    ingestion_status: CBTResultIngestionStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
     created_from: datetime | None = None,
     created_to: datetime | None = None,
     skip: int = Query(default=0, ge=0),
@@ -303,7 +322,12 @@ async def list_superadmin_ingestion_batches(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionBatchListResponse(items=items, total=total, skip=skip, limit=limit)
+    return CBTResultIngestionBatchListResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @superadmin_router.get(
@@ -358,4 +382,9 @@ async def list_superadmin_ingestion_items(
         skip=skip,
         limit=limit,
     )
-    return CBTResultIngestionItemListResponse(items=items, total=total, skip=skip, limit=limit)
+    return CBTResultIngestionItemListResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
