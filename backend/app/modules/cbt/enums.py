@@ -16,11 +16,12 @@ class CBTServerStatus(str, PyEnum):
 
 
 class CBTResultIngestionStatus(str, PyEnum):
-    """Lifecycle state of a CBT result ingestion."""
+    """Lifecycle state of a CBT result-ingestion batch."""
 
-    PENDING = "pending"
     PROCESSING = "processing"
-    PROCESSED = "processed"
+    COMPLETED = "completed"
+    COMPLETED_WITH_REJECTIONS = "completed_with_rejections"
+    REJECTED = "rejected"
     FAILED = "failed"
 
 

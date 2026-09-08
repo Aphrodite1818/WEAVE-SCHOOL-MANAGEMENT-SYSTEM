@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
+
+import pytest
+
+from app.core.exceptions import BadRequestException, NotFoundException
+from app.modules.cbt.results.audit_service import CBTResultIngestionAuditService
+
+
+@pytest.mark.asyncio
+async def test_admin_batch_list_is_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.cbt.results.audit_service.CBTResultIngestionRepository.list_batches",
+        new=AsyncMock(return_value=([], 0)),
+    ) as list_batches:
+        await CBTResultIngestionAuditService.list_batches_for_admin(
+            db,
+            tenant_id=tenant_id,
+            filters={"source_exam_id": uuid4()},
+        )
+
+    assert list_batches.await_args.kwargs["tenant_id"] == tenant_id
+
+
+@pytest.mark.asyncio
+async def test_admin_item_list_forces_requested_batch_scope() -> None:
+    tenant_id = uuid4()
+    batch_record_id = uuid4()
+    db = AsyncMock()
+
+    with (
+        patch.object(
+            CBTResultIngestionAuditService,
+            "get_batch_for_admin",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "app.modules.cbt.results.audit_service.CBTResultIngestionRepository.list_items",
+            new=AsyncMock(return_value=([], 0)),
+        ) as list_items,
+    ):
+        await CBTResultIngestionAuditService.list_batch_items_for_admin(
+            db,
+            tenant_id=tenant_id,
+            batch_record_id=batch_record_id,
+            filters={"ingestion_batch_id": uuid4()},
+        )
+
+    assert list_items.await_args.kwargs["tenant_id"] == tenant_id
+    assert list_items.await_args.kwargs["filters"]["ingestion_batch_id"] == batch_record_id
+
+
+def test_audit_service_rejects_reversed_date_range() -> None:
+    from datetime import datetime, timezone
+
+    with pytest.raises(BadRequestException):
+        CBTResultIngestionAuditService._validate_date_range(
+            datetime(2026, 9, 9, tzinfo=timezone.utc),
+            datetime(2026, 9, 8, tzinfo=timezone.utc),
+        )
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_fetch_missing_or_cross_tenant_batch() -> None:
+    db = AsyncMock()
+
+    with patch(
+        "app.modules.cbt.results.audit_service.CBTResultIngestionRepository.get_batch_by_id",
+        new=AsyncMock(return_value=None),
+    ):
+        with pytest.raises(NotFoundException):
+            await CBTResultIngestionAuditService.get_batch_for_admin(
+                db,
+                tenant_id=uuid4(),
+                batch_record_id=uuid4(),
+            )
