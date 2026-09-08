@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.modules.cbt.enums import CBTResultIngestionStatus
+from app.modules.cbt.results.models import _new_ingestion_reference
 from app.modules.cbt.results.schemas import CBTResultBulkRequest, CBTResultBulkScoreItem
 from app.modules.cbt.results.service import CBTResultIngestionService
 
@@ -42,6 +43,16 @@ def test_result_ingestion_status_contract_matches_service_terminal_states() -> N
         "rejected",
         "failed",
     }
+
+
+def test_ingestion_reference_is_human_facing_and_not_a_raw_uuid() -> None:
+    first = _new_ingestion_reference()
+    second = _new_ingestion_reference()
+
+    assert first.startswith("CBT-")
+    assert len(first) <= 32
+    assert first != second
+    assert "-" in first
 
 
 def test_request_hash_is_score_order_independent() -> None:
