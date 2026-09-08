@@ -9,16 +9,20 @@ const accessCache = new Map();
 const accessRequests = new Map();
 
 const checkHistoricalAccess = async (tenantKey) => {
-  if (accessCache.has(tenantKey)) return accessCache.get(tenantKey);
+  if (accessCache.has(tenantKey)) {
+    return { allowed: accessCache.get(tenantKey), error: null };
+  }
   if (!accessRequests.has(tenantKey)) {
     const request = cbtResultLedgerService
       .listTenantBatches({ skip: 0, limit: 1 })
-      .then((response) => Number(response?.total || 0) > 0)
-      .catch(() => false)
-      .then((allowed) => {
+      .then((response) => {
+        const allowed = Number(response?.total || 0) > 0;
         accessCache.set(tenantKey, allowed);
+        return { allowed, error: null };
+      })
+      .catch((error) => ({ allowed: false, error }))
+      .finally(() => {
         accessRequests.delete(tenantKey);
-        return allowed;
       });
     accessRequests.set(tenantKey, request);
   }
@@ -33,6 +37,7 @@ export default function useCbtHistoricalAccess({ enabled = true } = {}) {
     tenantKey,
     checked: accessCache.has(tenantKey),
     allowed: accessCache.get(tenantKey) === true,
+    error: null,
   }));
   const currentHistoryState =
     historyState.tenantKey === tenantKey
@@ -41,6 +46,7 @@ export default function useCbtHistoricalAccess({ enabled = true } = {}) {
           tenantKey,
           checked: accessCache.has(tenantKey),
           allowed: accessCache.get(tenantKey) === true,
+          error: null,
         };
 
   const featureAllowed = featureGuard.allowed !== false;
@@ -53,9 +59,14 @@ export default function useCbtHistoricalAccess({ enabled = true } = {}) {
 
     let active = true;
     const checkHistory = async () => {
-      const allowed = await checkHistoricalAccess(tenantKey);
+      const result = await checkHistoricalAccess(tenantKey);
       if (active) {
-        setHistoryState({ tenantKey, checked: true, allowed });
+        setHistoryState({
+          tenantKey,
+          checked: result.error == null,
+          allowed: result.allowed,
+          error: result.error,
+        });
       }
     };
 
@@ -73,21 +84,29 @@ export default function useCbtHistoricalAccess({ enabled = true } = {}) {
   ]);
 
   if (!enabled) {
-    return { allowed: false, pending: false, source: null };
+    return { allowed: false, pending: false, source: null, error: null };
   }
-
   if (featurePending) {
-    return { allowed: false, pending: true, source: "entitlement" };
+    return { allowed: false, pending: true, source: "entitlement", error: null };
   }
   if (featureAllowed) {
-    return { allowed: true, pending: false, source: "entitlement" };
+    return { allowed: true, pending: false, source: "entitlement", error: null };
+  }
+  if (currentHistoryState.error) {
+    return {
+      allowed: false,
+      pending: false,
+      source: "history",
+      error: currentHistoryState.error,
+    };
   }
   if (!currentHistoryState.checked) {
-    return { allowed: false, pending: true, source: "history" };
+    return { allowed: false, pending: true, source: "history", error: null };
   }
   return {
     allowed: currentHistoryState.allowed,
     pending: false,
     source: currentHistoryState.allowed ? "history" : null,
+    error: null,
   };
 }
