@@ -48,6 +48,7 @@ class CBTResultBulkRequest(CBTResultInputBase):
 
     batch_id: UUID
     source_exam_id: UUID
+    source_exam_title: str | None = Field(default=None, min_length=1, max_length=200)
     academic_session_id: UUID
     academic_term_id: UUID
     academic_level_id: UUID
@@ -97,6 +98,26 @@ class CBTResultBulkResponse(CBTResultOutputBase):
         return self
 
 
+class CBTResultAuditFilterOption(CBTResultOutputBase):
+    """One backend-owned human-readable filter choice."""
+
+    id: UUID
+    label: str = Field(min_length=1, max_length=255)
+
+
+class CBTResultAuditFilterOptionsResponse(CBTResultOutputBase):
+    """Tenant-scoped filter metadata for the CBT ingestion audit UI."""
+
+    exams: list[CBTResultAuditFilterOption] = Field(default_factory=list)
+    sessions: list[CBTResultAuditFilterOption] = Field(default_factory=list)
+    terms: list[CBTResultAuditFilterOption] = Field(default_factory=list)
+    levels: list[CBTResultAuditFilterOption] = Field(default_factory=list)
+    subjects: list[CBTResultAuditFilterOption] = Field(default_factory=list)
+    assessment_components: list[CBTResultAuditFilterOption] = Field(default_factory=list)
+    servers: list[CBTResultAuditFilterOption] = Field(default_factory=list)
+    statuses: list[str] = Field(default_factory=list)
+
+
 class CBTResultIngestionBatchResponse(CBTResultOutputBase):
     """Read-only forensic view of one CBT ingestion batch."""
 
@@ -105,7 +126,9 @@ class CBTResultIngestionBatchResponse(CBTResultOutputBase):
     cbt_server_id: UUID
     credential_id: UUID
     batch_id: UUID
+    ingestion_reference: str
     source_exam_id: UUID
+    source_exam_title: str | None = None
     request_hash: str
     academic_session_id: UUID
     academic_term_id: UUID
@@ -123,6 +146,15 @@ class CBTResultIngestionBatchResponse(CBTResultOutputBase):
     batch_error_detail: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    # Read-side display metadata. UUIDs above remain authoritative.
+    server_name: str | None = None
+    tenant_name: str | None = None
+    academic_session_name: str | None = None
+    academic_term_name: str | None = None
+    academic_level_name: str | None = None
+    subject_name: str | None = None
+    assessment_component_name: str | None = None
 
 
 class CBTResultIngestionItemResponse(CBTResultOutputBase):
@@ -143,6 +175,8 @@ class CBTResultIngestionItemResponse(CBTResultOutputBase):
     processed_at: datetime
     created_at: datetime
     updated_at: datetime
+    student_name: str | None = None
+    student_admission_number: str | None = None
 
 
 class CBTResultIngestionBatchListResponse(CBTResultOutputBase):
