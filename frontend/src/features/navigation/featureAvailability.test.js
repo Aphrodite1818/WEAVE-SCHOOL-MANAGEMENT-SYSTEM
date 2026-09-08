@@ -37,6 +37,21 @@ test("pending and denied subscription features are hidden", () => {
   );
 });
 
+test("historical access can preserve a denied feature destination", () => {
+  const result = resolveFeatureAvailability(
+    { featureCode: "cbt_pairing", allowHistoricalAccess: true },
+    {
+      subscription: subscription({
+        guard: { allowed: false, pending: false },
+      }),
+      historicalFeatures: { cbt_pairing: true },
+    },
+  );
+
+  assert.equal(result.visible, true);
+  assert.equal(result.reason, "historical-access");
+});
+
 test("free trial keeps bulk import out of navigation and tour surfaces", () => {
   const result = resolveFeatureAvailability(
     { featureCode: "bulk_import" },

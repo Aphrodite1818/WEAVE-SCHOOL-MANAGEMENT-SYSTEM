@@ -10,6 +10,7 @@ export function resolveFeatureAvailability(
     entitledFeatures,
     subscription,
     isAccountScope = false,
+    historicalFeatures = {},
   } = {},
 ) {
   if (!item) return { visible: false, reason: "missing-item" };
@@ -40,6 +41,12 @@ export function resolveFeatureAvailability(
     const guard = getFeatureGuard(featureCode);
     if (guard?.pending) return { visible: false, reason: "entitlement-pending" };
     if (guard?.allowed === false) {
+      if (
+        item.allowHistoricalAccess &&
+        historicalFeatures?.[featureCode] === true
+      ) {
+        return { visible: true, reason: "historical-access" };
+      }
       return { visible: false, reason: guard.reason || "entitlement-disabled" };
     }
   } else if (item.feature && entitledFeatures?.[featureCode] !== true) {

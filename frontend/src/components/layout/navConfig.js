@@ -144,6 +144,7 @@ export const navGroups = {
           to: "/admin/cbt",
           icon: Cpu,
           featureCode: FEATURE_CODES.CBT_PAIRING,
+          allowHistoricalAccess: true,
         },
         { label: "Usage", to: "/admin/usage", icon: Activity },
         { label: "Settings", to: "/admin/settings", icon: Settings },
@@ -285,6 +286,11 @@ export const navGroups = {
         },
         { label: "Tenant Usage", to: "/superadmin/usage", icon: Database },
         { label: "Traffic Monitor", to: "/superadmin/traffic", icon: Activity },
+        {
+          label: "CBT Result Operations",
+          to: "/superadmin/cbt-results",
+          icon: ClipboardList,
+        },
         {
           label: "Simulation Lab",
           to: "/superadmin/simulations",
