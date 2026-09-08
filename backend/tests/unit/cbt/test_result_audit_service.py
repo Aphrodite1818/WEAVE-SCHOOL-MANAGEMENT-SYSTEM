@@ -28,6 +28,42 @@ async def test_admin_batch_list_is_tenant_scoped() -> None:
 
 
 @pytest.mark.asyncio
+async def test_admin_filter_options_are_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    db = AsyncMock()
+
+    with patch.object(
+        CBTResultIngestionAuditService,
+        "_filter_options",
+        new=AsyncMock(return_value=object()),
+    ) as filter_options:
+        await CBTResultIngestionAuditService.get_filter_options_for_admin(
+            db,
+            tenant_id=tenant_id,
+        )
+
+    assert filter_options.await_args.kwargs["tenant_id"] == tenant_id
+
+
+@pytest.mark.asyncio
+async def test_superadmin_filter_options_require_explicit_tenant_scope() -> None:
+    tenant_id = uuid4()
+    db = AsyncMock()
+
+    with patch.object(
+        CBTResultIngestionAuditService,
+        "_filter_options",
+        new=AsyncMock(return_value=object()),
+    ) as filter_options:
+        await CBTResultIngestionAuditService.get_filter_options_for_superadmin(
+            db,
+            tenant_id=tenant_id,
+        )
+
+    assert filter_options.await_args.kwargs["tenant_id"] == tenant_id
+
+
+@pytest.mark.asyncio
 async def test_admin_item_list_forces_requested_batch_scope() -> None:
     tenant_id = uuid4()
     batch_record_id = uuid4()
