@@ -33,7 +33,13 @@ from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
 from app.modules.cbt.academics.router import router as cbt_academics_router
 from app.modules.cbt.auth.router import router as cbt_auth_router
+from app.modules.cbt.branding.router import router as cbt_branding_router
 from app.modules.cbt.pairing.router import router as cbt_pairing_router
+from app.modules.cbt.results.router import (
+    router as cbt_results_router,
+    superadmin_router as cbt_result_superadmin_router,
+    tenant_admin_router as cbt_result_tenant_admin_router,
+)
 from app.modules.cbt.sync.listener import cbt_sync_listener
 from app.modules.cbt.sync.router import router as cbt_sync_router
 from app.modules.cbt.sync.websocket_router import router as cbt_sync_websocket_router
@@ -270,8 +276,12 @@ def create_app() -> FastAPI:
     app.include_router(cbt_pairing_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_auth_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_academics_router, prefix=f"{API_V1_PREFIX}/cbt")
+    app.include_router(cbt_branding_router, prefix=f"{API_V1_PREFIX}/cbt")
+    app.include_router(cbt_results_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_sync_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_sync_websocket_router, prefix=f"{API_V1_PREFIX}/cbt")
+    app.include_router(cbt_result_tenant_admin_router, prefix=API_V1_PREFIX)
+    app.include_router(cbt_result_superadmin_router, prefix=API_V1_PREFIX)
 
     admin_write_guard = [Depends(ensure_admin_academic_write_window)]
     app.include_router(
