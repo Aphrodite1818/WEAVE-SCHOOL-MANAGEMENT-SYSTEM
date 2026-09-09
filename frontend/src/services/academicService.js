@@ -289,9 +289,10 @@ export const academicService = {
   getGradingReadiness: () =>
     api.get("/tenant-admin/academics/grading-scales/readiness-preview"),
 
-  listTeacherAssignments: (params) =>
+  listTeacherAssignments: (params, options) =>
     api.get(
       `/tenant-admin/academics/teacher-assignments${queryString(params)}`,
+      options,
     ),
   getTeacherAssignmentDependencies: (assignmentId) =>
     api.get(

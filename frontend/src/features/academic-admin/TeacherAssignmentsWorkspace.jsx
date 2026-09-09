@@ -4,7 +4,7 @@ import {
   finishAcademicCreation,
 } from "./academicSubmission";
 import { ArrowLeft, UserPlus, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import Badge from "../../components/ui/Badge";
@@ -104,6 +104,8 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const [assignments, setAssignments] = useState([]);
   const [assignmentTotal, setAssignmentTotal] = useState(0);
   const [assignmentPage, setAssignmentPage] = useState(0);
+  const [assignmentLoading, setAssignmentLoading] = useState(true);
+  const assignmentRequestGeneration = useRef(0);
   const [filters, setFilters] = useState({
     class_id: "",
     teacher_membership_id: "",
@@ -189,19 +191,30 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     }
   }, [showError]);
 
-  const loadAssignments = useCallback(async () => {
+  const loadAssignments = useCallback(async ({ signal } = {}) => {
+    const requestGeneration = ++assignmentRequestGeneration.current;
+    setAssignmentLoading(true);
     try {
-      const response = await academicService.listTeacherAssignments({
-        class_id: filters.class_id || undefined,
-        teacher_membership_id: filters.teacher_membership_id || undefined,
-        status: filters.status || undefined,
-        skip: assignmentPage * PAGE_SIZE,
-        limit: PAGE_SIZE,
-      });
+      const response = await academicService.listTeacherAssignments(
+        {
+          class_id: filters.class_id || undefined,
+          teacher_membership_id: filters.teacher_membership_id || undefined,
+          status: filters.status || undefined,
+          skip: assignmentPage * PAGE_SIZE,
+          limit: PAGE_SIZE,
+        },
+        { signal },
+      );
+      if (signal?.aborted || requestGeneration !== assignmentRequestGeneration.current) return;
       setAssignments(asItems(response));
       setAssignmentTotal(Number(response?.total || 0));
     } catch (requestError) {
+      if (signal?.aborted || requestGeneration !== assignmentRequestGeneration.current) return;
       showError(getErrorMessage(requestError, "Could not load teacher assignments."));
+    } finally {
+      if (requestGeneration === assignmentRequestGeneration.current) {
+        setAssignmentLoading(false);
+      }
     }
   }, [assignmentPage, filters, showError]);
 
@@ -210,7 +223,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   }, [loadBase]);
 
   useEffect(() => {
-    loadAssignments();
+    const controller = new AbortController();
+    loadAssignments({ signal: controller.signal });
+    return () => controller.abort();
   }, [loadAssignments]);
 
   useEffect(() => {
@@ -740,7 +755,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       </div>
 
       <RecordList
-        title={`Teacher assignments${loading ? "" : ` (${assignmentTotal})`}`}
+        title={`Teacher assignments${loading || assignmentLoading ? "" : ` (${assignmentTotal})`}`}
         description="One list for current, scheduled and historical teaching coverage. Reassign and end actions preserve assignment history."
         actions={
           <Button type="button" onClick={() => selectView("assign")}>
@@ -748,7 +763,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           </Button>
         }
         items={assignments}
-        loading={loading}
+        loading={loading || assignmentLoading}
         emptyIcon={Users}
         emptyTitle="No teacher assignments"
         emptyDescription="Create an assignment or adjust the class, teacher or lifecycle filters."
@@ -771,10 +786,10 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
           Showing {assignments.length} of {assignmentTotal} assignments
         </p>
         <div className="flex gap-2">
-          <Button type="button" size="small" variant="outline" disabled={assignmentPage === 0 || loading} onClick={() => setAssignmentPage((value) => Math.max(0, value - 1))}>
+          <Button type="button" size="small" variant="outline" disabled={assignmentPage === 0 || loading || assignmentLoading} onClick={() => setAssignmentPage((value) => Math.max(0, value - 1))}>
             Previous
           </Button>
-          <Button type="button" size="small" variant="outline" disabled={(assignmentPage + 1) * PAGE_SIZE >= assignmentTotal || loading} onClick={() => setAssignmentPage((value) => value + 1)}>
+          <Button type="button" size="small" variant="outline" disabled={(assignmentPage + 1) * PAGE_SIZE >= assignmentTotal || loading || assignmentLoading} onClick={() => setAssignmentPage((value) => value + 1)}>
             Next
           </Button>
         </div>

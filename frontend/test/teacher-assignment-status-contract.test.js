@@ -7,6 +7,10 @@ const source = fs.readFileSync(
   new URL("../src/features/academic-admin/TeacherAssignmentsWorkspace.jsx", import.meta.url),
   "utf8",
 );
+const serviceSource = fs.readFileSync(
+  new URL("../src/services/academicService.js", import.meta.url),
+  "utf8",
+);
 
 test("teacher assignment requests use the canonical lifecycle statuses", () => {
   assert.doesNotMatch(source, /status:\s*["']active["']/);
@@ -46,4 +50,13 @@ test("early ending warns that the planned takeover is cancelled", () => {
     /Ending this assignment early will also cancel the planned takeover/,
   );
   assert.match(source, /will have no assigned teacher/);
+});
+
+test("filter requests cannot be overwritten by stale assignment responses", () => {
+  assert.match(source, /assignmentRequestGeneration\s*=\s*useRef\(0\)/);
+  assert.match(source, /requestGeneration\s*!==\s*assignmentRequestGeneration\.current/);
+  assert.match(source, /loadAssignments\(\{ signal: controller\.signal \}\)/);
+  assert.match(source, /return \(\) => controller\.abort\(\)/);
+  assert.match(serviceSource, /listTeacherAssignments:\s*\(params, options\)/);
+  assert.match(serviceSource, /queryString\(params\)[\s\S]*options/);
 });
