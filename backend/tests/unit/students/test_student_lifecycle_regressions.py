@@ -16,7 +16,10 @@ from app.modules.students.models import (
     StudentEnrollmentOutcome,
 )
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
-from app.modules.students.schemas import StudentReturnEnrollmentRequest
+from app.modules.students.schemas import (
+    StudentHardDeleteEligibilityResponse,
+    StudentReturnEnrollmentRequest,
+)
 from app.modules.students.service import StudentService
 
 
@@ -283,6 +286,10 @@ async def test_formal_reinstatement_preserves_student_identity_and_creates_new_e
         "_build_detail_response",
         AsyncMock(return_value=SimpleNamespace(id=student_id)),
     )
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.StudentLifecycleTransitionResponse",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
 
     response = await StudentLifecycleService.reinstate_expelled(
         db,
@@ -380,6 +387,60 @@ async def test_formal_return_must_begin_after_previous_enrollment(monkeypatch, a
                 academic_session_id=session_id,
                 effective_date=previous_end,
                 reason="Return to school",
+            ),
+        )
+
+
+@pytest.mark.asyncio
+async def test_formal_return_effective_date_must_be_inside_current_session(monkeypatch, actor, db):
+    student_id = uuid4()
+    session_id = uuid4()
+    student = SimpleNamespace(
+        id=student_id,
+        tenant_id=actor.tenant_id,
+        admission_number="STD-003",
+        status=AcademicStatus.WITHDRAWN,
+        is_archived=False,
+    )
+    session = SimpleNamespace(
+        id=session_id,
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+        start_date=date.today() - timedelta(days=5),
+        end_date=date.today() + timedelta(days=30),
+    )
+
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.ensure_academic_write_window",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(StudentRepository, "get_by_id", AsyncMock(return_value=student))
+    monkeypatch.setattr(
+        StudentLifecycleService,
+        "_undo_eligibility",
+        AsyncMock(return_value=(False, "Historical action", SimpleNamespace(metadata_json={}))),
+    )
+    monkeypatch.setattr(
+        StudentEnrollmentRepository,
+        "get_current",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.AcademicSessionLifecycleRepository.get_by_id",
+        AsyncMock(return_value=session),
+    )
+
+    with pytest.raises(BadRequestException, match="before the current session starts"):
+        await StudentLifecycleService.readmit(
+            db,
+            actor=actor,
+            student_id=student_id,
+            payload=StudentReturnEnrollmentRequest(
+                target_academic_level_id=uuid4(),
+                target_class_id=uuid4(),
+                academic_session_id=session_id,
+                effective_date=date.today() - timedelta(days=10),
+                reason="Historical return date",
             ),
         )
 
@@ -528,3 +589,33 @@ async def test_same_day_correction_is_blocked_after_academic_evidence(monkeypatc
             target_class_id=uuid4(),
             reason="Correction",
         )
+
+
+@pytest.mark.asyncio
+async def test_hard_delete_eligibility_treats_login_history_as_protected(monkeypatch, actor, db):
+    student_id = uuid4()
+    base = StudentHardDeleteEligibilityResponse(
+        student_id=student_id,
+        eligible=True,
+        blocking_dependencies=[],
+        recommendation="hard_delete",
+    )
+    student = SimpleNamespace(
+        id=student_id,
+        last_login_at=datetime.now(timezone.utc),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.LegacyStudentLifecycleService.hard_delete_eligibility",
+        AsyncMock(return_value=base),
+    )
+    monkeypatch.setattr(StudentRepository, "get_by_id", AsyncMock(return_value=student))
+
+    eligibility = await StudentLifecycleService.hard_delete_eligibility(
+        db,
+        tenant_id=actor.tenant_id,
+        student_id=student_id,
+    )
+
+    assert eligibility.eligible is False
+    assert eligibility.recommendation == "archive"
+    assert "login_history" in eligibility.blocking_dependencies
