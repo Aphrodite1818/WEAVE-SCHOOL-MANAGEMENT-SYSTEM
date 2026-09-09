@@ -301,46 +301,13 @@ class StudentReinstateRequest(StudentLifecycleReasonRequest):
 class StudentWithdrawRequest(StudentLifecycleReasonRequest):
     """Withdraw a student and close their current enrolment."""
 
-    effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Withdrawal cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
 
 class StudentExpelRequest(StudentLifecycleReasonRequest):
     """Expel a student and immediately end parent access."""
 
-    effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Expulsion cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
 
 class StudentGraduateRequest(StudentLifecycleReasonRequest):
     """Privileged single-student graduation correction request."""
-
-    graduation_date: date = Field(default_factory=date.today)
-
-    @field_validator("graduation_date")
-    @classmethod
-    def validate_graduation_date(cls, value: date) -> date:
-        """Graduation cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="graduation_date")
-        assert validated is not None
-        return validated
 
 
 class StudentArchiveRequest(StudentLifecycleReasonRequest):
@@ -359,12 +326,6 @@ class StudentReturnEnrollmentRequest(StudentLifecycleReasonRequest):
     academic_session_id: uuid.UUID
     effective_date: date = Field(default_factory=date.today)
 
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
 
 
 class StudentPromotionHoldUpdateRequest(InputBase):
@@ -428,6 +389,7 @@ class StudentEnrollmentDetailResponse(StudentEnrollmentResponse):
     class_arm: str | None = None
     academic_level_name: str | None = None
     academic_session_name: str | None = None
+    lifecycle_state: Literal["historical", "current", "upcoming"] = "historical"
 
 
 class StudentEnrollmentListResponse(OutputBase):
@@ -712,6 +674,7 @@ class StudentDetailResponse(StudentResponse):
     class_arm: str | None = None
     academic_level_name: str | None = None
     current_enrollment_id: uuid.UUID | None = None
+    upcoming_enrollment: StudentEnrollmentDetailResponse | None = None
     current_academic_session_id: uuid.UUID | None = None
     current_academic_session_name: str | None = None
     current_academic_term_id: uuid.UUID | None = None

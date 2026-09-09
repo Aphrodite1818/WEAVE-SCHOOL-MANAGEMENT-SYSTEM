@@ -839,8 +839,10 @@ async def test_paginated_list_enriches_current_row_from_batched_takeover_lookup(
     record = {"assignment": current}
     origin = SimpleNamespace(
         assignment_id=takeover_id,
-        previous_teacher_membership_id=current.teacher_membership_id,
-        previous_effective_from=current.effective_from,
+        class_id=current.class_id,
+        curriculum_subject_id=current.curriculum_subject_id,
+        previous_teacher_membership_id=uuid.uuid4(),
+        previous_effective_from=current.effective_from - timedelta(days=30),
     )
     db = AsyncMock()
     db.execute.return_value = _assignment_result([origin])
@@ -855,6 +857,8 @@ async def test_paginated_list_enriches_current_row_from_batched_takeover_lookup(
                 return_value={
                     current.id: {
                         "id": takeover_id,
+                        "class_id": current.class_id,
+                        "curriculum_subject_id": current.curriculum_subject_id,
                         "teacher_membership_id": uuid.uuid4(),
                         "teacher_name": "Incoming Teacher",
                         "effective_from": current.effective_to + timedelta(days=1),
@@ -872,6 +876,45 @@ async def test_paginated_list_enriches_current_row_from_batched_takeover_lookup(
     assert rows[0].scheduled_takeover_id == takeover_id
     batch_lookup.assert_awaited_once()
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_adjacent_standalone_schedule_is_not_presented_as_a_handover() -> None:
+    current = _dated_assignment(
+        effective_from=date.today() - timedelta(days=10),
+        effective_to=date.today() + timedelta(days=9),
+    )
+    scheduled_id = uuid.uuid4()
+    db = AsyncMock()
+    db.execute.return_value = _assignment_result([])
+    with (
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.list_teacher_assignment_rows",
+            new=AsyncMock(return_value=([{"assignment": current}], 1)),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_scheduled_takeovers_for_assignments",
+            new=AsyncMock(
+                return_value={
+                    current.id: {
+                        "id": scheduled_id,
+                        "class_id": current.class_id,
+                        "curriculum_subject_id": current.curriculum_subject_id,
+                        "teacher_membership_id": uuid.uuid4(),
+                        "teacher_name": "Independent Teacher",
+                        "effective_from": current.effective_to + timedelta(days=1),
+                    }
+                }
+            ),
+        ),
+    ):
+        rows, total = await StudentAcademicService.list_teacher_assignment_responses(
+            db, current.tenant_id
+        )
+
+    assert total == 1
+    assert rows[0].has_scheduled_takeover is False
+    assert rows[0].scheduled_takeover_id is None
 
 
 @pytest.mark.asyncio

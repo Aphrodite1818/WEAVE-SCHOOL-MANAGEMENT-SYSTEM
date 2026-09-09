@@ -1301,6 +1301,8 @@ class StudentAcademicRepository:
                 continue
             takeovers[predecessor_id] = {
                 "id": successor.id,
+                "class_id": successor.class_id,
+                "curriculum_subject_id": successor.curriculum_subject_id,
                 "teacher_membership_id": successor.teacher_membership_id,
                 "teacher_name": " ".join(
                     part for part in [row.teacher_first_name, row.teacher_last_name] if part

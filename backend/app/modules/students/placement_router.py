@@ -16,9 +16,14 @@ from app.modules.students.enrollment_schemas import (
     StudentClassPlacementRequest,
     StudentClassPlacementResponse,
     StudentClassReassignmentRequest,
+    StudentUpcomingEnrollmentUpdateRequest,
 )
 from app.modules.students.placement_service import StudentPlacementService
-from app.modules.students.schemas import StudentDetailResponse, StudentEnrollmentListResponse
+from app.modules.students.schemas import (
+    StudentDetailResponse,
+    StudentEnrollmentListResponse,
+    StudentLifecycleReasonRequest,
+)
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(prefix="/tenant-admin/students", tags=["Tenant Admin Student Placement"])
@@ -74,6 +79,46 @@ async def reassign_academic_level(
         db,
         actor=current_admin,
         student_id=student_id,
+        payload=payload,
+    )
+
+
+@router.patch(
+    "/{student_id}/upcoming-enrollments/{enrollment_id}",
+    response_model=StudentDetailResponse,
+)
+async def update_upcoming_enrollment(
+    student_id: UUID,
+    enrollment_id: UUID,
+    payload: StudentUpcomingEnrollmentUpdateRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentDetailResponse:
+    return await StudentPlacementService.update_upcoming_enrollment(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        enrollment_id=enrollment_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/{student_id}/upcoming-enrollments/{enrollment_id}/cancel",
+    response_model=StudentDetailResponse,
+)
+async def cancel_upcoming_enrollment(
+    student_id: UUID,
+    enrollment_id: UUID,
+    payload: StudentLifecycleReasonRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentDetailResponse:
+    return await StudentPlacementService.cancel_upcoming_enrollment(
+        db,
+        actor=current_admin,
+        student_id=student_id,
+        enrollment_id=enrollment_id,
         payload=payload,
     )
 

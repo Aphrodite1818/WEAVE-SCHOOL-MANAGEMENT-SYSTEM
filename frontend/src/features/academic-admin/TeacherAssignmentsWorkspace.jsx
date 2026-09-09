@@ -84,13 +84,20 @@ const assignmentErrorMessage = (error) => {
       "This assignment already has academic records attached to it, so its history cannot be rewritten. Choose a later date for the new teacher to take over.",
     TAKEOVER_ALREADY_SCHEDULED:
       "A teacher takeover is already scheduled for this class and subject. Open the existing handover to change or cancel it first.",
-    SAME_TEACHER: "This teacher is already assigned to this class and subject.",
+    SAME_TEACHER:
+      "Choose a different teacher. This teacher is already assigned to this class and subject.",
     SCHEDULED_ASSIGNMENT_CANNOT_END:
       "This assignment has not started yet. Edit or cancel the schedule instead.",
     ASSIGNMENT_OVERLAP:
       "The selected date overlaps an existing teacher assignment for this class and subject. Choose another date.",
     TAKEOVER_OUTSIDE_TERM:
       "The selected takeover date must fall within the current academic term.",
+    SCHEDULE_DATE_IN_PAST:
+      "Choose today or a future date for this assignment schedule.",
+    DATE_BEFORE_ASSIGNMENT_START:
+      "The last teaching date cannot be before this assignment started.",
+    ASSIGNMENT_NOT_SCHEDULED:
+      "This assignment has already started and can no longer be managed as a schedule.",
   };
   return messages[parsed?.data?.code] || parsed.message;
 };
@@ -329,6 +336,46 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     () => teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })),
     [teachers],
   );
+  const replacementTeacherOptions = useMemo(
+    () =>
+      teacherOptions.filter(
+        (option) => option.value !== reassigning?.teacher_membership_id,
+      ),
+    [reassigning?.teacher_membership_id, teacherOptions],
+  );
+  const visibleAssignments = useMemo(() => {
+    if (filters.status) return assignments;
+    const actualById = new Map(assignments.map((item) => [item.id, item]));
+    const renderedIds = new Set();
+    const rows = [];
+    assignments.forEach((item) => {
+      if (renderedIds.has(item.id)) return;
+      rows.push(item);
+      renderedIds.add(item.id);
+      if (!item.has_scheduled_takeover || !item.scheduled_takeover_id) return;
+      const linked = actualById.get(item.scheduled_takeover_id) || {
+        id: item.scheduled_takeover_id,
+        tenant_id: item.tenant_id,
+        curriculum_subject_id: item.curriculum_subject_id,
+        teacher_membership_id: item.scheduled_takeover_teacher_membership_id,
+        class_id: item.class_id,
+        class_name: item.class_name,
+        class_arm: item.class_arm,
+        subject_id: item.subject_id,
+        subject_name: item.subject_name,
+        subject_code: item.subject_code,
+        teacher_name: item.scheduled_takeover_teacher_name,
+        status: "scheduled",
+        effective_from: item.scheduled_takeover_effective_from,
+        effective_to: null,
+      };
+      if (!renderedIds.has(linked.id)) {
+        rows.push({ ...linked, linked_takeover: true });
+        renderedIds.add(linked.id);
+      }
+    });
+    return rows;
+  }, [assignments, filters.status]);
   const subjectOptions = useMemo(
     () =>
       curriculumSubjects.map((item) => ({
@@ -388,6 +435,12 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     event.preventDefault();
     if (!reassigning || !currentTermId || reason.trim().length < 3) {
       showWarning("Choose a replacement teacher and enter an audit reason.");
+      return;
+    }
+    if (form.teacher_membership_id === reassigning.teacher_membership_id) {
+      showWarning(
+        "Choose a different teacher. This teacher is already assigned to this class and subject.",
+      );
       return;
     }
     setSaving(reassigning.id);
@@ -488,7 +541,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     setReason("");
     setForm((current) => ({
       ...current,
-      teacher_membership_id: item.teacher_membership_id || "",
+      teacher_membership_id: "",
       effective_from: today(),
     }));
     setReassigning(item);
@@ -762,7 +815,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             <UserPlus className="h-4 w-4" /> Assign teacher
           </Button>
         }
-        items={assignments}
+        items={visibleAssignments}
         loading={loading || assignmentLoading}
         emptyIcon={Users}
         emptyTitle="No teacher assignments"
@@ -810,7 +863,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         }
       >
         <form id="teacher-reassign-form" className="space-y-3" onSubmit={submitReassign}>
-          <SelectControl label="Replacement teacher" value={form.teacher_membership_id} onChange={(value) => setForm((current) => ({ ...current, teacher_membership_id: value }))} options={teacherOptions} required />
+          <SelectControl label="Replacement teacher" value={form.teacher_membership_id} onChange={(value) => setForm((current) => ({ ...current, teacher_membership_id: value }))} options={replacementTeacherOptions} required />
           <Input label="Effective from" type="date" value={form.effective_from} onChange={(event) => setForm((current) => ({ ...current, effective_from: event.target.value }))} required />
           {form.effective_from === reassigning?.effective_from ? (
             <p className="text-sm text-text-muted">
@@ -844,7 +897,13 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
               Ending this assignment early will also cancel the planned takeover by {ending.scheduled_takeover_teacher_name || "the incoming teacher"}. This subject/class will have no assigned teacher until you create a new assignment.
             </p>
           ) : null}
-          <Input label="Effective end date" type="date" value={effectiveTo} onChange={(event) => setEffectiveTo(event.target.value)} required />
+          <Input label="Last teaching date" type="date" value={effectiveTo} onChange={(event) => setEffectiveTo(event.target.value)} required />
+          <p className="text-sm text-text-muted">
+            The teacher remains assigned through this date.
+            {effectiveTo === today()
+              ? " Ends today. This assignment remains current through today and will appear under Ended from tomorrow."
+              : ""}
+          </p>
           <Input label="Audit reason" value={reason} onChange={(event) => setReason(event.target.value)} minLength={3} maxLength={500} required />
         </form>
       </Modal>

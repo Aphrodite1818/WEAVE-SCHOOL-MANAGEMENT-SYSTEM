@@ -648,6 +648,12 @@ class TeacherInvitationService:
     INVITATION_DAYS = 7
 
     @staticmethod
+    def _membership_is_usable(membership: TeacherMembership | None) -> bool:
+        """Match the acceptance contract: only inactive memberships are reusable."""
+
+        return membership is not None and membership.status != TeacherMembershipStatus.INACTIVE
+
+    @staticmethod
     async def _recommended_action_for_email(
         db: AsyncSession,
         normalized_email: str,
@@ -717,6 +723,23 @@ class TeacherInvitationService:
             email=str(payload.email),
             invited_actor_type=ActorType.TEACHER_ACCOUNT,
         )
+        account = await TeacherAccountRepository.get_by_email(
+            db,
+            normalized_email,
+            lock=True,
+        )
+        if account is not None:
+            existing_membership = await TeacherMembershipRepository.get_by_account_and_tenant(
+                db,
+                account.id,
+                actor.tenant_id,
+                lock=True,
+            )
+            if TeacherInvitationService._membership_is_usable(existing_membership):
+                raise ConflictException(
+                    "This teacher is already an active member of this school.",
+                    payload={"code": "TEACHER_ALREADY_ACTIVE_MEMBER"},
+                )
         pending = await TeacherInvitationRepository.get_pending_for_email(
             db,
             actor.tenant_id,
@@ -835,7 +858,7 @@ class TeacherInvitationService:
             membership.department = invitation.department or membership.department
             membership.employment_type = invitation.employment_type or membership.employment_type
             await TeacherMembershipRepository.save(db, membership)
-        else:
+        elif TeacherInvitationService._membership_is_usable(membership):
             raise ConflictException("This teacher already has a usable membership in the school.")
 
         invitation.status = TeacherInvitationStatus.ACCEPTED

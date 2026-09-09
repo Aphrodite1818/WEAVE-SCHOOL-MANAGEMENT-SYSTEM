@@ -30,6 +30,7 @@ from app.modules.student_academics.write_guard import ensure_academic_write_wind
 from app.modules.students.enrollment_evidence import StudentEnrollmentEvidenceService
 from app.modules.students.models import (
     AcademicStatus,
+    Student,
     StudentAccountStatus,
     StudentEnrollment,
     StudentEnrollmentOutcome,
@@ -194,16 +195,20 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         no_current = (
             await StudentEnrollmentRepository.get_current(db, tenant_id, student_id)
         ) is None
+        no_upcoming = (
+            await StudentEnrollmentRepository.get_upcoming(db, tenant_id, student_id)
+        ) is None
+        can_formally_return = not undoable and no_current and no_upcoming
         return StudentLifecycleCapabilities(
             can_undo_withdrawal=undoable and student.status == AcademicStatus.WITHDRAWN,
             can_undo_expulsion=undoable and student.status == AcademicStatus.EXPELLED,
             can_undo_graduation=undoable and student.status == AcademicStatus.GRADUATED,
-            can_readmit=(not undoable and no_current and student.status == AcademicStatus.WITHDRAWN),
+            can_readmit=(can_formally_return and student.status == AcademicStatus.WITHDRAWN),
             can_reinstate_expelled=(
-                not undoable and no_current and student.status == AcademicStatus.EXPELLED
+                can_formally_return and student.status == AcademicStatus.EXPELLED
             ),
             can_reenrol_graduate=(
-                not undoable and no_current and student.status == AcademicStatus.GRADUATED
+                can_formally_return and student.status == AcademicStatus.GRADUATED
             ),
             undo_block_reason=reason,
         )
@@ -216,6 +221,17 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         student_id: UUID,
         effective_date: date,
     ) -> None:
+        upcoming = await StudentEnrollmentRepository.get_upcoming(
+            db,
+            tenant_id,
+            student_id,
+            lock=True,
+        )
+        if upcoming is not None:
+            raise ConflictException(
+                "Cancel the student's upcoming enrollment before applying a terminal action.",
+                payload={"code": "UPCOMING_ENROLLMENT_EXISTS"},
+            )
         current = await StudentEnrollmentRepository.get_current(
             db,
             tenant_id,
@@ -282,8 +298,8 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         actor: TenantAdmin,
         student_id: UUID,
         reason: str,
-        effective_date: date,
     ) -> StudentLifecycleTransitionResponse:
+        effective_date = date.today()
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         await StudentLifecycleService._ensure_terminal_exit_safe(
             db,
@@ -307,8 +323,8 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         actor: TenantAdmin,
         student_id: UUID,
         reason: str,
-        effective_date: date,
     ) -> StudentLifecycleTransitionResponse:
+        effective_date = date.today()
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         await StudentLifecycleService._ensure_terminal_exit_safe(
             db,
@@ -332,8 +348,8 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         actor: TenantAdmin,
         student_id: UUID,
         reason: str,
-        graduation_date: date,
     ) -> StudentLifecycleTransitionResponse:
+        graduation_date = date.today()
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         await StudentLifecycleService._ensure_terminal_exit_safe(
             db,
@@ -365,9 +381,15 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
             student_id,
             lock=True,
         )
-        if current is not None:
+        upcoming = await StudentEnrollmentRepository.get_upcoming(
+            db,
+            actor.tenant_id,
+            student_id,
+            lock=True,
+        )
+        if current is not None or upcoming is not None:
             raise ConflictException(
-                "End the student's current academic enrollment before archiving the profile."
+                "End the student's current or upcoming academic enrollment before archiving the profile."
             )
         return await LegacyStudentLifecycleService.archive(
             db,
@@ -690,6 +712,181 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         )
 
     @staticmethod
+    async def _restore_parent_links_after_return(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        student: Student,
+        previous_status: AcademicStatus,
+        terminal_audit: AcademicLifecycleAudit | None,
+    ) -> tuple[int, int]:
+        affected_links = 0
+        membership_ids: set[UUID] = set()
+        metadata = terminal_audit.metadata_json if terminal_audit is not None else {}
+        link_snapshots = metadata.get("parent_links", []) if isinstance(metadata, dict) else []
+        for snapshot in link_snapshots:
+            link = await StudentParentLinkRepository.get_by_id(
+                db,
+                tenant_id,
+                UUID(snapshot["id"]),
+                lock=True,
+            )
+            if link is None or not StudentLifecycleService._matches_snapshot(
+                link,
+                snapshot["after"],
+                ("status", "ended_at", "end_reason"),
+            ):
+                continue
+            link.status = StudentParentLinkStatus.ACTIVE
+            link.ended_at = None
+            link.end_reason = None
+            await StudentParentLinkRepository.save(db, link)
+            affected_links += 1
+            membership_ids.add(link.parent_membership_id)
+
+        if not link_snapshots and previous_status != AcademicStatus.EXPELLED:
+            eligible_status = (
+                StudentParentLinkStatus.READ_ONLY
+                if previous_status == AcademicStatus.WITHDRAWN
+                else StudentParentLinkStatus.ALUMNI_READ_ONLY
+            )
+            links = await StudentParentLinkRepository.list_for_student(
+                db,
+                tenant_id,
+                student.id,
+                statuses=[eligible_status],
+                lock=True,
+            )
+            for link in links:
+                link.status = StudentParentLinkStatus.ACTIVE
+                link.ended_at = None
+                link.end_reason = None
+                await StudentParentLinkRepository.save(db, link)
+                affected_links += 1
+                membership_ids.add(link.parent_membership_id)
+
+        recalculations = 0
+        for membership_id in membership_ids:
+            membership = await ParentMembershipRepository.get_by_id(
+                db,
+                membership_id,
+                tenant_id=tenant_id,
+                lock=True,
+            )
+            if membership is not None:
+                await StudentLifecycleService._recalculate_parent_membership(db, membership)
+                recalculations += 1
+        return affected_links, recalculations
+
+    @staticmethod
+    async def activate_due_return(
+        db: AsyncSession,
+        *,
+        student: Student,
+        commit: bool = True,
+    ) -> bool:
+        """Materialize access state once a scheduled return enrollment is effective."""
+
+        if student.status not in StudentLifecycleService.TERMINAL_ACTIONS:
+            return False
+        enrollment = await StudentEnrollmentRepository.get_current(
+            db,
+            student.tenant_id,
+            student.id,
+            lock=True,
+        )
+        if enrollment is None:
+            return False
+
+        previous_status = student.status
+        terminal_audit = (
+            await db.execute(
+                select(AcademicLifecycleAudit)
+                .where(
+                    AcademicLifecycleAudit.tenant_id == student.tenant_id,
+                    AcademicLifecycleAudit.entity_type == "student",
+                    AcademicLifecycleAudit.entity_id == student.id,
+                    AcademicLifecycleAudit.action
+                    == StudentLifecycleService.TERMINAL_ACTIONS[previous_status],
+                )
+                .order_by(AcademicLifecycleAudit.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        student.status = AcademicStatus.ACTIVE
+        student.promotion_hold = False
+        student.is_active = True
+        student.account_status = StudentAccountStatus.ACTIVE
+        student.graduation_date = None
+        await StudentRepository.save(db, student)
+        await AuthIdentityService.ensure_for_actor(
+            db,
+            tenant_id=student.tenant_id,
+            payload=AuthIdentityCreate(
+                identifier=student.admission_number,
+                identifier_type=IdentifierType.ADMISSION_NUMBER,
+                actor_type=ActorType.STUDENT,
+                actor_id=student.id,
+                is_active=True,
+            ),
+        )
+        await StudentLifecycleService._restore_parent_links_after_return(
+            db,
+            tenant_id=student.tenant_id,
+            student=student,
+            previous_status=previous_status,
+            terminal_audit=terminal_audit,
+        )
+        if commit:
+            await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
+            await db.refresh(student)
+        return True
+
+    @staticmethod
+    async def activate_due_returns_for_tenant(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+    ) -> int:
+        """Materialize all date-effective formal returns for one tenant."""
+
+        students = list(
+            (
+                await db.execute(
+                    select(Student)
+                    .join(
+                        StudentEnrollment,
+                        (StudentEnrollment.tenant_id == Student.tenant_id)
+                        & (StudentEnrollment.student_id == Student.id),
+                    )
+                    .where(
+                        Student.tenant_id == tenant_id,
+                        Student.status.in_(StudentLifecycleService.TERMINAL_ACTIONS),
+                        StudentEnrollment.is_current.is_(True),
+                    )
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .unique()
+            .all()
+        )
+        changed = 0
+        for student in students:
+            changed += int(
+                await StudentLifecycleService.activate_due_return(
+                    db,
+                    student=student,
+                    commit=False,
+                )
+            )
+        if changed:
+            await db.commit()
+            await AuthIdentityService.invalidate_after_commit(db)
+        return changed
+
+    @staticmethod
     async def _return_after_terminal(
         db: AsyncSession,
         *,
@@ -734,16 +931,20 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
                 f"A new return enrollment must begin after that enrollment. If the {noun} "
                 f"was made by mistake, use Undo {noun} instead."
             )
-        if (
-            await StudentEnrollmentRepository.get_current(
-                db,
-                actor.tenant_id,
-                student_id,
-                lock=True,
-            )
-            is not None
-        ):
+        if await StudentEnrollmentRepository.get_current(
+            db,
+            actor.tenant_id,
+            student_id,
+            lock=True,
+        ) is not None:
             raise ConflictException("Student already has a current enrollment.")
+        if await StudentEnrollmentRepository.get_upcoming(
+            db,
+            actor.tenant_id,
+            student_id,
+            lock=True,
+        ) is not None:
+            raise ConflictException("Student already has an upcoming enrollment.")
 
         session = await AcademicSessionLifecycleRepository.get_by_id(
             db,
@@ -794,7 +995,10 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
                 }[expected_status]
                 raise ConflictException(
                     f"This student's previous enrollment ended on {previous.ended_on.isoformat()}. "
-                    f"A new {action_label} must begin after that enrollment."
+                    f"A new {action_label} cannot begin on the same date. If the previous exit "
+                    f"was a mistake, use Undo. Otherwise choose "
+                    f"{previous.ended_on + timedelta(days=1)} or later.",
+                    payload={"code": "ENROLLMENT_DATE_OVERLAP"},
                 )
 
         entry_outcome = (
@@ -816,12 +1020,14 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         await StudentEnrollmentRepository.add(db, enrollment)
 
         previous_status = student.status
-        student.status = AcademicStatus.ACTIVE
-        student.promotion_hold = False
-        student.is_active = True
-        student.account_status = StudentAccountStatus.ACTIVE
-        student.graduation_date = None
-        await StudentRepository.save(db, student)
+        activates_now = payload.effective_date <= date.today()
+        if activates_now:
+            student.status = AcademicStatus.ACTIVE
+            student.promotion_hold = False
+            student.is_active = True
+            student.account_status = StudentAccountStatus.ACTIVE
+            student.graduation_date = None
+            await StudentRepository.save(db, student)
         await AuthIdentityService.ensure_for_actor(
             db,
             tenant_id=actor.tenant_id,
@@ -835,59 +1041,17 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         )
 
         affected_links = 0
-        membership_ids: set[UUID] = set()
-        metadata = terminal_audit.metadata_json if terminal_audit is not None else {}
-        link_snapshots = metadata.get("parent_links", []) if isinstance(metadata, dict) else []
-        for snapshot in link_snapshots:
-            link = await StudentParentLinkRepository.get_by_id(
-                db,
-                actor.tenant_id,
-                UUID(snapshot["id"]),
-                lock=True,
-            )
-            if link is None or not StudentLifecycleService._matches_snapshot(
-                link,
-                snapshot["after"],
-                ("status", "ended_at", "end_reason"),
-            ):
-                continue
-            link.status = StudentParentLinkStatus.ACTIVE
-            link.ended_at = None
-            link.end_reason = None
-            await StudentParentLinkRepository.save(db, link)
-            affected_links += 1
-            membership_ids.add(link.parent_membership_id)
-
-        if not link_snapshots and expected_status != AcademicStatus.EXPELLED:
-            eligible_status = (
-                StudentParentLinkStatus.READ_ONLY
-                if expected_status == AcademicStatus.WITHDRAWN
-                else StudentParentLinkStatus.ALUMNI_READ_ONLY
-            )
-            links = await StudentParentLinkRepository.list_for_student(
-                db,
-                actor.tenant_id,
-                student.id,
-                statuses=[eligible_status],
-                lock=True,
-            )
-            for link in links:
-                link.status = StudentParentLinkStatus.ACTIVE
-                await StudentParentLinkRepository.save(db, link)
-                affected_links += 1
-                membership_ids.add(link.parent_membership_id)
-
         recalculations = 0
-        for membership_id in membership_ids:
-            membership = await ParentMembershipRepository.get_by_id(
-                db,
-                membership_id,
-                tenant_id=actor.tenant_id,
-                lock=True,
+        if activates_now:
+            affected_links, recalculations = (
+                await StudentLifecycleService._restore_parent_links_after_return(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    student=student,
+                    previous_status=expected_status,
+                    terminal_audit=terminal_audit,
+                )
             )
-            if membership is not None:
-                await StudentLifecycleService._recalculate_parent_membership(db, membership)
-                recalculations += 1
 
         await StudentLifecycleService._record_lifecycle_audit(
             db,
@@ -895,7 +1059,7 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
             student_id=student.id,
             action=action,
             previous_status=previous_status,
-            new_status=AcademicStatus.ACTIVE,
+            new_status=AcademicStatus.ACTIVE if activates_now else previous_status,
             reason=payload.reason,
             metadata={
                 "new_enrollment_id": str(enrollment.id),
@@ -903,6 +1067,7 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
                 "academic_level_id": str(payload.target_academic_level_id),
                 "class_id": str(classroom.id),
                 "effective_date": payload.effective_date.isoformat(),
+                "scheduled": not activates_now,
             },
         )
         await db.commit()
@@ -911,7 +1076,7 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         return StudentLifecycleTransitionResponse(
             student=await StudentService._build_detail_response(db, student),
             previous_status=previous_status,
-            new_status=student.status,
+            new_status=AcademicStatus.ACTIVE if activates_now else previous_status,
             session_revoked=False,
             access_codes_revoked=0,
             affected_parent_links=affected_links,

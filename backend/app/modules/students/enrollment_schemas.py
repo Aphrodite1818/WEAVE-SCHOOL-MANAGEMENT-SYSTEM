@@ -43,13 +43,6 @@ class StudentClassReassignmentRequest(EnrollmentInput):
     effective_date: date
     reason: str = Field(min_length=3, max_length=500)
 
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        if value > date.today():
-            raise ValueError("effective_date cannot be in the future")
-        return value
-
     @field_validator("reason", mode="before")
     @classmethod
     def clean_reason(cls, value: str) -> str:
@@ -68,13 +61,6 @@ class StudentAcademicLevelReassignmentRequest(EnrollmentInput):
     effective_date: date
     reason: str = Field(min_length=3, max_length=500)
 
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        if value > date.today():
-            raise ValueError("effective_date cannot be in the future")
-        return value
-
     @field_validator("reason", mode="before")
     @classmethod
     def clean_reason(cls, value: str) -> str:
@@ -91,12 +77,24 @@ class PlacementImpactPreviewRequest(EnrollmentInput):
     academic_term_id: uuid.UUID
     effective_date: date
 
-    @field_validator("effective_date")
+
+
+class StudentUpcomingEnrollmentUpdateRequest(EnrollmentInput):
+    """Edit a placement segment before it becomes effective."""
+
+    target_academic_level_id: uuid.UUID
+    target_class_id: uuid.UUID
+    academic_session_id: uuid.UUID
+    effective_date: date
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason", mode="before")
     @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        if value > date.today():
-            raise ValueError("effective_date cannot be in the future")
-        return value
+    def clean_reason(cls, value: str) -> str:
+        cleaned = str(value or "").strip()
+        if not cleaned:
+            raise ValueError("reason cannot be empty")
+        return cleaned
 
 
 class PlacementImpactSubject(BaseModel):

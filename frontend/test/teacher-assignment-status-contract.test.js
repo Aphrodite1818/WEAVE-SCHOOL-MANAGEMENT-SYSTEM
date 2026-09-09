@@ -42,6 +42,13 @@ test("scheduled assignments and takeovers use dedicated lifecycle controls", () 
   assert.match(source, /updateScheduledTeacherAssignment/);
   assert.match(source, /cancelScheduledTeacherAssignment/);
   assert.doesNotMatch(source, /Delete unused/);
+  assert.match(source, /teacher_membership_id: ""/);
+  assert.match(source, /replacementTeacherOptions/);
+  assert.match(source, /Choose a different teacher/);
+  assert.match(source, /visibleAssignments/);
+  assert.match(source, /linked_takeover: true/);
+  assert.match(source, /Last teaching date/);
+  assert.match(source, /remains current through today/);
 });
 
 test("early ending warns that the planned takeover is cancelled", () => {

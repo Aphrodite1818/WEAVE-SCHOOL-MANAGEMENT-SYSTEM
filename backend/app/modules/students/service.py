@@ -83,6 +83,8 @@ from app.modules.students.schemas import (
     StudentChangePasswordRequest,
     StudentCreate,
     StudentDetailResponse,
+    StudentEnrollmentDetailResponse,
+    StudentEnrollmentResponse,
     StudentHardDeleteEligibilityResponse,
     StudentLifecycleTransitionResponse,
     StudentOnboardingStatusResponse,
@@ -179,6 +181,9 @@ class StudentService:
         db: AsyncSession,
         student: Student,
     ) -> StudentDetailResponse:
+        from app.modules.students.lifecycle_service import StudentLifecycleService
+
+        await StudentLifecycleService.activate_due_return(db, student=student)
         enrollment = await StudentEnrollmentRepository.get_current(
             db,
             student.tenant_id,
@@ -227,6 +232,40 @@ class StudentService:
             is_current=True,
         )
         current_term = terms[0] if terms else None
+        upcoming = await StudentEnrollmentRepository.get_upcoming(
+            db,
+            student.tenant_id,
+            student.id,
+        )
+        upcoming_response = None
+        if upcoming is not None:
+            upcoming_classroom = None
+            if upcoming.class_id is not None:
+                upcoming_classroom = await ClassRoomRepository.get_by_id(
+                    db,
+                    student.tenant_id,
+                    upcoming.class_id,
+                )
+            upcoming_level = await AcademicLevelRepository.get_by_id(
+                db,
+                student.tenant_id,
+                upcoming.academic_level_id,
+            )
+            upcoming_session = await StudentAcademicRepository.get_academic_session_by_id(
+                db,
+                student.tenant_id,
+                upcoming.academic_session_id,
+            )
+            upcoming_response = StudentEnrollmentDetailResponse(
+                **StudentEnrollmentResponse.model_validate(upcoming).model_dump(),
+                class_name=(
+                    upcoming_classroom.academic_level_name if upcoming_classroom else None
+                ),
+                class_arm=upcoming_classroom.arm if upcoming_classroom else None,
+                academic_level_name=upcoming_level.name if upcoming_level else None,
+                academic_session_name=upcoming_session.name if upcoming_session else None,
+                lifecycle_state="upcoming",
+            )
         student_data = StudentResponse.model_validate(student).model_dump()
         student_data["class_id"] = enrollment.class_id if enrollment else None
         student_data["academic_level_id"] = enrollment.academic_level_id if enrollment else None
@@ -237,6 +276,7 @@ class StudentService:
             class_arm=classroom.arm if classroom else None,
             academic_level_name=academic_level.name if academic_level else None,
             current_enrollment_id=enrollment.id if enrollment else None,
+            upcoming_enrollment=upcoming_response,
             current_academic_session_id=current_session.id if current_session else None,
             current_academic_session_name=(current_session.name if current_session else None),
             current_academic_term_id=current_term.id if current_term else None,

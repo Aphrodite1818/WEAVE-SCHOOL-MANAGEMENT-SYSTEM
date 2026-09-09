@@ -6,19 +6,24 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import BadRequestException, ConflictException
 from app.modules.student_academics.models import AcademicSessionStatus
 from app.modules.students.lifecycle_service import StudentLifecycleService
 from app.modules.students.models import (
     AcademicStatus,
+    StudentEnrollment,
     StudentAccountStatus,
     StudentEnrollmentOutcome,
 )
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.students.schemas import (
+    StudentExpelRequest,
+    StudentGraduateRequest,
     StudentHardDeleteEligibilityResponse,
     StudentReturnEnrollmentRequest,
+    StudentWithdrawRequest,
 )
 from app.modules.students.service import StudentService
 
@@ -35,6 +40,234 @@ def db():
         refresh=AsyncMock(),
         execute=AsyncMock(),
     )
+
+
+@pytest.fixture(autouse=True)
+def no_existing_upcoming_enrollment(monkeypatch):
+    monkeypatch.setattr(
+        StudentEnrollmentRepository,
+        "get_upcoming",
+        AsyncMock(return_value=None),
+    )
+
+
+@pytest.mark.parametrize(
+    ("request_type", "date_field"),
+    [
+        (StudentWithdrawRequest, "effective_date"),
+        (StudentExpelRequest, "effective_date"),
+        (StudentGraduateRequest, "graduation_date"),
+    ],
+)
+def test_terminal_request_contracts_reject_client_supplied_dates(request_type, date_field):
+    with pytest.raises(ValidationError):
+        request_type(reason="Immediate lifecycle action", **{date_field: date.today()})
+
+
+@pytest.mark.parametrize(
+    ("method_name", "target_status"),
+    [
+        ("withdraw", AcademicStatus.WITHDRAWN),
+        ("expel", AcademicStatus.EXPELLED),
+        ("graduate", AcademicStatus.GRADUATED),
+    ],
+)
+@pytest.mark.asyncio
+async def test_terminal_services_always_use_server_today(
+    monkeypatch,
+    actor,
+    db,
+    method_name,
+    target_status,
+):
+    ensure_safe = AsyncMock()
+    transition = AsyncMock(return_value=SimpleNamespace())
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.ensure_academic_write_window",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(StudentLifecycleService, "_ensure_terminal_exit_safe", ensure_safe)
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.LegacyStudentLifecycleService._transition",
+        transition,
+    )
+
+    await getattr(StudentLifecycleService, method_name)(
+        db,
+        actor=actor,
+        student_id=uuid4(),
+        reason="Immediate lifecycle action",
+    )
+
+    assert ensure_safe.await_args.kwargs["effective_date"] == date.today()
+    assert transition.await_args.kwargs["effective_date"] == date.today()
+    assert transition.await_args.kwargs["target_status"] == target_status
+
+
+def test_future_enrollment_is_not_current_before_its_start_date():
+    enrollment = StudentEnrollment(
+        tenant_id=uuid4(),
+        student_id=uuid4(),
+        academic_level_id=uuid4(),
+        academic_session_id=uuid4(),
+        started_on=date.today() + timedelta(days=1),
+        entry_outcome=StudentEnrollmentOutcome.ENROLLED,
+    )
+
+    assert enrollment.is_current is False
+
+
+def test_return_contract_accepts_future_enrollment_date():
+    payload = StudentReturnEnrollmentRequest(
+        target_academic_level_id=uuid4(),
+        target_class_id=uuid4(),
+        academic_session_id=uuid4(),
+        effective_date=date.today() + timedelta(days=7),
+        reason="Approved future return",
+    )
+
+    assert payload.effective_date == date.today() + timedelta(days=7)
+
+
+@pytest.mark.asyncio
+async def test_future_formal_return_keeps_terminal_access_until_start(
+    monkeypatch,
+    actor,
+    db,
+):
+    student = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=actor.tenant_id,
+        admission_number="STD-FUTURE",
+        status=AcademicStatus.GRADUATED,
+        is_archived=False,
+    )
+    previous = SimpleNamespace(id=uuid4(), ended_on=date.today())
+    session = SimpleNamespace(
+        id=uuid4(),
+        status=AcademicSessionStatus.OPEN,
+        is_current=True,
+        start_date=date.today() - timedelta(days=5),
+        end_date=date.today() + timedelta(days=60),
+    )
+    classroom = SimpleNamespace(
+        id=uuid4(),
+        academic_level_id=uuid4(),
+        is_active=True,
+        archived_at=None,
+    )
+    future_date = date.today() + timedelta(days=7)
+    save_student = AsyncMock()
+    add_enrollment = AsyncMock()
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.ensure_academic_write_window",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(StudentRepository, "get_by_id", AsyncMock(return_value=student))
+    monkeypatch.setattr(StudentRepository, "save", save_student)
+    monkeypatch.setattr(
+        StudentLifecycleService,
+        "_undo_eligibility",
+        AsyncMock(return_value=(False, "Historical action", SimpleNamespace(metadata_json={}))),
+    )
+    monkeypatch.setattr(StudentEnrollmentRepository, "get_current", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        StudentEnrollmentRepository,
+        "list_for_student",
+        AsyncMock(return_value=[previous]),
+    )
+    monkeypatch.setattr(StudentEnrollmentRepository, "add", add_enrollment)
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.AcademicSessionLifecycleRepository.get_by_id",
+        AsyncMock(return_value=session),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.ClassRoomRepository.get_by_id",
+        AsyncMock(return_value=classroom),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.AuthIdentityService.ensure_for_actor",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.AuthIdentityService.invalidate_after_commit",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(StudentLifecycleService, "_record_lifecycle_audit", AsyncMock())
+    monkeypatch.setattr(
+        StudentService,
+        "_build_detail_response",
+        AsyncMock(return_value=SimpleNamespace(id=student.id)),
+    )
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.StudentLifecycleTransitionResponse",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    response = await StudentLifecycleService.reenrol_graduate(
+        db,
+        actor=actor,
+        student_id=student.id,
+        payload=StudentReturnEnrollmentRequest(
+            target_academic_level_id=classroom.academic_level_id,
+            target_class_id=classroom.id,
+            academic_session_id=session.id,
+            effective_date=future_date,
+            reason="Approved future re-enrollment",
+        ),
+    )
+
+    created = add_enrollment.await_args.args[1]
+    assert created.student_id == student.id
+    assert created.started_on == future_date
+    assert student.status == AcademicStatus.GRADUATED
+    assert response.new_status == AcademicStatus.GRADUATED
+    save_student.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_due_formal_return_materializes_active_state(monkeypatch, actor, db):
+    student = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=actor.tenant_id,
+        admission_number="STD-DUE",
+        status=AcademicStatus.WITHDRAWN,
+        promotion_hold=True,
+        is_active=False,
+        account_status=StudentAccountStatus.INACTIVE,
+        graduation_date=None,
+    )
+    monkeypatch.setattr(
+        StudentEnrollmentRepository,
+        "get_current",
+        AsyncMock(return_value=SimpleNamespace(id=uuid4())),
+    )
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: None)
+    save_student = AsyncMock()
+    monkeypatch.setattr(StudentRepository, "save", save_student)
+    monkeypatch.setattr(
+        "app.modules.students.lifecycle_service.AuthIdentityService.ensure_for_actor",
+        AsyncMock(),
+    )
+    restore_links = AsyncMock(return_value=(0, 0))
+    monkeypatch.setattr(
+        StudentLifecycleService,
+        "_restore_parent_links_after_return",
+        restore_links,
+    )
+
+    changed = await StudentLifecycleService.activate_due_return(
+        db,
+        student=student,
+        commit=False,
+    )
+
+    assert changed is True
+    assert student.status == AcademicStatus.ACTIVE
+    assert student.is_active is True
+    assert student.account_status == StudentAccountStatus.ACTIVE
+    save_student.assert_awaited_once()
+    restore_links.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -376,7 +609,7 @@ async def test_formal_return_must_begin_after_previous_enrollment(monkeypatch, a
         AsyncMock(return_value=classroom),
     )
 
-    with pytest.raises(ConflictException, match="must begin after"):
+    with pytest.raises(ConflictException, match="cannot begin on the same date.*use Undo"):
         await StudentLifecycleService.readmit(
             db,
             actor=actor,

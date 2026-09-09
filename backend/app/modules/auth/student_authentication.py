@@ -57,6 +57,10 @@ async def authenticate_student_actor(
     if student is None:
         raise UnauthorizedException("Invalid admission number or credential.")
 
+    from app.modules.students.lifecycle_service import StudentLifecycleService
+
+    await StudentLifecycleService.activate_due_return(db, student=student)
+
     if student.status == AcademicStatus.EXPELLED:
         raise UnauthorizedException("This account has been expelled and can no longer be accessed.")
     if student.status == AcademicStatus.SUSPENDED:

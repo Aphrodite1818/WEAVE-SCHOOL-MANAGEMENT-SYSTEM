@@ -167,6 +167,18 @@ export const studentService = {
       payload,
     ),
 
+  updateUpcomingEnrollment: (studentId, enrollmentId, payload) =>
+    api.patch(
+      `/tenant-admin/students/${studentId}/upcoming-enrollments/${enrollmentId}`,
+      payload,
+    ),
+
+  cancelUpcomingEnrollment: (studentId, enrollmentId, payload) =>
+    api.post(
+      `/tenant-admin/students/${studentId}/upcoming-enrollments/${enrollmentId}/cancel`,
+      payload,
+    ),
+
   suspendStudent: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/suspend`, payload),
 

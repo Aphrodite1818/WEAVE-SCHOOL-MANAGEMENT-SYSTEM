@@ -1546,10 +1546,6 @@ class StudentAcademicService:
                     TeacherAssignmentLifecycleAudit.curriculum_subject_id
                     == successor.curriculum_subject_id,
                     TeacherAssignmentLifecycleAudit.action == "teacher_reassigned",
-                    TeacherAssignmentLifecycleAudit.previous_teacher_membership_id
-                    == predecessor.teacher_membership_id,
-                    TeacherAssignmentLifecycleAudit.previous_effective_from
-                    == predecessor.effective_from,
                 )
                 .order_by(TeacherAssignmentLifecycleAudit.created_at.desc())
                 .limit(1)
@@ -2318,9 +2314,9 @@ class StudentAcademicService:
             takeover = takeovers.get(predecessor.id)
             if takeover is not None:
                 valid_origin = any(
-                    origin.previous_teacher_membership_id
-                    == predecessor.teacher_membership_id
-                    and origin.previous_effective_from == predecessor.effective_from
+                    origin.class_id == takeover.get("class_id")
+                    and origin.curriculum_subject_id
+                    == takeover.get("curriculum_subject_id")
                     for origin in origins_by_successor.get(takeover["id"], [])
                 )
                 if not valid_origin:

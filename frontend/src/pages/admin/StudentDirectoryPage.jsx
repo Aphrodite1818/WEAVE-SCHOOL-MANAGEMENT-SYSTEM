@@ -73,6 +73,12 @@ const localDateInputValue = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
+const tomorrowDateInputValue = () => {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return localDateInputValue(tomorrow);
+};
+
 const titleCase = (value) =>
   String(value || "")
     .replaceAll("_", " ")
@@ -121,6 +127,7 @@ const lifecycleConfig = {
     method: "reinstateExpelledStudent",
     usesPlacement: true,
     usesEffectiveDate: true,
+    returnFlow: true,
   },
   readmit: {
     label: "Readmit student",
@@ -128,6 +135,7 @@ const lifecycleConfig = {
     method: "readmitStudent",
     usesPlacement: true,
     usesEffectiveDate: true,
+    returnFlow: true,
   },
   reenrolGraduate: {
     label: "Re-enrol former student",
@@ -135,6 +143,7 @@ const lifecycleConfig = {
     method: "reenrolGraduatedStudent",
     usesPlacement: true,
     usesEffectiveDate: true,
+    returnFlow: true,
   },
   undoWithdrawal: {
     label: "Undo withdrawal",
@@ -155,19 +164,19 @@ const lifecycleConfig = {
     label: "Withdraw",
     icon: UserMinus,
     method: "withdrawStudent",
-    usesEffectiveDate: true,
+    immediate: true,
   },
   expel: {
     label: "Expel",
     icon: ShieldOff,
     method: "expelStudent",
-    usesEffectiveDate: true,
+    immediate: true,
   },
   graduate: {
     label: "Graduate",
     icon: GraduationCap,
     method: "graduateStudent",
-    usesGraduationDate: true,
+    immediate: true,
   },
   archive: {
     label: "Archive",
@@ -204,7 +213,7 @@ const actionsForStudent = (student) => {
     else if (capabilities.can_reenrol_graduate) actions.push("reenrolGraduate");
   }
 
-  if (!student.current_enrollment_id) actions.push("archive");
+  if (!student.current_enrollment_id && !student.upcoming_enrollment) actions.push("archive");
   return actions;
 };
 
@@ -331,7 +340,9 @@ function StudentActions({
   const [menuOpen, setMenuOpen] = useState(false);
   const actions = actionsForStudent(student);
   const placementDisabled =
-    student.is_archived || !["active", "suspended"].includes(String(student.status || "").toLowerCase());
+    student.is_archived ||
+    Boolean(student.upcoming_enrollment) ||
+    !["active", "suspended"].includes(String(student.status || "").toLowerCase());
 
   const choose = (handler) => {
     setMenuOpen(false);
@@ -472,6 +483,19 @@ function StudentCard({ student, ...actions }) {
           </p>
         </div>
       </div>
+      {student.upcoming_enrollment ? (
+        <div className="mt-3 rounded-xl border border-warning/30 bg-warning-soft/35 px-3 py-3 text-sm">
+          <p className="text-xs font-semibold uppercase text-warning">Upcoming enrollment</p>
+          <p className="mt-1 font-medium text-text">
+            {[student.upcoming_enrollment.academic_level_name, student.upcoming_enrollment.class_arm]
+              .filter(Boolean)
+              .join(" ") || "Placement scheduled"}
+          </p>
+          <p className="mt-1 text-xs text-text-muted">
+            Starts {formatDate(student.upcoming_enrollment.started_on)}
+          </p>
+        </div>
+      ) : null}
       <div className="mt-4 flex justify-end border-t border-border/70 pt-3">
         <StudentActions student={student} {...actions} />
       </div>
@@ -666,14 +690,14 @@ function StudentDirectoryPage() {
   };
 
   const openLifecycle = (student, actionKey) => {
+    const config = lifecycleConfig[actionKey];
     setFieldErrors({});
     setLifecycleState({
       student,
       actionKey,
       form: {
         reason: "",
-        effective_date: localDateInputValue(),
-        graduation_date: localDateInputValue(),
+        effective_date: config.returnFlow ? tomorrowDateInputValue() : localDateInputValue(),
         promotion_hold: true,
         target_class_id: student.class_id || classes[0]?.id || "",
         target_academic_level_id: student.academic_level_id || "",
@@ -695,7 +719,6 @@ function StudentDirectoryPage() {
     const payload = { reason };
     if (config.usesPromotionHold) payload.promotion_hold = form.promotion_hold;
     if (config.usesEffectiveDate) payload.effective_date = form.effective_date;
-    if (config.usesGraduationDate) payload.graduation_date = form.graduation_date;
     if (config.usesPlacement) {
       payload.target_academic_level_id = form.target_academic_level_id;
       payload.target_class_id = form.target_class_id;
@@ -713,10 +736,17 @@ function StudentDirectoryPage() {
     try {
       const response = await studentService[config.method](student.id, payload);
       const updatedStudent = response?.student || response;
-      showSuccess(`${config.label} completed.`);
+      if (config.returnFlow && updatedStudent?.upcoming_enrollment) {
+        showSuccess(
+          `Return enrollment scheduled for ${formatDate(updatedStudent.upcoming_enrollment.started_on)}. Access remains unchanged until then.`,
+        );
+      } else {
+        showSuccess(`${config.label} completed.`);
+      }
       setLifecycleState(null);
       if (
         ["restore", "reinstate", "reinstateExpelled", "readmit", "reenrolGraduate"].includes(actionKey) &&
+        !updatedStudent?.upcoming_enrollment &&
         updatedStudent?.password_reset_required
       ) {
         showWarning("Student access is restored, but a new access code is still required.");
@@ -762,6 +792,72 @@ function StudentDirectoryPage() {
     } catch (requestError) {
       showError(parseApiError(requestError, "Failed to load placement history.").message);
       setPlacementState(null);
+    }
+  };
+
+  const openUpcomingEdit = (student, enrollment) => {
+    setFieldErrors({});
+    setPlacementState({
+      type: "upcomingEdit",
+      student,
+      enrollment,
+      form: {
+        target_academic_level_id: enrollment.academic_level_id || "",
+        target_class_id: enrollment.class_id || "",
+        academic_session_id: enrollment.academic_session_id || currentSession?.id || "",
+        effective_date: enrollment.started_on || tomorrowDateInputValue(),
+        reason: "",
+      },
+    });
+  };
+
+  const submitUpcomingEdit = async (event) => {
+    event.preventDefault();
+    if (!placementState?.form || !placementState?.enrollment) return;
+    const { student, enrollment, form } = placementState;
+    if (form.reason.trim().length < 3) {
+      setFieldErrors({ reason: "Enter a reason with at least three characters." });
+      return;
+    }
+    setBusyId(student.id);
+    try {
+      await studentService.updateUpcomingEnrollment(student.id, enrollment.id, {
+        target_academic_level_id: form.target_academic_level_id,
+        target_class_id: form.target_class_id,
+        academic_session_id: form.academic_session_id,
+        effective_date: form.effective_date,
+        reason: form.reason.trim(),
+      });
+      showSuccess("Upcoming enrollment updated.");
+      setPlacementState(null);
+      await refresh();
+    } catch (requestError) {
+      const parsed = parseApiError(requestError, "Failed to update upcoming enrollment.");
+      setFieldErrors(parsed.fieldErrors || {});
+      showError(parsed.message);
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const submitUpcomingCancel = async (event) => {
+    event.preventDefault();
+    const reason = String(placementState?.reason || "").trim();
+    if (!placementState?.enrollment || reason.length < 3) return;
+    setBusyId(placementState.student.id);
+    try {
+      await studentService.cancelUpcomingEnrollment(
+        placementState.student.id,
+        placementState.enrollment.id,
+        { reason },
+      );
+      showSuccess("Upcoming enrollment cancelled.");
+      setPlacementState(null);
+      await refresh();
+    } catch (requestError) {
+      showError(parseApiError(requestError, "Failed to cancel upcoming enrollment.").message);
+    } finally {
+      setBusyId("");
     }
   };
 
@@ -1113,6 +1209,13 @@ function StudentDirectoryPage() {
                 <td className="px-4 py-3.5 align-middle">
                   <p className="text-sm font-medium text-text-soft">{studentClassLabel(student)}</p>
                   <p className="mt-0.5 text-xs text-text-muted">Admitted {formatDate(student.admission_date)}</p>
+                  {student.upcoming_enrollment ? (
+                    <p className="mt-1 text-xs font-medium text-warning">
+                      Upcoming: {[student.upcoming_enrollment.academic_level_name, student.upcoming_enrollment.class_arm]
+                        .filter(Boolean)
+                        .join(" ") || "placement"} from {formatDate(student.upcoming_enrollment.started_on)}
+                    </p>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3.5 align-middle">
                   <div className="flex flex-wrap gap-1.5">
@@ -1289,10 +1392,16 @@ function StudentDirectoryPage() {
               <p className="font-semibold text-text">{displayName(lifecycleState.student)}</p>
               <p className="mt-1 text-text-muted">{lifecycleState.student.admission_number}</p>
             </div>
+            {lifecycleConfig[lifecycleState.actionKey].immediate ? (
+              <p className="rounded-xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm text-text-soft">
+                Effective immediately - {formatDate(localDateInputValue())}
+              </p>
+            ) : null}
             {lifecycleConfig[lifecycleState.actionKey].usesEffectiveDate ? (
               <Input
                 label="Effective date"
                 type="date"
+                min={localDateInputValue()}
                 value={lifecycleState.form.effective_date}
                 required
                 error={fieldErrors.effective_date}
@@ -1301,17 +1410,11 @@ function StudentDirectoryPage() {
                 }
               />
             ) : null}
-            {lifecycleConfig[lifecycleState.actionKey].usesGraduationDate ? (
-              <Input
-                label="Graduation date"
-                type="date"
-                value={lifecycleState.form.graduation_date}
-                required
-                error={fieldErrors.graduation_date}
-                onChange={(event) =>
-                  setLifecycleState((current) => ({ ...current, form: { ...current.form, graduation_date: event.target.value } }))
-                }
-              />
+            {lifecycleConfig[lifecycleState.actionKey].returnFlow ? (
+              <p className="text-sm text-text-muted">
+                A previous enrollment owns its final date. If the exit was a mistake, use Undo;
+                otherwise choose the following day or later. Future return dates are allowed.
+              </p>
             ) : null}
             {lifecycleConfig[lifecycleState.actionKey].usesPlacement ? (
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1411,13 +1514,32 @@ function StudentDirectoryPage() {
                       {item.class_id ? item.class_name || "Class assigned" : "Class: Unassigned"}
                     </p>
                   </div>
-                  <Badge variant={item.ended_on ? "default" : "success"}>
-                    {item.ended_on ? `${formatDate(item.started_on)} – ${formatDate(item.ended_on)}` : `${formatDate(item.started_on)} – Current`}
+                  <Badge variant={item.lifecycle_state === "current" ? "success" : item.lifecycle_state === "upcoming" ? "warning" : "default"}>
+                    {item.lifecycle_state === "upcoming"
+                      ? `Upcoming · starts ${formatDate(item.started_on)}`
+                      : item.lifecycle_state === "current"
+                        ? `${formatDate(item.started_on)} – Current`
+                        : `${formatDate(item.started_on)} – ${formatDate(item.ended_on)}`}
                   </Badge>
                 </div>
                 <p className="mt-2 text-xs text-text-muted">
                   Entry: {titleCase(item.entry_outcome)}{item.entry_reason ? ` · ${item.entry_reason}` : ""}
                 </p>
+                {item.lifecycle_state === "upcoming" ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="small" variant="outline" onClick={() => openUpcomingEdit(placementState.student, item)}>
+                      Edit upcoming
+                    </Button>
+                    <Button
+                      type="button"
+                      size="small"
+                      variant="danger"
+                      onClick={() => setPlacementState({ type: "upcomingCancel", student: placementState.student, enrollment: item, reason: "" })}
+                    >
+                      Cancel upcoming
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -1467,7 +1589,6 @@ function StudentDirectoryPage() {
               <Input
                 label="Effective date"
                 type="date"
-                max={localDateInputValue()}
                 value={placementState.form.effective_date}
                 required
                 onChange={(event) => updatePlacementForm("effective_date", event.target.value)}
@@ -1501,6 +1622,86 @@ function StudentDirectoryPage() {
             </div>
           </form>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={placementState?.type === "upcomingEdit"}
+        title="Edit upcoming enrollment"
+        description="Change a placement before it becomes effective. Current and historical placement remain intact."
+        onClose={() => !busyId && setPlacementState(null)}
+        closeOnOverlay={!busyId}
+      >
+        {placementState?.form ? (
+          <form onSubmit={submitUpcomingEdit} className="space-y-4">
+            <SelectField
+              label="Academic level"
+              value={placementState.form.target_academic_level_id}
+              options={levelOptions}
+              required
+              onChange={(value) => updatePlacementForm("target_academic_level_id", value)}
+            />
+            <SelectField
+              label="Class"
+              value={placementState.form.target_class_id}
+              options={placementClassOptions}
+              required
+              onChange={(value) => updatePlacementForm("target_class_id", value)}
+            />
+            <SelectField
+              label="Academic session"
+              value={placementState.form.academic_session_id}
+              options={sessionOptions}
+              required
+              onChange={(value) => updatePlacementForm("academic_session_id", value)}
+            />
+            <Input
+              label="Starts on"
+              type="date"
+              min={tomorrowDateInputValue()}
+              value={placementState.form.effective_date}
+              required
+              onChange={(event) => updatePlacementForm("effective_date", event.target.value)}
+            />
+            <Input
+              label="Audit reason"
+              value={placementState.form.reason}
+              minLength={3}
+              maxLength={500}
+              required
+              error={fieldErrors.reason}
+              onChange={(event) => updatePlacementForm("reason", event.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setPlacementState(null)}>Cancel</Button>
+              <Button type="submit" disabled={Boolean(busyId)}>{busyId ? "Saving..." : "Save upcoming enrollment"}</Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={placementState?.type === "upcomingCancel"}
+        title="Cancel upcoming enrollment"
+        description="Only the never-effective enrollment will be removed. A current predecessor is reopened when this was a scheduled placement change."
+        onClose={() => !busyId && setPlacementState(null)}
+        closeOnOverlay={!busyId}
+      >
+        <form onSubmit={submitUpcomingCancel} className="space-y-4">
+          <Input
+            label="Audit reason"
+            value={placementState?.reason || ""}
+            minLength={3}
+            maxLength={500}
+            required
+            onChange={(event) => setPlacementState((current) => ({ ...current, reason: event.target.value }))}
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" disabled={Boolean(busyId)} onClick={() => setPlacementState(null)}>Keep enrollment</Button>
+            <Button type="submit" variant="danger" disabled={Boolean(busyId) || (placementState?.reason || "").trim().length < 3}>
+              {busyId ? "Cancelling..." : "Cancel upcoming enrollment"}
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       <Modal

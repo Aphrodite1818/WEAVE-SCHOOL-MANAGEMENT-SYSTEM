@@ -156,7 +156,7 @@ async def get_setup_readiness(db, tenant_id):
                         count(
                             StudentEnrollment,
                             StudentEnrollment.academic_session_id == session.id,
-                            StudentEnrollment.ended_on.is_(None),
+                            StudentEnrollment.is_current.is_(True),
                             StudentEnrollment.class_id.is_not(None),
                         ).label("students"),
                         count(TeacherAssignment, TeacherAssignment.is_active.is_(True)).label(

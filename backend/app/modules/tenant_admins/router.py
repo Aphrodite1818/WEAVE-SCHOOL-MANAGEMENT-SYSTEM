@@ -266,7 +266,6 @@ async def withdraw_student(
         actor=current_admin,
         student_id=student_id,
         reason=payload.reason,
-        effective_date=payload.effective_date,
     )
 
 
@@ -282,7 +281,6 @@ async def expel_student(
         actor=current_admin,
         student_id=student_id,
         reason=payload.reason,
-        effective_date=payload.effective_date,
     )
 
 
@@ -298,7 +296,6 @@ async def graduate_student(
         actor=current_admin,
         student_id=student_id,
         reason=payload.reason,
-        graduation_date=payload.graduation_date,
     )
 
 
