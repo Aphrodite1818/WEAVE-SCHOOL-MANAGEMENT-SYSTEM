@@ -757,6 +757,14 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
             or session.status != AcademicSessionStatus.OPEN
         ):
             raise ConflictException("A return enrollment requires the current open academic session.")
+        if session.start_date is not None and payload.effective_date < session.start_date:
+            raise BadRequestException(
+                "Return enrollment effective date cannot be before the current session starts."
+            )
+        if session.end_date is not None and payload.effective_date > session.end_date:
+            raise BadRequestException(
+                "Return enrollment effective date cannot be after the current session ends."
+            )
 
         classroom = await ClassRoomRepository.get_by_id(
             db,
