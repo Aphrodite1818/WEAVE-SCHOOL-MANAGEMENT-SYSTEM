@@ -31,14 +31,6 @@ const asItems = (response) =>
       ? response.items
       : [];
 
-const classLabel = (item) =>
-  item?.display_name ||
-  [item?.academic_level_name, item?.arm_label || item?.class_arm]
-    .filter(Boolean)
-    .join(" ") ||
-  item?.class_name ||
-  "Unnamed class";
-
 const teacherLabel = (item) => {
   const account = item?.teacher_account || item?.account || {};
   return (
@@ -78,7 +70,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const [assignmentTotal, setAssignmentTotal] = useState(0);
   const [assignmentPage, setAssignmentPage] = useState(0);
   const [filters, setFilters] = useState({
-    class_id: "",
+    academic_level_id: "",
     teacher_membership_id: "",
     status: "",
   });
@@ -157,7 +149,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   const loadAssignments = useCallback(async () => {
     try {
       const response = await academicService.listTeacherAssignments({
-        class_id: filters.class_id || undefined,
+        academic_level_id: filters.academic_level_id || undefined,
         teacher_membership_id: filters.teacher_membership_id || undefined,
         status: filters.status || undefined,
         skip: assignmentPage * PAGE_SIZE,
@@ -244,10 +236,6 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     return [...rows.values()];
   }, [classes]);
 
-  const classOptions = useMemo(
-    () => classes.map((item) => ({ value: item.id, label: classLabel(item) })),
-    [classes],
-  );
   const teacherOptions = useMemo(
     () => teachers.map((item) => ({ value: item.id, label: teacherLabel(item) })),
     [teachers],
@@ -563,11 +551,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     <>
       <div className="mb-4 grid gap-3 rounded-xl border border-border/70 bg-surface px-4 py-4 sm:grid-cols-3">
         <SelectControl
-          label="Class"
-          value={filters.class_id}
-          onChange={(value) => updateFilters({ class_id: value })}
-          options={classOptions}
-          placeholder="All classes"
+          label="Academic level"
+          value={filters.academic_level_id}
+          onChange={(value) => updateFilters({ academic_level_id: value })}
+          options={levelOptions}
+          placeholder="All academic levels"
           clearable
         />
         <SelectControl
@@ -604,7 +592,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         loading={loading}
         emptyIcon={Users}
         emptyTitle="No teacher assignments"
-        emptyDescription="Create an assignment or adjust the class, teacher or lifecycle filters."
+        emptyDescription="Create an assignment or adjust the level, teacher or lifecycle filters."
         recordLabel="Subject assignment"
         detailsLabel="Coverage"
         renderTitle={(item) => item.subject_name || item.subject_code || "Subject"}

@@ -21,6 +21,13 @@ test("eligible classes are constrained to the selected academic level", () => {
   assert.doesNotMatch(source, /eligibleClassGroups/);
 });
 
+test("assignment overview filters the full list by academic level", () => {
+  assert.match(source, /academic_level_id: filters\.academic_level_id \|\| undefined/);
+  assert.match(source, /label="Academic level"[\s\S]*value=\{filters\.academic_level_id\}/);
+  assert.match(source, /options=\{levelOptions\}/);
+  assert.doesNotMatch(source, /label="Class"[\s\S]*value=\{filters\.class_id\}/);
+});
+
 test("assignment cards consume canonical scheduled-current-ended status", () => {
   assert.match(source, /renderStatus=\{\(item\) => String\(item\.status/);
   assert.doesNotMatch(source, /viewingAssignment\.is_active/);
