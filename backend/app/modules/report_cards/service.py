@@ -647,7 +647,10 @@ class ReportCardService:
                             commit=False,
                             apply_positions=False,
                         )
-                        generated_ids.append(response.id)
+                    # Only record success after the savepoint itself released.
+                    # A failure during savepoint release must not leave a phantom ID
+                    # in the response bookkeeping.
+                    generated_ids.append(response.id)
                 except BadRequestException as exc:
                     skipped.append({"student_id": str(student_id), "reason": str(exc)})
             await db.commit()
@@ -944,6 +947,8 @@ class ReportCardService:
         db: AsyncSession,
         actor: TenantAdmin,
         report_card_id: uuid.UUID,
+        *,
+        commit: bool = True,
     ) -> ReportCardResponse:
         card = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if card is None:
@@ -1027,7 +1032,8 @@ class ReportCardService:
         card.published_at = now
         card.published_by = actor.id
         await ReportCardRepository.save(db, card)
-        await db.commit()
+        if commit:
+            await db.commit()
         return await ReportCardService.get(db, actor, card.id)
 
     @staticmethod
