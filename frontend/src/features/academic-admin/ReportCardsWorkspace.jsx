@@ -58,6 +58,7 @@ const humanize = (value, fallback = "Not set") =>
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
 const asNumber = (value) => {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -754,7 +755,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
                       value={principalTemplateId}
                       onChange={setPrincipalTemplateId}
                       options={generationTemplateOptions}
-                      disabled={!selectedStudent?.performance_percentage}
+                      disabled={asNumber(selectedStudent?.performance_percentage) === null}
                       required
                     />
                   ) : null}
