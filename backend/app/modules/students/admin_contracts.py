@@ -21,6 +21,17 @@ class StudentAdminContractService:
     """Admin read/update operations with explicit archival and PATCH semantics."""
 
     @staticmethod
+    async def _materialize_due_returns(db: AsyncSession, tenant_id: UUID) -> None:
+        """Apply date-effective formal returns without a scheduler."""
+
+        from app.modules.students.lifecycle_service import StudentLifecycleService
+
+        await StudentLifecycleService.activate_due_returns_for_tenant(
+            db,
+            tenant_id=tenant_id,
+        )
+
+    @staticmethod
     async def _with_lifecycle_capabilities(
         db: AsyncSession,
         student: StudentDetailResponse,
@@ -48,6 +59,7 @@ class StudentAdminContractService:
         status: AcademicStatus | None = None,
         include_archived: bool = False,
     ) -> tuple[list[StudentDetailResponse], int]:
+        await StudentAdminContractService._materialize_due_returns(db, actor.tenant_id)
         students, total = await StudentRepository.list_for_tenant(
             db,
             actor.tenant_id,
@@ -75,6 +87,7 @@ class StudentAdminContractService:
         actor: TenantAdmin,
         student_id: UUID,
     ) -> StudentDetailResponse:
+        await StudentAdminContractService._materialize_due_returns(db, actor.tenant_id)
         student = await StudentService.get_student_profile(db, actor, student_id)
         return await StudentAdminContractService._with_lifecycle_capabilities(db, student)
 
