@@ -797,6 +797,12 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         )
         if enrollment is None:
             return False
+        # Terminal exits end the old enrollment on an inclusive last day, so that
+        # segment can still satisfy the generic current-enrollment predicate today.
+        # It is not a return. A due formal return is represented by a new open
+        # enrollment segment; never reactivate from a segment that has already ended.
+        if getattr(enrollment, "ended_on", None) is not None:
+            return False
 
         previous_status = student.status
         terminal_audit = (
