@@ -89,6 +89,9 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   });
   const [assignmentLevelId, setAssignmentLevelId] = useState("");
   const [curriculumSubjects, setCurriculumSubjects] = useState([]);
+  const [subjectAvailabilityLoading, setSubjectAvailabilityLoading] = useState(false);
+  const [subjectAvailabilityError, setSubjectAvailabilityError] = useState("");
+  const [coverageRefreshKey, setCoverageRefreshKey] = useState(0);
   const [eligibleClasses, setEligibleClasses] = useState([]);
   const [selectedClassIds, setSelectedClassIds] = useState([]);
   const [form, setForm] = useState({
@@ -184,24 +187,51 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
   }, [loadAssignments]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!assignmentLevelId || !currentTermId || activeTab !== "assign") {
       setCurriculumSubjects([]);
-      return;
+      setSubjectAvailabilityLoading(false);
+      setSubjectAvailabilityError("");
+      return undefined;
     }
-    curriculumService
-      .getCurriculum(assignmentLevelId)
-      .then((response) =>
+    setCurriculumSubjects([]);
+    setSubjectAvailabilityLoading(true);
+    setSubjectAvailabilityError("");
+    Promise.all([
+      curriculumService.getCurriculum(assignmentLevelId),
+      curriculumService.getTeacherAssignmentAvailability(assignmentLevelId, currentTermId),
+    ])
+      .then(([curriculumResponse, availabilityResponse]) => {
+        if (cancelled) return;
+        const availableSubjectIds = new Set(
+          asItems(availabilityResponse)
+            .filter((item) => Number(item.unassigned_class_count || 0) > 0)
+            .map((item) => item.curriculum_subject_id),
+        );
         setCurriculumSubjects(
-          (response?.subjects || [])
+          (curriculumResponse?.subjects || [])
             .filter((item) => item.is_active !== false && !item.archived_at)
-            .map((item) => ({ ...item, id: item.id || item.curriculum_subject_id })),
-        ),
-      )
+            .map((item) => ({ ...item, id: item.id || item.curriculum_subject_id }))
+            .filter((item) => availableSubjectIds.has(item.id)),
+        );
+      })
       .catch((requestError) => {
+        if (cancelled) return;
         setCurriculumSubjects([]);
-        showError(getErrorMessage(requestError, "Could not load curriculum subjects."));
+        const message = getErrorMessage(
+          requestError,
+          "Could not check which subjects still need teacher coverage.",
+        );
+        setSubjectAvailabilityError(message);
+        showError(message);
+      })
+      .finally(() => {
+        if (!cancelled) setSubjectAvailabilityLoading(false);
       });
-  }, [activeTab, assignmentLevelId, currentTermId, showError]);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, assignmentLevelId, coverageRefreshKey, currentTermId, showError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -302,6 +332,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         resetCreateForm,
         () => selectView("overview"),
       );
+      setCoverageRefreshKey((current) => current + 1);
       await loadAssignments();
     } catch (requestError) {
       showError(getErrorMessage(requestError, "Could not create teacher assignments."));
@@ -476,8 +507,22 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
                 setSelectedClassIds([]);
               }}
               options={subjectOptions}
-              placeholder={!assignmentLevelId ? "Select level first" : "Select subject"}
-              disabled={!currentTerm || !assignmentLevelId}
+              placeholder={
+                !assignmentLevelId
+                  ? "Select level first"
+                  : subjectAvailabilityLoading
+                    ? "Checking subject coverage..."
+                    : curriculumSubjects.length === 0 && !subjectAvailabilityError
+                      ? "All eligible subjects assigned"
+                      : "Select subject"
+              }
+              disabled={
+                !currentTerm ||
+                !assignmentLevelId ||
+                subjectAvailabilityLoading ||
+                Boolean(subjectAvailabilityError) ||
+                curriculumSubjects.length === 0
+              }
               required
             />
             <SelectControl
@@ -496,6 +541,19 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
               required
             />
           </div>
+
+          {subjectAvailabilityError ? (
+            <p role="alert" className="text-sm text-error">
+              {subjectAvailabilityError}
+            </p>
+          ) : assignmentLevelId &&
+            currentTerm &&
+            !subjectAvailabilityLoading &&
+            curriculumSubjects.length === 0 ? (
+            <p className="text-sm text-text-muted">
+              Every eligible subject in this level already has teacher coverage.
+            </p>
+          ) : null}
 
           <div className="rounded-xl border border-border/70 bg-surface-muted/20 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">

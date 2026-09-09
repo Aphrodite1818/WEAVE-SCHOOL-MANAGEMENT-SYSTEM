@@ -39,6 +39,10 @@ export const curriculumService = {
     api.get(
       `/tenant-admin/academics/curriculum-subjects/${curriculumSubjectId}/eligible-classes/${termId}`,
     ),
+  getTeacherAssignmentAvailability: (levelId, termId) =>
+    api.get(
+      `/tenant-admin/academics/levels/${levelId}/teacher-assignment-availability/${termId}`,
+    ),
   getResolvedClassSubjects: (classId, termId) =>
     api.get(
       `/tenant-admin/academics/classes/${classId}/terms/${termId}/subjects`,
