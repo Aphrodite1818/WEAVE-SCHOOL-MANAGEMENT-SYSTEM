@@ -594,6 +594,10 @@ async def test_scheduled_takeover_edit_updates_teacher_and_predecessor_boundary(
             "app.modules.student_academics.service.StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject",
             new=AsyncMock(return_value=[predecessor, scheduled]),
         ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._is_scheduled_takeover_relation",
+            new=AsyncMock(return_value=True),
+        ),
     ):
         response = await StudentAcademicService.update_scheduled_teacher_assignment(
             db,
@@ -647,6 +651,10 @@ async def test_moving_takeover_to_predecessor_start_becomes_safe_correction() ->
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject",
             new=AsyncMock(return_value=[predecessor, scheduled]),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._is_scheduled_takeover_relation",
+            new=AsyncMock(return_value=True),
         ),
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.delete_teacher_assignment",
@@ -721,6 +729,10 @@ async def test_cancel_schedule_deletes_never_effective_row_and_restores_takeover
             "app.modules.student_academics.service.StudentAcademicRepository.delete_teacher_assignment",
             new=AsyncMock(),
         ) as delete,
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._is_scheduled_takeover_relation",
+            new=AsyncMock(return_value=True),
+        ),
     ):
         await StudentAcademicService.cancel_scheduled_teacher_assignment(
             db,
@@ -780,6 +792,10 @@ async def test_early_end_cancels_successor_without_reopening_predecessor() -> No
             "app.modules.student_academics.service.StudentAcademicService._build_teacher_assignment_response",
             new=AsyncMock(return_value=SimpleNamespace(id=current.id)),
         ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._is_scheduled_takeover_relation",
+            new=AsyncMock(return_value=True),
+        ),
     ):
         await StudentAcademicService.end_teacher_assignment(
             db,
@@ -821,6 +837,13 @@ async def test_paginated_list_enriches_current_row_from_batched_takeover_lookup(
     )
     takeover_id = uuid.uuid4()
     record = {"assignment": current}
+    origin = SimpleNamespace(
+        assignment_id=takeover_id,
+        previous_teacher_membership_id=current.teacher_membership_id,
+        previous_effective_from=current.effective_from,
+    )
+    db = AsyncMock()
+    db.execute.return_value = _assignment_result([origin])
     with (
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.list_teacher_assignment_rows",
@@ -841,13 +864,14 @@ async def test_paginated_list_enriches_current_row_from_batched_takeover_lookup(
         ) as batch_lookup,
     ):
         rows, total = await StudentAcademicService.list_teacher_assignment_responses(
-            AsyncMock(), current.tenant_id, skip=25, limit=25
+            db, current.tenant_id, skip=25, limit=25
         )
 
     assert total == 51
     assert rows[0].has_scheduled_takeover is True
     assert rows[0].scheduled_takeover_id == takeover_id
     batch_lookup.assert_awaited_once()
+    db.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
