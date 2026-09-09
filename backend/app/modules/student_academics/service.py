@@ -1671,17 +1671,14 @@ class StudentAcademicService:
         blockers: list[str] = []
         if has_dependencies:
             blockers.append("Historical results or report-card lines reference this assignment.")
-        if assignment.state != TeacherAssignmentState.SCHEDULED:
-            blockers.append(
-                "Only a never-effective scheduled teacher assignment can be permanently deleted."
-            )
+        if assignment.state == TeacherAssignmentState.SCHEDULED:
+            blockers.append("This assignment has not started yet. Edit or cancel the schedule instead.")
+        elif assignment.state == TeacherAssignmentState.ENDED:
+            blockers.append("This assignment has already ended.")
         return TeacherAssignmentDependencyPreview(
             assignment_id=assignment.id,
             dependency_counts=counts,
-            can_end=(
-                assignment.state == TeacherAssignmentState.CURRENT
-                and assignment.effective_to is None
-            ),
+            can_end=assignment.state == TeacherAssignmentState.CURRENT,
             can_reassign=(
                 assignment.state == TeacherAssignmentState.CURRENT
                 and assignment.effective_to is None
@@ -1689,7 +1686,9 @@ class StudentAcademicService:
             can_delete=(
                 assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
             ),
-            can_edit_schedule=assignment.state == TeacherAssignmentState.SCHEDULED,
+            can_edit_schedule=(
+                assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
+            ),
             can_cancel_schedule=(
                 assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
             ),
@@ -2105,7 +2104,7 @@ class StudentAcademicService:
             if payload.effective_from <= row_end and row.effective_from <= proposed_row_end:
                 StudentAcademicService._raise_teacher_assignment_conflict(
                     "ASSIGNMENT_OVERLAP",
-                    "The selected date overlaps an existing teacher assignment for this class and subject.",
+                    "The selected date overlaps an existing teacher assignment for this class and subject. Choose another date.",
                 )
 
         previous_teacher = assignment.teacher_membership_id
@@ -2173,30 +2172,39 @@ class StudentAcademicService:
             lock=True,
         )
         predecessor = StudentAcademicService._adjacent_predecessor(assignment, history)
-        if predecessor is not None and predecessor.effective_to >= date.today():
-            predecessor.effective_to = None
-            await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
-        await StudentAcademicService._record_teacher_assignment_audit(
-            db,
-            tenant_id=tenant_id,
-            assignment_id=assignment.id,
-            class_id=assignment.class_id,
-            curriculum_subject_id=assignment.curriculum_subject_id,
-            action=(
-                "scheduled_takeover_cancelled"
-                if predecessor is not None
-                else "scheduled_assignment_cancelled"
-            ),
-            previous_teacher_membership_id=assignment.teacher_membership_id,
-            previous_state=assignment.state.value,
-            new_state="cancelled",
-            previous_effective_from=assignment.effective_from,
-            previous_effective_to=assignment.effective_to,
-            acting_admin_id=acting_admin_id,
-            reason=payload.reason,
-        )
-        await StudentAcademicRepository.delete_teacher_assignment(db, assignment)
-        await db.commit()
+        try:
+            await StudentAcademicService._record_teacher_assignment_audit(
+                db,
+                tenant_id=tenant_id,
+                assignment_id=assignment.id,
+                class_id=assignment.class_id,
+                curriculum_subject_id=assignment.curriculum_subject_id,
+                action=(
+                    "scheduled_takeover_cancelled"
+                    if predecessor is not None
+                    else "scheduled_assignment_cancelled"
+                ),
+                previous_teacher_membership_id=assignment.teacher_membership_id,
+                previous_state=assignment.state.value,
+                new_state="cancelled",
+                previous_effective_from=assignment.effective_from,
+                previous_effective_to=assignment.effective_to,
+                acting_admin_id=acting_admin_id,
+                reason=payload.reason,
+            )
+            await StudentAcademicRepository.delete_teacher_assignment(db, assignment)
+            # Flush the deletion before reopening a predecessor. Otherwise PostgreSQL's
+            # temporal exclusion constraint sees both open-ended rows at once.
+            await db.flush()
+            if predecessor is not None and predecessor.effective_to >= date.today():
+                predecessor.effective_to = None
+                await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                "The scheduled handover could not be cancelled because the resulting assignment timeline conflicts with existing history."
+            ) from exc
         return response
 
     async def list_teacher_assignment_responses(
