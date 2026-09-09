@@ -185,22 +185,27 @@ const actionsForStudent = (student) => {
   if (student.is_archived) return ["restore"];
   const status = String(student.status || "").toLowerCase();
   if (status === "active") {
-    return ["suspend", "withdraw", "expel", "graduate", "archive"];
+    return ["suspend", "withdraw", "expel", "graduate"];
   }
   if (status === "suspended") {
-    return ["reinstate", "withdraw", "expel", "archive"];
+    return ["reinstate", "withdraw", "expel"];
   }
+
   const capabilities = student.lifecycle_capabilities || {};
+  const actions = [];
   if (status === "withdrawn") {
-    return [capabilities.can_undo_withdrawal ? "undoWithdrawal" : "readmit", "archive"];
+    if (capabilities.can_undo_withdrawal) actions.push("undoWithdrawal");
+    else if (capabilities.can_readmit) actions.push("readmit");
+  } else if (status === "expelled") {
+    if (capabilities.can_undo_expulsion) actions.push("undoExpulsion");
+    else if (capabilities.can_reinstate_expelled) actions.push("reinstateExpelled");
+  } else if (status === "graduated") {
+    if (capabilities.can_undo_graduation) actions.push("undoGraduation");
+    else if (capabilities.can_reenrol_graduate) actions.push("reenrolGraduate");
   }
-  if (status === "expelled") {
-    return [capabilities.can_undo_expulsion ? "undoExpulsion" : "reinstateExpelled", "archive"];
-  }
-  if (status === "graduated") {
-    return [capabilities.can_undo_graduation ? "undoGraduation" : "reenrolGraduate", "archive"];
-  }
-  return ["archive"];
+
+  if (!student.current_enrollment_id) actions.push("archive");
+  return actions;
 };
 
 function SelectField({
