@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardList, GraduationCap, LockKeyhole, Plus } from "lucide-react";
+import { ArrowLeft, ClipboardList, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -40,10 +40,14 @@ const classLabel = (item) =>
   "Unnamed class";
 
 const studentLabel = (item) =>
-  `${[item?.first_name, item?.last_name].filter(Boolean).join(" ") || "Student"} · ${item?.admission_number || "No admission number"}`;
+  `${[item?.first_name, item?.last_name].filter(Boolean).join(" ") || "Student"} · ${
+    item?.admission_number || "No admission number"
+  }`;
 
 const assignmentLabel = (item) =>
-  `${item?.subject_name || "Subject"} · ${item?.teacher_name || item?.teacher_staff_id || "Teacher"}`;
+  `${item?.subject_name || "Subject"} · ${
+    item?.teacher_name || item?.teacher_staff_id || "Teacher"
+  }`;
 
 const readableTerm = (item) =>
   String(item?.display_name || item?.name || "No term").replaceAll("_", " ");
@@ -58,9 +62,15 @@ const statusTitle = (status) =>
 
 const statusDescription = (status, item) =>
   ({
-    submitted: `Submit ${item.student_name || "this student's"} ${item.subject_name || "result"} for review?`,
-    approved: `Approve ${item.student_name || "this student's"} ${item.subject_name || "result"}?`,
-    locked: `Lock ${item.student_name || "this student's"} ${item.subject_name || "result"}? Locked results become final for reporting until explicitly reopened.`,
+    submitted: `Submit ${item.student_name || "this student's"} ${
+      item.subject_name || "result"
+    } for review?`,
+    approved: `Approve ${item.student_name || "this student's"} ${
+      item.subject_name || "result"
+    }?`,
+    locked: `Lock ${item.student_name || "this student's"} ${
+      item.subject_name || "result"
+    }? Locked results become final for reporting until explicitly reopened.`,
   })[status] || "Confirm this result lifecycle action.";
 
 const badgeVariant = (status) => {
@@ -273,7 +283,8 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         if (!item.subject_id || rows.has(item.subject_id)) return;
         rows.set(item.subject_id, {
           value: item.subject_id,
-          label: [item.subject_name, item.subject_code].filter(Boolean).join(" · ") || "Subject",
+          label:
+            [item.subject_name, item.subject_code].filter(Boolean).join(" · ") || "Subject",
         });
       });
     return [...rows.values()];
@@ -310,8 +321,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     return true;
   };
 
-  const saveDraft = async (event) => {
-    event.preventDefault();
+  const saveDraft = async ({ addMore = false } = {}) => {
     if (!periodEditable) {
       showWarning("Results can only be edited in the current open session and term.");
       return;
@@ -336,9 +346,9 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         status: "draft",
       });
       showSuccess(form.result_id ? "Draft result updated." : "Draft result created.");
-      resetForm();
       await loadResults();
-      selectView("overview");
+      resetForm();
+      if (!addMore || form.result_id) selectView("overview");
     } catch (requestError) {
       showError(getErrorMessage(requestError, "Could not save result draft."));
     } finally {
@@ -407,10 +417,37 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     />
   );
 
-  const contextSummary = (
-    <div className="rounded-xl border border-border/70 bg-surface px-4 py-3 text-sm text-text-muted">
-      <span className="font-semibold text-text">Selected context:</span>{" "}
-      {classLabel(selectedClass)} · {selectedSession?.name || "No session"} · {readableTerm(selectedTerm)}
+  const contextSelectors = (
+    <div className="grid gap-3 rounded-xl border border-border/70 bg-surface px-4 py-4 sm:grid-cols-3">
+      <SelectControl
+        label="Class"
+        value={filters.class_id}
+        onChange={(value) => updateFilters({ class_id: value, subject_id: "" })}
+        options={classOptions}
+        disabled={Boolean(form.result_id)}
+        required
+      />
+      <SelectControl
+        label="Academic session"
+        value={filters.academic_session_id}
+        onChange={(value) => {
+          const nextTerm =
+            terms.find((item) => item.academic_session_id === value && item.is_current) ||
+            terms.find((item) => item.academic_session_id === value);
+          updateFilters({ academic_session_id: value, academic_term_id: nextTerm?.id || "" });
+        }}
+        options={sessionOptions}
+        disabled={Boolean(form.result_id)}
+        required
+      />
+      <SelectControl
+        label="Academic term"
+        value={filters.academic_term_id}
+        onChange={(value) => updateFilters({ academic_term_id: value })}
+        options={termOptions}
+        disabled={Boolean(form.result_id)}
+        required
+      />
     </div>
   );
 
@@ -426,10 +463,10 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   if (activeTab === "entry") {
     return (
       <div className="space-y-4">
-        {contextSummary}
+        {contextSelectors}
         <WorkspacePanel
           title={form.result_id ? "Edit draft result" : "Create result"}
-          description="Choose the student and subject assignment, enter configured assessment scores, then save the result as draft."
+          description="The class, session and term are selected inside this creation flow. It does not depend on the Academic Hub overview context."
           actions={
             <Button type="button" variant="outline" onClick={() => { resetForm(); selectView("overview"); }}>
               <ArrowLeft className="h-4 w-4" /> Back to results
@@ -438,7 +475,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         >
           {!periodEditable ? (
             <p className="mb-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning">
-              The selected period is read-only. Choose the current open session and term from the results list first.
+              The selected period is read-only. Result entry requires the current open session and term.
             </p>
           ) : null}
           {!limitsConfigured ? (
@@ -446,7 +483,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
               No assessment scheme is active. Configure Grading → Assessment Scheme before entering scores.
             </p>
           ) : null}
-          <form className="space-y-4" onSubmit={saveDraft}>
+          <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <SelectControl
                 label="Student"
@@ -493,14 +530,31 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
               {totalMaximum != null ? ` / ${totalMaximum}` : ""}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={!periodEditable || !limitsConfigured || saving === "result"}>
-                {saving === "result" ? "Saving..." : form.result_id ? "Update draft" : "Create result"}
+              <Button
+                type="button"
+                disabled={!periodEditable || !limitsConfigured || saving === "result"}
+                onClick={() => saveDraft({ addMore: false })}
+              >
+                {saving === "result"
+                  ? "Saving..."
+                  : form.result_id
+                    ? "Update & Exit"
+                    : "Create & Exit"}
               </Button>
-              {form.result_id ? (
+              {!form.result_id ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!periodEditable || !limitsConfigured || saving === "result"}
+                  onClick={() => saveDraft({ addMore: true })}
+                >
+                  Create & Add More
+                </Button>
+              ) : (
                 <Button type="button" variant="outline" onClick={resetForm}>Cancel edit</Button>
-              ) : null}
+              )}
             </div>
-          </form>
+          </div>
         </WorkspacePanel>
       </div>
     );
@@ -509,13 +563,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   return (
     <>
       <div className="mb-4 grid gap-3 rounded-xl border border-border/70 bg-surface px-4 py-4 sm:grid-cols-2 xl:grid-cols-5">
-        <SelectControl
-          label="Class"
-          value={filters.class_id}
-          onChange={(value) => updateFilters({ class_id: value, subject_id: "" })}
-          options={classOptions}
-          required
-        />
+        <SelectControl label="Class" value={filters.class_id} onChange={(value) => updateFilters({ class_id: value, subject_id: "" })} options={classOptions} required />
         <SelectControl
           label="Academic session"
           value={filters.academic_session_id}
@@ -528,21 +576,8 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
           options={sessionOptions}
           required
         />
-        <SelectControl
-          label="Academic term"
-          value={filters.academic_term_id}
-          onChange={(value) => updateFilters({ academic_term_id: value })}
-          options={termOptions}
-          required
-        />
-        <SelectControl
-          label="Subject"
-          value={filters.subject_id}
-          onChange={(value) => updateFilters({ subject_id: value })}
-          options={subjectOptions}
-          placeholder="All subjects"
-          clearable
-        />
+        <SelectControl label="Academic term" value={filters.academic_term_id} onChange={(value) => updateFilters({ academic_term_id: value })} options={termOptions} required />
+        <SelectControl label="Subject" value={filters.subject_id} onChange={(value) => updateFilters({ subject_id: value })} options={subjectOptions} placeholder="All subjects" clearable />
         <SelectControl
           label="Lifecycle"
           value={filters.status}
@@ -566,9 +601,9 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
 
       <RecordList
         title={`Results${loading ? "" : ` (${resultTotal})`}`}
-        description="Search the list, inspect score details, and move each result through Draft → Submitted → Approved → Locked from its row."
+        description="Inspect score details and move each result through Draft → Submitted → Approved → Locked from its row."
         actions={
-          <Button type="button" disabled={!periodEditable || !limitsConfigured} onClick={() => { resetForm(); selectView("entry"); }}>
+          <Button type="button" disabled={!limitsConfigured} onClick={() => { resetForm(); selectView("entry"); }}>
             <Plus className="h-4 w-4" /> Create result
           </Button>
         }
@@ -582,7 +617,9 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
         renderTitle={(item) => item.student_name || item.admission_number || "Student"}
         renderMeta={(item) => item.subject_name || item.subject_code || "Subject"}
         renderDescription={(item) =>
-          `Total ${item.total_score ?? "–"}${item.maximum_score != null ? `/${item.maximum_score}` : ""} · Grade ${item.grade || "Pending"}`
+          `Total ${item.total_score ?? "–"}${
+            item.maximum_score != null ? `/${item.maximum_score}` : ""
+          } · Grade ${item.grade || "Pending"}`
         }
         renderStatus={(item) => item.status}
         renderActions={rowActions}
@@ -615,7 +652,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       <Modal
         open={Boolean(reopenTarget)}
         title="Reopen locked result"
-        description="Reopening returns the result to draft and makes affected generated reports outdated without altering published evidence."
+        description="Reopening returns the result to draft and marks affected generated reports outdated without altering published evidence."
         onClose={saving ? undefined : () => setReopenTarget(null)}
         footer={
           <div className="flex justify-end gap-2">
@@ -674,23 +711,16 @@ function ResultInspector({ item, actions }) {
             ))}
             <div className="flex justify-between gap-4 border-t border-border/70 pt-2">
               <dt className="font-semibold text-text">Total</dt>
-              <dd className="font-semibold text-text">{item.total_score ?? "–"}{item.maximum_score != null ? `/${item.maximum_score}` : ""}</dd>
+              <dd className="font-semibold text-text">{item.total_score ?? "–"}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-text-muted">Grade</dt>
+              <dd className="font-semibold text-text">{item.grade || "Pending"}</dd>
             </div>
           </dl>
         </section>
         <section className="p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-faint">Outcome</p>
-          <div className="mt-2 flex items-center gap-2 text-sm text-text-muted">
-            <GraduationCap className="h-4 w-4" /> Grade: <span className="font-semibold text-text">{item.grade || "Pending"}</span>
-          </div>
-          {item.status === "locked" ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg bg-surface-muted/50 px-3 py-2 text-xs text-text-muted">
-              <LockKeyhole className="h-4 w-4" /> Finalized and read-only
-            </div>
-          ) : null}
-        </section>
-        <section className="p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-faint">Lifecycle actions</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-text-faint">Actions</p>
           <div className="mt-3 flex flex-wrap gap-2">{actions}</div>
         </section>
       </div>
