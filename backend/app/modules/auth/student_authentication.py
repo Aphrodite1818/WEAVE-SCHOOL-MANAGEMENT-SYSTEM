@@ -30,6 +30,7 @@ async def authenticate_student_actor(
     credential: str,
 ) -> AuthenticatedActor:
     normalized = admission_number.strip().upper()
+    resolved_inactive_identity = False
     try:
         resolution = await AuthIdentityService.resolve_identifier(
             db,
@@ -38,9 +39,10 @@ async def authenticate_student_actor(
         )
     except NotFoundException:
         # Terminal lifecycle actions deactivate the canonical login identity. A
-        # scheduled formal return must keep it inactive until the enrollment
-        # becomes effective, so student login is the safe lazy materialization
-        # point when there is no worker/cron lifecycle engine.
+        # scheduled formal return keeps it inactive until the enrollment becomes
+        # effective, so login may inspect the inactive identity only to determine
+        # whether that return is due. Non-due inactive identities still fail with
+        # the generic invalid-credential response to avoid account enumeration.
         resolution = await AuthIdentityRepository.get_by_identifier(
             db,
             normalized,
@@ -48,6 +50,7 @@ async def authenticate_student_actor(
         )
         if resolution is None:
             raise UnauthorizedException("Invalid admission number or credential.")
+        resolved_inactive_identity = True
 
     if resolution.actor_type != ActorType.STUDENT or resolution.tenant_id is None:
         raise UnauthorizedException("Invalid admission number or credential.")
@@ -70,7 +73,9 @@ async def authenticate_student_actor(
 
     from app.modules.students.lifecycle_service import StudentLifecycleService
 
-    await StudentLifecycleService.activate_due_return(db, student=student)
+    activated_due_return = await StudentLifecycleService.activate_due_return(db, student=student)
+    if resolved_inactive_identity and not activated_due_return:
+        raise UnauthorizedException("Invalid admission number or credential.")
 
     if student.status == AcademicStatus.EXPELLED:
         raise UnauthorizedException("This account has been expelled and can no longer be accessed.")
