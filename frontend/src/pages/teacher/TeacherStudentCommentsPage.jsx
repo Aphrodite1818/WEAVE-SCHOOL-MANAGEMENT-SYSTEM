@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, FilePenLine, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
@@ -25,8 +25,6 @@ const titleCase = (value) =>
   String(value || "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-const normalizeGrade = (value) => String(value || "").trim().toLowerCase();
 
 const commentOptionLabel = (template) => {
   const text = String(template?.text || "").trim();
@@ -62,7 +60,6 @@ function TeacherStudentCommentsPage() {
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
   const [templates, setTemplates] = useState([]);
-  const [gradingScales, setGradingScales] = useState([]);
   const [rows, setRows] = useState([]);
   const [classId, setClassId] = useState("");
   const [sessionId, setSessionId] = useState("");
@@ -79,14 +76,12 @@ function TeacherStudentCommentsPage() {
       reportCommentService.getTeacherCommentSummary(),
       academicService.listTeacherSessions({ limit: 100 }),
       reportCommentService.listTeacherTemplates(),
-      reportCommentService.listTeacherGradingScales(),
     ])
-      .then(([summaryResponse, sessionResponse, templateResponse, gradeResponse]) => {
+      .then(([summaryResponse, sessionResponse, templateResponse]) => {
         if (!active) return;
         setSummary(summaryResponse);
         setSessions(asItems(sessionResponse));
         setTemplates(asItems(templateResponse).filter((item) => item.status === "active"));
-        setGradingScales(asItems(gradeResponse));
         setClassId(summaryResponse?.classes?.[0]?.class_id || "");
         setSessionId(
           summaryResponse?.academic_session_id ||
@@ -162,11 +157,7 @@ function TeacherStudentCommentsPage() {
   }, [classId, sessionId, termId]);
 
   const classOptions = useMemo(
-    () =>
-      (summary?.classes || []).map((item) => ({
-        value: item.class_id,
-        label: item.class_name,
-      })),
+    () => (summary?.classes || []).map((item) => ({ value: item.class_id, label: item.class_name })),
     [summary],
   );
   const sessionOptions = useMemo(
@@ -177,32 +168,23 @@ function TeacherStudentCommentsPage() {
     () => terms.map((item) => ({ value: item.id, label: titleCase(item.name) })),
     [terms],
   );
-  const scaleIdByGrade = useMemo(
-    () =>
-      new Map(
-        gradingScales.map((item) => [normalizeGrade(item.grade), item.id]),
-      ),
-    [gradingScales],
-  );
   const editorTemplateOptions = useMemo(() => {
-    if (!editor?.row?.overall_grade) return [];
-    const gradeId = scaleIdByGrade.get(normalizeGrade(editor.row.overall_grade));
-    if (!gradeId) return [];
+    const score = Number(editor?.row?.average);
+    if (!Number.isFinite(score)) return [];
     return templates
-      .filter((item) => (item.grading_scale_ids || []).includes(gradeId))
-      .sort((left, right) => {
-        const leftDefault = (left.default_grading_scale_ids || []).includes(gradeId) ? 1 : 0;
-        const rightDefault = (right.default_grading_scale_ids || []).includes(gradeId) ? 1 : 0;
-        return rightDefault - leftDefault;
-      })
+      .filter(
+        (item) =>
+          Number(item.minimum_score) <= score && score <= Number(item.maximum_score),
+      )
+      .sort((left, right) => Number(right.is_default) - Number(left.is_default))
       .map((item) => ({
         value: item.id,
         label: commentOptionLabel(item),
-        description: (item.default_grading_scale_ids || []).includes(gradeId)
-          ? `Default for Grade ${editor.row.overall_grade}`
-          : `Grade ${editor.row.overall_grade}`,
+        description: item.is_default
+          ? `Default for ${Number(item.minimum_score)}%–${Number(item.maximum_score)}%`
+          : `${Number(item.minimum_score)}%–${Number(item.maximum_score)}%`,
       }));
-  }, [editor, scaleIdByGrade, templates]);
+  }, [editor, templates]);
 
   const openEditor = (row) => {
     const suggested = row.suggested_template;
@@ -265,19 +247,13 @@ function TeacherStudentCommentsPage() {
     <DashboardLayout role="teacher" title="Student Comments">
       <div className="space-y-5">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-text sm:text-[1.65rem]">
-            Student Comments
-          </h1>
+          <h1 className="text-xl font-semibold tracking-tight text-text sm:text-[1.65rem]">Student Comments</h1>
           <p className="mt-1 text-sm text-text-muted">
-            Review finalized performance and submit the class-teacher comment used by report cards.
+            Review finalized overall performance and submit the class-teacher comment used by report cards.
           </p>
         </div>
 
-        {error ? (
-          <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">
-            {error}
-          </div>
-        ) : null}
+        {error ? <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">{error}</div> : null}
 
         {!summary?.class_teacher_class_count ? (
           <Card className="p-6">
@@ -315,11 +291,10 @@ function TeacherStudentCommentsPage() {
               <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
                 <div>
                   <p className="font-semibold text-text">Comment readiness</p>
-                  <p className="text-xs text-text-muted">Scores are read-only here. Comment work starts when the student's expected results are finalized and locked.</p>
+                  <p className="text-xs text-text-muted">Comments use the student's weighted overall performance after all expected results are finalized and locked.</p>
                 </div>
                 <Button type="button" size="small" variant="outline" onClick={loadRoster} disabled={rosterLoading}>
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
+                  <RefreshCw className="h-4 w-4" /> Refresh
                 </Button>
               </div>
               {rosterLoading ? (
@@ -333,7 +308,7 @@ function TeacherStudentCommentsPage() {
                       <tr>
                         <th className="px-4 py-3">Student</th>
                         <th className="px-4 py-3">Academic readiness</th>
-                        <th className="px-4 py-3">Average</th>
+                        <th className="px-4 py-3">Overall performance</th>
                         <th className="px-4 py-3">Grade</th>
                         <th className="px-4 py-3">Comment</th>
                         <th className="px-4 py-3 text-right">Action</th>
@@ -344,35 +319,18 @@ function TeacherStudentCommentsPage() {
                         const canOpen = row.academic_ready || Boolean(row.comment);
                         return (
                           <tr key={row.student_id}>
-                            <td className="px-4 py-3">
-                              <p className="font-semibold text-text">{row.student_name || row.admission_number}</p>
-                              <p className="text-xs text-text-muted">{row.admission_number}</p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <Badge variant={row.academic_ready ? "success" : "warning"}>{titleCase(row.readiness_label)}</Badge>
-                            </td>
-                            <td className="px-4 py-3 text-text-soft">{row.average ?? "—"}</td>
+                            <td className="px-4 py-3"><p className="font-semibold text-text">{row.student_name || row.admission_number}</p><p className="text-xs text-text-muted">{row.admission_number}</p></td>
+                            <td className="px-4 py-3"><Badge variant={row.academic_ready ? "success" : "warning"}>{titleCase(row.readiness_label)}</Badge></td>
+                            <td className="px-4 py-3 text-text-soft">{row.average != null ? `${row.average}%` : "—"}</td>
                             <td className="px-4 py-3 text-text-soft">{row.overall_grade || "—"}</td>
                             <td className="px-4 py-3">
                               <Badge variant={statusVariant(row.comment_status)}>{titleCase(row.comment_status)}</Badge>
-                              {row.comment_status === "needs_review" ? (
-                                <p className="mt-1 max-w-xs text-xs text-error">Performance or placement context changed after submission. Review and resubmit.</p>
-                              ) : null}
+                              {row.comment_status === "needs_review" ? <p className="mt-1 max-w-xs text-xs text-error">Performance or placement context changed after submission. Review and resubmit.</p> : null}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <Button
-                                type="button"
-                                size="small"
-                                variant="outline"
-                                disabled={!canOpen}
-                                onClick={() => openEditor(row)}
-                              >
+                              <Button type="button" size="small" variant="outline" disabled={!canOpen} onClick={() => openEditor(row)}>
                                 <FilePenLine className="h-4 w-4" />
-                                {row.comment
-                                  ? "Review comment"
-                                  : row.academic_ready
-                                    ? "Write comment"
-                                    : "Waiting for results"}
+                                {row.comment ? "Review comment" : row.academic_ready ? "Write comment" : "Waiting for results"}
                               </Button>
                             </td>
                           </tr>
@@ -390,18 +348,18 @@ function TeacherStudentCommentsPage() {
       <Modal
         open={Boolean(editor)}
         title={editor ? `Teacher comment · ${editor.row.student_name || editor.row.admission_number}` : "Teacher comment"}
-        description="Only saved comments assigned to this student's calculated grade are shown. Review the final wording before submission."
+        description="Only saved comments covering this student's overall-performance percentage are shown. Review the final wording before submission."
         onClose={() => !busy && setEditor(null)}
         closeOnOverlay={!busy}
       >
         {editor ? (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 rounded-xl bg-surface-muted/35 p-3 text-sm">
-              <div><span className="text-text-muted">Average</span><p className="font-semibold text-text">{editor.row.average ?? "—"}</p></div>
+              <div><span className="text-text-muted">Overall performance</span><p className="font-semibold text-text">{editor.row.average != null ? `${editor.row.average}%` : "—"}</p></div>
               <div><span className="text-text-muted">Overall grade</span><p className="font-semibold text-text">{editor.row.overall_grade || "—"}</p></div>
             </div>
             <SelectField
-              label={`My Grade ${editor.row.overall_grade || ""} comments`}
+              label="My matching comments"
               value={editor.sourceTemplateId}
               options={editorTemplateOptions}
               onChange={selectTemplate}
@@ -410,37 +368,20 @@ function TeacherStudentCommentsPage() {
             />
             {editor.row.suggested_template ? (
               <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs text-text-muted">
-                <span className="font-semibold text-text">Default suggestion:</span>{" "}
-                {editor.row.suggested_template.text}
+                <span className="font-semibold text-text">Default suggestion:</span> {editor.row.suggested_template.text}
               </div>
             ) : null}
             <label className="block">
               <span className="mb-1.5 block text-sm font-semibold text-text-soft">Class-teacher comment</span>
-              <textarea
-                className="input-base min-h-36"
-                maxLength={2000}
-                value={editor.text}
-                disabled={!editor.row.academic_ready}
-                onChange={(event) => setEditor((current) => ({ ...current, text: event.target.value }))}
-              />
+              <textarea className="input-base min-h-36" maxLength={2000} value={editor.text} disabled={!editor.row.academic_ready} onChange={(event) => setEditor((current) => ({ ...current, text: event.target.value }))} />
             </label>
             {!editor.row.academic_ready ? (
-              <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-amber-800">
-                This older draft is preserved for review but remains read-only until all expected results are finalized and locked.
-              </div>
+              <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-amber-800">This older draft is preserved for review but remains read-only until all expected results are finalized and locked.</div>
             ) : null}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy || !editor.text.trim() || !editor.row.academic_ready}
-                onClick={() => save(false)}
-              >
-                {busy ? "Saving..." : "Save Draft"}
-              </Button>
+              <Button type="button" variant="outline" disabled={busy || !editor.text.trim() || !editor.row.academic_ready} onClick={() => save(false)}>{busy ? "Saving..." : "Save Draft"}</Button>
               <Button type="button" disabled={busy || !editor.text.trim() || !editor.row.academic_ready} onClick={() => save(true)}>
-                <CheckCircle2 className="h-4 w-4" />
-                {busy ? "Submitting..." : "Submit"}
+                <CheckCircle2 className="h-4 w-4" /> {busy ? "Submitting..." : "Submit"}
               </Button>
             </div>
           </div>
