@@ -4,7 +4,7 @@ from sqlalchemy import UniqueConstraint
 
 import app.models  # noqa: F401
 from app.modules.report_cards.comment_models import (
-    CommentTemplateGradeMapping,
+    CommentTemplate,
     StudentTermTeacherComment,
     TeacherCommentOverride,
 )
@@ -35,14 +35,12 @@ def test_placement_migration_adds_the_same_enrollment_outcomes() -> None:
     assert "ADD VALUE IF NOT EXISTS 'level_reassigned'" in migration
 
 
-def test_comment_grade_mapping_references_grading_scale_and_template() -> None:
-    foreign_keys = {
-        fk.target_fullname
-        for column in CommentTemplateGradeMapping.__table__.columns
-        for fk in column.foreign_keys
-    }
-    assert "comment_templates.id" in foreign_keys
-    assert "grading_scales.id" in foreign_keys
+def test_comment_templates_use_performance_ranges_not_grade_mappings() -> None:
+    columns = CommentTemplate.__table__.c
+    assert "minimum_score" in columns
+    assert "maximum_score" in columns
+    assert "is_default" in columns
+    assert "name" not in columns
 
 
 def test_teacher_comment_and_override_preserve_student_enrollment_context() -> None:

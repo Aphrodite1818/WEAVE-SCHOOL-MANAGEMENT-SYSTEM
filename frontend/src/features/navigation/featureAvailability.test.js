@@ -72,6 +72,19 @@ test("account-scoped actors only see account-scoped destinations", () => {
   assert.deepEqual(visible.map((item) => item.to), ["/teacher/schools"]);
 });
 
+test("class-teacher destinations are hidden until a current class is assigned", () => {
+  const item = {
+    to: "/teacher/student-comments",
+    requiresClassTeacher: true,
+  };
+
+  assert.equal(resolveFeatureAvailability(item).visible, false);
+  assert.equal(
+    resolveFeatureAvailability(item, { hasClassTeacherDuties: true }).visible,
+    true,
+  );
+});
+
 test("legacy guide feature flags remain opt-in", () => {
   assert.equal(
     resolveFeatureAvailability(

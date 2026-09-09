@@ -1,4 +1,4 @@
-import { CheckCircle2, FilePenLine, RefreshCw } from "lucide-react";
+import { CheckCircle2, FilePenLine, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
@@ -13,6 +13,7 @@ import { useToast } from "../../hooks/useToast";
 import { academicService } from "../../services/academicService";
 import { parseApiError } from "../../services/api";
 import { reportCommentService } from "../../services/reportCommentService";
+import { filterStudentCommentRows } from "../../features/report-comments/filterStudentCommentRows";
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -69,6 +70,7 @@ function TeacherStudentCommentsPage() {
   const [editor, setEditor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -168,6 +170,9 @@ function TeacherStudentCommentsPage() {
     () => terms.map((item) => ({ value: item.id, label: titleCase(item.name) })),
     [terms],
   );
+  const filteredRows = useMemo(() => {
+    return filterStudentCommentRows(rows, studentSearch);
+  }, [rows, studentSearch]);
   const editorTemplateOptions = useMemo(() => {
     const score = Number(editor?.row?.average);
     if (!Number.isFinite(score)) return [];
@@ -288,21 +293,41 @@ function TeacherStudentCommentsPage() {
             </Card>
 
             <Card className="overflow-hidden">
-              <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
+              <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div>
                   <p className="font-semibold text-text">Comment readiness</p>
                   <p className="text-xs text-text-muted">Comments use the student's weighted overall performance after all expected results are finalized and locked.</p>
                 </div>
-                <Button type="button" size="small" variant="outline" onClick={loadRoster} disabled={rosterLoading}>
-                  <RefreshCw className="h-4 w-4" /> Refresh
-                </Button>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <label className="relative block min-w-0 sm:w-72">
+                    <span className="sr-only">Search students</span>
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                    <input
+                      type="search"
+                      className="input-base w-full pl-9"
+                      value={studentSearch}
+                      onChange={(event) => setStudentSearch(event.target.value)}
+                      placeholder="Search name or admission number"
+                    />
+                  </label>
+                  <Button type="button" size="small" variant="outline" onClick={loadRoster} disabled={rosterLoading}>
+                    <RefreshCw className="h-4 w-4" /> Refresh
+                  </Button>
+                </div>
               </div>
               {rosterLoading ? (
                 <div className="p-6"><LoadingState label="Resolving academic readiness..." /></div>
               ) : rows.length === 0 ? (
                 <div className="p-6"><EmptyState title="No students in scope" description="No students matched this class, session, and term." /></div>
+              ) : filteredRows.length === 0 ? (
+                <div className="p-6"><EmptyState title="No students match your search" description="Try a different student name or admission number." /></div>
               ) : (
                 <div className="overflow-x-auto">
+                  {studentSearch.trim() ? (
+                    <p className="border-b border-border px-4 py-2 text-xs text-text-muted sm:px-5">
+                      Showing {filteredRows.length} of {rows.length} students
+                    </p>
+                  ) : null}
                   <table className="w-full min-w-[860px] text-sm">
                     <thead className="bg-surface-muted/40 text-left text-xs uppercase tracking-wide text-text-muted">
                       <tr>
@@ -315,7 +340,7 @@ function TeacherStudentCommentsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {rows.map((row) => {
+                      {filteredRows.map((row) => {
                         const canOpen = row.academic_ready || Boolean(row.comment);
                         return (
                           <tr key={row.student_id}>

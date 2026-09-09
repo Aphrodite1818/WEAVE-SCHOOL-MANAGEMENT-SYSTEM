@@ -16,6 +16,10 @@ import {
   SelectControl,
   WorkspacePanel,
 } from "./AcademicWorkspacePrimitives";
+import {
+  assignmentsAvailableForEntry,
+  componentScoresForAssignment,
+} from "./resultEntryAvailability";
 
 const PAGE_SIZE = 100;
 const BLANK_FORM = {
@@ -91,6 +95,9 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
   const [resultTotal, setResultTotal] = useState(0);
   const [resultPage, setResultPage] = useState(0);
   const [assessmentConfig, setAssessmentConfig] = useState(null);
+  const [entryResults, setEntryResults] = useState([]);
+  const [entryResultsLoading, setEntryResultsLoading] = useState(false);
+  const [entryResultsError, setEntryResultsError] = useState("");
   const [filters, setFilters] = useState({
     class_id: "",
     academic_session_id: "",
@@ -231,9 +238,72 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     if (activeTab !== "entry") resetForm();
   }, [activeTab]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      activeTab !== "entry" ||
+      form.result_id ||
+      !form.student_id ||
+      !filters.class_id ||
+      !filters.academic_session_id ||
+      !filters.academic_term_id
+    ) {
+      setEntryResults([]);
+      setEntryResultsError("");
+      setEntryResultsLoading(false);
+      return undefined;
+    }
+
+    const loadEntryResults = async () => {
+      setEntryResults([]);
+      setEntryResultsError("");
+      setEntryResultsLoading(true);
+      try {
+        const params = {
+          student_id: form.student_id,
+          class_id: filters.class_id,
+          academic_session_id: filters.academic_session_id,
+          academic_term_id: filters.academic_term_id,
+          limit: PAGE_SIZE,
+        };
+        const firstPage = await academicService.listAdminResults({ ...params, skip: 0 });
+        const rows = asItems(firstPage);
+        const total = Number(firstPage?.total || rows.length);
+        for (let skip = PAGE_SIZE; skip < total; skip += PAGE_SIZE) {
+          const page = await academicService.listAdminResults({ ...params, skip });
+          rows.push(...asItems(page));
+        }
+        if (!cancelled) setEntryResults(rows);
+      } catch (requestError) {
+        if (!cancelled) {
+          setEntryResults([]);
+          setEntryResultsError(
+            getErrorMessage(
+              requestError,
+              "Could not determine which subjects still need scores.",
+            ),
+          );
+        }
+      } finally {
+        if (!cancelled) setEntryResultsLoading(false);
+      }
+    };
+
+    loadEntryResults();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    filters.academic_session_id,
+    filters.academic_term_id,
+    filters.class_id,
+    form.result_id,
+    form.student_id,
+  ]);
+
   const selectedSession = sessions.find((item) => item.id === filters.academic_session_id);
   const selectedTerm = terms.find((item) => item.id === filters.academic_term_id);
-  const selectedClass = classes.find((item) => item.id === filters.class_id);
   const periodEditable = Boolean(
     selectedSession?.status === "open" &&
       selectedSession?.is_current &&
@@ -265,11 +335,26 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     [classes],
   );
   const assignmentOptions = useMemo(
-    () =>
-      assignments
-        .filter((item) => item.class_id === filters.class_id)
-        .map((item) => ({ value: item.id, label: assignmentLabel(item) })),
-    [assignments, filters.class_id],
+    () => {
+      const availableAssignments = form.result_id
+        ? assignments.filter((item) => item.class_id === filters.class_id)
+        : form.student_id && !entryResultsLoading && !entryResultsError
+          ? assignmentsAvailableForEntry(assignments, entryResults, filters.class_id)
+          : [];
+      return availableAssignments.map((item) => ({
+        value: item.id,
+        label: assignmentLabel(item),
+      }));
+    },
+    [
+      assignments,
+      entryResults,
+      entryResultsError,
+      entryResultsLoading,
+      filters.class_id,
+      form.result_id,
+      form.student_id,
+    ],
   );
   const studentOptions = useMemo(
     () => students.map((item) => ({ value: item.id, label: studentLabel(item) })),
@@ -334,7 +419,7 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
     }
     setSaving("result");
     try {
-      await academicService.saveAdminResult({
+      const savedResult = await academicService.saveAdminResult({
         student_id: form.student_id,
         teacher_assignment_id: form.teacher_assignment_id,
         academic_session_id: filters.academic_session_id,
@@ -347,8 +432,16 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
       });
       showSuccess(form.result_id ? "Draft result updated." : "Draft result created.");
       await loadResults();
-      resetForm();
-      if (!addMore || form.result_id) selectView("overview");
+      if (addMore && !form.result_id) {
+        setEntryResults((current) => [
+          savedResult,
+          ...current.filter((item) => item.id !== savedResult.id),
+        ]);
+        setForm({ ...BLANK_FORM, student_id: form.student_id });
+      } else {
+        resetForm();
+        selectView("overview");
+      }
     } catch (requestError) {
       showError(getErrorMessage(requestError, "Could not save result draft."));
     } finally {
@@ -488,7 +581,17 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
               <SelectControl
                 label="Student"
                 value={form.student_id}
-                onChange={(value) => setForm((current) => ({ ...current, student_id: value }))}
+                onChange={(value) => {
+                  setEntryResults([]);
+                  setEntryResultsError("");
+                  setEntryResultsLoading(Boolean(value));
+                  setForm((current) => ({
+                    ...current,
+                    student_id: value,
+                    teacher_assignment_id: "",
+                    component_scores: {},
+                  }));
+                }}
                 options={studentOptions}
                 disabled={!periodEditable || !limitsConfigured || Boolean(form.result_id)}
                 required
@@ -496,13 +599,51 @@ function ResultsWorkspace({ activeTab, onContextChange }) {
               <SelectControl
                 label="Subject assignment"
                 value={form.teacher_assignment_id}
-                onChange={(value) => setForm((current) => ({ ...current, teacher_assignment_id: value }))}
+                onChange={(value) => {
+                  const assignment = assignments.find((item) => item.id === value);
+                  setForm((current) => ({
+                    ...current,
+                    teacher_assignment_id: value,
+                    component_scores: componentScoresForAssignment(
+                      entryResults,
+                      assignment,
+                    ),
+                  }));
+                }}
                 options={assignmentOptions}
-                placeholder={assignmentOptions.length ? "Select assignment" : "No current assignments for this class"}
-                disabled={!periodEditable || !limitsConfigured || Boolean(form.result_id)}
+                placeholder={
+                  !form.student_id
+                    ? "Select a student first"
+                    : entryResultsLoading
+                      ? "Checking unfinished subjects..."
+                      : entryResultsError
+                        ? "Subject availability unavailable"
+                        : assignmentOptions.length
+                          ? "Select unfinished subject"
+                          : "All assigned subjects are complete"
+                }
+                disabled={
+                  !periodEditable ||
+                  !limitsConfigured ||
+                  Boolean(form.result_id) ||
+                  !form.student_id ||
+                  entryResultsLoading ||
+                  Boolean(entryResultsError)
+                }
                 required
               />
             </div>
+            {entryResultsError ? (
+              <p className="rounded-xl border border-error/30 bg-error-soft px-4 py-3 text-sm text-error">
+                {entryResultsError} Refresh the page before entering another result.
+              </p>
+            ) : null}
+            {!form.result_id && form.student_id && !entryResultsLoading && !entryResultsError ? (
+              <p className="text-sm text-text-muted">
+                Subjects with every assessment component filled are hidden here. Use Back to
+                results to edit or reopen an existing result deliberately.
+              </p>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {(assessmentConfig?.components || []).map((component) => (
                 <Input

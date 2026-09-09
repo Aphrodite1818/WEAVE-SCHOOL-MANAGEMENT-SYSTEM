@@ -26,6 +26,8 @@ import {
 import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
 import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { TeacherClassDutyAccessProvider } from "../../features/teachers/TeacherClassDutyAccess";
+import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
 import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
 import { authSession } from "../../services/api";
@@ -110,6 +112,10 @@ function DashboardShellFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const role = getRole(user, roleProp);
+  const {
+    loading: classDutyAccessLoading,
+    hasClassTeacherDuties,
+  } = useTeacherClassDutyAccess();
   const guidePageActive =
     role === "admin" && location.pathname.startsWith("/admin/getting-started");
   const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
@@ -200,6 +206,7 @@ function DashboardShellFrame({
     role,
     pathname: location.pathname,
     navigationKey: location.key,
+    hasClassTeacherDuties,
     enabled:
       onboardingModalEnabled &&
       hasValidSchoolContext &&
@@ -209,6 +216,7 @@ function DashboardShellFrame({
       !onboardingState.required &&
       !preparingWelcome &&
       !profileModalOpen &&
+      (role !== "teacher" || !classDutyAccessLoading) &&
       !guidePageActive,
   });
   const showGettingStartedBanner = Boolean(
@@ -743,7 +751,9 @@ function DashboardShellFrame({
           role={role}
           initialIndex={tour.resumeIndex}
           focusTo={tour.focusTo}
+          focusRoutes={tour.focusRoutes}
           dedicated={tour.dedicated}
+          dedicatedKind={tour.classDutyTour ? "class-duties" : "upgrade"}
           onClose={async (result) => {
             await tour.close(result);
             setMobileNavOpen(false);
@@ -850,11 +860,13 @@ export function DashboardShell({
       user={authSession.getUser() || {}}
       role={pageMeta.role}
     >
-      <DashboardShellContext.Provider value={shellContext}>
-        <DashboardShellFrame {...pageMeta}>
-          <Outlet />
-        </DashboardShellFrame>
-      </DashboardShellContext.Provider>
+      <TeacherClassDutyAccessProvider enabled={pageMeta.role === "teacher"}>
+        <DashboardShellContext.Provider value={shellContext}>
+          <DashboardShellFrame {...pageMeta}>
+            <Outlet />
+          </DashboardShellFrame>
+        </DashboardShellContext.Provider>
+      </TeacherClassDutyAccessProvider>
     </TenantBrandingProvider>
   );
 }
@@ -894,15 +906,17 @@ function DashboardLayout({
 
   return (
     <TenantBrandingProvider user={authSession.getUser() || {}} role={roleProp}>
-      <DashboardShellFrame
-        role={roleProp}
-        title={title}
-        description={description}
-        actions={actions}
-        onboardingModalEnabled={onboardingModalEnabled}
-      >
-        {children}
-      </DashboardShellFrame>
+      <TeacherClassDutyAccessProvider enabled={roleProp === "teacher"}>
+        <DashboardShellFrame
+          role={roleProp}
+          title={title}
+          description={description}
+          actions={actions}
+          onboardingModalEnabled={onboardingModalEnabled}
+        >
+          {children}
+        </DashboardShellFrame>
+      </TeacherClassDutyAccessProvider>
     </TenantBrandingProvider>
   );
 }

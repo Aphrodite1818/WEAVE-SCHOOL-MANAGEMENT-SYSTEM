@@ -42,7 +42,6 @@ CRITICAL_TABLES = {
     "report_card_subject_lines",
     "report_card_subject_components",
     "comment_templates",
-    "comment_template_grade_mappings",
     "student_term_teacher_comments",
     "teacher_comment_overrides",
     "cbt_servers",

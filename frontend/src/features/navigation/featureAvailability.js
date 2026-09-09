@@ -11,12 +11,17 @@ export function resolveFeatureAvailability(
     subscription,
     isAccountScope = false,
     historicalFeatures = {},
+    hasClassTeacherDuties = false,
   } = {},
 ) {
   if (!item) return { visible: false, reason: "missing-item" };
 
   if (isAccountScope && !item.accountScope) {
     return { visible: false, reason: "tenant-workspace-required" };
+  }
+
+  if (item.requiresClassTeacher && !hasClassTeacherDuties) {
+    return { visible: false, reason: "class-teacher-required" };
   }
 
   if (

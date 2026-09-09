@@ -160,6 +160,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
   const [previewCard, setPreviewCard] = useState(null);
   const [overrideState, setOverrideState] = useState(null);
   const [principalEditor, setPrincipalEditor] = useState(null);
+  const [revisionTarget, setRevisionTarget] = useState(null);
   const [saving, setSaving] = useState("");
   const [loading, setLoading] = useState(true);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -474,7 +475,12 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
     setSaving(card.id);
     try {
       const replacement = await reportCardService.regenerateReportCard(card.id);
-      showSuccess(`Replacement report draft v${replacement?.version || Number(card.version || 1) + 1} created.`);
+      showSuccess(
+        card.status === "published"
+          ? `Editable revision v${replacement?.version || Number(card.version || 1) + 1} created. The published version remains available until this draft is published.`
+          : `Replacement report draft v${replacement?.version || Number(card.version || 1) + 1} created.`,
+      );
+      setRevisionTarget(null);
       setPreviewCard(null);
       await Promise.all([loadCards(), loadOverview()]);
     } catch (requestError) {
@@ -483,6 +489,17 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
       setSaving("");
     }
   };
+
+  const cardPeriodKey = (card) =>
+    [card.student_id, card.academic_session_id, card.academic_term_id].join(":");
+  const periodsWithDraft = new Set(
+    cards
+      .filter(
+        (card) =>
+          card.status === "draft" && !card.superseded_at,
+      )
+      .map(cardPeriodKey),
+  );
 
   const openPrincipalEditor = (card) => {
     setPrincipalEditor({
@@ -552,18 +569,32 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
           Publish
         </Button>
       ) : null}
-      {card.is_outdated && card.status !== "archived" ? (
+      {card.status === "draft" ? (
         <Button
           type="button"
           size="small"
           variant="outline"
           disabled={saving === card.id}
-          onClick={() => regenerate(card)}
+          onClick={() => setRevisionTarget(card)}
         >
-          {card.status === "published"
-            ? `Create replacement v${Number(card.version || 1) + 1}`
-            : "Regenerate draft"}
+          Regenerate draft
         </Button>
+      ) : null}
+      {card.status === "published" && !periodsWithDraft.has(cardPeriodKey(card)) ? (
+        <Button
+          type="button"
+          size="small"
+          variant="outline"
+          disabled={saving === card.id}
+          onClick={() => setRevisionTarget(card)}
+        >
+          Create editable revision
+        </Button>
+      ) : null}
+      {card.status === "published" && periodsWithDraft.has(cardPeriodKey(card)) ? (
+        <span className="self-center text-xs font-semibold text-text-muted">
+          Revision draft exists
+        </span>
       ) : null}
     </>
   );
@@ -850,7 +881,7 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
 
       <RecordList
         title={`Report cards${loading ? "" : ` (${cardTotal})`}`}
-        description="Report revisions remain immutable after publication. Drafts can be reviewed, edited and published from this list."
+        description="Drafts can be edited, regenerated and published. Published reports stay immutable; create an editable revision when corrections are required."
         actions={
           <Button type="button" onClick={() => selectView("generate")}>
             <FilePlus2 className="h-4 w-4" /> Create report
@@ -934,9 +965,14 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
               {previewCard.status === "draft" ? (
                 <Button type="button" variant="outline" onClick={() => openPrincipalEditor(previewCard)}>Edit principal comment</Button>
               ) : null}
-              {previewCard.is_outdated && previewCard.status !== "archived" ? (
-                <Button type="button" variant="outline" disabled={saving === previewCard.id} onClick={() => regenerate(previewCard)}>
-                  Create replacement v{Number(previewCard.version || 1) + 1}
+              {previewCard.status === "draft" ? (
+                <Button type="button" variant="outline" disabled={saving === previewCard.id} onClick={() => setRevisionTarget(previewCard)}>
+                  Regenerate draft
+                </Button>
+              ) : null}
+              {previewCard.status === "published" && !periodsWithDraft.has(cardPeriodKey(previewCard)) ? (
+                <Button type="button" variant="outline" disabled={saving === previewCard.id} onClick={() => setRevisionTarget(previewCard)}>
+                  Create editable revision
                 </Button>
               ) : null}
               {previewCard.status === "draft" && !previewCard.is_outdated ? (
@@ -949,6 +985,46 @@ function ReportCardsWorkspace({ activeTab, onContextChange }) {
         }
       >
         {previewCard ? <ReportSheet card={previewCard} /> : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(revisionTarget)}
+        title={
+          revisionTarget?.status === "published"
+            ? "Create an editable report revision?"
+            : "Regenerate this report draft?"
+        }
+        description={
+          revisionTarget?.status === "published"
+            ? "Weave will preserve the published report as the official version and create a new draft from the latest locked results and comments. Families will not see the revision until you publish it."
+            : "Weave will archive this draft and create a replacement from the latest locked results and comments."
+        }
+        onClose={() => (saving ? undefined : setRevisionTarget(null))}
+        footer={
+          revisionTarget ? (
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={saving === revisionTarget.id} onClick={() => setRevisionTarget(null)}>
+                Cancel
+              </Button>
+              <Button type="button" disabled={saving === revisionTarget.id} onClick={() => regenerate(revisionTarget)}>
+                {saving === revisionTarget.id
+                  ? "Creating..."
+                  : revisionTarget.status === "published"
+                    ? "Create revision draft"
+                    : "Regenerate draft"}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {revisionTarget ? (
+          <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-sm text-text-muted">
+            <span className="font-semibold text-text">
+              {revisionTarget.student_name || revisionTarget.admission_number || "Student"}
+            </span>{" "}
+            · Version {revisionTarget.version || 1} · {humanize(revisionTarget.status)}
+          </div>
+        ) : null}
       </Modal>
     </>
   );

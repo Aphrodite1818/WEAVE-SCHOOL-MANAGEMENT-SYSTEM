@@ -5,6 +5,7 @@ import { tourContentForItem } from "../../features/guides/workspaceTourContent";
 import { filterAvailableItems } from "../../features/navigation/featureAvailability";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
+import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
 import { authSession, getErrorMessage } from "../../services/api";
 import { navGroups } from "../layout/navConfig";
 import Button from "../ui/Button";
@@ -40,10 +41,13 @@ export default function WorkspaceTour({
   onSetup,
   initialIndex = -1,
   focusTo = null,
+  focusRoutes = null,
   dedicated = false,
+  dedicatedKind = null,
 }) {
   const subscription = useSubscription();
   const runtimeConfig = useRuntimeConfig();
+  const { hasClassTeacherDuties } = useTeacherClassDutyAccess();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -56,8 +60,13 @@ export default function WorkspaceTour({
         subscription,
         runtimeFeatures: runtimeConfig?.features || {},
         isAccountScope,
+        hasClassTeacherDuties,
       },
     );
+    if (focusRoutes?.length) {
+      const focusedRoutes = new Set(focusRoutes);
+      return availableItems.filter((item) => focusedRoutes.has(item.to));
+    }
     if (!focusTo) return availableItems;
     const settingsItem = availableItems.find(
       (item) => item.to === "/admin/settings",
@@ -74,7 +83,15 @@ export default function WorkspaceTour({
           : settingsItem.label,
       },
     ];
-  }, [focusTo, isAccountScope, role, runtimeConfig, subscription]);
+  }, [
+    focusRoutes,
+    focusTo,
+    hasClassTeacherDuties,
+    isAccountScope,
+    role,
+    runtimeConfig,
+    subscription,
+  ]);
   const [steps, setSteps] = useState([]);
   const [index, setIndex] = useState(-1);
   const [geometry, setGeometry] = useState(null);
@@ -101,9 +118,11 @@ export default function WorkspaceTour({
     setSteps(
       configuredItems
         .filter((item) => rendered.has(item.to))
-        .map((item) => tourContentForItem(role, item, { dedicated })),
+        .map((item) =>
+          tourContentForItem(role, item, { dedicated, dedicatedKind }),
+        ),
     );
-  }, [configuredItems, dedicated, role]);
+  }, [configuredItems, dedicated, dedicatedKind, role]);
 
   useEffect(() => {
     if (restoredIndex.current || !steps.length) return;
@@ -346,7 +365,9 @@ export default function WorkspaceTour({
           <div className="flex items-center justify-between gap-4">
             <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
               {dedicated
-                ? `What's new · ${index + 1} of ${steps.length}`
+                ? dedicatedKind === "class-duties"
+                  ? `New responsibility · ${index + 1} of ${steps.length}`
+                  : `What's new · ${index + 1} of ${steps.length}`
                 : welcome
                   ? "Welcome to Weave"
                   : `Your workspace · ${index + 1} of ${steps.length}`}
@@ -391,7 +412,11 @@ export default function WorkspaceTour({
             className="mt-4 text-2xl font-semibold leading-tight tracking-tight text-text outline-none"
           >
             {step?.title ||
-              (dedicated ? "New features are ready" : "Find your way around.")}
+              (dedicatedKind === "class-duties"
+                ? "Your class-teacher tools are ready"
+                : dedicated
+                  ? "New features are ready"
+                  : "Find your way around.")}
           </h2>
           <p
             id="workspace-tour-description"
@@ -399,7 +424,9 @@ export default function WorkspaceTour({
           >
             {step?.description ||
               (dedicated
-                ? "These plan features are now available for your school. This quick update points out where admins can find them."
+                ? dedicatedKind === "class-duties"
+                  ? "You have been assigned as a class teacher. This quick guide introduces the duties now available in your workspace."
+                  : "These plan features are now available for your school. This quick update points out where admins can find them."
                 : onSetup
                   ? "Take a quick look around your workspace. Then we’ll help you prepare your session, first term, and calendar."
                   : "Get to know the places you’ll use in your school workspace. There’s nothing to fill in—just take a look around.")}
@@ -407,7 +434,11 @@ export default function WorkspaceTour({
           {step ? (
             <div className="workspace-tour-preview">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                {dedicated ? `What's new in ${step.label}` : `A quick look inside ${step.label}`}
+                {dedicated
+                  ? dedicatedKind === "class-duties"
+                    ? `Available for ${step.label}`
+                    : `What's new in ${step.label}`
+                  : `A quick look inside ${step.label}`}
               </p>
               <WorkspaceTourSnapshot
                 step={step}
@@ -522,7 +553,9 @@ export default function WorkspaceTour({
                   className="workspace-tour-secondary-action"
                 >
                   {dedicated
-                    ? "Close update"
+                    ? dedicatedKind === "class-duties"
+                      ? "Close guide"
+                      : "Close update"
                     : onSetup
                       ? "Skip to school setup"
                       : "Skip for now"}

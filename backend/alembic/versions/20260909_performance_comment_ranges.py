@@ -1,6 +1,6 @@
 """Cut report comments from grade mappings to performance ranges.
 
-Revision ID: 20260909_performance_comment_ranges
+Revision ID: 20260909_perf_comment_ranges
 Revises: 20260908_cbt_audit_display
 Create Date: 2026-09-09
 
@@ -15,7 +15,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260909_performance_comment_ranges"
+revision: str = "20260909_perf_comment_ranges"
 down_revision: Union[str, Sequence[str], None] = "20260908_cbt_audit_display"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
