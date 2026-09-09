@@ -1093,7 +1093,6 @@ class StudentAcademicRepository:
         tenant_id: uuid.UUID,
         *,
         teacher_id: uuid.UUID | None = None,
-        academic_level_id: uuid.UUID | None = None,
         class_id: uuid.UUID | None = None,
         curriculum_subject_id: uuid.UUID | None = None,
         subject_id: uuid.UUID | None = None,
@@ -1112,8 +1111,6 @@ class StudentAcademicRepository:
             filters.append(TeacherAssignment.teacher_membership_id == teacher_id)
         if curriculum_subject_id is not None:
             filters.append(TeacherAssignment.curriculum_subject_id == curriculum_subject_id)
-        if academic_level_id is not None:
-            filters.append(ClassRoom.academic_level_id == academic_level_id)
         if class_id is not None:
             filters.append(TeacherAssignment.class_id == class_id)
         if subject_id is not None:

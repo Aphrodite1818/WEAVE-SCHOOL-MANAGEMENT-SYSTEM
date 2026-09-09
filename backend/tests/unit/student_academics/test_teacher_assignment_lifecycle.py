@@ -145,27 +145,6 @@ async def test_operational_assignment_context_requires_active_curriculum_subject
 
 
 @pytest.mark.asyncio
-async def test_teacher_assignment_list_forwards_academic_level_filter() -> None:
-    tenant_id = uuid.uuid4()
-    academic_level_id = uuid.uuid4()
-    db = AsyncMock()
-
-    with patch(
-        "app.modules.student_academics.service.StudentAcademicRepository.list_teacher_assignment_rows",
-        new=AsyncMock(return_value=([], 0)),
-    ) as list_rows:
-        items, total = await StudentAcademicService.list_teacher_assignment_responses(
-            db,
-            tenant_id,
-            academic_level_id=academic_level_id,
-        )
-
-    assert items == []
-    assert total == 0
-    assert list_rows.await_args.kwargs["academic_level_id"] == academic_level_id
-
-
-@pytest.mark.asyncio
 async def test_open_academic_term_uses_canonical_academic_service() -> None:
     tenant_id = uuid.uuid4()
     admin_id = uuid.uuid4()
