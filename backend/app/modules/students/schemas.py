@@ -351,9 +351,10 @@ class StudentRestoreFromArchiveRequest(StudentLifecycleReasonRequest):
     """Restore an archived record to operational visibility."""
 
 
-class StudentExpelledReinstatementRequest(StudentLifecycleReasonRequest):
-    """Privileged reinstatement of an expelled student."""
+class StudentReturnEnrollmentRequest(StudentLifecycleReasonRequest):
+    """Create a new placement after a genuine terminal student exit."""
 
+    target_academic_level_id: uuid.UUID
     target_class_id: uuid.UUID
     academic_session_id: uuid.UUID
     effective_date: date = Field(default_factory=date.today)
@@ -361,8 +362,6 @@ class StudentExpelledReinstatementRequest(StudentLifecycleReasonRequest):
     @field_validator("effective_date")
     @classmethod
     def validate_effective_date(cls, value: date) -> date:
-        """Reinstatement cannot start in the future."""
-
         validated = validate_date_not_future(value, field_name="effective_date")
         assert validated is not None
         return validated
@@ -654,6 +653,18 @@ class StudentParentLinkRequestListResponse(OutputBase):
 # ---------------------------------------------------------------------------
 
 
+class StudentLifecycleCapabilities(OutputBase):
+    """Backend-owned lifecycle actions available for the student's current state."""
+
+    can_undo_withdrawal: bool = False
+    can_undo_expulsion: bool = False
+    can_undo_graduation: bool = False
+    can_readmit: bool = False
+    can_reinstate_expelled: bool = False
+    can_reenrol_graduate: bool = False
+    undo_block_reason: str | None = None
+
+
 class StudentOutputBase(OutputBase):
     """Student profile and lifecycle response."""
 
@@ -684,6 +695,7 @@ class StudentOutputBase(OutputBase):
     archive_reason: str | None = None
     created_at: datetime
     updated_at: datetime
+    lifecycle_capabilities: StudentLifecycleCapabilities | None = None
 
 
 class StudentResponse(StudentOutputBase):

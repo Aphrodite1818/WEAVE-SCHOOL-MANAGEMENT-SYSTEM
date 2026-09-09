@@ -21,10 +21,10 @@ from app.modules.students.schemas import (
     StudentCreate,
     StudentDetailResponse,
     StudentExpelRequest,
-    StudentExpelledReinstatementRequest,
     StudentGraduateRequest,
     StudentHardDeleteEligibilityResponse,
     StudentHardDeleteRequest,
+    StudentLifecycleReasonRequest,
     StudentLifecycleTransitionResponse,
     StudentListResponse,
     StudentParentLinkRequestDecision,
@@ -32,6 +32,7 @@ from app.modules.students.schemas import (
     StudentParentLinkResponse,
     StudentParentLinkUpdateRequest,
     StudentReinstateRequest,
+    StudentReturnEnrollmentRequest,
     StudentRestoreFromArchiveRequest,
     StudentSuspendRequest,
     StudentWithdrawRequest,
@@ -138,7 +139,9 @@ async def get_student(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentDetailResponse:
-    return await StudentService.get_student_profile(db, current_admin, student_id)
+    return await StudentAdminContractService.get_student(
+        db, actor=current_admin, student_id=student_id
+    )
 
 
 @router.patch("/students/{student_id}/profile", response_model=StudentDetailResponse)
@@ -212,7 +215,7 @@ async def reinstate_suspended_student(
 )
 async def reinstate_expelled_student(
     student_id: UUID,
-    payload: StudentExpelledReinstatementRequest,
+    payload: StudentReturnEnrollmentRequest,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> StudentLifecycleTransitionResponse:
@@ -220,10 +223,34 @@ async def reinstate_expelled_student(
         db,
         actor=current_admin,
         student_id=student_id,
-        target_class_id=payload.target_class_id,
-        academic_session_id=payload.academic_session_id,
-        effective_date=payload.effective_date,
-        reason=payload.reason,
+        payload=payload,
+    )
+
+
+@router.post("/students/{student_id}/readmit", response_model=StudentLifecycleTransitionResponse)
+async def readmit_withdrawn_student(
+    student_id: UUID,
+    payload: StudentReturnEnrollmentRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.readmit(
+        db, actor=current_admin, student_id=student_id, payload=payload
+    )
+
+
+@router.post(
+    "/students/{student_id}/re-enrol-graduate",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def reenrol_graduated_student(
+    student_id: UUID,
+    payload: StudentReturnEnrollmentRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.reenrol_graduate(
+        db, actor=current_admin, student_id=student_id, payload=payload
     )
 
 
@@ -272,6 +299,51 @@ async def graduate_student(
         student_id=student_id,
         reason=payload.reason,
         graduation_date=payload.graduation_date,
+    )
+
+
+@router.post(
+    "/students/{student_id}/undo-withdrawal",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def undo_student_withdrawal(
+    student_id: UUID,
+    payload: StudentLifecycleReasonRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.undo_withdrawal(
+        db, actor=current_admin, student_id=student_id, reason=payload.reason
+    )
+
+
+@router.post(
+    "/students/{student_id}/undo-expulsion",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def undo_student_expulsion(
+    student_id: UUID,
+    payload: StudentLifecycleReasonRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.undo_expulsion(
+        db, actor=current_admin, student_id=student_id, reason=payload.reason
+    )
+
+
+@router.post(
+    "/students/{student_id}/undo-graduation",
+    response_model=StudentLifecycleTransitionResponse,
+)
+async def undo_student_graduation(
+    student_id: UUID,
+    payload: StudentLifecycleReasonRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> StudentLifecycleTransitionResponse:
+    return await StudentLifecycleService.undo_graduation(
+        db, actor=current_admin, student_id=student_id, reason=payload.reason
     )
 
 

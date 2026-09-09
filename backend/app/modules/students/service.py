@@ -47,6 +47,7 @@ from app.modules.student_academics.lifecycle_repository import (
     StudentProgressionRepository,
 )
 from app.modules.student_academics.models import (
+    AcademicLifecycleAudit,
     AcademicSessionStatus,
     AcademicTermStatus,
     StudentProgressionItem,
@@ -898,6 +899,7 @@ class StudentLifecycleService:
             raise NotFoundException("Student not found.")
 
         previous_status = student.status
+        lifecycle_snapshot: dict[str, object] | None = None
         if previous_status == target_status:
             raise ConflictException(f"Student is already {target_status.value}.")
 
@@ -936,6 +938,19 @@ class StudentLifecycleService:
                 ),
             )
         elif terminal:
+            lifecycle_snapshot = {
+                "version": 1,
+                "effective_date": effective_date.isoformat(),
+                "student_before": {
+                    "status": previous_status.value,
+                    "promotion_hold": student.promotion_hold,
+                    "is_active": student.is_active,
+                    "account_status": student.account_status.value,
+                    "graduation_date": (
+                        student.graduation_date.isoformat() if student.graduation_date else None
+                    ),
+                },
+            }
             current = await StudentEnrollmentRepository.get_current(
                 db,
                 tenant_id,
@@ -943,6 +958,21 @@ class StudentLifecycleService:
                 lock=True,
             )
             if current is not None:
+                lifecycle_snapshot["enrollment"] = {
+                    "id": str(current.id),
+                    "before": {
+                        "ended_on": None,
+                        "exit_outcome": None,
+                        "exit_reason": None,
+                        "ended_by_admin_id": None,
+                    },
+                    "after": {
+                        "ended_on": effective_date.isoformat(),
+                        "exit_outcome": target_status.value,
+                        "exit_reason": reason,
+                        "ended_by_admin_id": str(actor.id),
+                    },
+                }
                 if effective_date < current.started_on:
                     raise ConflictException("Lifecycle exit cannot predate the current enrollment.")
                 current.ended_on = effective_date
@@ -969,10 +999,29 @@ class StudentLifecycleService:
                 progression is not None
                 and progression.status == StudentProgressionItemStatus.BLOCKED
             ):
+                if lifecycle_snapshot is not None:
+                    lifecycle_snapshot["progression"] = {
+                        "id": str(progression.id),
+                        "before": {
+                            "status": progression.status.value,
+                            "reason": progression.reason,
+                            "processed_at": (
+                                progression.processed_at.isoformat()
+                                if progression.processed_at
+                                else None
+                            ),
+                        },
+                    }
                 progression.status = StudentProgressionItemStatus.CANCELLED
                 progression.reason = f"Student lifecycle changed to {target_status.value}."
                 progression.processed_at = now
                 await StudentProgressionRepository.save_item(db, progression)
+                if lifecycle_snapshot is not None:
+                    lifecycle_snapshot["progression"]["after"] = {
+                        "status": progression.status.value,
+                        "reason": progression.reason,
+                        "processed_at": progression.processed_at.isoformat(),
+                    }
         if target_status == AcademicStatus.ACTIVE:
             session_revoked = False
             codes_revoked = 0
@@ -995,8 +1044,14 @@ class StudentLifecycleService:
             lock=True,
         )
         affected_links = 0
+        link_snapshots: list[dict[str, object]] = []
         recalculated_memberships: set[UUID] = set()
         for link in links:
+            before_link = {
+                "status": link.status.value,
+                "ended_at": link.ended_at.isoformat() if link.ended_at else None,
+                "end_reason": link.end_reason,
+            }
             if target_status == AcademicStatus.WITHDRAWN:
                 link.status = StudentParentLinkStatus.READ_ONLY
             elif target_status == AcademicStatus.GRADUATED:
@@ -1012,10 +1067,23 @@ class StudentLifecycleService:
             else:
                 continue
             await StudentParentLinkRepository.save(db, link)
+            if lifecycle_snapshot is not None:
+                link_snapshots.append(
+                    {
+                        "id": str(link.id),
+                        "before": before_link,
+                        "after": {
+                            "status": link.status.value,
+                            "ended_at": link.ended_at.isoformat() if link.ended_at else None,
+                            "end_reason": link.end_reason,
+                        },
+                    }
+                )
             affected_links += 1
             recalculated_memberships.add(link.parent_membership_id)
 
         recalculation_count = 0
+        membership_snapshots: list[dict[str, object]] = []
         for membership_id in recalculated_memberships:
             membership = await ParentMembershipRepository.get_by_id(
                 db,
@@ -1024,11 +1092,67 @@ class StudentLifecycleService:
                 lock=True,
             )
             if membership is not None:
+                before_membership = {
+                    "status": membership.status.value,
+                    "ended_at": membership.ended_at.isoformat() if membership.ended_at else None,
+                    "end_reason": membership.end_reason,
+                }
                 await StudentLifecycleService._recalculate_parent_membership(
                     db,
                     membership,
                 )
+                if lifecycle_snapshot is not None:
+                    membership_snapshots.append(
+                        {
+                            "id": str(membership.id),
+                            "before": before_membership,
+                            "after": {
+                                "status": membership.status.value,
+                                "ended_at": (
+                                    membership.ended_at.isoformat()
+                                    if membership.ended_at
+                                    else None
+                                ),
+                                "end_reason": membership.end_reason,
+                            },
+                        }
+                    )
                 recalculation_count += 1
+
+        if lifecycle_snapshot is not None:
+            lifecycle_snapshot.update(
+                {
+                    "student_after": {
+                        "status": student.status.value,
+                        "promotion_hold": student.promotion_hold,
+                        "is_active": student.is_active,
+                        "account_status": student.account_status.value,
+                        "graduation_date": (
+                            student.graduation_date.isoformat()
+                            if student.graduation_date
+                            else None
+                        ),
+                    },
+                    "parent_links": link_snapshots,
+                    "parent_memberships": membership_snapshots,
+                    "student_sessions_revoked": session_revoked,
+                    "access_codes_revoked": codes_revoked,
+                }
+            )
+            await StudentAcademicRepository.add_academic_lifecycle_audit(
+                db,
+                AcademicLifecycleAudit(
+                    tenant_id=tenant_id,
+                    entity_type="student",
+                    entity_id=student.id,
+                    action=f"student_{target_status.value}",
+                    previous_status=previous_status.value,
+                    new_status=target_status.value,
+                    acting_admin_id=actor.id,
+                    reason=reason,
+                    metadata_json=lifecycle_snapshot,
+                ),
+            )
 
         await db.commit()
         await AuthIdentityService.invalidate_after_commit(db)

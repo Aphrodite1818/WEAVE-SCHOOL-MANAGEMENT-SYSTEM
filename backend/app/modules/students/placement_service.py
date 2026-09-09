@@ -30,11 +30,13 @@ from app.modules.student_academics.curriculum_models import ClassTermDepartmentA
 from app.modules.student_academics.curriculum_service import CurriculumResolutionService
 from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
 from app.modules.student_academics.models import (
+    AcademicLifecycleAudit,
     AcademicSession,
     AcademicSessionStatus,
     StudentSubjectResult,
 )
 from app.modules.student_academics.write_guard import ensure_academic_write_window
+from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.enrollment_schemas import (
     PlacementImpactPreviewRequest,
     PlacementImpactPreviewResponse,
@@ -49,6 +51,7 @@ from app.modules.students.models import (
     StudentEnrollment,
     StudentEnrollmentOutcome,
 )
+from app.modules.students.enrollment_evidence import StudentEnrollmentEvidenceService
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.students.schemas import StudentDetailResponse, StudentEnrollmentDetailResponse
 from app.modules.students.service import StudentService
@@ -236,6 +239,56 @@ class StudentPlacementService:
             db.add(card)
 
     @staticmethod
+    async def _correct_same_day_placement(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        enrollment: StudentEnrollment,
+        target_academic_level_id: UUID,
+        target_class_id: UUID,
+        reason: str,
+    ) -> None:
+        counts = await StudentEnrollmentEvidenceService.segment_dependency_counts(
+            db,
+            tenant_id=actor.tenant_id,
+            enrollment_id=enrollment.id,
+        )
+        blockers = {name: count for name, count in counts.items() if count > 0}
+        if blockers:
+            raise ConflictException(
+                "This same-day placement can no longer be corrected because academic activity "
+                "already depends on it. Use a later reassignment instead.",
+                payload={"dependency_counts": blockers},
+            )
+
+        previous_level_id = enrollment.academic_level_id
+        previous_class_id = enrollment.class_id
+        enrollment.academic_level_id = target_academic_level_id
+        enrollment.class_id = target_class_id
+        await StudentEnrollmentRepository.save(db, enrollment)
+        await StudentAcademicRepository.add_academic_lifecycle_audit(
+            db,
+            AcademicLifecycleAudit(
+                tenant_id=actor.tenant_id,
+                entity_type="student",
+                entity_id=enrollment.student_id,
+                action="student_placement_corrected",
+                previous_status="placed",
+                new_status="placed",
+                acting_admin_id=actor.id,
+                reason=reason,
+                metadata_json={
+                    "enrollment_id": str(enrollment.id),
+                    "effective_date": enrollment.started_on.isoformat(),
+                    "previous_academic_level_id": str(previous_level_id),
+                    "previous_class_id": str(previous_class_id) if previous_class_id else None,
+                    "new_academic_level_id": str(target_academic_level_id),
+                    "new_class_id": str(target_class_id),
+                },
+            ),
+        )
+
+    @staticmethod
     async def place_class(
         db: AsyncSession,
         *,
@@ -346,9 +399,27 @@ class StudentPlacementService:
             raise BadRequestException("Reassign Class cannot change academic level.")
         if target_class.id == current.class_id:
             raise ConflictException("Student is already in the target class.")
+        if payload.effective_date == current.started_on == date.today():
+            await StudentPlacementService._correct_same_day_placement(
+                db,
+                actor=actor,
+                enrollment=current,
+                target_academic_level_id=current.academic_level_id,
+                target_class_id=target_class.id,
+                reason=payload.reason,
+            )
+            await StudentPlacementService._invalidate_derived_context(
+                db,
+                tenant_id=tenant_id,
+                student_id=student.id,
+                academic_session_id=current.academic_session_id,
+            )
+            await db.commit()
+            return await StudentService.get_student_profile(db, actor, student.id)
         if payload.effective_date <= current.started_on:
             raise BadRequestException(
-                "Reassignment effective date must be after the current placement start."
+                "Reassignment must follow the current placement start. Only a placement that "
+                "started today can be corrected on the same date."
             )
 
         await StudentPlacementService._close_segment(
@@ -410,9 +481,27 @@ class StudentPlacementService:
             raise ConflictException("Student has no current enrollment for this session.")
         if current.academic_level_id == payload.target_academic_level_id:
             raise BadRequestException("Use Reassign Class for a same-level move.")
+        if payload.effective_date == current.started_on == date.today():
+            await StudentPlacementService._correct_same_day_placement(
+                db,
+                actor=actor,
+                enrollment=current,
+                target_academic_level_id=payload.target_academic_level_id,
+                target_class_id=target_class.id,
+                reason=payload.reason,
+            )
+            await StudentPlacementService._invalidate_derived_context(
+                db,
+                tenant_id=tenant_id,
+                student_id=student.id,
+                academic_session_id=current.academic_session_id,
+            )
+            await db.commit()
+            return await StudentService.get_student_profile(db, actor, student.id)
         if payload.effective_date <= current.started_on:
             raise BadRequestException(
-                "Reassignment effective date must be after the current placement start."
+                "Reassignment must follow the current placement start. Only a placement that "
+                "started today can be corrected on the same date."
             )
 
         await StudentPlacementService._close_segment(

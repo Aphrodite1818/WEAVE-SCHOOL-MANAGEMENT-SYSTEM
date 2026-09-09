@@ -21,6 +21,20 @@ class StudentAdminContractService:
     """Admin read/update operations with explicit archival and PATCH semantics."""
 
     @staticmethod
+    async def _with_lifecycle_capabilities(
+        db: AsyncSession,
+        student: StudentDetailResponse,
+    ) -> StudentDetailResponse:
+        from app.modules.students.lifecycle_service import StudentLifecycleService
+
+        capabilities = await StudentLifecycleService.capabilities(
+            db,
+            tenant_id=student.tenant_id,
+            student_id=student.id,
+        )
+        return student.model_copy(update={"lifecycle_capabilities": capabilities})
+
+    @staticmethod
     async def list_students(
         db: AsyncSession,
         *,
@@ -46,9 +60,23 @@ class StudentAdminContractService:
             offset=skip,
             limit=min(limit, 100),
         )
-        return [
+        responses = [
             await StudentService._build_detail_response(db, student) for student in students
+        ]
+        return [
+            await StudentAdminContractService._with_lifecycle_capabilities(db, student)
+            for student in responses
         ], total
+
+    @staticmethod
+    async def get_student(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+    ) -> StudentDetailResponse:
+        student = await StudentService.get_student_profile(db, actor, student_id)
+        return await StudentAdminContractService._with_lifecycle_capabilities(db, student)
 
     @staticmethod
     async def update_profile(

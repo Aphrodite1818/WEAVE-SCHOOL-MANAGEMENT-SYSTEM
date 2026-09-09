@@ -119,8 +119,37 @@ const lifecycleConfig = {
     label: "Reinstate expelled",
     icon: UserCheck,
     method: "reinstateExpelledStudent",
-    usesClassSession: true,
+    usesPlacement: true,
     usesEffectiveDate: true,
+  },
+  readmit: {
+    label: "Readmit student",
+    icon: UserCheck,
+    method: "readmitStudent",
+    usesPlacement: true,
+    usesEffectiveDate: true,
+  },
+  reenrolGraduate: {
+    label: "Re-enrol former student",
+    icon: UserCheck,
+    method: "reenrolGraduatedStudent",
+    usesPlacement: true,
+    usesEffectiveDate: true,
+  },
+  undoWithdrawal: {
+    label: "Undo withdrawal",
+    icon: Undo2,
+    method: "undoWithdrawal",
+  },
+  undoExpulsion: {
+    label: "Undo expulsion",
+    icon: Undo2,
+    method: "undoExpulsion",
+  },
+  undoGraduation: {
+    label: "Undo graduation",
+    icon: Undo2,
+    method: "undoGraduation",
   },
   withdraw: {
     label: "Withdraw",
@@ -161,7 +190,16 @@ const actionsForStudent = (student) => {
   if (status === "suspended") {
     return ["reinstate", "withdraw", "expel", "archive"];
   }
-  if (status === "expelled") return ["reinstateExpelled", "archive"];
+  const capabilities = student.lifecycle_capabilities || {};
+  if (status === "withdrawn") {
+    return [capabilities.can_undo_withdrawal ? "undoWithdrawal" : "readmit", "archive"];
+  }
+  if (status === "expelled") {
+    return [capabilities.can_undo_expulsion ? "undoExpulsion" : "reinstateExpelled", "archive"];
+  }
+  if (status === "graduated") {
+    return [capabilities.can_undo_graduation ? "undoGraduation" : "reenrolGraduate", "archive"];
+  }
   return ["archive"];
 };
 
@@ -633,6 +671,7 @@ function StudentDirectoryPage() {
         graduation_date: localDateInputValue(),
         promotion_hold: true,
         target_class_id: student.class_id || classes[0]?.id || "",
+        target_academic_level_id: student.academic_level_id || "",
         academic_session_id: currentSession?.id || "",
       },
     });
@@ -652,11 +691,13 @@ function StudentDirectoryPage() {
     if (config.usesPromotionHold) payload.promotion_hold = form.promotion_hold;
     if (config.usesEffectiveDate) payload.effective_date = form.effective_date;
     if (config.usesGraduationDate) payload.graduation_date = form.graduation_date;
-    if (config.usesClassSession) {
+    if (config.usesPlacement) {
+      payload.target_academic_level_id = form.target_academic_level_id;
       payload.target_class_id = form.target_class_id;
       payload.academic_session_id = form.academic_session_id;
-      if (!payload.target_class_id || !payload.academic_session_id) {
+      if (!payload.target_academic_level_id || !payload.target_class_id || !payload.academic_session_id) {
         setFieldErrors({
+          target_academic_level_id: payload.target_academic_level_id ? undefined : "Choose a level.",
           target_class_id: payload.target_class_id ? undefined : "Choose a class.",
           academic_session_id: payload.academic_session_id ? undefined : "Choose a session.",
         });
@@ -670,7 +711,7 @@ function StudentDirectoryPage() {
       showSuccess(`${config.label} completed.`);
       setLifecycleState(null);
       if (
-        ["restore", "reinstate", "reinstateExpelled"].includes(actionKey) &&
+        ["restore", "reinstate", "reinstateExpelled", "readmit", "reenrolGraduate"].includes(actionKey) &&
         updatedStudent?.password_reset_required
       ) {
         showWarning("Student access is restored, but a new access code is still required.");
@@ -1267,12 +1308,32 @@ function StudentDirectoryPage() {
                 }
               />
             ) : null}
-            {lifecycleConfig[lifecycleState.actionKey].usesClassSession ? (
+            {lifecycleConfig[lifecycleState.actionKey].usesPlacement ? (
               <div className="grid gap-4 sm:grid-cols-2">
+                <SelectField
+                  label="Academic level"
+                  value={lifecycleState.form.target_academic_level_id}
+                  options={levelOptions}
+                  required
+                  error={fieldErrors.target_academic_level_id}
+                  onChange={(value) =>
+                    setLifecycleState((current) => ({
+                      ...current,
+                      form: {
+                        ...current.form,
+                        target_academic_level_id: value,
+                        target_class_id: "",
+                      },
+                    }))
+                  }
+                />
                 <SelectField
                   label="Target class"
                   value={lifecycleState.form.target_class_id}
-                  options={classOptions}
+                  options={classOptions.filter((item) => {
+                    const classroom = classes.find((row) => row.id === item.value);
+                    return classroom?.academic_level_id === lifecycleState.form.target_academic_level_id;
+                  })}
                   required
                   error={fieldErrors.target_class_id}
                   onChange={(value) =>
