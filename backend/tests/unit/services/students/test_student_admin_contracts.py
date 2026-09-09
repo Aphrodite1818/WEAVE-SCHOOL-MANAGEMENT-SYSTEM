@@ -121,5 +121,6 @@ async def test_placement_history_returns_canonical_segment_with_display_labels()
             class_arm="Blue",
             academic_level_name="JSS 1",
             academic_session_name="2026/2027",
+            lifecycle_state="current",
         )
     ]
