@@ -40,6 +40,17 @@ class StudentReadService:
         if tenant_id is None:
             raise ForbiddenException("Actor has no tenant context.")
 
+        # Formal returns are represented by future StudentEnrollment rows, not a
+        # scheduler. Materialize any return whose enrollment has become current
+        # before applying status filters so list/read behavior changes on the
+        # effective date without a worker or a second lifecycle state machine.
+        from app.modules.students.lifecycle_service import StudentLifecycleService
+
+        await StudentLifecycleService.activate_due_returns_for_tenant(
+            db,
+            tenant_id=tenant_id,
+        )
+
         students, total = await StudentRepository.list_for_tenant(
             db,
             tenant_id,
