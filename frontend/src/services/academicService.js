@@ -307,15 +307,17 @@ export const academicService = {
       `/tenant-admin/academics/teacher-assignments/${assignmentId}/end`,
       payload,
     ),
-  deleteTeacherAssignment: (assignmentId, payload) =>
-    api.delete(`/tenant-admin/academics/teacher-assignments/${assignmentId}`, {
-      body: JSON.stringify({
-        confirmation: "DELETE_TEACHER_ASSIGNMENT",
-        ...payload,
-      }),
-      headers: { "Content-Type": "application/json" },
-    }),
   reassignTeacherAssignment,
+  updateScheduledTeacherAssignment: (assignmentId, payload) =>
+    api.patch(
+      `/tenant-admin/academics/teacher-assignments/${assignmentId}/schedule`,
+      payload,
+    ),
+  cancelScheduledTeacherAssignment: (assignmentId, payload) =>
+    api.post(
+      `/tenant-admin/academics/teacher-assignments/${assignmentId}/schedule/cancel`,
+      payload,
+    ),
 
   listAdminResults: (params, requestOptions) =>
     api.get(

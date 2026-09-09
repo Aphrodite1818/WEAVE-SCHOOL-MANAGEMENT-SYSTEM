@@ -27,3 +27,23 @@ test("assignment creation delegates existing coverage to the eligible-class cont
   assert.match(source, /already_assigned/);
   assert.match(source, /filter\(\(item\) => !item\.already_assigned\)/);
 });
+
+test("scheduled assignments and takeovers use dedicated lifecycle controls", () => {
+  assert.match(source, /item\.has_scheduled_takeover/);
+  assert.match(source, /Manage handover/);
+  assert.match(source, /HANDOVER SCHEDULED/);
+  assert.match(source, /if \(status === ["']scheduled["']\)/);
+  assert.match(source, /Edit schedule/);
+  assert.match(source, /Cancel schedule/);
+  assert.match(source, /updateScheduledTeacherAssignment/);
+  assert.match(source, /cancelScheduledTeacherAssignment/);
+  assert.doesNotMatch(source, /Delete unused/);
+});
+
+test("early ending warns that the planned takeover is cancelled", () => {
+  assert.match(
+    source,
+    /Ending this assignment early will also cancel the planned takeover/,
+  );
+  assert.match(source, /will have no assigned teacher/);
+});

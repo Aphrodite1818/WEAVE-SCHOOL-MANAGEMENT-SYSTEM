@@ -69,11 +69,12 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultStatusUpdate,
     StudentSubjectResultUpsert,
     TeacherAssignmentCreate,
-    TeacherAssignmentDelete,
     TeacherAssignmentDependencyPreview,
     TeacherAssignmentEnd,
     TeacherAssignmentReassign,
     TeacherAssignmentResponse,
+    TeacherAssignmentScheduleCancel,
+    TeacherAssignmentScheduleUpdate,
 )
 from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.students.models import (
@@ -161,7 +162,10 @@ class StudentAcademicService:
 
     @staticmethod
     async def _validate_session_dates(
-        *, start_date: date | None, end_date: date | None, require_complete: bool = False
+        *,
+        start_date: date | None,
+        end_date: date | None,
+        require_complete: bool = False,
     ) -> None:
         if require_complete and (start_date is None or end_date is None):
             raise BadRequestException("Session start and end dates are required.")
@@ -640,7 +644,10 @@ class StudentAcademicService:
         )
         if session is None:
             raise NotFoundException("Academic session not found.")
-        if session.status in {AcademicSessionStatus.CLOSING, AcademicSessionStatus.CLOSED}:
+        if session.status in {
+            AcademicSessionStatus.CLOSING,
+            AcademicSessionStatus.CLOSED,
+        }:
             raise ConflictException(
                 "Terms cannot be added to a closing or closed academic session."
             )
@@ -753,7 +760,9 @@ class StudentAcademicService:
             end_date=term.end_date,
             exclude_term_id=term.id,
         )
-        from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
+        from app.modules.subscriptions.term_entitlement_service import (
+            TermPlanEntitlementService,
+        )
         from app.modules.school_calendar.service import SchoolCalendarService
 
         entitlement = await TermPlanEntitlementService.ensure_open_eligible(db, tenant_id, term.id)
@@ -769,7 +778,9 @@ class StudentAcademicService:
                     "calendar_id": readiness.get("calendar_id"),
                 },
             )
-        from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+        from app.modules.student_academics.curriculum_v2_service import (
+            AcademicCurriculumService,
+        )
 
         (
             specialization_counts,
@@ -901,7 +912,9 @@ class StudentAcademicService:
             acting_admin_id=admin_id,
         )
         from app.modules.school_calendar.service import SchoolCalendarService
-        from app.modules.subscriptions.term_entitlement_service import TermPlanEntitlementService
+        from app.modules.subscriptions.term_entitlement_service import (
+            TermPlanEntitlementService,
+        )
 
         await SchoolCalendarService.archive_term_calendar(
             db,
@@ -1379,6 +1392,7 @@ class StudentAcademicService:
         record: dict,
     ) -> TeacherAssignmentResponse:
         assignment = record["assignment"]
+        takeover = record.get("scheduled_takeover")
         return TeacherAssignmentResponse(
             id=assignment.id,
             tenant_id=assignment.tenant_id,
@@ -1392,6 +1406,15 @@ class StudentAcademicService:
             subject_code=record.get("subject_code"),
             teacher_name=record.get("teacher_name"),
             teacher_staff_id=record.get("teacher_staff_id"),
+            has_scheduled_takeover=takeover is not None,
+            scheduled_takeover_id=takeover.get("id") if takeover else None,
+            scheduled_takeover_teacher_membership_id=(
+                takeover.get("teacher_membership_id") if takeover else None
+            ),
+            scheduled_takeover_teacher_name=(takeover.get("teacher_name") if takeover else None),
+            scheduled_takeover_effective_from=(
+                takeover.get("effective_from") if takeover else None
+            ),
             status=assignment.state,
             effective_from=assignment.effective_from,
             effective_to=assignment.effective_to,
@@ -1459,6 +1482,48 @@ class StudentAcademicService:
                 "A backdated teacher-assignment correction would contradict preserved academic history.",
                 payload={"dependency_counts": blockers},
             )
+
+    @staticmethod
+    def _raise_teacher_assignment_conflict(
+        code: str,
+        detail: str,
+        **payload,
+    ) -> None:
+        raise ConflictException(detail, payload={"code": code, **payload})
+
+    @staticmethod
+    def _adjacent_scheduled_successor(
+        assignment: TeacherAssignment,
+        history: list[TeacherAssignment],
+    ) -> TeacherAssignment | None:
+        if assignment.effective_to is None:
+            return None
+        expected_start = assignment.effective_to + timedelta(days=1)
+        return next(
+            (
+                row
+                for row in history
+                if row.id != assignment.id
+                and row.effective_from == expected_start
+                and row.state == TeacherAssignmentState.SCHEDULED
+            ),
+            None,
+        )
+
+    @staticmethod
+    def _adjacent_predecessor(
+        assignment: TeacherAssignment,
+        history: list[TeacherAssignment],
+    ) -> TeacherAssignment | None:
+        expected_end = assignment.effective_from - timedelta(days=1)
+        return next(
+            (
+                row
+                for row in history
+                if row.id != assignment.id and row.effective_to == expected_end
+            ),
+            None,
+        )
 
     @staticmethod
     async def create_teacher_assignment(
@@ -1624,6 +1689,10 @@ class StudentAcademicService:
             can_delete=(
                 assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
             ),
+            can_edit_schedule=assignment.state == TeacherAssignmentState.SCHEDULED,
+            can_cancel_schedule=(
+                assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
+            ),
             blocker_messages=blockers,
         )
 
@@ -1647,8 +1716,9 @@ class StudentAcademicService:
         if assignment is None:
             raise NotFoundException("Teacher assignment not found.")
         if assignment.state == TeacherAssignmentState.SCHEDULED:
-            raise ConflictException(
-                "Scheduled assignments have not started; cancel the scheduled assignment instead."
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "SCHEDULED_ASSIGNMENT_CANNOT_END",
+                "This assignment has not started yet. Edit or cancel the schedule instead.",
             )
         if assignment.state == TeacherAssignmentState.ENDED:
             if payload.effective_to is not None and payload.effective_to != assignment.effective_to:
@@ -1656,13 +1726,27 @@ class StudentAcademicService:
                     "Teacher assignment is already ended with a different effective date."
                 )
             return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
-        if assignment.effective_to is not None:
-            if payload.effective_to is None or payload.effective_to == assignment.effective_to:
+        planned_end = assignment.effective_to
+        effective_to = payload.effective_to or date.today()
+        history: list[TeacherAssignment] = []
+        successor: TeacherAssignment | None = None
+        if planned_end is not None:
+            if effective_to == planned_end:
                 return await StudentAcademicService._build_teacher_assignment_response(
                     db, assignment
                 )
-            raise ConflictException("Teacher assignment already has a scheduled end date.")
-        effective_to = payload.effective_to or date.today()
+            history = (
+                await StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject(
+                    db,
+                    tenant_id,
+                    assignment.curriculum_subject_id,
+                    assignment.class_id,
+                    lock=True,
+                )
+            )
+            successor = StudentAcademicService._adjacent_scheduled_successor(assignment, history)
+            if successor is None or effective_to >= planned_end:
+                raise ConflictException("Teacher assignment already has a scheduled end date.")
         if effective_to < assignment.effective_from:
             raise ConflictException("Assignment end date cannot be before its start date.")
         await StudentAcademicService._ensure_backdated_assignment_change_safe(
@@ -1674,6 +1758,23 @@ class StudentAcademicService:
         previous_state = assignment.state.value
         assignment.effective_to = effective_to
         assignment = await StudentAcademicRepository.save_teacher_assignment(db, assignment)
+        if successor is not None:
+            await StudentAcademicService._record_teacher_assignment_audit(
+                db,
+                tenant_id=tenant_id,
+                assignment_id=successor.id,
+                class_id=successor.class_id,
+                curriculum_subject_id=successor.curriculum_subject_id,
+                action="scheduled_takeover_cancelled_by_early_end",
+                previous_teacher_membership_id=successor.teacher_membership_id,
+                previous_state=successor.state.value,
+                new_state="cancelled",
+                previous_effective_from=successor.effective_from,
+                previous_effective_to=successor.effective_to,
+                acting_admin_id=acting_admin_id,
+                reason=payload.reason,
+            )
+            await StudentAcademicRepository.delete_teacher_assignment(db, successor)
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
             tenant_id=tenant_id,
@@ -1686,7 +1787,7 @@ class StudentAcademicService:
             previous_state=previous_state,
             new_state=assignment.state.value,
             previous_effective_from=assignment.effective_from,
-            previous_effective_to=None,
+            previous_effective_to=planned_end,
             new_effective_from=assignment.effective_from,
             new_effective_to=assignment.effective_to,
             acting_admin_id=acting_admin_id,
@@ -1709,9 +1810,12 @@ class StudentAcademicService:
         )
         if current is None:
             raise NotFoundException("Teacher assignment not found.")
-        if current.state != TeacherAssignmentState.CURRENT or current.effective_to is not None:
-            raise ConflictException(
-                "Only the current assignment without a scheduled end can be reassigned."
+        if current.state != TeacherAssignmentState.CURRENT:
+            raise ConflictException("Only the current assignment can be reassigned.")
+        if current.effective_to is not None:
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "TAKEOVER_ALREADY_SCHEDULED",
+                "A teacher takeover is already scheduled for this class and subject.",
             )
         (
             curriculum_subject,
@@ -1736,19 +1840,61 @@ class StudentAcademicService:
             teacher_membership_id=payload.teacher_membership_id,
         )
         if current.teacher_membership_id == payload.teacher_membership_id:
-            raise ConflictException("This teacher is already assigned.")
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "SAME_TEACHER",
+                "This teacher is already assigned to this class and subject.",
+            )
         today = date.today()
         effective_from = payload.effective_from or (
             term.start_date if term.start_date is not None and term.start_date > today else today
         )
-        if term.start_date is not None and effective_from < term.start_date:
-            raise ConflictException("Replacement cannot start before the selected term begins.")
-        if effective_from <= current.effective_from:
-            raise ConflictException(
-                "Replacement effective date must be after the current assignment start date."
+        if (term.start_date is not None and effective_from < term.start_date) or (
+            term.end_date is not None and effective_from > term.end_date
+        ):
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "TAKEOVER_OUTSIDE_TERM",
+                "The selected takeover date must fall within the current academic term.",
             )
-        if term.end_date is not None and effective_from > term.end_date:
-            raise ConflictException("Replacement starts after the selected term ends.")
+        if effective_from < current.effective_from:
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "DATE_BEFORE_ASSIGNMENT_START",
+                "Replacement effective date cannot be before the current assignment start date.",
+            )
+        if effective_from == current.effective_from:
+            dependencies = await StudentAcademicRepository.count_teacher_assignment_dependencies(
+                db, tenant_id, current.id
+            )
+            blockers = {key: value for key, value in dependencies.items() if value > 0}
+            if blockers:
+                StudentAcademicService._raise_teacher_assignment_conflict(
+                    "ASSIGNMENT_CORRECTION_BLOCKED",
+                    "This assignment already has academic records attached to it, so its history cannot be rewritten.",
+                    dependency_counts=blockers,
+                )
+            previous_teacher = current.teacher_membership_id
+            previous_state = current.state.value
+            current.teacher_membership_id = payload.teacher_membership_id
+            current = await StudentAcademicRepository.save_teacher_assignment(db, current)
+            await StudentAcademicService._record_teacher_assignment_audit(
+                db,
+                tenant_id=tenant_id,
+                assignment_id=current.id,
+                class_id=current.class_id,
+                curriculum_subject_id=current.curriculum_subject_id,
+                action="assignment_corrected",
+                previous_teacher_membership_id=previous_teacher,
+                new_teacher_membership_id=current.teacher_membership_id,
+                previous_state=previous_state,
+                new_state=current.state.value,
+                previous_effective_from=current.effective_from,
+                previous_effective_to=current.effective_to,
+                new_effective_from=current.effective_from,
+                new_effective_to=current.effective_to,
+                acting_admin_id=acting_admin_id,
+                reason=payload.reason,
+            )
+            await db.commit()
+            return await StudentAcademicService._build_teacher_assignment_response(db, current)
         await StudentAcademicService._ensure_backdated_assignment_change_safe(
             db,
             tenant_id=tenant_id,
@@ -1765,8 +1911,9 @@ class StudentAcademicService:
             lock=True,
         )
         if later:
-            raise ConflictException(
-                "Cannot reassign because a later assignment is already scheduled or preserved."
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "TAKEOVER_ALREADY_SCHEDULED",
+                "A teacher takeover is already scheduled for this class and subject.",
             )
         previous_teacher = current.teacher_membership_id
         previous_state = current.state.value
@@ -1791,7 +1938,8 @@ class StudentAcademicService:
         except IntegrityError as exc:
             await db.rollback()
             raise ConflictException(
-                "Replacement teacher assignment overlaps existing assignment history."
+                "The selected date overlaps an existing teacher assignment for this class and subject.",
+                payload={"code": "ASSIGNMENT_OVERLAP"},
             ) from exc
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
@@ -1814,14 +1962,194 @@ class StudentAcademicService:
         return await StudentAcademicService._build_teacher_assignment_response(db, replacement)
 
     @staticmethod
-    async def delete_teacher_assignment(
+    async def update_scheduled_teacher_assignment(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         assignment_id: uuid.UUID,
-        payload: TeacherAssignmentDelete,
+        payload: TeacherAssignmentScheduleUpdate,
         acting_admin_id: uuid.UUID | None = None,
     ) -> TeacherAssignmentResponse:
-        _ = payload.confirmation
+        await ensure_academic_write_window(db, tenant_id=tenant_id)
+        assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+            db, tenant_id, assignment_id, lock=True
+        )
+        if assignment is None:
+            raise NotFoundException("Teacher assignment not found.")
+        if assignment.state != TeacherAssignmentState.SCHEDULED:
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "ASSIGNMENT_NOT_SCHEDULED",
+                "Only a scheduled teacher assignment can be edited.",
+            )
+
+        (
+            curriculum_subject,
+            curriculum,
+        ) = await StudentAcademicService._load_curriculum_subject_context(
+            db,
+            tenant_id=tenant_id,
+            curriculum_subject_id=assignment.curriculum_subject_id,
+            lock=True,
+        )
+        term = await StudentAcademicService._ensure_curriculum_subject_available_to_class(
+            db,
+            tenant_id=tenant_id,
+            class_id=assignment.class_id,
+            curriculum_subject=curriculum_subject,
+            curriculum=curriculum,
+            academic_term_id=payload.academic_term_id,
+        )
+        await StudentAcademicService._validate_teacher_capability(
+            db,
+            tenant_id=tenant_id,
+            teacher_membership_id=payload.teacher_membership_id,
+        )
+        if (term.start_date is not None and payload.effective_from < term.start_date) or (
+            term.end_date is not None and payload.effective_from > term.end_date
+        ):
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "TAKEOVER_OUTSIDE_TERM",
+                "The selected takeover date must fall within the current academic term.",
+            )
+
+        history = await StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject(
+            db,
+            tenant_id,
+            assignment.curriculum_subject_id,
+            assignment.class_id,
+            lock=True,
+        )
+        predecessor = StudentAcademicService._adjacent_predecessor(assignment, history)
+        if (
+            predecessor is not None
+            and predecessor.teacher_membership_id == payload.teacher_membership_id
+        ):
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "SAME_TEACHER",
+                "This teacher is already assigned to this class and subject.",
+            )
+        if payload.effective_from < date.today() and not (
+            predecessor is not None and payload.effective_from == predecessor.effective_from
+        ):
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "SCHEDULE_DATE_IN_PAST",
+                "A scheduled assignment can only be moved to today or a future date.",
+            )
+        if predecessor is not None and payload.effective_from < predecessor.effective_from:
+            StudentAcademicService._raise_teacher_assignment_conflict(
+                "DATE_BEFORE_ASSIGNMENT_START",
+                "The takeover date cannot be before the current assignment start date.",
+            )
+        if predecessor is not None and payload.effective_from == predecessor.effective_from:
+            dependencies = await StudentAcademicRepository.count_teacher_assignment_dependencies(
+                db, tenant_id, predecessor.id
+            )
+            blockers = {key: value for key, value in dependencies.items() if value > 0}
+            if blockers:
+                StudentAcademicService._raise_teacher_assignment_conflict(
+                    "ASSIGNMENT_CORRECTION_BLOCKED",
+                    "This assignment already has academic records attached to it, so its history cannot be rewritten.",
+                    dependency_counts=blockers,
+                )
+            previous_teacher = predecessor.teacher_membership_id
+            previous_end = predecessor.effective_to
+            await StudentAcademicService._record_teacher_assignment_audit(
+                db,
+                tenant_id=tenant_id,
+                assignment_id=predecessor.id,
+                class_id=predecessor.class_id,
+                curriculum_subject_id=predecessor.curriculum_subject_id,
+                action="assignment_corrected",
+                previous_teacher_membership_id=previous_teacher,
+                new_teacher_membership_id=payload.teacher_membership_id,
+                previous_state=TeacherAssignmentState.CURRENT.value,
+                new_state=TeacherAssignmentState.CURRENT.value,
+                previous_effective_from=predecessor.effective_from,
+                previous_effective_to=previous_end,
+                new_effective_from=predecessor.effective_from,
+                new_effective_to=assignment.effective_to,
+                acting_admin_id=acting_admin_id,
+                reason=payload.reason,
+            )
+            await StudentAcademicService._record_teacher_assignment_audit(
+                db,
+                tenant_id=tenant_id,
+                assignment_id=assignment.id,
+                class_id=assignment.class_id,
+                curriculum_subject_id=assignment.curriculum_subject_id,
+                action="scheduled_takeover_absorbed_by_correction",
+                previous_teacher_membership_id=assignment.teacher_membership_id,
+                new_teacher_membership_id=payload.teacher_membership_id,
+                previous_state=assignment.state.value,
+                new_state="cancelled",
+                previous_effective_from=assignment.effective_from,
+                previous_effective_to=assignment.effective_to,
+                acting_admin_id=acting_admin_id,
+                reason=payload.reason,
+            )
+            await StudentAcademicRepository.delete_teacher_assignment(db, assignment)
+            predecessor.teacher_membership_id = payload.teacher_membership_id
+            predecessor.effective_to = assignment.effective_to
+            predecessor = await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
+            await db.commit()
+            return await StudentAcademicService._build_teacher_assignment_response(db, predecessor)
+
+        proposed_end = assignment.effective_to
+        ignored_ids = {assignment.id}
+        if predecessor is not None:
+            ignored_ids.add(predecessor.id)
+        for row in history:
+            if row.id in ignored_ids:
+                continue
+            row_end = row.effective_to or date.max
+            proposed_row_end = proposed_end or date.max
+            if payload.effective_from <= row_end and row.effective_from <= proposed_row_end:
+                StudentAcademicService._raise_teacher_assignment_conflict(
+                    "ASSIGNMENT_OVERLAP",
+                    "The selected date overlaps an existing teacher assignment for this class and subject.",
+                )
+
+        previous_teacher = assignment.teacher_membership_id
+        previous_from = assignment.effective_from
+        previous_state = assignment.state.value
+        assignment.teacher_membership_id = payload.teacher_membership_id
+        moving_later = payload.effective_from > previous_from
+        if predecessor is not None and not moving_later:
+            predecessor.effective_to = payload.effective_from - timedelta(days=1)
+            await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
+        assignment.effective_from = payload.effective_from
+        assignment = await StudentAcademicRepository.save_teacher_assignment(db, assignment)
+        if predecessor is not None and moving_later:
+            predecessor.effective_to = payload.effective_from - timedelta(days=1)
+            await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
+        await StudentAcademicService._record_teacher_assignment_audit(
+            db,
+            tenant_id=tenant_id,
+            assignment_id=assignment.id,
+            class_id=assignment.class_id,
+            curriculum_subject_id=assignment.curriculum_subject_id,
+            action="scheduled_assignment_updated",
+            previous_teacher_membership_id=previous_teacher,
+            new_teacher_membership_id=assignment.teacher_membership_id,
+            previous_state=previous_state,
+            new_state=assignment.state.value,
+            previous_effective_from=previous_from,
+            previous_effective_to=assignment.effective_to,
+            new_effective_from=assignment.effective_from,
+            new_effective_to=assignment.effective_to,
+            acting_admin_id=acting_admin_id,
+            reason=payload.reason,
+        )
+        await db.commit()
+        return await StudentAcademicService._build_teacher_assignment_response(db, assignment)
+
+    @staticmethod
+    async def cancel_scheduled_teacher_assignment(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        assignment_id: uuid.UUID,
+        payload: TeacherAssignmentScheduleCancel,
+        acting_admin_id: uuid.UUID | None = None,
+    ) -> TeacherAssignmentResponse:
         await ensure_academic_write_window(db, tenant_id=tenant_id)
         assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
             db, tenant_id, assignment_id, lock=True
@@ -1831,51 +2159,37 @@ class StudentAcademicService:
         preview = await StudentAcademicService.teacher_assignment_dependency_preview(
             db, tenant_id, assignment.id
         )
-        if not preview.can_delete:
+        if not preview.can_cancel_schedule:
             StudentAcademicService._raise_dependency_conflict(
-                "Only a never-effective scheduled teacher assignment can be deleted.", preview
+                "Only a never-effective scheduled teacher assignment can be cancelled.",
+                preview,
             )
         response = await StudentAcademicService._build_teacher_assignment_response(db, assignment)
-
-        replacement_audit = (
-            await db.execute(
-                select(TeacherAssignmentLifecycleAudit).where(
-                    TeacherAssignmentLifecycleAudit.tenant_id == tenant_id,
-                    TeacherAssignmentLifecycleAudit.assignment_id == assignment.id,
-                    TeacherAssignmentLifecycleAudit.action == "teacher_reassigned",
-                )
-            )
-        ).scalar_one_or_none()
-        if replacement_audit is not None:
-            predecessor = (
-                await db.execute(
-                    select(TeacherAssignment)
-                    .where(
-                        TeacherAssignment.tenant_id == tenant_id,
-                        TeacherAssignment.class_id == assignment.class_id,
-                        TeacherAssignment.curriculum_subject_id == assignment.curriculum_subject_id,
-                        TeacherAssignment.teacher_membership_id
-                        == replacement_audit.previous_teacher_membership_id,
-                        TeacherAssignment.effective_to
-                        == assignment.effective_from - timedelta(days=1),
-                    )
-                    .with_for_update()
-                )
-            ).scalar_one_or_none()
-            if predecessor is not None and predecessor.effective_to >= date.today():
-                predecessor.effective_to = None
-                await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
-
+        history = await StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject(
+            db,
+            tenant_id,
+            assignment.curriculum_subject_id,
+            assignment.class_id,
+            lock=True,
+        )
+        predecessor = StudentAcademicService._adjacent_predecessor(assignment, history)
+        if predecessor is not None and predecessor.effective_to >= date.today():
+            predecessor.effective_to = None
+            await StudentAcademicRepository.save_teacher_assignment(db, predecessor)
         await StudentAcademicService._record_teacher_assignment_audit(
             db,
             tenant_id=tenant_id,
             assignment_id=assignment.id,
             class_id=assignment.class_id,
             curriculum_subject_id=assignment.curriculum_subject_id,
-            action="scheduled_assignment_deleted",
+            action=(
+                "scheduled_takeover_cancelled"
+                if predecessor is not None
+                else "scheduled_assignment_cancelled"
+            ),
             previous_teacher_membership_id=assignment.teacher_membership_id,
             previous_state=assignment.state.value,
-            new_state="deleted",
+            new_state="cancelled",
             previous_effective_from=assignment.effective_from,
             previous_effective_to=assignment.effective_to,
             acting_admin_id=acting_admin_id,
@@ -1885,7 +2199,6 @@ class StudentAcademicService:
         await db.commit()
         return response
 
-    @staticmethod
     async def list_teacher_assignment_responses(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -1915,6 +2228,13 @@ class StudentAcademicService:
             skip=skip,
             limit=limit,
         )
+        takeovers = await StudentAcademicRepository.get_scheduled_takeovers_for_assignments(
+            db,
+            tenant_id,
+            [record["assignment"] for record in records],
+        )
+        for record in records:
+            record["scheduled_takeover"] = takeovers.get(record["assignment"].id)
         return [
             StudentAcademicService._build_teacher_assignment_response_from_record(record)
             for record in records
@@ -2284,10 +2604,12 @@ class StudentAcademicService:
             action=(
                 "create"
                 if is_new
-                else "submit"
-                if previous_status != result.status
-                and result.status == AcademicResultStatus.SUBMITTED
-                else "edit"
+                else (
+                    "submit"
+                    if previous_status != result.status
+                    and result.status == AcademicResultStatus.SUBMITTED
+                    else "edit"
+                )
             ),
             previous_status=previous_status.value if previous_status else None,
             new_status=result.status.value,

@@ -57,12 +57,13 @@ from app.modules.student_academics.schemas import (
     StudentSubjectResultStatusUpdate,
     StudentSubjectResultUpsert,
     TeacherAssignmentCreate,
-    TeacherAssignmentDelete,
     TeacherAssignmentDependencyPreview,
     TeacherAssignmentEnd,
     TeacherAssignmentListResponse,
     TeacherAssignmentReassign,
     TeacherAssignmentResponse,
+    TeacherAssignmentScheduleCancel,
+    TeacherAssignmentScheduleUpdate,
 )
 from app.modules.student_academics.service import StudentAcademicService
 from app.modules.students.models import Student
@@ -594,17 +595,36 @@ async def reassign_teacher_assignment(
     )
 
 
-@tenant_admin_router.delete(
-    "/teacher-assignments/{assignment_id}",
+@tenant_admin_router.patch(
+    "/teacher-assignments/{assignment_id}/schedule",
     response_model=TeacherAssignmentResponse,
 )
-async def delete_teacher_assignment(
+async def update_scheduled_teacher_assignment(
     assignment_id: UUID,
-    payload: TeacherAssignmentDelete,
+    payload: TeacherAssignmentScheduleUpdate,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ) -> TeacherAssignmentResponse:
-    return await StudentAcademicService.delete_teacher_assignment(
+    return await StudentAcademicService.update_scheduled_teacher_assignment(
+        db,
+        current_admin.tenant_id,
+        assignment_id,
+        payload,
+        acting_admin_id=current_admin.id,
+    )
+
+
+@tenant_admin_router.post(
+    "/teacher-assignments/{assignment_id}/schedule/cancel",
+    response_model=TeacherAssignmentResponse,
+)
+async def cancel_scheduled_teacher_assignment(
+    assignment_id: UUID,
+    payload: TeacherAssignmentScheduleCancel,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> TeacherAssignmentResponse:
+    return await StudentAcademicService.cancel_scheduled_teacher_assignment(
         db,
         current_admin.tenant_id,
         assignment_id,

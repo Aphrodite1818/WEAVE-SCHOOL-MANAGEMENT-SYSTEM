@@ -551,53 +551,36 @@ class StudentAcademicRepository:
         await db.flush()
         return results
 
-
-
     @staticmethod
     async def get_component_scores_batch(
-        db : AsyncSession,
-        tenant_id : uuid.UUID,
-        result_ids : set[uuid.UUID],
-        assessment_component_id : uuid.UUID,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        result_ids: set[uuid.UUID],
+        assessment_component_id: uuid.UUID,
         *,
-        lock : bool = False
-    ):# -> dict | dict[UUID, StudentAssessmentScore]:
+        lock: bool = False,
+    ):  # -> dict | dict[UUID, StudentAssessmentScore]:
         """
         Load one assessment component score accross many subject results.
 
         The returned mapping is Keyed by student_subject_result_id
         """
 
-
         if not result_ids:
             return {}
-
 
         query = select(StudentAssessmentScore).where(
             StudentAssessmentScore.tenant_id == tenant_id,
             StudentAssessmentScore.student_subject_result_id.in_(result_ids),
-            StudentAssessmentScore.assessment_component_id == assessment_component_id
+            StudentAssessmentScore.assessment_component_id == assessment_component_id,
         )
-
 
         if lock:
             query = query.with_for_update()
 
+        rows = list((await db.execute(query)).scalars().all())
 
-        rows  = list(
-            (
-                await db.execute(query)
-            )
-            .scalars()
-            .all()
-        )
-
-        return {
-            score.student_subject_result_id : score
-            for score in rows 
-        }
-
-
+        return {score.student_subject_result_id: score for score in rows}
 
     @staticmethod
     async def add_component_scores_batch(
@@ -618,7 +601,6 @@ class StudentAcademicRepository:
         await db.flush()
 
         return scores
-
 
     @staticmethod
     async def list_result_component_scores(
@@ -1248,6 +1230,85 @@ class StudentAcademicRepository:
             }
             for row in rows
         ], int(total)
+
+    @staticmethod
+    async def get_scheduled_takeovers_for_assignments(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        assignments: list[TeacherAssignment],
+    ) -> dict[uuid.UUID, dict]:
+        """Load adjacent future successors for a page of predecessor rows in one query."""
+
+        predecessors = [
+            assignment
+            for assignment in assignments
+            if assignment.state.value == "current" and assignment.effective_to is not None
+        ]
+        if not predecessors:
+            return {}
+
+        scope_filters = [
+            and_(
+                TeacherAssignment.class_id == predecessor.class_id,
+                TeacherAssignment.curriculum_subject_id == predecessor.curriculum_subject_id,
+                TeacherAssignment.effective_from == predecessor.effective_to + date.resolution,
+            )
+            for predecessor in predecessors
+        ]
+        rows = (
+            await db.execute(
+                select(
+                    TeacherAssignment,
+                    TeacherAccount.first_name.label("teacher_first_name"),
+                    TeacherAccount.last_name.label("teacher_last_name"),
+                )
+                .join(
+                    TeacherMembership,
+                    TeacherMembership.id == TeacherAssignment.teacher_membership_id,
+                    isouter=True,
+                )
+                .join(
+                    TeacherAccount,
+                    TeacherAccount.id == TeacherMembership.teacher_account_id,
+                    isouter=True,
+                )
+                .where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    TeacherAssignment.effective_from > func.current_date(),
+                    or_(*scope_filters),
+                )
+            )
+        ).all()
+        predecessor_by_boundary = {
+            (
+                predecessor.class_id,
+                predecessor.curriculum_subject_id,
+                predecessor.effective_to + date.resolution,
+            ): predecessor.id
+            for predecessor in predecessors
+        }
+        takeovers: dict[uuid.UUID, dict] = {}
+        for row in rows:
+            successor = row[0]
+            predecessor_id = predecessor_by_boundary.get(
+                (
+                    successor.class_id,
+                    successor.curriculum_subject_id,
+                    successor.effective_from,
+                )
+            )
+            if predecessor_id is None:
+                continue
+            takeovers[predecessor_id] = {
+                "id": successor.id,
+                "teacher_membership_id": successor.teacher_membership_id,
+                "teacher_name": " ".join(
+                    part for part in [row.teacher_first_name, row.teacher_last_name] if part
+                )
+                or None,
+                "effective_from": successor.effective_from,
+            }
+        return takeovers
 
     @staticmethod
     async def save_teacher_assignment(
