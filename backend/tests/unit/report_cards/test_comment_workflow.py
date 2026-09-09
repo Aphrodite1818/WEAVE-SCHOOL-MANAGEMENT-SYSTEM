@@ -11,6 +11,7 @@ from app.modules.report_cards.comment_models import TeacherCommentStatus
 from app.modules.report_cards.comment_router import _ensure_teacher_comment_ready
 from app.modules.report_cards.comment_schemas import CommentTemplateCreate, TeacherCommentWrite
 from app.modules.report_cards.comment_service import ReportCommentService
+from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.teachers.models import TeacherMembership
 
 
@@ -193,6 +194,12 @@ async def test_submitted_comment_snapshots_weighted_performance_percentage(monke
         "_academic_readiness",
         AsyncMock(return_value=(True, Decimal("84.50"), grading_scale)),
     )
+    mark_outdated = AsyncMock()
+    monkeypatch.setattr(
+        ReportCardRepository,
+        "mark_outdated_for_student_period",
+        mark_outdated,
+    )
 
     response = await ReportCommentService.save_teacher_comment(
         db,
@@ -211,3 +218,10 @@ async def test_submitted_comment_snapshots_weighted_performance_percentage(monke
     assert response.status == TeacherCommentStatus.SUBMITTED.value
     assert comment.average_snapshot == Decimal("84.50")
     assert comment.grade_snapshot == "A"
+    mark_outdated.assert_awaited_once_with(
+        db,
+        teacher.tenant_id,
+        student_id,
+        session_id,
+        term_id,
+    )
