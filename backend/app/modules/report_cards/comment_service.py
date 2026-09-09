@@ -16,6 +16,7 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.modules.classes.models import ClassRoom
+from app.modules.report_cards.cache import ReportReadinessCache
 from app.modules.report_cards.comment_models import (
     CommentTemplate,
     CommentTemplateOwnerType,
@@ -37,10 +38,9 @@ from app.modules.report_cards.comment_schemas import (
     TeacherStudentCommentRow,
 )
 from app.modules.report_cards.models import ReportCard
-from app.modules.report_cards.performance_service import resolve_report_performance
-from app.modules.student_academics.curriculum_service import CurriculumResolutionService
-from app.modules.student_academics.models import AcademicResultStatus, GradingScale
-from app.modules.student_academics.repository import StudentAcademicRepository
+from app.modules.report_cards.readiness_service import ReportReadinessService
+from app.modules.report_cards.repository import ReportCardRepository
+from app.modules.student_academics.models import GradingScale
 from app.modules.students.models import StudentEnrollment
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.teachers.models import TeacherMembership
@@ -180,7 +180,11 @@ class ReportCommentService:
         maximum_score: Decimal,
         excluding_template_id: uuid.UUID | None = None,
     ) -> None:
-        """Reject inclusive overlap while allowing duplicate exact ranges."""
+        """Reject inclusive overlap while allowing duplicate exact ranges.
+
+        The Alembic trigger enforces the same rule under concurrent writes. This
+        service validation exists to return a useful HTTP conflict before flush.
+        """
 
         if minimum_score < 0 or maximum_score > 100 or minimum_score > maximum_score:
             raise BadRequestException("Comment score ranges must stay between 0 and 100.")
@@ -201,7 +205,6 @@ class ReportCommentService:
             row_min = Decimal(row.minimum_score)
             row_max = Decimal(row.maximum_score)
             if row_min == minimum_score and row_max == maximum_score:
-                # Several wording choices for one exact range are intentional.
                 continue
             if minimum_score <= row_max and maximum_score >= row_min:
                 raise ConflictException(
@@ -511,46 +514,23 @@ class ReportCommentService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> tuple[bool, Decimal | None, GradingScale | None]:
-        expected = await CurriculumResolutionService.resolve_student_curriculum(
+        snapshot = await ReportReadinessService.resolve_result_readiness(
             db,
-            tenant_id=tenant_id,
-            student_id=student_id,
-            academic_term_id=academic_term_id,
-        )
-        if not expected:
-            return False, None, None
-        results, _ = await StudentAcademicRepository.list_results(
-            db=db,
             tenant_id=tenant_id,
             student_id=student_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
-            finalized_only=True,
-            limit=500,
         )
-        by_curriculum = {item.curriculum_subject_id: item for item in results}
-        expected_ids = {item.curriculum_subject_id for item in expected}
-        if not expected_ids.issubset(by_curriculum) or any(
-            by_curriculum[item_id].status != AcademicResultStatus.LOCKED for item_id in expected_ids
-        ):
-            return False, None, None
-
-        applicable = [by_curriculum[item_id] for item_id in expected_ids]
-        performance = await resolve_report_performance(
+        if not snapshot.complete or snapshot.performance_percentage is None:
+            return False, snapshot.performance_percentage, None
+        grading_scale = await ReportReadinessService.grading_scale_for_snapshot(
             db,
             tenant_id=tenant_id,
-            results=applicable,
-        )
-        if performance is None:
-            return False, None, None
-        grading_scale = await StudentAcademicRepository.find_grade_for_score(
-            db=db,
-            tenant_id=tenant_id,
-            score=performance.percentage,
+            snapshot=snapshot,
         )
         if grading_scale is None:
-            return False, performance.percentage, None
-        return True, performance.percentage, grading_scale
+            return False, snapshot.performance_percentage, None
+        return True, snapshot.performance_percentage, grading_scale
 
     @staticmethod
     async def _current_comment_context(
@@ -623,7 +603,9 @@ class ReportCommentService:
             academic_session_id=payload.academic_session_id,
         )
         await ReportCommentService._require_class_teacher_capability(
-            db, teacher, class_id=classroom.id
+            db,
+            teacher,
+            class_id=classroom.id,
         )
         if classroom.teacher_membership_id != teacher.id:
             raise ForbiddenException("Only the student's explicit class teacher can comment.")
@@ -686,6 +668,16 @@ class ReportCommentService:
         comment.status = TeacherCommentStatus.SUBMITTED if submit else TeacherCommentStatus.DRAFT
         comment.submitted_at = datetime.now(timezone.utc) if submit else None
         db.add(comment)
+
+        # A report snapshot is no longer authoritative if its effective teacher
+        # comment changes after generation.
+        await ReportCardRepository.mark_outdated_for_student_period(
+            db,
+            teacher.tenant_id,
+            student_id,
+            payload.academic_session_id,
+            payload.academic_term_id,
+        )
         await db.commit()
         await db.refresh(comment)
         return TeacherCommentResponse.model_validate(comment)
@@ -699,7 +691,11 @@ class ReportCommentService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> TeacherStudentCommentListResponse:
-        await ReportCommentService._require_class_teacher_capability(db, teacher, class_id=class_id)
+        await ReportCommentService._require_class_teacher_capability(
+            db,
+            teacher,
+            class_id=class_id,
+        )
         enrollments = await StudentEnrollmentRepository.list_current_for_class_session(
             db,
             teacher.tenant_id,
@@ -709,7 +705,9 @@ class ReportCommentService:
         rows: list[TeacherStudentCommentRow] = []
         for enrollment in enrollments:
             student = await StudentRepository.get_by_id(
-                db, teacher.tenant_id, enrollment.student_id
+                db,
+                teacher.tenant_id,
+                enrollment.student_id,
             )
             if student is None:
                 continue
@@ -795,6 +793,12 @@ class ReportCommentService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> None:
+        await ReportReadinessCache.invalidate_context(
+            tenant_id=tenant_id,
+            student_id=student_id,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+        )
         comments = list(
             (
                 await db.execute(
@@ -820,6 +824,11 @@ class ReportCommentService:
         student_id: uuid.UUID,
         academic_session_id: uuid.UUID,
     ) -> None:
+        await ReportReadinessCache.invalidate_student_session(
+            tenant_id=tenant_id,
+            student_id=student_id,
+            academic_session_id=academic_session_id,
+        )
         comments = list(
             (
                 await db.execute(
@@ -861,6 +870,13 @@ class ReportCommentService:
             reason=payload.reason,
         )
         db.add(override)
+        await ReportCardRepository.mark_outdated_for_student_period(
+            db,
+            admin.tenant_id,
+            payload.student_id,
+            payload.academic_session_id,
+            payload.academic_term_id,
+        )
         await db.commit()
         await db.refresh(override)
         return TeacherCommentOverrideResponse.model_validate(override)
