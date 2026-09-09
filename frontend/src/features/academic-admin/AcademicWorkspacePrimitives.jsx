@@ -109,6 +109,8 @@ export function CheckboxControl({ label, checked, onChange, disabled = false }) 
 export function FormActions({
   submitting,
   submitLabel,
+  repeatLabel,
+  closeLabel = "Save & close",
   editing = false,
   onCancel,
   disabled = false,
@@ -117,11 +119,11 @@ export function FormActions({
   return (
     <div className="flex flex-col gap-2 sm:flex-row">
       <Button type="submit" name="saveIntent" value="another" disabled={submitting || disabled}>
-        {submitting ? "Saving..." : repeatable ? editing ? "Save changes" : "Save & add another" : submitLabel}
+        {submitting ? "Saving..." : repeatable ? editing ? "Save changes" : repeatLabel || "Save & add another" : submitLabel}
       </Button>
       {repeatable && !editing ? (
         <Button type="submit" name="saveIntent" value="close" variant="outline" disabled={submitting || disabled}>
-          Save & close
+          {closeLabel}
         </Button>
       ) : null}
       {onCancel ? (

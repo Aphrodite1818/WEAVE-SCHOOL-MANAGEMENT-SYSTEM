@@ -1,4 +1,8 @@
-import { beginAcademicSubmission, endAcademicSubmission } from "./academicSubmission";
+import {
+  beginAcademicSubmission,
+  endAcademicSubmission,
+  finishAcademicCreation,
+} from "./academicSubmission";
 import { ArrowLeft, UserPlus, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -13,6 +17,7 @@ import { getErrorMessage } from "../../services/api";
 import { curriculumService } from "../../services/curriculumService";
 import { teacherService } from "../../services/teacherService";
 import {
+  FormActions,
   Input,
   RecordList,
   SelectControl,
@@ -292,9 +297,12 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
       showSuccess(
         `Teacher assigned to ${selectedClassIds.length} class${selectedClassIds.length === 1 ? "" : "es"}.`,
       );
-      resetCreateForm();
+      finishAcademicCreation(
+        submission,
+        resetCreateForm,
+        () => selectView("overview"),
+      );
       await loadAssignments();
-      selectView("overview");
     } catch (requestError) {
       showError(getErrorMessage(requestError, "Could not create teacher assignments."));
     } finally {
@@ -537,12 +545,14 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             </div>
           </div>
 
-          <Button type="submit" disabled={!currentTerm || !selectedClassIds.length || saving === "create"}>
-            <UserPlus className="h-4 w-4" />
-            {saving === "create"
-              ? "Assigning..."
-              : `Create ${selectedClassIds.length || ""} assignment${selectedClassIds.length === 1 ? "" : "s"}`}
-          </Button>
+          <FormActions
+            submitting={saving === "create"}
+            submitLabel="Assign teacher"
+            repeatLabel={`Assign teacher (${selectedClassIds.length})`}
+            closeLabel="Assign & close"
+            repeatable
+            disabled={!currentTerm || !selectedClassIds.length}
+          />
         </fieldset>
       </form>
     </WorkspacePanel>
