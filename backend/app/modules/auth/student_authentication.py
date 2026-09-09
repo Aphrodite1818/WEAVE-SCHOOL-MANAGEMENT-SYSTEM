@@ -12,6 +12,7 @@ from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.schemas import LoginSessionUser
 from app.modules.auth.service import AuthenticatedActor
 from app.modules.auth_identity.models import ActorType, IdentifierType
+from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.students.models import AcademicStatus, StudentAccountStatus
 from app.modules.students.repository import (
@@ -35,8 +36,18 @@ async def authenticate_student_actor(
             identifier=normalized,
             identifier_type=IdentifierType.ADMISSION_NUMBER,
         )
-    except NotFoundException as exc:
-        raise UnauthorizedException("Invalid admission number or credential.") from exc
+    except NotFoundException:
+        # Terminal lifecycle actions deactivate the canonical login identity. A
+        # scheduled formal return must keep it inactive until the enrollment
+        # becomes effective, so student login is the safe lazy materialization
+        # point when there is no worker/cron lifecycle engine.
+        resolution = await AuthIdentityRepository.get_by_identifier(
+            db,
+            normalized,
+            IdentifierType.ADMISSION_NUMBER,
+        )
+        if resolution is None:
+            raise UnauthorizedException("Invalid admission number or credential.")
 
     if resolution.actor_type != ActorType.STUDENT or resolution.tenant_id is None:
         raise UnauthorizedException("Invalid admission number or credential.")
