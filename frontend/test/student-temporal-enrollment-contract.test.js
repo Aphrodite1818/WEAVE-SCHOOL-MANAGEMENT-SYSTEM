@@ -28,8 +28,20 @@ test("future placement and formal-return controls remain date enabled", () => {
 
 test("upcoming enrollment is distinct and can be edited or cancelled", () => {
   assert.match(source, /Upcoming enrollment/);
-  assert.match(source, /Edit upcoming/);
-  assert.match(source, /Cancel upcoming/);
+  assert.match(source, /Edit schedule/);
+  assert.match(source, /Cancel schedule/);
   assert.match(serviceSource, /updateUpcomingEnrollment/);
   assert.match(serviceSource, /cancelUpcomingEnrollment/);
+});
+
+test("active or suspended students manage an existing scheduled placement instead of starting another reassignment", () => {
+  assert.match(source, /hasManagedUpcomingPlacement/);
+  assert.match(source, /Manage Scheduled Placement/);
+  assert.match(source, /type: "upcomingManage"/);
+  assert.match(source, /onManageUpcoming=\{openUpcomingManager\}/);
+  assert.match(
+    source,
+    /openUpcomingEdit\(placementState\.student, placementState\.enrollment\)/,
+  );
+  assert.match(source, /Cancel Scheduled Placement/);
 });
