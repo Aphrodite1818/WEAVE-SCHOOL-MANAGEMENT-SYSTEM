@@ -1526,6 +1526,38 @@ class StudentAcademicService:
         )
 
     @staticmethod
+    async def _is_scheduled_takeover_relation(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        successor: TeacherAssignment,
+        predecessor: TeacherAssignment | None,
+    ) -> bool:
+        """Confirm temporal adjacency originated from an explicit reassignment."""
+        if predecessor is None:
+            return False
+        audit = (
+            await db.execute(
+                select(TeacherAssignmentLifecycleAudit)
+                .where(
+                    TeacherAssignmentLifecycleAudit.tenant_id == tenant_id,
+                    TeacherAssignmentLifecycleAudit.assignment_id == successor.id,
+                    TeacherAssignmentLifecycleAudit.class_id == successor.class_id,
+                    TeacherAssignmentLifecycleAudit.curriculum_subject_id
+                    == successor.curriculum_subject_id,
+                    TeacherAssignmentLifecycleAudit.action == "teacher_reassigned",
+                    TeacherAssignmentLifecycleAudit.previous_teacher_membership_id
+                    == predecessor.teacher_membership_id,
+                    TeacherAssignmentLifecycleAudit.previous_effective_from
+                    == predecessor.effective_from,
+                )
+                .order_by(TeacherAssignmentLifecycleAudit.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        return audit is not None
+
+    @staticmethod
     async def create_teacher_assignment(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -1744,6 +1776,13 @@ class StudentAcademicService:
                 )
             )
             successor = StudentAcademicService._adjacent_scheduled_successor(assignment, history)
+            if successor is not None and not await StudentAcademicService._is_scheduled_takeover_relation(
+                db,
+                tenant_id=tenant_id,
+                successor=successor,
+                predecessor=assignment,
+            ):
+                successor = None
             if successor is None or effective_to >= planned_end:
                 raise ConflictException("Teacher assignment already has a scheduled end date.")
         if effective_to < assignment.effective_from:
@@ -2018,6 +2057,13 @@ class StudentAcademicService:
             lock=True,
         )
         predecessor = StudentAcademicService._adjacent_predecessor(assignment, history)
+        if predecessor is not None and not await StudentAcademicService._is_scheduled_takeover_relation(
+            db,
+            tenant_id=tenant_id,
+            successor=assignment,
+            predecessor=predecessor,
+        ):
+            predecessor = None
         if (
             predecessor is not None
             and predecessor.teacher_membership_id == payload.teacher_membership_id
@@ -2172,6 +2218,13 @@ class StudentAcademicService:
             lock=True,
         )
         predecessor = StudentAcademicService._adjacent_predecessor(assignment, history)
+        if predecessor is not None and not await StudentAcademicService._is_scheduled_takeover_relation(
+            db,
+            tenant_id=tenant_id,
+            successor=assignment,
+            predecessor=predecessor,
+        ):
+            predecessor = None
         try:
             await StudentAcademicService._record_teacher_assignment_audit(
                 db,
@@ -2241,8 +2294,38 @@ class StudentAcademicService:
             tenant_id,
             [record["assignment"] for record in records],
         )
+        takeover_ids = {
+            takeover["id"]
+            for takeover in takeovers.values()
+            if takeover is not None and takeover.get("id") is not None
+        }
+        origins_by_successor: dict[uuid.UUID, list[TeacherAssignmentLifecycleAudit]] = {}
+        if takeover_ids:
+            origin_rows = (
+                await db.execute(
+                    select(TeacherAssignmentLifecycleAudit).where(
+                        TeacherAssignmentLifecycleAudit.tenant_id == tenant_id,
+                        TeacherAssignmentLifecycleAudit.action == "teacher_reassigned",
+                        TeacherAssignmentLifecycleAudit.assignment_id.in_(takeover_ids),
+                    )
+                )
+            ).scalars().all()
+            for origin in origin_rows:
+                if origin.assignment_id is not None:
+                    origins_by_successor.setdefault(origin.assignment_id, []).append(origin)
         for record in records:
-            record["scheduled_takeover"] = takeovers.get(record["assignment"].id)
+            predecessor = record["assignment"]
+            takeover = takeovers.get(predecessor.id)
+            if takeover is not None:
+                valid_origin = any(
+                    origin.previous_teacher_membership_id
+                    == predecessor.teacher_membership_id
+                    and origin.previous_effective_from == predecessor.effective_from
+                    for origin in origins_by_successor.get(takeover["id"], [])
+                )
+                if not valid_origin:
+                    takeover = None
+            record["scheduled_takeover"] = takeover
         return [
             StudentAcademicService._build_teacher_assignment_response_from_record(record)
             for record in records
