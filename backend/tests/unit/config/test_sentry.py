@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import SecretStr
@@ -223,3 +225,57 @@ def test_before_send_removes_sensitive_values() -> None:
     assert "request-123" in serialized
     assert "tenant-123" in serialized
     assert "user-123" in serialized
+
+
+def test_add_breadcrumb_scrubs_sensitive_nested_data(monkeypatch) -> None:
+    add_breadcrumb = MagicMock()
+    monkeypatch.setattr(sentry_config, "is_sentry_active", lambda: True)
+    monkeypatch.setattr(sentry_config.sentry_sdk, "add_breadcrumb", add_breadcrumb)
+
+    sentry_config.add_breadcrumb(
+        category="student.update",
+        message="student.update",
+        data={
+            "tenant_id": "tenant-123",
+            "resource_id": "student-123",
+            "email": "private@example.com",
+            "nested": {"access_token": "secret-token"},
+        },
+    )
+
+    payload = add_breadcrumb.call_args.kwargs["data"]
+    assert payload["tenant_id"] == "tenant-123"
+    assert payload["resource_id"] == "student-123"
+    assert payload["email"] == "[Filtered]"
+    assert payload["nested"]["access_token"] == "[Filtered]"
+
+
+def test_orm_mutation_observer_records_metadata_only(monkeypatch) -> None:
+    breadcrumb = MagicMock()
+    monkeypatch.setattr(sentry_config, "is_sentry_active", lambda: True)
+    monkeypatch.setattr(sentry_config, "add_breadcrumb", breadcrumb)
+
+    model = SimpleNamespace(
+        id="student-123",
+        tenant_id="tenant-123",
+        created_by_admin_id="admin-123",
+        email="private@example.com",
+        password="secret-password",
+    )
+    session = SimpleNamespace(
+        new=[model],
+        dirty=[],
+        deleted=[],
+        is_modified=lambda *_args, **_kwargs: False,
+    )
+
+    sentry_config._record_session_mutations(session, object())
+
+    data = breadcrumb.call_args.kwargs["data"]
+    serialized = json.dumps(data)
+    assert data["action"] == "create"
+    assert data["tenant_id"] == "tenant-123"
+    assert data["resource_id"] == "student-123"
+    assert data["actor_id"] == "admin-123"
+    assert "private@example.com" not in serialized
+    assert "secret-password" not in serialized
