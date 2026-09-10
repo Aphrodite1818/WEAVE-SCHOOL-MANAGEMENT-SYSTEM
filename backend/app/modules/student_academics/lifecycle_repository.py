@@ -12,8 +12,11 @@ from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
     StudentProgressionItem,
+    StudentProgressionItemAction,
+    StudentProgressionItemStatus,
     StudentProgressionRun,
 )
+from app.modules.students.models import StudentEnrollment
 
 
 class AcademicSessionLifecycleRepository:
@@ -77,7 +80,52 @@ class AcademicSessionLifecycleRepository:
 class StudentProgressionRunRepository:
     @staticmethod
     async def add(db: AsyncSession, run: StudentProgressionRun) -> StudentProgressionRun:
+        """Create a progression run and freeze its exact enrollment population.
+
+        The manifest is committed with the run before the worker is queued. Retries
+        therefore operate on the same students even if live enrollment state changes
+        while the session is closing.
+        """
+
         db.add(run)
+        await db.flush()
+
+        result = await db.execute(
+            select(StudentEnrollment)
+            .where(
+                StudentEnrollment.tenant_id == run.tenant_id,
+                StudentEnrollment.academic_session_id == run.academic_session_id,
+                StudentEnrollment.is_current.is_(True),
+            )
+            .order_by(StudentEnrollment.student_id.asc())
+            .with_for_update()
+        )
+        enrollments = list(result.scalars().all())
+
+        run.total_students = len(enrollments)
+        run.pending_students = len(enrollments)
+        db.add(run)
+
+        if enrollments:
+            db.add_all(
+                [
+                    StudentProgressionItem(
+                        tenant_id=run.tenant_id,
+                        progression_run_id=run.id,
+                        student_id=enrollment.student_id,
+                        from_enrollment_id=enrollment.id,
+                        from_level_id=enrollment.academic_level_id,
+                        from_class_id=enrollment.class_id,
+                        action=StudentProgressionItemAction.PROGRESS,
+                        # BLOCKED is the existing retryable item state. A null
+                        # processed_at marks this row as an unattempted manifest item.
+                        status=StudentProgressionItemStatus.BLOCKED,
+                        reason="Pending session progression.",
+                        processed_at=None,
+                    )
+                    for enrollment in enrollments
+                ]
+            )
         await db.flush()
         return run
 
