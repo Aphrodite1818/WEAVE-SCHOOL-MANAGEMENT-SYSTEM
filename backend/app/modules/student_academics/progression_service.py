@@ -132,6 +132,16 @@ class AcademicProgressionService:
         starts must still leave that frozen student explicitly accounted for.
         """
 
+        run = await StudentProgressionRepository.get_run_by_session(
+            db,
+            tenant_id,
+            academic_session_id,
+            lock=True,
+        )
+        if run is None:
+            return []
+        await StudentProgressionRepository.reconcile_legacy_manifest(db, run)
+
         result = await db.execute(
             select(StudentEnrollment)
             .join(
