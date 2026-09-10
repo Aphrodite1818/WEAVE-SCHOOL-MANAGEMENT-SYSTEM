@@ -125,14 +125,30 @@ class AcademicProgressionService:
         tenant_id: uuid.UUID,
         academic_session_id: uuid.UUID,
     ) -> list[StudentEnrollment]:
+        """Load the immutable enrollment manifest captured when closure started.
+
+        Never rediscover the worker population from live ``is_current`` state. A
+        withdrawal, reassignment, graduation, or other state change after closure
+        starts must still leave that frozen student explicitly accounted for.
+        """
+
         result = await db.execute(
             select(StudentEnrollment)
+            .join(
+                StudentProgressionItem,
+                StudentProgressionItem.from_enrollment_id == StudentEnrollment.id,
+            )
+            .join(
+                StudentProgressionRun,
+                StudentProgressionRun.id == StudentProgressionItem.progression_run_id,
+            )
             .where(
                 StudentEnrollment.tenant_id == tenant_id,
-                StudentEnrollment.academic_session_id == academic_session_id,
-                StudentEnrollment.is_current.is_(True),
+                StudentProgressionItem.tenant_id == tenant_id,
+                StudentProgressionRun.tenant_id == tenant_id,
+                StudentProgressionRun.academic_session_id == academic_session_id,
             )
-            .order_by(StudentEnrollment.student_id)
+            .order_by(StudentProgressionItem.student_id.asc())
             .with_for_update()
         )
         return list(result.scalars().all())
@@ -278,12 +294,38 @@ class AcademicProgressionService:
         )
         if existing is not None and existing.status != StudentProgressionItemStatus.BLOCKED:
             return existing
+        if existing is not None and existing.from_enrollment_id not in {None, enrollment.id}:
+            raise ConflictException("Progression manifest enrollment does not match the frozen target.")
 
         student = await StudentRepository.get_by_id(
             db, actor.tenant_id, enrollment.student_id, lock=True, include_archived=True
         )
         if student is None:
             raise ConflictException(f"Enrollment {enrollment.id} references a missing student.")
+
+        # The original enrollment may legitimately have changed after closure was
+        # queued. Never overwrite that lifecycle evidence: account for the frozen
+        # student explicitly as skipped instead of letting the student disappear.
+        if enrollment.exit_outcome is not None:
+            return await StudentProgressionRepository.add_item(
+                db,
+                StudentProgressionItem(
+                    tenant_id=actor.tenant_id,
+                    progression_run_id=run.id,
+                    student_id=student.id,
+                    from_enrollment_id=enrollment.id,
+                    from_level_id=enrollment.academic_level_id,
+                    from_class_id=enrollment.class_id,
+                    action=StudentProgressionItemAction.SKIP,
+                    status=StudentProgressionItemStatus.CANCELLED,
+                    reason=(
+                        "Frozen enrollment changed before progression was applied "
+                        f"({enrollment.exit_outcome.value})."
+                    ),
+                    processed_at=_utc_now(),
+                ),
+            )
+
         if student.is_archived or student.promotion_hold or student.status != AcademicStatus.ACTIVE:
             return await StudentProgressionRepository.add_item(
                 db,
