@@ -86,24 +86,33 @@
 }
 
 @media (max-width: 1023px) {
-  /* Stacked panels must not compete for a single fixed-height grid row. */
+  /* Mobile uses one pane at a time; desktop keeps its two-pane workspace. */
   #dashboard-content .weave-chat-shell {
     height: auto;
     min-height: 0;
-    grid-template-rows: auto auto;
+    grid-template-rows: minmax(0, 1fr);
     overflow: visible;
     gap: 1rem;
   }
 
   .weave-chat-directory {
     flex: 0 1 auto;
-    max-height: 14rem;
+    max-height: none;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
   }
 
-  .weave-chat-shell > main {
-    height: clamp(28rem, 75svh, 44rem);
+  .weave-chat-shell[data-mobile-chat-open="false"] > main,
+  .weave-chat-shell[data-mobile-chat-open="true"] > aside {
+    display: none;
+  }
+
+  .weave-chat-shell[data-mobile-chat-open="true"] > main {
+    height: max(20rem, calc(100dvh - 7rem));
+  }
+
+  html[data-standalone-pwa="true"] .weave-chat-shell[data-mobile-chat-open="true"] > main {
+    height: max(20rem, calc(var(--pwa-layout-height, 100dvh) - 13rem - env(safe-area-inset-bottom, 0px)));
   }
 
   .weave-chat-thread {
