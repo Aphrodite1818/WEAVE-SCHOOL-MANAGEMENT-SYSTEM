@@ -206,6 +206,29 @@
     display: none !important;
   }
 
+  #dashboard-content {
+    gap: 1rem;
+    padding-left: clamp(0.7rem, 3.2vw, 1rem);
+    padding-right: clamp(0.7rem, 3.2vw, 1rem);
+    padding-top: 0.875rem;
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  #dashboard-content .dashboard-welcome-panel,
+  #dashboard-content .card-base,
+  #dashboard-content .surface-panel,
+  #dashboard-content .subtle-panel,
+  #dashboard-content .dashboard-chart-card,
+  #dashboard-content .dashboard-attention-item,
+  #dashboard-content .dashboard-quick-action-grid > * {
+    border-color: rgb(var(--color-border) / 0.8);
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.04);
+  }
+
+  #dashboard-content .dashboard-kpi-grid > * {
+    border-radius: 1.1rem;
+  }
+
   .page-header-actions:has(> .manual-refresh-action:only-child) {
     display: none !important;
   }
@@ -268,6 +291,59 @@
 }
 
 @media (max-width: 639px) {
+  #dashboard-content .dashboard-attention-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.75rem;
+  }
+
+  #dashboard-content .dashboard-attention-item {
+    min-height: 0;
+    border-radius: 0.875rem;
+  }
+
+  #dashboard-content .dashboard-attention-item p {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+
+  #dashboard-content .dashboard-quick-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.75rem;
+  }
+
+  #dashboard-content .dashboard-welcome-chip {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    border-radius: 0.75rem;
+    line-height: 1.5;
+  }
+
+  #dashboard-content .dashboard-welcome-chip > span {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  #dashboard-content .dashboard-welcome-blue {
+    color: rgb(var(--color-on-primary));
+  }
+
+  :root[data-theme="dark"] #dashboard-content .dashboard-welcome-blue {
+    color: rgb(var(--color-text));
+  }
+
+  #dashboard-content
+    .dashboard-welcome-blue
+    :is(h2, p, .dashboard-welcome-chip) {
+    color: inherit;
+  }
+
+  #dashboard-content .dashboard-welcome-blue .dashboard-welcome-chip {
+    background: transparent;
+    border-color: currentColor;
+  }
+
   /* The visual viewport owns dialog height; reserve the browser home indicator. */
   html:not([data-standalone-pwa="true"]) [data-modal-panel="true"] {
     padding-bottom: env(safe-area-inset-bottom, 0px);
