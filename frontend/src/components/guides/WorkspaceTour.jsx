@@ -4,8 +4,8 @@ import { createPortal } from "react-dom";
 import { tourContentForItem } from "../../features/guides/workspaceTourContent";
 import { filterAvailableItems } from "../../features/navigation/featureAvailability";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { authSession, getErrorMessage } from "../../services/api";
 import { navGroups } from "../layout/navConfig";
 import Button from "../ui/Button";
@@ -114,7 +114,7 @@ export default function WorkspaceTour({
       Array.from(document.querySelectorAll("[data-tour-target]"))
         .filter((node) => node.getBoundingClientRect().width > 0)
         .map((node) => node.dataset.tourTarget),
-      );
+    );
     setSteps(
       configuredItems
         .filter((item) => rendered.has(item.to))
@@ -189,6 +189,13 @@ export default function WorkspaceTour({
       const availableWidth = Math.max(320, width - usableLeft - 32);
       const cardWidth = Math.min(500, availableWidth);
       const cardHeight = cardRef.current?.offsetHeight || 520;
+      const mobileCardWidth = Math.min(440, Math.max(0, width - 18));
+      const mobileGutter = Math.max(10, viewport?.offsetTop ? 10 : 18);
+      const mobileTop = top + mobileGutter;
+      const mobileBottom = Math.max(
+        mobileTop,
+        top + height - cardHeight - mobileGutter,
+      );
       const hasTarget = Boolean(
         rect && rect.bottom > top && rect.top < top + height,
       );
@@ -214,6 +221,11 @@ export default function WorkspaceTour({
             height: rect.height + 10,
           }
         : null;
+      const targetCenter = targetBox
+        ? targetBox.top + targetBox.height / 2
+        : top + height / 2;
+      const mobileCardTop =
+        targetCenter < top + height / 2 ? mobileBottom : mobileTop;
       const cardBox = mobile
         ? null
         : {
@@ -226,7 +238,13 @@ export default function WorkspaceTour({
         mobile,
         viewport: { width, height },
         target: targetBox,
-        card: mobile ? {} : { width: cardWidth, left: cardLeft, top: cardTop },
+        card: mobile
+          ? {
+              width: mobileCardWidth,
+              left: (width - mobileCardWidth) / 2,
+              top: mobileCardTop,
+            }
+          : { width: cardWidth, left: cardLeft, top: cardTop },
         connector:
           !mobile && targetBox && !welcome
             ? connectorGeometry(cardBox, targetBox)
