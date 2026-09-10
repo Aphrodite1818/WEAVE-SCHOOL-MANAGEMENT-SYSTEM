@@ -11,6 +11,8 @@ import sentry_sdk
 from pydantic import SecretStr
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+from sqlalchemy import event
+from sqlalchemy.orm import Session as SyncSession
 
 from app.config.logging import get_logger
 from app.config.settings import EnvironmentType, settings
@@ -18,6 +20,7 @@ from app.config.settings import EnvironmentType, settings
 logger = get_logger(__name__)
 
 _REDACTED = "[Filtered]"
+_MUTATION_OBSERVER_REGISTERED = False
 
 _SENSITIVE_KEYS = frozenset(
     {
@@ -54,6 +57,15 @@ _SENSITIVE_SUFFIXES = (
     "_secret",
     "_setup_code",
     "_token",
+)
+
+_ACTOR_ID_FIELDS = (
+    "updated_by_admin_id",
+    "created_by_admin_id",
+    "ended_by_admin_id",
+    "archived_by_admin_id",
+    "closed_by_admin_id",
+    "initiated_by_admin_id",
 )
 
 
@@ -99,6 +111,12 @@ def _scrub_value(value: Any) -> Any:
         return tuple(_scrub_value(item) for item in value)
 
     return value
+
+
+def _stringify_identifier(value: object | None) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _before_send(
@@ -201,6 +219,88 @@ def is_sentry_active() -> bool:
     return bool(_secret_text(settings.SENTRY_DSN)) and sentry_sdk.is_initialized()
 
 
+def add_breadcrumb(
+    *,
+    category: str,
+    message: str,
+    data: Mapping[str, Any] | None = None,
+    level: str = "info",
+) -> None:
+    """Attach safe diagnostic context without creating a standalone Sentry event."""
+
+    if not is_sentry_active():
+        return
+
+    try:
+        safe_data = _scrub_value(dict(data or {}))
+        sentry_sdk.add_breadcrumb(
+            category=category,
+            message=message,
+            data=safe_data if isinstance(safe_data, dict) else {},
+            level=level,
+        )
+    except Exception:
+        logger.debug("Sentry breadcrumb capture failed", exc_info=True)
+
+
+def _mutation_context(instance: object) -> dict[str, str]:
+    context: dict[str, str] = {}
+    tenant_id = _stringify_identifier(getattr(instance, "tenant_id", None))
+    resource_id = _stringify_identifier(getattr(instance, "id", None))
+    if tenant_id:
+        context["tenant_id"] = tenant_id
+    if resource_id:
+        context["resource_id"] = resource_id
+
+    for field in _ACTOR_ID_FIELDS:
+        actor_id = _stringify_identifier(getattr(instance, field, None))
+        if actor_id:
+            context["actor_id"] = actor_id
+            context["actor_id_source"] = field
+            break
+    return context
+
+
+def _record_session_mutations(session: SyncSession, flush_context: object) -> None:
+    """Record persisted ORM mutations as bounded breadcrumbs, never audit events."""
+
+    _ = flush_context
+    if not is_sentry_active():
+        return
+
+    try:
+        mutations: list[tuple[str, object]] = []
+        mutations.extend(("create", instance) for instance in session.new)
+        mutations.extend(
+            ("update", instance)
+            for instance in session.dirty
+            if session.is_modified(instance, include_collections=False)
+        )
+        mutations.extend(("delete", instance) for instance in session.deleted)
+
+        for action, instance in mutations:
+            resource_type = instance.__class__.__name__
+            add_breadcrumb(
+                category="db.mutation",
+                message=f"{resource_type}.{action}",
+                data={
+                    "action": action,
+                    "resource_type": resource_type,
+                    **_mutation_context(instance),
+                },
+            )
+    except Exception:
+        logger.debug("Sentry ORM mutation observation failed", exc_info=True)
+
+
+def _register_mutation_observer() -> None:
+    global _MUTATION_OBSERVER_REGISTERED
+    if _MUTATION_OBSERVER_REGISTERED:
+        return
+    event.listen(SyncSession, "after_flush", _record_session_mutations)
+    _MUTATION_OBSERVER_REGISTERED = True
+
+
 def initialize_sentry(*, service: str) -> bool:
     """Initialize Sentry, failing startup only when production requires it."""
 
@@ -223,7 +323,11 @@ def initialize_sentry(*, service: str) -> bool:
     release = _release_name()
 
     integrations: list[Any] = [
-        LoggingIntegration(level=logging.INFO, event_level=None, sentry_logs_level=logging.INFO)
+        LoggingIntegration(
+            level=logging.INFO,
+            event_level=None,
+            sentry_logs_level=logging.WARNING,
+        )
     ]
 
     if service == "api":
@@ -253,6 +357,7 @@ def initialize_sentry(*, service: str) -> bool:
             debug=settings.SENTRY_DEBUG,
         )
 
+        _register_mutation_observer()
         sentry_sdk.set_tag("service", service)
         sentry_sdk.set_tag("runtime_environment", str(settings.ENV.value))
         sentry_sdk.set_context(
@@ -267,6 +372,7 @@ def initialize_sentry(*, service: str) -> bool:
                 "sentry_environment": environment,
                 "sentry_release": release,
                 "traces_sample_rate": settings.SENTRY_TRACES_SAMPLE_RATE,
+                "sentry_logs_level": "WARNING",
             },
         )
         return True
