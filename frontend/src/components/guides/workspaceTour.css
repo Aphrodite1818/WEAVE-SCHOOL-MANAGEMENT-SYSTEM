@@ -8,7 +8,7 @@
 .workspace-tour-dimmer {
   position: absolute;
   inset: 0;
-  background: rgb(15 23 42 / 36%);
+  background: rgb(15 23 42 / 30%);
 }
 .workspace-tour-spotlight {
   position: fixed;
@@ -34,12 +34,12 @@
   stroke-linejoin: round;
 }
 .workspace-tour-connector-shadow {
-  stroke: rgb(15 23 42 / 42%);
-  stroke-width: 9;
+  stroke: rgb(15 23 42 / 34%);
+  stroke-width: 7;
 }
 .workspace-tour-connector-line {
   stroke: rgb(var(--color-primary, 59 130 246));
-  stroke-width: 4;
+  stroke-width: 3;
 }
 .workspace-tour-arrowhead {
   fill: rgb(var(--color-primary, 59 130 246));
@@ -47,7 +47,7 @@
 .workspace-tour-card {
   position: fixed;
   z-index: 3;
-  width: min(500px, calc(100vw - 32px));
+  width: min(440px, calc(100vw - 32px));
   max-height: calc(100dvh - 40px);
   display: flex;
   flex-direction: column;
@@ -60,6 +60,40 @@
 .workspace-tour-card-upgrade {
   border-color: rgb(var(--color-primary) / 32%);
 }
+.workspace-tour-card::after {
+  position: absolute;
+  top: var(--workspace-tour-pointer-top, 50%);
+  width: 0;
+  height: 0;
+  content: "";
+  transform: translateY(-50%);
+  border-top: 11px solid transparent;
+  border-bottom: 11px solid transparent;
+}
+.workspace-tour-card-right::after {
+  left: -12px;
+  border-right: 12px solid rgb(var(--color-surface));
+}
+.workspace-tour-card-left::after {
+  right: -12px;
+  border-left: 12px solid rgb(var(--color-surface));
+}
+  .workspace-tour-card-bottom::after,
+  .workspace-tour-card-top::after {
+    left: var(--workspace-tour-pointer-left, 50%);
+    transform: translateX(-50%);
+    border-right: 10px solid transparent;
+    border-left: 10px solid transparent;
+  }
+  .workspace-tour-card-bottom::after {
+    top: -10px;
+    border-bottom: 10px solid rgb(var(--color-surface));
+  }
+  .workspace-tour-card-top::after {
+    top: auto;
+    bottom: -10px;
+    border-top: 10px solid rgb(var(--color-surface));
+  }
 .workspace-tour-body {
   padding: 24px 28px;
   overflow-y: auto;
@@ -86,6 +120,18 @@
     );
     border-radius: 18px;
     box-shadow: 0 16px 40px rgb(15 23 42 / 18%);
+  }
+  .workspace-tour-card::after {
+    border-top-width: 9px;
+    border-bottom-width: 9px;
+  }
+  .workspace-tour-card-right::after {
+    left: -10px;
+    border-right-width: 10px;
+  }
+  .workspace-tour-card-left::after {
+    right: -10px;
+    border-left-width: 10px;
   }
   .workspace-tour-body {
     padding: 16px 18px 14px;
@@ -414,29 +460,53 @@
 }
 @media (max-width: 767px) {
   .workspace-tour-card {
-    left: 12px;
-    right: 12px;
-    bottom: max(12px, env(safe-area-inset-bottom));
-    width: auto;
-    max-height: calc(
-      100dvh - max(110px, env(safe-area-inset-top)) -
-        max(12px, env(safe-area-inset-bottom))
-    );
-    border-radius: 18px;
+    width: min(300px, calc(100vw - 24px));
+    max-height: min(320px, calc(100dvh - 24px));
+    border-radius: 14px;
+    box-shadow: 0 14px 34px rgb(15 23 42 / 22%);
+  }
+  .workspace-tour-card::before {
+    position: absolute;
+    top: var(--workspace-tour-pointer-top, 50%);
+    width: 0;
+    height: 0;
+    content: "";
+    transform: translateY(-50%);
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+  }
+  .workspace-tour-card-right::before {
+    left: -11px;
+    border-right: 11px solid rgb(var(--color-surface));
+  }
+  .workspace-tour-card-left::before {
+    right: -11px;
+    border-left: 11px solid rgb(var(--color-surface));
   }
   .workspace-tour-body {
-    padding: 18px 22px;
+    padding: 14px 15px 10px;
+  }
+  .workspace-tour-body > .mt-6,
+  .workspace-tour-body > .workspace-tour-preview,
+  .workspace-tour-body > .mt-4.text-sm {
+    display: none;
+  }
+  .workspace-tour-body h2 {
+    margin-top: 10px;
+    font-size: 1.15rem;
+  }
+  .workspace-tour-body > .flex {
+    gap: 8px;
+  }
+  .workspace-tour-body > .flex span:first-child {
+    font-size: 0.58rem;
   }
   .workspace-tour-footer {
-    padding: 16px 18px;
-    border-radius: 0 0 18px 18px;
+    padding: 10px 12px 12px;
+    border-radius: 0 0 14px 14px;
   }
-  .workspace-tour-preview {
-    margin-top: 18px;
-    padding: 13px;
-  }
-  .workspace-tour-snapshot {
-    min-height: 112px;
+  .workspace-tour-footer button {
+    min-height: 38px !important;
   }
   [data-tour-navigation="true"] [data-sidebar-brand],
   [data-tour-navigation="true"] [data-sidebar-workspace],

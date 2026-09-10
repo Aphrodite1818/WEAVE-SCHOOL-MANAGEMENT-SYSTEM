@@ -21,17 +21,10 @@ function connectorGeometry(card, target) {
   const targetX = target.left + target.width + 2;
   const targetY = target.top + target.height / 2;
   const targetIsLeft = targetX < card.left;
-  const startX = targetIsLeft ? card.left - 8 : card.left + card.width + 8;
-  const startY =
-    card.top + Math.min(Math.max(card.height * 0.42, 100), card.height - 90);
-  const distance = Math.abs(startX - targetX);
-  const bend = Math.max(80, distance * 0.48);
-  const controlOneX = targetIsLeft ? startX - bend : startX + bend;
-  const controlTwoX = targetIsLeft
-    ? targetX + Math.max(52, distance * 0.24)
-    : targetX - Math.max(52, distance * 0.24);
+  const startX = targetIsLeft ? card.left - 10 : card.left + card.width + 10;
+  const startY = clamp(targetY, card.top + 42, card.top + card.height - 42);
   return {
-    path: `M ${startX} ${startY} C ${controlOneX} ${startY}, ${controlTwoX} ${targetY}, ${targetX} ${targetY}`,
+    path: `M ${startX} ${startY} L ${targetX} ${targetY}`,
   };
 }
 
@@ -187,15 +180,10 @@ export default function WorkspaceTour({
         ? 0
         : Math.max(16, Math.min(navRect?.right || 0, width * 0.34) + 20);
       const availableWidth = Math.max(320, width - usableLeft - 32);
-      const cardWidth = Math.min(500, availableWidth);
+      const cardWidth = Math.min(440, availableWidth);
       const cardHeight = cardRef.current?.offsetHeight || 520;
-      const mobileCardWidth = Math.min(440, Math.max(0, width - 18));
+      const mobileCardWidth = Math.min(300, Math.max(0, width - 24));
       const mobileGutter = Math.max(10, viewport?.offsetTop ? 10 : 18);
-      const mobileTop = top + mobileGutter;
-      const mobileBottom = Math.max(
-        mobileTop,
-        top + height - cardHeight - mobileGutter,
-      );
       const hasTarget = Boolean(
         rect && rect.bottom > top && rect.top < top + height,
       );
@@ -205,13 +193,6 @@ export default function WorkspaceTour({
             usableLeft + (width - usableLeft - cardWidth) / 2,
             usableLeft + 16,
             width - cardWidth - 16,
-          );
-      const cardTop = mobile
-        ? 0
-        : clamp(
-            top + (height - cardHeight) / 2,
-            top + 20,
-            top + height - cardHeight - 20,
           );
       const targetBox = hasTarget
         ? {
@@ -224,12 +205,82 @@ export default function WorkspaceTour({
       const targetCenter = targetBox
         ? targetBox.top + targetBox.height / 2
         : top + height / 2;
-      const mobileCardTop =
-        targetCenter < top + height / 2 ? mobileBottom : mobileTop;
+      const cardTop = mobile
+        ? 0
+        : clamp(
+            targetCenter - cardHeight / 2,
+            top + 20,
+            top + height - cardHeight - 20,
+          );
+      const desktopCardLeft = targetBox
+        ? clamp(
+            targetBox.left + targetBox.width + 44,
+            usableLeft + 16,
+            width - cardWidth - 16,
+          )
+        : cardLeft;
+      const mobileCandidates = targetBox
+        ? [
+            {
+              placement: "right",
+              left: targetBox.left + targetBox.width + mobileGutter,
+              top: targetCenter - cardHeight / 2,
+            },
+            {
+              placement: "left",
+              left: targetBox.left - mobileCardWidth - mobileGutter,
+              top: targetCenter - cardHeight / 2,
+            },
+            {
+              placement: "bottom",
+              left: targetCenter - mobileCardWidth / 2,
+              top: targetBox.top + targetBox.height + mobileGutter,
+            },
+            {
+              placement: "top",
+              left: targetCenter - mobileCardWidth / 2,
+              top: targetBox.top - cardHeight - mobileGutter,
+            },
+          ]
+        : [
+            {
+              placement: "bottom",
+              left: (width - mobileCardWidth) / 2,
+              top: height - cardHeight - mobileGutter,
+            },
+          ];
+      const mobileCandidate =
+        mobileCandidates.find((candidate) => {
+          const left = candidate.left;
+          const right = left + mobileCardWidth;
+          const bottom = candidate.top + cardHeight;
+          const insideViewport =
+            left >= mobileGutter &&
+            right <= width - mobileGutter &&
+            candidate.top >= top + mobileGutter &&
+            bottom <= top + height - mobileGutter;
+          const overlapsTarget = targetBox &&
+            left < targetBox.left &&
+            right > targetBox.left &&
+            candidate.top < targetBox.top + targetBox.height &&
+            bottom > targetBox.top;
+          return insideViewport && !overlapsTarget;
+        }) || mobileCandidates[0];
+      const mobileCardLeft = clamp(
+        mobileCandidate.left,
+        mobileGutter,
+        width - mobileCardWidth - mobileGutter,
+      );
+      const mobileCardTop = clamp(
+        mobileCandidate.top,
+        top + mobileGutter,
+        top + height - cardHeight - mobileGutter,
+      );
+      const mobilePlacement = mobileCandidate.placement;
       const cardBox = mobile
         ? null
         : {
-            left: cardLeft,
+            left: desktopCardLeft,
             top: cardTop,
             width: cardWidth,
             height: cardHeight,
@@ -241,10 +292,21 @@ export default function WorkspaceTour({
         card: mobile
           ? {
               width: mobileCardWidth,
-              left: (width - mobileCardWidth) / 2,
+              left: mobileCardLeft,
               top: mobileCardTop,
+              "--workspace-tour-pointer-top": `${clamp(
+                targetCenter - mobileCardTop,
+                28,
+                Math.max(28, cardHeight - 28),
+              )}px`,
+              "--workspace-tour-pointer-left": `${clamp(
+                targetCenter - mobileCardLeft,
+                28,
+                Math.max(28, mobileCardWidth - 28),
+              )}px`,
             }
-          : { width: cardWidth, left: cardLeft, top: cardTop },
+          : { width: cardWidth, left: desktopCardLeft, top: cardTop },
+        placement: mobilePlacement,
         connector:
           !mobile && targetBox && !welcome
             ? connectorGeometry(cardBox, targetBox)
@@ -376,7 +438,7 @@ export default function WorkspaceTour({
         aria-modal="true"
         aria-labelledby="workspace-tour-title"
         aria-describedby="workspace-tour-description"
-        className={`workspace-tour-card${dedicated ? " workspace-tour-card-upgrade" : ""}`}
+        className={`workspace-tour-card workspace-tour-card-${geometry?.placement || "right"}${dedicated ? " workspace-tour-card-upgrade" : ""}`}
         style={geometry?.card}
       >
         <div className="workspace-tour-body">
