@@ -78,22 +78,22 @@
   right: -12px;
   border-left: 12px solid rgb(var(--color-surface));
 }
-  .workspace-tour-card-bottom::after,
-  .workspace-tour-card-top::after {
-    left: var(--workspace-tour-pointer-left, 50%);
-    transform: translateX(-50%);
-    border-right: 10px solid transparent;
-    border-left: 10px solid transparent;
-  }
-  .workspace-tour-card-bottom::after {
-    top: -10px;
-    border-bottom: 10px solid rgb(var(--color-surface));
-  }
-  .workspace-tour-card-top::after {
-    top: auto;
-    bottom: -10px;
-    border-top: 10px solid rgb(var(--color-surface));
-  }
+.workspace-tour-card-bottom::after,
+.workspace-tour-card-top::after {
+  left: var(--workspace-tour-pointer-left, 50%);
+  transform: translateX(-50%);
+  border-right: 10px solid transparent;
+  border-left: 10px solid transparent;
+}
+.workspace-tour-card-bottom::after {
+  top: -10px;
+  border-bottom: 10px solid rgb(var(--color-surface));
+}
+.workspace-tour-card-top::after {
+  top: auto;
+  bottom: -10px;
+  border-top: 10px solid rgb(var(--color-surface));
+}
 .workspace-tour-body {
   padding: 24px 28px;
   overflow-y: auto;
