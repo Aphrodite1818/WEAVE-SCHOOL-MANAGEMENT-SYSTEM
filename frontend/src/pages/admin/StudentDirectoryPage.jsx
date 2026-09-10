@@ -463,15 +463,28 @@ function StudentActions({
   );
 }
 
-function StudentCard({ student, ...actions }) {
+function StudentCard({ student, expanded, onExpandedChange, ...actions }) {
   const tone = student.is_archived
     ? "error"
     : student.status === "active"
       ? "success"
       : "warning";
   return (
-    <MobilePersonCard tone={tone}>
-      <div className="flex items-start justify-between gap-3">
+    <MobilePersonCard tone={tone} expanded={expanded} onExpandedChange={onExpandedChange}>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${expanded ? "Hide" : "Show"} details for ${displayName(student)}`}
+        aria-expanded={expanded}
+        className="flex cursor-pointer items-start justify-between gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+        onClick={() => onExpandedChange?.(!expanded)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onExpandedChange?.(!expanded);
+          }
+        }}
+      >
         <PersonIdentity
           name={displayName(student)}
           meta={`${student.admission_number || "No admission number"} · ${studentClassLabel(student)}`}

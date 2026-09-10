@@ -2,6 +2,58 @@
   isolation: isolate;
 }
 
+/* Keep message copy on a solid semantic surface for every tenant palette. */
+.weave-chat-shell .text-text-faint,
+.weave-chat-shell .text-text-muted {
+  color: rgb(var(--color-text-soft));
+}
+
+.weave-chat-shell .bg-primary-soft.text-primary {
+  background: rgb(var(--color-surface-muted));
+  color: rgb(var(--color-text-soft));
+}
+
+.weave-chat-shell .btn-base.text-primary-foreground {
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-on-primary));
+}
+
+.weave-chat-composer textarea::placeholder {
+  color: rgb(var(--color-text-soft));
+  opacity: 1;
+}
+
+.weave-chat-shell .bg-primary-soft\/70 {
+  background: rgb(var(--color-surface-muted));
+  box-shadow: inset 3px 0 0 rgb(var(--color-primary));
+}
+
+.weave-message-bubble[data-mine="true"] {
+  background: rgb(var(--color-primary));
+  color: rgb(var(--color-on-primary));
+}
+
+.weave-message-body {
+  overflow-wrap: anywhere !important;
+  line-height: 1.6;
+}
+
+.weave-message-meta {
+  line-height: 1.5;
+}
+
+.weave-chat-directory .font-bold.truncate,
+.weave-chat-directory .block.truncate {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.weave-chat-header h2,
+.weave-chat-header p {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .weave-chat-thread {
   scrollbar-gutter: stable;
   scroll-behavior: smooth;
@@ -29,6 +81,80 @@
 .weave-chat-composer textarea {
   field-sizing: content;
   max-height: 8.5rem;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1023px) {
+  /* Mobile uses one pane at a time; desktop keeps its two-pane workspace. */
+  #dashboard-content .weave-chat-shell {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: visible;
+    gap: 1rem;
+  }
+
+  .weave-chat-directory {
+    flex: 0 1 auto;
+    max-height: none;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .weave-chat-shell[data-mobile-chat-open="false"] > main,
+  .weave-chat-shell[data-mobile-chat-open="true"] > aside {
+    display: none;
+  }
+
+  .weave-chat-shell[data-mobile-chat-open="true"] > main {
+    height: max(20rem, calc(100dvh - 7rem));
+  }
+
+  html[data-standalone-pwa="true"] .weave-chat-shell[data-mobile-chat-open="true"] > main {
+    height: max(20rem, calc(var(--pwa-layout-height, 100dvh) - 13rem - env(safe-area-inset-bottom, 0px)));
+  }
+
+  .weave-chat-thread {
+    scrollbar-gutter: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .weave-chat-shell button {
+    min-height: 2.75rem;
+    flex-shrink: 0;
+  }
+
+  #dashboard-content .weave-chat-shell button[aria-label="Send message"] {
+    min-width: 2.75rem;
+    background: rgb(var(--color-primary));
+    color: rgb(var(--color-on-primary));
+  }
+
+  .weave-chat-composer textarea {
+    min-width: 0;
+    font-size: 1rem;
+    line-height: 1.5;
+    max-height: min(8.5rem, 25svh);
+  }
+}
+
+@media (max-width: 639px) {
+  .weave-chat-thread {
+    padding: 1rem 0.75rem;
+  }
+
+  .weave-message-bubble {
+    max-width: 92%;
+    padding: 0.75rem;
+  }
+
+  .weave-chat-composer-help {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 @keyframes weave-message-enter {
