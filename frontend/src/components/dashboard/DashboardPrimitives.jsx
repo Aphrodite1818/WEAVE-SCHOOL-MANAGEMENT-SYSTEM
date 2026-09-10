@@ -51,7 +51,7 @@ export function DashboardSectionHeader({
           <p className="mt-1 max-w-2xl text-sm leading-6 text-text-muted">{description}</p>
         ) : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="dashboard-section-action shrink-0">{action}</div> : null}
     </div>
   );
 }
@@ -181,7 +181,7 @@ export function DashboardMetricCard({
         "group flex flex-col justify-between transition hover:border-primary/30 hover:shadow-premium",
         compact
           ? "min-h-[5.75rem] p-3"
-          : "min-h-[7.6rem] p-3 sm:min-h-[8.25rem] sm:p-5",
+          : "min-h-[7rem] p-3.5 sm:min-h-[8.25rem] sm:p-5",
         to ? "cursor-pointer" : "",
         className,
       )}
@@ -338,7 +338,7 @@ export function DashboardQuickActions({
               to={action.to}
               type={action.to ? undefined : "button"}
               onClick={action.onClick}
-              className="group flex min-h-[7rem] flex-col rounded-2xl border border-border/70 bg-surface px-3 py-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium sm:min-h-[7.5rem] sm:px-4"
+              className="group flex min-h-[6.5rem] flex-col rounded-xl border border-border/70 bg-surface px-3.5 py-3.5 text-left shadow-sm transition hover:border-primary/30 hover:bg-primary-subtle/25 hover:shadow-premium sm:min-h-[7.5rem] sm:rounded-2xl sm:px-4 sm:py-4"
             >
               <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl", toneStyle.icon)}>
                 {ActionIcon ? <ActionIcon className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />}

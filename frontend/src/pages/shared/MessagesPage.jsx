@@ -844,7 +844,7 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="weave-chat-directory min-h-0 flex-1 overflow-y-auto">
             {loading ? <LoadingState label="Loading messages" /> : null}
 
             {!loading && sidebarMode === "chats" ? (
@@ -1012,7 +1012,7 @@ export default function MessagesPage() {
             </div>
           ) : null}
 
-          <header className="flex min-h-[4.75rem] items-center justify-between gap-3 border-b border-border px-3 py-3 sm:px-5">
+          <header className="weave-chat-header flex min-h-[4.75rem] shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-3 sm:px-5">
             <div className="flex min-w-0 items-center gap-3">
               <Avatar label={selectedTitle} />
               <div className="min-w-0">
@@ -1160,11 +1160,11 @@ export default function MessagesPage() {
                                 })}
                               </p>
                             ) : null}
-                            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                            <p className="weave-message-body whitespace-pre-wrap break-words text-sm leading-relaxed">
                               {message.body}
                             </p>
                             <div
-                              className={`mt-1.5 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-primary-foreground/70" : "text-text-faint"}`}
+                              className={`weave-message-meta mt-1.5 flex flex-wrap items-center justify-end gap-1 text-xs ${mine ? "text-primary-foreground" : "text-text-muted"}`}
                             >
                               <time>{fullTimestampLabel(message.created_at)}</time>
                               {mine && isLastMine ? (
@@ -1205,7 +1205,7 @@ export default function MessagesPage() {
 
               <form
                 onSubmit={sendMessage}
-                className="weave-chat-composer border-t border-border bg-surface px-3 py-3 sm:px-4"
+                className="weave-chat-composer shrink-0 border-t border-border bg-surface px-3 py-3 sm:px-4"
               >
                 {selected?.can_reply === false ? (
                   <div className="rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold text-text-muted">
@@ -1242,7 +1242,7 @@ export default function MessagesPage() {
                         <Send className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-[10px] text-text-faint">
+                    <div className="weave-chat-composer-help mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 text-xs leading-5 text-text-muted">
                       <span>Enter to send · Shift + Enter for a new line</span>
                       <span>
                         {liveConnected

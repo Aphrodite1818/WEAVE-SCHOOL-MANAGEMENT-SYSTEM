@@ -1,17 +1,17 @@
 function PageHeader({ eyebrow, title, actions }) {
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div>
+    <div className="page-header lg:items-end">
+      <div className="min-w-0 flex-1">
         {eyebrow && (
           <p className="text-xs font-bold uppercase tracking-wide text-primary">
             {eyebrow}
           </p>
         )}
-        <h1 className="dashboard-title">
+        <h1 className="page-title">
           {title}
         </h1>
       </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="page-header-actions">{actions}</div>}
     </div>
   );
 }

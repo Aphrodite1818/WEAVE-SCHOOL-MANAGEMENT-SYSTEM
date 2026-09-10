@@ -96,6 +96,13 @@
   gap: 0.75rem;
 }
 
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+}
+
 .manual-refresh-action {
   display: inline-flex;
 }
@@ -199,7 +206,7 @@
     display: none !important;
   }
 
-  .page-header-actions:has(.manual-refresh-action) {
+  .page-header-actions:has(> .manual-refresh-action:only-child) {
     display: none !important;
   }
 
@@ -214,6 +221,21 @@
   button,
   a {
     touch-action: manipulation;
+  }
+
+  #dashboard-content .btn-base {
+    min-height: 2.75rem;
+  }
+
+  #dashboard-content .page-header-actions,
+  #dashboard-content .page-header-actions > *,
+  #dashboard-content .page-header-actions .btn-base {
+    width: 100%;
+  }
+
+  #dashboard-content .page-header-actions .btn-base,
+  #dashboard-content .dashboard-section-action .btn-base {
+    white-space: normal;
   }
 
   .dashboard-topbar {
@@ -245,21 +267,53 @@
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 639px) {
+  /* The visual viewport owns dialog height; reserve the browser home indicator. */
+  html:not([data-standalone-pwa="true"]) [data-modal-panel="true"] {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  [data-modal-panel="true"] .btn-base {
+    min-height: 2.75rem;
+    white-space: normal;
+  }
+
+  [data-modal-footer="true"] > .flex {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  [data-modal-footer="true"] > .flex > .btn-base {
+    flex: 1 1 9rem;
+  }
+
+  #dashboard-content .dashboard-section-action,
+  #dashboard-content .dashboard-section-action > *,
+  #dashboard-content .dashboard-section-action .btn-base {
+    width: 100%;
+  }
+
+  #dashboard-content .mobile-list-pagination {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+  }
+
+  #dashboard-content .mobile-list-pagination > :last-child {
+    margin-left: 0;
+    width: 100%;
+  }
+
   #dashboard-content {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-    padding-top: 0.75rem;
+    gap: 1rem;
+    padding-left: clamp(0.75rem, 3.5vw, 1rem);
+    padding-right: clamp(0.75rem, 3.5vw, 1rem);
+    padding-top: 1rem;
     padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)) !important;
   }
 
-  #dashboard-content > div {
-    gap: 0.9rem;
-  }
-
-  #dashboard-content > div > div:first-child {
-    border-radius: 1.65rem;
-    padding: 0.9rem;
+  #dashboard-content .page-header {
+    gap: 0.625rem;
+    padding-inline: 0.125rem;
   }
 
   #dashboard-content .dashboard-title {
@@ -278,18 +332,17 @@
 
   #dashboard-content .dashboard-grid,
   #dashboard-content .resource-page-grid {
-    gap: 0.85rem;
+    gap: 1rem;
     grid-template-columns: 1fr;
   }
 
   #dashboard-content .resource-page-form-card,
   #dashboard-content .resource-page-list-card {
-    width: calc(100% + 1rem);
-    max-width: calc(100% + 1rem);
-    margin-left: -0.5rem;
-    margin-right: -0.5rem;
-    border-radius: 1.2rem;
-    padding: 0.95rem;
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    border-radius: 1rem;
+    padding: 1rem;
   }
 
   #dashboard-content .resource-page-filters {
@@ -306,17 +359,17 @@
   #dashboard-content .dashboard-kpi-grid > * {
     min-width: 0;
     overflow: visible;
-    border-radius: 1.55rem !important;
+    border-radius: 1rem !important;
   }
 
   #dashboard-content .card-base,
   #dashboard-content .surface-panel,
   #dashboard-content .subtle-panel {
-    border-radius: 1.45rem;
+    border-radius: 1rem;
   }
 
   #dashboard-content .card-base {
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
   #dashboard-content .section-title {
@@ -327,8 +380,8 @@
   #dashboard-content .dashboard-chart-card {
     min-height: 20rem;
     height: auto;
-    border-radius: 1.45rem;
-    padding: 0.9rem;
+    border-radius: 1rem;
+    padding: 1rem;
     overflow: hidden;
   }
 
@@ -349,39 +402,38 @@
   }
 
   #dashboard-content .data-table tbody {
-    max-height: min(34rem, 68dvh);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    padding-right: 0.25rem;
-    scrollbar-width: thin;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   #dashboard-content .mobile-scroll-list {
-    max-height: min(30rem, 58dvh);
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
     border-radius: 1rem;
   }
 
   #dashboard-content .mobile-scroll-list.directory-card-grid,
   #dashboard-content .mobile-scroll-list.record-list-grid,
   #dashboard-content .mobile-scroll-list.resource-page-mobile-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
   }
 
   #dashboard-content .mobile-scroll-list.directory-card-grid .card-base,
   #dashboard-content .mobile-scroll-list.record-list-grid > *,
   #dashboard-content .mobile-scroll-list.resource-page-mobile-list > * {
-    min-height: 8.25rem;
+    min-height: auto;
     border-radius: 1rem;
-    padding: 0.75rem;
+    padding: 1rem;
   }
 
   #dashboard-content .mobile-scroll-list.directory-card-grid .card-base p,
   #dashboard-content .mobile-scroll-list.record-list-grid p,
   #dashboard-content .mobile-scroll-list.resource-page-mobile-list p {
-    font-size: 0.75rem;
-    line-height: 1.35;
+    font-size: 0.8125rem;
+    line-height: 1.45;
   }
 
   #dashboard-content .mobile-list-pagination {
@@ -397,7 +449,7 @@
   }
 }
 
-@media (min-width: 641px) and (max-width: 1023px) {
+@media (min-width: 640px) and (max-width: 1023px) {
   #dashboard-content .stat-grid,
   #dashboard-content .dashboard-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -478,31 +530,29 @@
   }
 }
 
-/* Widen mobile table cards without changing desktop table layout. */
-@media (max-width: 640px) {
-  .table-wrap {
-    width: calc(100% + 1.25rem);
-    max-width: calc(100% + 1.25rem);
-    margin-left: -0.625rem;
-    margin-right: -0.625rem;
-    border-radius: 1.2rem;
+/* Keep mobile table cards aligned with the same page gutter as other content. */
+@media (max-width: 639px) {
+  #dashboard-content .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    border-radius: 1rem;
   }
 
-  .data-table tbody {
-    padding: 0.5rem;
-    gap: 0.85rem;
+  #dashboard-content .data-table tbody {
+    padding: 0;
+    gap: 0.75rem;
   }
 
-  .data-table tr {
-    border-radius: 1.05rem;
+  #dashboard-content .data-table tr {
+    border-radius: 1rem;
   }
 
-  .data-table td {
-    padding-left: 1.125rem;
-    padding-right: 1.125rem;
+  #dashboard-content .data-table td {
+    padding: 0.875rem 1rem;
   }
 
-  .data-table td > * {
+  #dashboard-content .data-table td > * {
     overflow-wrap: break-word;
   }
 }
