@@ -88,9 +88,13 @@ test("upgrade tutors use feature-tour completion copy", () => {
 
   assert.match(workspaceTour, /dedicated/);
   assert.match(workspaceTour, /dedicated\s*\?\s*"Done"/);
-  assert.match(workspaceTour, /dedicated\s*\?\s*"Close update"/);
+  assert.match(workspaceTour, /dedicatedKind\s*===\s*"class-duties"/);
+  assert.match(workspaceTour, /\?\s*"Close guide"\s*:\s*"Close update"/);
   assert.match(workspaceTour, /!\s*dedicated/);
-  assert.match(workspaceTour, /tourContentForItem\(role, item, \{ dedicated \}\)/);
+  assert.match(
+    workspaceTour,
+    /tourContentForItem\(role, item, \{ dedicated, dedicatedKind \}\)/,
+  );
   assert.match(workspaceTourCss, /workspace-tour-card-upgrade/);
   assert.match(workspaceTour, /"Go to dashboard"/);
 });

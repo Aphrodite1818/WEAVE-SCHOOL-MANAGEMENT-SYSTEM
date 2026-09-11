@@ -167,6 +167,18 @@ export const studentService = {
       payload,
     ),
 
+  updateUpcomingEnrollment: (studentId, enrollmentId, payload) =>
+    api.patch(
+      `/tenant-admin/students/${studentId}/upcoming-enrollments/${enrollmentId}`,
+      payload,
+    ),
+
+  cancelUpcomingEnrollment: (studentId, enrollmentId, payload) =>
+    api.post(
+      `/tenant-admin/students/${studentId}/upcoming-enrollments/${enrollmentId}/cancel`,
+      payload,
+    ),
+
   suspendStudent: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/suspend`, payload),
 
@@ -175,6 +187,21 @@ export const studentService = {
 
   reinstateExpelledStudent: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/reinstate-expelled`, payload),
+
+  readmitStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/readmit`, payload),
+
+  reenrolGraduatedStudent: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/re-enrol-graduate`, payload),
+
+  undoWithdrawal: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/undo-withdrawal`, payload),
+
+  undoExpulsion: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/undo-expulsion`, payload),
+
+  undoGraduation: (studentId, payload) =>
+    api.post(`/tenant-admin/students/${studentId}/undo-graduation`, payload),
 
   withdrawStudent: (studentId, payload) =>
     api.post(`/tenant-admin/students/${studentId}/withdraw`, payload),

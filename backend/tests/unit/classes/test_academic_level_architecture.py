@@ -456,6 +456,14 @@ async def test_class_teacher_can_be_explicitly_unassigned() -> None:
             "app.modules.classes.service.ClassRoomRepository.save",
             new=AsyncMock(return_value=classroom),
         ),
+        patch(
+            "app.modules.classes.service.ClassRoomService._teacher_membership",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.classes.service.ClassRoomService._complete_class_teacher_guide",
+            new=AsyncMock(),
+        ),
     ):
         response = await ClassRoomService.update_classroom(
             db=db,

@@ -47,13 +47,15 @@ class ReportCardGenerateRequest(InputBase):
         if self.student_id is not None and self.class_id is not None:
             raise ValueError("Provide either student_id or class_id, not both.")
         if self.principal_template_id is not None and self.apply_default_principal_template:
-            raise ValueError("Choose an explicit principal template or grade defaults, not both.")
+            raise ValueError(
+                "Choose an explicit principal comment or the performance-range default, not both."
+            )
         if self.class_id is not None and (
             self.principal_template_id is not None or self.principal_comment is not None
         ):
             raise ValueError(
                 "Class-wide generation cannot apply one principal comment to every student. "
-                "Use personal grade defaults for bulk generation or generate one student at a time."
+                "Use personal performance-range defaults for bulk generation or generate one student at a time."
             )
         return self
 
@@ -108,6 +110,8 @@ class ReportCardResponse(OutputBase):
     academic_term_id: uuid.UUID
     academic_term_name: str | None = None
     total_score: Decimal
+    # Historical field name: this now stores the canonical weighted overall
+    # performance percentage for the report scope.
     average_score: Decimal
     position: int | None = None
     position_out_of: int | None = None
@@ -141,6 +145,7 @@ class ReportCardClassOverviewRow(OutputBase):
     submitted_count: int
     expected_count: int
     teacher_comment_status: str
+    performance_percentage: Decimal | None = None
     overall_grade: str | None = None
     principal_comment_status: str
     report_readiness: str
@@ -157,6 +162,9 @@ class ReportCardClassOverviewResponse(OutputBase):
     academic_term_id: uuid.UUID
     expected_subject_count: int
     items: list[ReportCardClassOverviewRow]
+    total: int
+    offset: int
+    limit: int
 
 
 class ReportCardBulkGenerateResponse(OutputBase):

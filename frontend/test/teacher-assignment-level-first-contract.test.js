@@ -21,6 +21,23 @@ test("eligible classes are constrained to the selected academic level", () => {
   assert.doesNotMatch(source, /eligibleClassGroups/);
 });
 
+test("subject choices include only curriculum subjects with uncovered eligible classes", () => {
+  assert.match(source, /getTeacherAssignmentAvailability\(assignmentLevelId, currentTermId\)/);
+  assert.match(source, /Number\(item\.unassigned_class_count \|\| 0\) > 0/);
+  assert.match(source, /availableSubjectIds\.has\(item\.id\)/);
+  assert.match(source, /Every eligible subject in this level already has teacher coverage\./);
+  assert.match(source, /setCoverageRefreshKey\(\(current\) => current \+ 1\)/);
+});
+
+test("assignment creation can stay open or save and close", () => {
+  assert.match(source, /finishAcademicCreation\(/);
+  assert.match(source, /resetCreateForm,/);
+  assert.match(source, /\(\) => selectView\("overview"\)/);
+  assert.match(source, /<FormActions[\s\S]*repeatLabel=\{`Assign teacher/);
+  assert.match(source, /closeLabel="Assign & close"/);
+  assert.match(source, /repeatable/);
+});
+
 test("assignment cards consume canonical scheduled-current-ended status", () => {
   assert.match(source, /renderStatus=\{\(item\) => String\(item\.status/);
   assert.doesNotMatch(source, /viewingAssignment\.is_active/);

@@ -534,6 +534,39 @@ class CBTResultIngestionService:
             results,
         )
 
+    @staticmethod
+    async def _invalidate_report_derivations(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        results: list[StudentSubjectResult],
+    ) -> None:
+        """Invalidate every report/comment derivation touched by applied CBT scores."""
+
+        if not results:
+            return
+
+        # Local import keeps the CBT ingestion module independent at import time
+        # while reusing the same invalidation contract as manual result writes.
+        from app.modules.report_cards.service import ReportCardService
+
+        contexts = {
+            (
+                result.student_id,
+                result.academic_session_id,
+                result.academic_term_id,
+            )
+            for result in results
+        }
+        for student_id, academic_session_id, academic_term_id in contexts:
+            await ReportCardService.mark_outdated_for_score_change(
+                db,
+                tenant_id,
+                student_id,
+                academic_session_id,
+                academic_term_id,
+            )
+
     # ------------------------------------------------------------------
     # Main ingestion
     # ------------------------------------------------------------------
@@ -1104,6 +1137,11 @@ class CBTResultIngestionService:
             changed_results = [all_results[student_id] for student_id in applied_student_ids]
 
             await cls._recompute_results(
+                db,
+                tenant_id=tenant_id,
+                results=changed_results,
+            )
+            await cls._invalidate_report_derivations(
                 db,
                 tenant_id=tenant_id,
                 results=changed_results,

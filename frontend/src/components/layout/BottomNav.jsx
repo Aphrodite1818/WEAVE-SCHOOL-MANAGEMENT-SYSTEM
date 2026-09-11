@@ -20,6 +20,7 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
+import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
 import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
@@ -53,7 +54,12 @@ const bottomNavConfig = {
   ],
   teacher: [
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
-    { label: "Classes", to: "/teacher/classes", icon: Users },
+    {
+      label: "Classes",
+      to: "/teacher/classes",
+      icon: Users,
+      requiresClassTeacher: true,
+    },
     { label: "Home", to: "/teacher/dashboard", icon: Home, isHome: true },
     {
       label: "Schools",
@@ -100,6 +106,7 @@ const getIndicatorStyleForElement = (element) => ({
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
   const runtimeConfig = useRuntimeConfig();
+  const { hasClassTeacherDuties } = useTeacherClassDutyAccess();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -130,8 +137,9 @@ function BottomNav({ role, onOpenMenu }) {
       : configuredItems
   ).filter(
     (item) =>
-      !item.runtimeFeature ||
-      runtimeConfig?.features?.[item.runtimeFeature] !== false,
+      (!item.requiresClassTeacher || hasClassTeacherDuties) &&
+      (!item.runtimeFeature ||
+        runtimeConfig?.features?.[item.runtimeFeature] !== false),
   );
 
   const clearTimer = useCallback((timerRef) => {

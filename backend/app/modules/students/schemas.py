@@ -301,46 +301,13 @@ class StudentReinstateRequest(StudentLifecycleReasonRequest):
 class StudentWithdrawRequest(StudentLifecycleReasonRequest):
     """Withdraw a student and close their current enrolment."""
 
-    effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Withdrawal cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
 
 class StudentExpelRequest(StudentLifecycleReasonRequest):
     """Expel a student and immediately end parent access."""
 
-    effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Expulsion cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
 
 class StudentGraduateRequest(StudentLifecycleReasonRequest):
     """Privileged single-student graduation correction request."""
-
-    graduation_date: date = Field(default_factory=date.today)
-
-    @field_validator("graduation_date")
-    @classmethod
-    def validate_graduation_date(cls, value: date) -> date:
-        """Graduation cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="graduation_date")
-        assert validated is not None
-        return validated
 
 
 class StudentArchiveRequest(StudentLifecycleReasonRequest):
@@ -351,21 +318,13 @@ class StudentRestoreFromArchiveRequest(StudentLifecycleReasonRequest):
     """Restore an archived record to operational visibility."""
 
 
-class StudentExpelledReinstatementRequest(StudentLifecycleReasonRequest):
-    """Privileged reinstatement of an expelled student."""
+class StudentReturnEnrollmentRequest(StudentLifecycleReasonRequest):
+    """Create a new placement after a genuine terminal student exit."""
 
+    target_academic_level_id: uuid.UUID
     target_class_id: uuid.UUID
     academic_session_id: uuid.UUID
     effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Reinstatement cannot start in the future."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
 
 
 class StudentPromotionHoldUpdateRequest(InputBase):
@@ -429,6 +388,7 @@ class StudentEnrollmentDetailResponse(StudentEnrollmentResponse):
     class_arm: str | None = None
     academic_level_name: str | None = None
     academic_session_name: str | None = None
+    lifecycle_state: Literal["historical", "current", "upcoming"] = "historical"
 
 
 class StudentEnrollmentListResponse(OutputBase):
@@ -654,6 +614,18 @@ class StudentParentLinkRequestListResponse(OutputBase):
 # ---------------------------------------------------------------------------
 
 
+class StudentLifecycleCapabilities(OutputBase):
+    """Backend-owned lifecycle actions available for the student's current state."""
+
+    can_undo_withdrawal: bool = False
+    can_undo_expulsion: bool = False
+    can_undo_graduation: bool = False
+    can_readmit: bool = False
+    can_reinstate_expelled: bool = False
+    can_reenrol_graduate: bool = False
+    undo_block_reason: str | None = None
+
+
 class StudentOutputBase(OutputBase):
     """Student profile and lifecycle response."""
 
@@ -684,6 +656,7 @@ class StudentOutputBase(OutputBase):
     archive_reason: str | None = None
     created_at: datetime
     updated_at: datetime
+    lifecycle_capabilities: StudentLifecycleCapabilities | None = None
 
 
 class StudentResponse(StudentOutputBase):
@@ -700,6 +673,7 @@ class StudentDetailResponse(StudentResponse):
     class_arm: str | None = None
     academic_level_name: str | None = None
     current_enrollment_id: uuid.UUID | None = None
+    upcoming_enrollment: StudentEnrollmentDetailResponse | None = None
     current_academic_session_id: uuid.UUID | None = None
     current_academic_session_name: str | None = None
     current_academic_term_id: uuid.UUID | None = None

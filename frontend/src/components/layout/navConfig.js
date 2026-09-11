@@ -144,6 +144,7 @@ export const navGroups = {
           to: "/admin/cbt",
           icon: Cpu,
           featureCode: FEATURE_CODES.CBT_PAIRING,
+          allowHistoricalAccess: true,
         },
         { label: "Usage", to: "/admin/usage", icon: Activity },
         { label: "Settings", to: "/admin/settings", icon: Settings },
@@ -152,7 +153,7 @@ export const navGroups = {
   ],
   teacher: [
     {
-      label: "Subject teaching",
+      label: "Teaching workspace",
       items: [
         { label: "Dashboard", to: "/teacher/dashboard", icon: Home },
         { label: "Analytics", to: "/teacher/analytics", icon: BarChart3 },
@@ -163,6 +164,12 @@ export const navGroups = {
         },
         { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen },
         { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
+        {
+          label: "Attendance",
+          to: "/teacher/attendance",
+          icon: CheckSquare,
+          runtimeFeature: "attendance",
+        },
         { label: "Inbox", to: "/teacher/inbox", icon: Inbox },
         {
           label: "Messages",
@@ -176,28 +183,6 @@ export const navGroups = {
           to: "/teacher/notices/received",
           icon: FileText,
         },
-      ],
-    },
-    {
-      label: "Class teacher duties",
-      items: [
-        { label: "My Class", to: "/teacher/classes", icon: Library },
-        {
-          label: "Student Comments",
-          to: "/teacher/student-comments",
-          icon: ClipboardList,
-        },
-        {
-          label: "My Comment Templates",
-          to: "/teacher/comment-templates",
-          icon: FileText,
-        },
-        {
-          label: "Class Attendance",
-          to: "/teacher/attendance",
-          icon: CheckSquare,
-          runtimeFeature: "attendance",
-        },
         {
           label: "Switch School",
           to: "/teacher/schools",
@@ -205,6 +190,29 @@ export const navGroups = {
           accountScope: true,
         },
         { label: "Settings", to: "/teacher/settings", icon: Settings },
+      ],
+    },
+    {
+      label: "Class teacher duties",
+      items: [
+        {
+          label: "My Class",
+          to: "/teacher/classes",
+          icon: Library,
+          requiresClassTeacher: true,
+        },
+        {
+          label: "Student Comments",
+          to: "/teacher/student-comments",
+          icon: ClipboardList,
+          requiresClassTeacher: true,
+        },
+        {
+          label: "My Comment Templates",
+          to: "/teacher/comment-templates",
+          icon: FileText,
+          requiresClassTeacher: true,
+        },
       ],
     },
   ],
@@ -285,6 +293,11 @@ export const navGroups = {
         },
         { label: "Tenant Usage", to: "/superadmin/usage", icon: Database },
         { label: "Traffic Monitor", to: "/superadmin/traffic", icon: Activity },
+        {
+          label: "CBT Result Operations",
+          to: "/superadmin/cbt-results",
+          icon: ClipboardList,
+        },
         {
           label: "Simulation Lab",
           to: "/superadmin/simulations",

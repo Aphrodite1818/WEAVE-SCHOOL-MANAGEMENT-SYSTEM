@@ -12,6 +12,8 @@ import {
   TOUR_REQUEST_EVENT,
   TOUR_SEEN_STEP,
   TOUR_STATE_CHANGED_EVENT,
+  TEACHER_CLASS_DUTIES_GUIDE_KEY,
+  TEACHER_CLASS_DUTY_ROUTES,
   tourKeyForRole,
 } from "./workspaceTourState";
 
@@ -37,6 +39,7 @@ export default function useWorkspaceTour({
   enabled,
   pathname,
   navigationKey,
+  hasClassTeacherDuties = false,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +53,8 @@ export default function useWorkspaceTour({
   const [focusTo, setFocusTo] = useState(null);
   const [pendingRequest, setPendingRequest] = useState(null);
   const [dedicated, setDedicated] = useState(false);
+  const [classDutyTour, setClassDutyTour] = useState(false);
+  const [focusRoutes, setFocusRoutes] = useState(null);
   const [upgradeQueue, setUpgradeQueue] = useState(null);
   const claimed = useRef(false);
   const key = tourKeyForRole(role);
@@ -92,6 +97,8 @@ export default function useWorkspaceTour({
     setFocusTo(null);
     setPendingRequest(null);
     setDedicated(false);
+    setClassDutyTour(false);
+    setFocusRoutes(null);
     setUpgradeQueue(null);
     setState(null);
   }, [identityKey, key]);
@@ -107,22 +114,64 @@ export default function useWorkspaceTour({
     }
 
     const nextState = await refreshState();
-    if (!canAutoShowTour(nextState) || claimed.current) return;
+    if (canAutoShowTour(nextState) && !claimed.current) {
+      claimed.current = true;
+      const saved = await saveState({
+        status: "in_progress",
+        current_step: TOUR_SEEN_STEP,
+        remind_after: null,
+      });
+      if (!saved?.sync_pending) {
+        setInitialWelcome(true);
+        setResumeIndex(-1);
+        setOpen(true);
+      } else {
+        claimed.current = false;
+      }
+      return;
+    }
+
+    if (
+      role !== "teacher" ||
+      !hasClassTeacherDuties ||
+      nextState?.status === "in_progress" ||
+      claimed.current
+    ) {
+      return;
+    }
+    const dutyState = await guideService.getState(
+      TEACHER_CLASS_DUTIES_GUIDE_KEY,
+    );
+    if (!canAutoShowTour(dutyState) || claimed.current) return;
 
     claimed.current = true;
-    const saved = await saveState({
-      status: "in_progress",
-      current_step: TOUR_SEEN_STEP,
-      remind_after: null,
-    });
+    const saved = await guideService.updateState(
+      TEACHER_CLASS_DUTIES_GUIDE_KEY,
+      {
+        status: "in_progress",
+        current_step: TOUR_SEEN_STEP,
+        remind_after: null,
+      },
+    );
     if (!saved?.sync_pending) {
-      setInitialWelcome(true);
-      setResumeIndex(-1);
+      setInitialWelcome(false);
+      setClassDutyTour(true);
+      setDedicated(true);
+      setFocusRoutes(TEACHER_CLASS_DUTY_ROUTES);
+      setResumeIndex(0);
       setOpen(true);
     } else {
       claimed.current = false;
     }
-  }, [enabled, key, pathname, refreshState, role, saveState]);
+  }, [
+    enabled,
+    hasClassTeacherDuties,
+    key,
+    pathname,
+    refreshState,
+    role,
+    saveState,
+  ]);
 
   useEffect(() => {
     if (!enabled || role !== "admin" || pathname !== "/admin/dashboard") return;
@@ -223,6 +272,20 @@ export default function useWorkspaceTour({
     }
 
     if (dedicated) {
+      if (classDutyTour) {
+        await guideService.updateState(TEACHER_CLASS_DUTIES_GUIDE_KEY, {
+          status: outcome === "completed" ? "completed" : "dismissed",
+          current_step: null,
+          remind_after: null,
+        });
+        setOpen(false);
+        setResumeIndex(-1);
+        setFocusTo(null);
+        setFocusRoutes(null);
+        setDedicated(false);
+        setClassDutyTour(false);
+        return;
+      }
       if (upgradeQueue?.sidebarTargets?.length > 1) {
         const [, ...remaining] = upgradeQueue.sidebarTargets;
         setUpgradeQueue({ ...upgradeQueue, sidebarTargets: remaining });
@@ -270,6 +333,23 @@ export default function useWorkspaceTour({
       });
     }
 
+    if (
+      role === "teacher" &&
+      hasClassTeacherDuties &&
+      ["completed", "dismissed"].includes(outcome)
+    ) {
+      const dutyState = await guideService.getState(
+        TEACHER_CLASS_DUTIES_GUIDE_KEY,
+      );
+      if (dutyState?.status === "in_progress") {
+        await guideService.updateState(TEACHER_CLASS_DUTIES_GUIDE_KEY, {
+          status: "completed",
+          current_step: null,
+          remind_after: null,
+        });
+      }
+    }
+
     setOpen(false);
     setResumeIndex(-1);
   };
@@ -280,7 +360,9 @@ export default function useWorkspaceTour({
     close,
     resumeIndex,
     focusTo,
+    focusRoutes,
     dedicated,
+    classDutyTour,
     state,
     refreshState,
     incomplete: state?.status === "in_progress",

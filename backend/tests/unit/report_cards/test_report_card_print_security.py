@@ -34,16 +34,20 @@ def test_report_card_data_response_headers_prevent_sensitive_caching():
     assert headers["Referrer-Policy"] == "no-referrer"
 
 
-def test_canonical_report_card_template_is_print_safe():
+def test_canonical_report_card_template_is_print_safe_and_excludes_photo_signatures():
     source = inspect.getsource(ReportCardPrintService.render_html)
 
     assert "onclick=" not in source
     assert "document.write" not in source
     assert "dangerouslySetInnerHTML" not in source
-    assert "<th>Teacher" not in source
+    assert "student_passport_photo_url" not in source
+    assert "student-photo" not in source
+    assert "signature" not in source.lower()
     assert "Admission number" in source
+    assert "Overall performance" in source
     assert "Class teacher's comment" in source
     assert "Principal's comment" in source
+    assert "<th>Teacher</th>" in source
     assert "weave-email-icon.png" in source
 
 
@@ -83,7 +87,7 @@ async def test_print_uses_stored_report_snapshot_instead_of_live_class_configura
         tenant_id=tenant_id,
         student_name="Ada Student",
         admission_number="STD-001",
-        student_passport_photo_url=None,
+        student_passport_photo_url="https://example.com/photo.jpg",
         class_name="SS1",
         class_arm="C",
         department_name="Science",
@@ -126,4 +130,6 @@ async def test_print_uses_stored_report_snapshot_instead_of_live_class_configura
     assert "Excellent consistency." in html
     assert "Outstanding performance." in html
     assert "2026/2027" in html
+    assert "Snapshot Teacher" in html
+    assert "photo.jpg" not in html
     ReportCardService.get.assert_awaited_once_with(db, actor, card_id)

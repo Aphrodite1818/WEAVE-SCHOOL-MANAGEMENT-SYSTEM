@@ -142,6 +142,11 @@ async def test_reassign_class_splits_placement_on_effective_date(monkeypatch) ->
         "get_current",
         AsyncMock(return_value=current),
     )
+    monkeypatch.setattr(
+        StudentEnrollmentRepository,
+        "get_upcoming",
+        AsyncMock(return_value=None),
+    )
     close_segment = AsyncMock()
     create_segment = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
     invalidate = AsyncMock()

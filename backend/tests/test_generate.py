@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -14,8 +14,23 @@ from app.modules.report_cards.schemas import (
     ReportCardResponse,
 )
 from app.modules.report_cards.service import ReportCardService
-from app.modules.students.repository import StudentRepository
 from app.modules.tenant_admins.models import TenantAdmin
+
+
+class _Savepoint:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
+class _ScalarResult:
+    def __init__(self, values):
+        self._values = values
+
+    def scalars(self):
+        return self._values
 
 
 @pytest.mark.asyncio
@@ -71,33 +86,27 @@ async def test_bulk_generate_uses_canonical_student_generation_and_refreshes_pos
         apply_default_principal_template=True,
     )
 
-    students = [SimpleNamespace(id=student_id) for student_id in student_ids]
     generated_cards = [ReportCardResponse.model_construct(id=uuid.uuid4()) for _ in student_ids]
     generate_one = AsyncMock(side_effect=generated_cards)
     apply_positions = AsyncMock()
     get_card = AsyncMock(side_effect=generated_cards)
 
-    monkeypatch.setattr(
-        StudentRepository,
-        "list_for_tenant",
-        AsyncMock(return_value=(students, len(students))),
-    )
     monkeypatch.setattr(ReportCardService, "generate_for_student", generate_one)
     monkeypatch.setattr(ReportCardService, "_apply_class_positions", apply_positions)
     monkeypatch.setattr(ReportCardService, "get", get_card)
 
-    db = SimpleNamespace(commit=AsyncMock())
+    db = SimpleNamespace(
+        execute=AsyncMock(return_value=_ScalarResult(student_ids)),
+        begin_nested=MagicMock(return_value=_Savepoint()),
+        commit=AsyncMock(),
+    )
     result = await ReportCardService.generate(db, actor, payload)
 
     assert isinstance(result, ReportCardBulkGenerateResponse)
     assert len(result.generated) == len(student_ids)
     assert result.skipped == []
-    StudentRepository.list_for_tenant.assert_awaited_once_with(
-        db=db,
-        tenant_id=tenant_id,
-        class_id=class_id,
-        limit=500,
-    )
+    db.execute.assert_awaited_once()
+    assert db.begin_nested.call_count == len(student_ids)
     assert generate_one.await_count == len(student_ids)
     assert all(call.kwargs["commit"] is False for call in generate_one.await_args_list)
     assert all(
@@ -111,7 +120,7 @@ async def test_bulk_generate_uses_canonical_student_generation_and_refreshes_pos
         session_id,
         term_id,
     )
-    db.commit.assert_awaited_once()
+    assert db.commit.await_count == 2
     assert get_card.await_count == len(student_ids)
 
 
@@ -122,13 +131,13 @@ def test_bulk_generation_rejects_one_manual_or_template_principal_comment() -> N
         "academic_term_id": uuid.uuid4(),
     }
 
-    with pytest.raises(ValueError, match="grade defaults"):
+    with pytest.raises(ValueError, match="performance-range defaults"):
         ReportCardGenerateRequest(
             **base,
             principal_comment="One sentence for the entire class.",
         )
 
-    with pytest.raises(ValueError, match="grade defaults"):
+    with pytest.raises(ValueError, match="performance-range defaults"):
         ReportCardGenerateRequest(
             **base,
             principal_template_id=uuid.uuid4(),

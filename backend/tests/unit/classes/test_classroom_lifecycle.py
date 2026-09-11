@@ -241,6 +241,18 @@ async def test_homeroom_teacher_can_change_after_classroom_has_history() -> None
             "app.modules.classes.service.ClassRoomRepository.save",
             new=AsyncMock(return_value=room),
         ),
+        patch(
+            "app.modules.classes.service.ClassRoomService._teacher_membership",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.classes.service.ClassRoomService._complete_class_teacher_guide",
+            new=AsyncMock(),
+        ) as complete_guide,
+        patch(
+            "app.modules.classes.service.ClassRoomService._queue_first_class_teacher_guide",
+            new=AsyncMock(),
+        ) as queue_guide,
     ):
         await ClassRoomService.update_classroom(
             AsyncMock(),
@@ -252,6 +264,8 @@ async def test_homeroom_teacher_can_change_after_classroom_has_history() -> None
     assert room.teacher_membership_id == new_teacher_id
     validate_teacher.assert_awaited_once()
     count_dependencies.assert_not_awaited()
+    complete_guide.assert_awaited_once()
+    queue_guide.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -504,6 +518,31 @@ async def test_classroom_dependency_snapshot_exposes_total_and_live_contract() -
     snapshot = await ClassRoomRepository.count_class_dependencies(db, uuid.uuid4(), uuid.uuid4())
 
     assert snapshot == values
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("remaining_class", "expected_calls"), [(None, 1), (uuid.uuid4(), 0)])
+async def test_class_teacher_guide_completes_only_after_last_class_is_removed(
+    remaining_class: uuid.UUID | None,
+    expected_calls: int,
+) -> None:
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = remaining_class
+    db = AsyncMock()
+    db.execute.return_value = result
+    teacher = SimpleNamespace(teacher_account_id=uuid.uuid4())
+
+    with patch(
+        "app.modules.classes.service.UserGuideService.complete_if_unfinished",
+        new=AsyncMock(),
+    ) as complete:
+        await ClassRoomService._complete_class_teacher_guide(
+            db,
+            teacher=teacher,
+            exclude_class_id=uuid.uuid4(),
+        )
+
+    assert complete.await_count == expected_calls
 
 
 def test_classroom_history_foreign_keys_use_restrict() -> None:

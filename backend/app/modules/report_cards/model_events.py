@@ -48,7 +48,7 @@ def invalidate_current_report_context_after_class_teacher_change(
     current_enrollment_ids = select(StudentEnrollment.id).where(
         StudentEnrollment.tenant_id == classroom.tenant_id,
         StudentEnrollment.class_id == classroom.id,
-        StudentEnrollment.ended_on.is_(None),
+        StudentEnrollment.is_current.is_(True),
         StudentEnrollment.academic_session_id.in_(current_session_ids),
     )
 

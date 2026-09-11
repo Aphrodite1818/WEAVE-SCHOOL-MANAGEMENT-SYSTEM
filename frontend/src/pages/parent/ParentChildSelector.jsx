@@ -44,14 +44,14 @@ function ParentChildSelector({
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className={cn("truncate text-sm font-semibold", isActive ? "text-white" : "text-text")}>
+                      <p className={cn("whitespace-normal break-words text-sm font-semibold leading-5 sm:truncate", isActive ? "text-primary-foreground" : "text-text")}>
                         {displayName(student)}
                       </p>
-                      <p className={cn("mt-1 text-xs", isActive ? "text-white/80" : "text-text-muted")}>
+                      <p className={cn("mt-1 break-words text-xs leading-5", isActive ? "text-primary-foreground" : "text-text-muted")}>
                         {cleanText(student?.admission_number)} / {cleanText(student?.profile_status || student?.status)}
                       </p>
                     </div>
-                    <Badge variant={isActive ? "default" : (link.is_primary_contact ? "success" : "default")} className={cn(isActive && "bg-white/20 text-white hover:bg-white/30 border-transparent backdrop-blur-md")}>
+                    <Badge variant={isActive ? "default" : (link.is_primary_contact ? "success" : "default")} className={cn(isActive && "bg-primary text-primary-foreground border-current")}>
                       {cleanText(link.relationship_type || "linked")}
                     </Badge>
                   </div>

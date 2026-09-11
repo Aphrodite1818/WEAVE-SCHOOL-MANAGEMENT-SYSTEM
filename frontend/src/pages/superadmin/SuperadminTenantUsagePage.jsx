@@ -164,7 +164,7 @@ function SuperadminTenantUsagePage() {
             <div>
                <h2 className="text-sm font-semibold text-text uppercase tracking-wider">Select Tenant</h2>
                <select
-                 className="input-base mt-1.5 min-w-[260px] py-2 text-sm font-medium"
+                 className="input-base mt-1.5 w-full min-w-0 py-2 text-sm font-medium sm:min-w-[260px]"
                  value={selectedTenantId}
                  onChange={(event) => setSelectedTenantId(event.target.value)}
                >

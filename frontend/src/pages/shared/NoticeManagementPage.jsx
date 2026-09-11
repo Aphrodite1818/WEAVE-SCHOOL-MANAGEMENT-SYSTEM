@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Archive, Megaphone, Send, XCircle } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import EmptyState from "../../components/shared/EmptyState";
@@ -375,7 +376,7 @@ export default function NoticeManagementPage({ mode = "tenant-admin" }) {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="font-bold text-text">{item.title}</h2>
-                    <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-bold text-text-muted">{item.status}</span>
+                    <Badge>{item.status}</Badge>
                   </div>
                   <p className="mt-2 whitespace-pre-wrap text-sm text-text-muted">{item.body}</p>
                 </div>

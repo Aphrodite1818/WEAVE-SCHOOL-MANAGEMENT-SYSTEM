@@ -5,6 +5,13 @@ export const TOUR_QUEUED_STEP = "welcome_pending";
 export const TOUR_SEEN_STEP = "welcome_seen";
 export const TOUR_PAUSED_PREFIX = "paused:";
 const UPGRADE_TOUR_PENDING_KEY = "weave:pending-upgrade-tour";
+export const TEACHER_CLASS_DUTIES_GUIDE_KEY =
+  "teacher_class_duties_intro_v1";
+export const TEACHER_CLASS_DUTY_ROUTES = [
+  "/teacher/classes",
+  "/teacher/student-comments",
+  "/teacher/comment-templates",
+];
 
 export const tourKeyForRole = (role) =>
   ["admin", "teacher", "student", "parent"].includes(role)

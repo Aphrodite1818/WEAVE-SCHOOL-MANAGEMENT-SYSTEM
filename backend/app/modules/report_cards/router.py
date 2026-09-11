@@ -10,10 +10,12 @@ from app.core.dependencies.route_guards import (
     get_current_parent,
     get_current_tenant_admin,
 )
-from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
+from app.core.exceptions import ForbiddenException, NotFoundException
 from app.modules.parents.models import Parent
 from app.modules.report_cards.models import ReportCardStatus
-from app.modules.report_cards.principal_comment_policy import require_admin_template_for_grade
+from app.modules.report_cards.principal_comment_policy import (
+    require_admin_template_for_performance,
+)
 from app.modules.report_cards.print_service import ReportCardPrintService
 from app.modules.report_cards.repository import ReportCardRepository
 from app.modules.report_cards.schemas import (
@@ -22,7 +24,6 @@ from app.modules.report_cards.schemas import (
     ReportCardResponse,
 )
 from app.modules.report_cards.service import ReportCardService
-from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import Student
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
@@ -171,18 +172,11 @@ async def update_principal_comment(
         )
         if card_model is None:
             raise NotFoundException("Report card not found.")
-        grading_scale = await StudentAcademicRepository.find_grade_for_score(
-            db=db,
-            tenant_id=current_admin.tenant_id,
-            score=card_model.average_score,
-        )
-        if grading_scale is None:
-            raise BadRequestException("The report average does not resolve to a configured grade.")
-        await require_admin_template_for_grade(
+        await require_admin_template_for_performance(
             db,
             admin=current_admin,
             template_id=payload.principal_template_id,
-            grading_scale_id=grading_scale.id,
+            performance_percentage=card_model.average_score,
         )
     card = await ReportCardService.update_principal_comment(
         db, current_admin, report_card_id, payload

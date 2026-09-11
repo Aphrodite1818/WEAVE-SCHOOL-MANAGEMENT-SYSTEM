@@ -47,10 +47,10 @@
 
   .people-mobile-list.mobile-scroll-list {
     display: block !important;
-    width: calc(100% + 1rem);
-    max-width: calc(100% + 1rem);
+    width: 100%;
+    max-width: 100%;
     max-height: none !important;
-    margin-inline: -0.5rem;
+    margin-inline: 0;
     padding: 0 !important;
     overflow: hidden !important;
     border-radius: 1.1rem;
@@ -168,23 +168,21 @@
     align-content: start;
     width: 100% !important;
     max-width: 100% !important;
-    max-height: min(64dvh, 42rem);
+    max-height: none;
     margin-inline: 0 !important;
-    padding: 0 0.25rem 0.5rem 0 !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior-y: contain;
-    scroll-snap-type: y proximity !important;
-    scrollbar-gutter: stable;
-    -webkit-overflow-scrolling: touch;
+    padding: 0 !important;
+    overflow-x: clip !important;
+    overflow-y: visible !important;
+    overscroll-behavior-y: auto;
+    scroll-snap-type: none !important;
+    scrollbar-gutter: auto;
   }
 
   .directory-card-grid.mobile-scroll-list > * {
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
-    scroll-snap-align: start !important;
-    scroll-snap-stop: normal;
+    scroll-snap-align: none !important;
   }
 
   .directory-card-grid .card-base {
@@ -203,12 +201,6 @@
   .directory-card-grid .card-base h3,
   .directory-card-grid .card-base span {
     overflow-wrap: anywhere;
-  }
-
-  .directory-card-grid.mobile-scroll-list {
-    max-height: calc(100dvh - 18rem - env(safe-area-inset-bottom, 0px));
-    min-height: 14rem;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* Visual treatment only. PWA dock geometry lives in pwaInteractions.css. */

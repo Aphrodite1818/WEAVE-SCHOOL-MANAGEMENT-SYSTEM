@@ -54,12 +54,12 @@ def test_class_generation_cannot_apply_one_principal_comment_to_every_student():
         "academic_session_id": uuid4(),
         "academic_term_id": uuid4(),
     }
-    with pytest.raises(ValueError, match="grade defaults"):
+    with pytest.raises(ValueError, match="performance-range defaults"):
         ReportCardGenerateRequest(
             **base,
             principal_comment="The same comment for everyone.",
         )
-    with pytest.raises(ValueError, match="grade defaults"):
+    with pytest.raises(ValueError, match="performance-range defaults"):
         ReportCardGenerateRequest(
             **base,
             principal_template_id=uuid4(),

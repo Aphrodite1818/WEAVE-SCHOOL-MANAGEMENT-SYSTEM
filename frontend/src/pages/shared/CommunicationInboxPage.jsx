@@ -6,6 +6,7 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import Button from "../../components/ui/Button";
+import Badge from "../../components/ui/Badge";
 import { authSession, getErrorMessage } from "../../services/api";
 import {
   NOTIFICATION_REALTIME_EVENTS,
@@ -149,9 +150,9 @@ export default function CommunicationInboxPage() {
                             {item.title}
                           </h2>
                           {isUnread ? (
-                            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-bold text-primary">
+                            <Badge variant="primary" className="px-2 py-1 text-[11px]">
                               Unread
-                            </span>
+                            </Badge>
                           ) : null}
                         </div>
                         <p className="mt-1 max-w-3xl text-sm text-text-muted">

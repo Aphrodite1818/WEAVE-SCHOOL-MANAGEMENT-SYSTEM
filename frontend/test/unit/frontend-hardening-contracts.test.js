@@ -77,6 +77,11 @@ test("invitation feedback avoids transport and queue terminology", async () => {
   assert.doesNotMatch(source, /accepted by the API/i);
   assert.doesNotMatch(source, /Queueing invitation/i);
   assert.doesNotMatch(source, /delivery remains asynchronous/i);
+  assert.match(source, /TEACHER_ALREADY_ACTIVE_MEMBER/);
+  assert.match(
+    source,
+    /already an active member of your school\. You do not need to send another invitation/,
+  );
 });
 
 test("student creation copy describes outcomes instead of implementation details", async () => {

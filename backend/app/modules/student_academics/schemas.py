@@ -312,14 +312,20 @@ class TeacherAssignmentReassign(InputBase):
     reason: str = Field(min_length=3, max_length=500)
 
 
-class TeacherAssignmentEnd(InputBase):
+class TeacherAssignmentScheduleUpdate(InputBase):
+    teacher_membership_id: uuid.UUID
     academic_term_id: uuid.UUID
-    effective_to: date | None = None
+    effective_from: date
     reason: str = Field(min_length=3, max_length=500)
 
 
-class TeacherAssignmentDelete(InputBase):
-    confirmation: Literal["DELETE_TEACHER_ASSIGNMENT"]
+class TeacherAssignmentScheduleCancel(InputBase):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class TeacherAssignmentEnd(InputBase):
+    academic_term_id: uuid.UUID
+    effective_to: date | None = None
     reason: str = Field(min_length=3, max_length=500)
 
 
@@ -329,6 +335,8 @@ class TeacherAssignmentDependencyPreview(OutputBase):
     can_end: bool
     can_reassign: bool
     can_delete: bool
+    can_edit_schedule: bool = False
+    can_cancel_schedule: bool = False
     blocker_messages: list[str] = []
 
 
@@ -368,6 +376,11 @@ class TeacherAssignmentResponse(OutputBase):
     subject_code: str | None = None
     teacher_name: str | None = None
     teacher_staff_id: str | None = None
+    has_scheduled_takeover: bool = False
+    scheduled_takeover_id: uuid.UUID | None = None
+    scheduled_takeover_teacher_membership_id: uuid.UUID | None = None
+    scheduled_takeover_teacher_name: str | None = None
+    scheduled_takeover_effective_from: date | None = None
     status: TeacherAssignmentState
     effective_from: date
     effective_to: date | None = None

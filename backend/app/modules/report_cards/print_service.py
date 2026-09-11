@@ -17,7 +17,7 @@ from app.tenant_management.repository import TenantRepository
 
 
 class ReportCardPrintService:
-    """Render a consistent, school-branded A4 report card."""
+    """Render the canonical school-branded A4 academic report."""
 
     @staticmethod
     def _text(value: object | None, fallback: str = "—") -> str:
@@ -64,14 +64,8 @@ class ReportCardPrintService:
         school_contact = " · ".join(
             value
             for value in [
-                ReportCardPrintService._text(
-                    tenant.phone if tenant else None,
-                    "",
-                ),
-                ReportCardPrintService._text(
-                    tenant.email if tenant else None,
-                    "",
-                ),
+                ReportCardPrintService._text(tenant.phone if tenant else None, ""),
+                ReportCardPrintService._text(tenant.email if tenant else None, ""),
             ]
             if value
         )
@@ -80,7 +74,6 @@ class ReportCardPrintService:
             if tenant and tenant.logo_url
             else f"{str(settings.FRONTEND_APP_URL).rstrip('/')}/icons/weave-email-icon.png"
         )
-        student_photo = card.student_passport_photo_url
 
         component_headers = card.lines[0].components if card.lines else []
         component_heading_cells = "".join(
@@ -90,7 +83,7 @@ class ReportCardPrintService:
         rows = "".join(
             "<tr>"
             f"<td class='subject'>{ReportCardPrintService._text(line.subject_name)}</td>"
-            f"<td>{ReportCardPrintService._text(line.subject_code)}</td>"
+            f"<td>{ReportCardPrintService._text(line.subject_code, '')}</td>"
             + "".join(
                 f"<td>{ReportCardPrintService._score(next((item.score for item in line.components if item.assessment_component_id == header.assessment_component_id), None))}</td>"
                 for header in component_headers
@@ -98,6 +91,7 @@ class ReportCardPrintService:
             + f"<td class='total'>{ReportCardPrintService._score(line.total_score)}</td>"
             f"<td>{ReportCardPrintService._text(line.grade)}</td>"
             f"<td class='remark'>{ReportCardPrintService._text(line.remark, '')}</td>"
+            f"<td class='teacher'>{ReportCardPrintService._text(line.teacher_name, '')}</td>"
             "</tr>"
             for line in card.lines
         )
@@ -117,71 +111,56 @@ class ReportCardPrintService:
             if card.position is not None and card.position_out_of is not None
             else "—"
         )
-        photo_markup = (
-            f"<img class='student-photo' src='{html.escape(student_photo)}' alt='Student passport photograph'>"
-            if student_photo
-            else "<div class='student-photo placeholder'>No photo</div>"
-        )
 
         return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{school_name} — Report Card</title>
+  <title>{school_name} — Academic Report</title>
   <style>
-    :root {{ color-scheme: light; --ink:#172033; --muted:#667085; --line:#cbd5e1; --brand:#1d4ed8; --brand-soft:#eff6ff; }}
-    * {{ box-sizing: border-box; }}
+    :root {{ color-scheme:light; --ink:#172033; --muted:#667085; --line:#cbd5e1; --brand:#173a77; --soft:#f6f8fc; }}
+    * {{ box-sizing:border-box; }}
     body {{ margin:0; background:#e8edf5; color:var(--ink); font-family:Arial,Helvetica,sans-serif; line-height:1.35; }}
     .page {{ width:min(100% - 24px, 900px); margin:24px auto; background:#fff; border:1px solid #d8e0ec; box-shadow:0 20px 55px rgba(15,23,42,.14); }}
     .sheet {{ padding:28px; }}
-    .school-header {{ display:grid; grid-template-columns:88px 1fr auto; gap:18px; align-items:center; border-bottom:3px solid var(--brand); padding-bottom:18px; }}
-    .school-logo {{ width:82px; height:82px; object-fit:contain; border:1px solid #dbe4f0; border-radius:16px; padding:8px; background:#fff; }}
-    .school-name {{ margin:0; font-size:27px; line-height:1.1; color:#0f2454; }}
-    .school-meta {{ margin:6px 0 0; color:var(--muted); font-size:12px; }}
+    .school-header {{ display:grid; grid-template-columns:78px 1fr auto; gap:18px; align-items:center; padding-bottom:18px; border-bottom:3px solid var(--brand); }}
+    .school-logo {{ width:72px; height:72px; object-fit:contain; border:1px solid #dbe4f0; border-radius:14px; padding:7px; background:#fff; }}
+    .school-name {{ margin:0; color:#0f2454; font-size:26px; line-height:1.1; }}
+    .school-meta {{ margin:5px 0 0; color:var(--muted); font-size:11px; }}
     .document-title {{ text-align:right; }}
-    .document-title h2 {{ margin:0; font-size:19px; text-transform:uppercase; letter-spacing:.08em; }}
-    .document-title p {{ margin:6px 0 0; color:var(--muted); font-size:12px; }}
-    .student-panel {{ display:grid; grid-template-columns:84px 1fr; gap:16px; margin-top:20px; border:1px solid var(--line); border-radius:16px; padding:16px; background:#f8fafc; }}
-    .student-photo {{ width:80px; height:94px; object-fit:cover; border:1px solid var(--line); border-radius:10px; background:#fff; }}
-    .student-photo.placeholder {{ display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:11px; text-align:center; }}
-    .student-name {{ margin:0 0 10px; font-size:21px; }}
-    .meta-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }}
+    .document-title h2 {{ margin:0; font-size:18px; text-transform:uppercase; letter-spacing:.08em; }}
+    .document-title p {{ margin:6px 0 0; color:var(--muted); font-size:11px; }}
+    .student-panel {{ margin-top:18px; border:1px solid var(--line); border-radius:14px; background:var(--soft); padding:16px; }}
+    .student-name {{ margin:0 0 12px; font-size:21px; }}
+    .meta-grid {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:11px; }}
     .field {{ border-left:3px solid #bfdbfe; padding-left:9px; min-width:0; }}
-    .field span {{ display:block; color:var(--muted); font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }}
-    .field strong {{ display:block; margin-top:3px; font-size:12px; overflow-wrap:anywhere; }}
-    .summary {{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin:18px 0; }}
-    .metric {{ border:1px solid #bfdbfe; border-radius:12px; background:var(--brand-soft); padding:10px; text-align:center; }}
-    .metric span {{ display:block; color:#475569; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }}
-    .metric strong {{ display:block; margin-top:5px; color:#0f2454; font-size:17px; }}
-    .table-wrap {{ overflow:visible; }}
-    table {{ width:100%; border-collapse:collapse; table-layout:fixed; font-size:10px; }}
+    .field span {{ display:block; color:var(--muted); font-size:8px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }}
+    .field strong {{ display:block; margin-top:3px; font-size:11px; overflow-wrap:anywhere; }}
+    .summary {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:18px 0; }}
+    .metric {{ border:1px solid #d6dfed; border-radius:11px; background:#fff; padding:10px; text-align:center; }}
+    .metric span {{ display:block; color:#64748b; font-size:8px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }}
+    .metric strong {{ display:block; margin-top:5px; color:#0f2454; font-size:16px; }}
+    table {{ width:100%; border-collapse:collapse; table-layout:auto; font-size:9px; }}
     thead {{ display:table-header-group; }}
     tr {{ break-inside:avoid; page-break-inside:avoid; }}
-    th,td {{ border:1px solid var(--line); padding:7px 6px; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }}
-    th {{ background:#eaf1ff; color:#173a77; font-size:8px; letter-spacing:.04em; text-transform:uppercase; }}
-    td.subject, td.remark {{ text-align:left; }}
-    td.total {{ font-weight:700; }}
+    th,td {{ border:1px solid var(--line); padding:7px 5px; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }}
+    th {{ background:#eaf1ff; color:#173a77; font-size:7.5px; letter-spacing:.04em; text-transform:uppercase; }}
+    td.subject,td.remark,td.teacher {{ text-align:left; }}
+    td.subject,td.total {{ font-weight:700; }}
     .comments {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px; break-inside:avoid; }}
-    .comment {{ min-height:98px; border:1px solid var(--line); border-radius:12px; padding:12px; }}
-    .comment h3 {{ margin:0 0 8px; color:#173a77; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }}
+    .comment {{ min-height:94px; border:1px solid var(--line); border-radius:12px; background:var(--soft); padding:12px; }}
+    .comment h3 {{ margin:0 0 8px; color:#173a77; font-size:10px; letter-spacing:.06em; text-transform:uppercase; }}
     .comment p {{ margin:0; font-size:11px; white-space:pre-wrap; }}
-    .signatures {{ display:grid; grid-template-columns:1fr 1fr; gap:70px; margin-top:34px; break-inside:avoid; }}
-    .signature {{ border-top:1px solid #475569; padding-top:6px; text-align:center; color:var(--muted); font-size:10px; }}
-    footer {{ display:flex; justify-content:space-between; gap:16px; margin-top:20px; border-top:1px solid #dbe4f0; padding-top:10px; color:var(--muted); font-size:9px; }}
+    footer {{ display:flex; justify-content:space-between; gap:16px; margin-top:20px; border-top:1px solid #dbe4f0; padding-top:10px; color:var(--muted); font-size:8px; }}
     @page {{ size:A4 portrait; margin:10mm; }}
-    @media print {{
-      body {{ background:#fff; }}
-      .page {{ width:100%; margin:0; border:0; box-shadow:none; }}
-      .sheet {{ padding:0; }}
-    }}
+    @media print {{ body {{ background:#fff; }} .page {{ width:100%; margin:0; border:0; box-shadow:none; }} .sheet {{ padding:0; }} }}
     @media (max-width:700px) {{
       .sheet {{ padding:16px; }}
-      .school-header {{ grid-template-columns:64px 1fr; }}
-      .school-logo {{ width:60px; height:60px; }}
+      .school-header {{ grid-template-columns:60px 1fr; }}
+      .school-logo {{ width:56px; height:56px; }}
       .document-title {{ grid-column:1/-1; text-align:left; }}
-      .meta-grid {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
-      .summary {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+      .meta-grid,.summary {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
       .comments {{ grid-template-columns:1fr; }}
     }}
   </style>
@@ -197,54 +176,42 @@ class ReportCardPrintService:
           <p class="school-meta">{school_contact}</p>
         </div>
         <div class="document-title">
-          <h2>Termly Academic Report</h2>
+          <h2>Academic Performance Report</h2>
           <p>{ReportCardPrintService._text(card.academic_session_name)} · {ReportCardPrintService._text(card.academic_term_name)}</p>
         </div>
       </header>
 
       <section class="student-panel">
-        {photo_markup}
-        <div>
-          <h2 class="student-name">{ReportCardPrintService._text(card.student_name, card.admission_number or "Student")}</h2>
-          <div class="meta-grid">
-            <div class="field"><span>Admission number</span><strong>{ReportCardPrintService._text(card.admission_number, "Not assigned")}</strong></div>
-            <div class="field"><span>Class</span><strong>{ReportCardPrintService._class_label(card)}</strong></div>
-            <div class="field"><span>Session</span><strong>{ReportCardPrintService._text(card.academic_session_name)}</strong></div>
-            <div class="field"><span>Term</span><strong>{ReportCardPrintService._text(card.academic_term_name)}</strong></div>
-            <div class="field"><span>Status</span><strong>{status_label}</strong></div>
-            <div class="field"><span>Published</span><strong>{ReportCardPrintService._date(card.published_at)}</strong></div>
-            <div class="field"><span>Version</span><strong>{card.version}</strong></div>
-            <div class="field"><span>Report ID</span><strong>{str(card.id)[:8].upper()}</strong></div>
-          </div>
+        <h2 class="student-name">{ReportCardPrintService._text(card.student_name, card.admission_number or "Student")}</h2>
+        <div class="meta-grid">
+          <div class="field"><span>Admission number</span><strong>{ReportCardPrintService._text(card.admission_number, "Not assigned")}</strong></div>
+          <div class="field"><span>Class</span><strong>{ReportCardPrintService._class_label(card)}</strong></div>
+          <div class="field"><span>Department</span><strong>{ReportCardPrintService._text(card.department_name, "General")}</strong></div>
+          <div class="field"><span>Class teacher</span><strong>{ReportCardPrintService._text(card.class_teacher_name, "Not assigned")}</strong></div>
+          <div class="field"><span>Session</span><strong>{ReportCardPrintService._text(card.academic_session_name)}</strong></div>
+          <div class="field"><span>Term</span><strong>{ReportCardPrintService._text(card.academic_term_name)}</strong></div>
+          <div class="field"><span>Status</span><strong>{status_label}</strong></div>
+          <div class="field"><span>Version</span><strong>{card.version}</strong></div>
         </div>
       </section>
 
       <section class="summary">
-        <div class="metric"><span>Total score</span><strong>{ReportCardPrintService._score(card.total_score)}</strong></div>
-        <div class="metric"><span>Average</span><strong>{ReportCardPrintService._score(card.average_score)}</strong></div>
+        <div class="metric"><span>Overall performance</span><strong>{ReportCardPrintService._score(card.average_score)}%</strong></div>
         <div class="metric"><span>Position</span><strong>{position}</strong></div>
         <div class="metric"><span>Subjects</span><strong>{len(card.lines)}</strong></div>
-        <div class="metric"><span>Term</span><strong>{ReportCardPrintService._text(card.academic_term_name)}</strong></div>
+        <div class="metric"><span>Published</span><strong>{ReportCardPrintService._date(card.published_at)}</strong></div>
       </section>
 
-      <div class="table-wrap">
-        <table>
-          <colgroup>
-            <col style="width:23%"><col style="width:8%"><col style="width:8%"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:27%">
-          </colgroup>
-          <thead><tr><th>Subject</th><th>Code</th>{component_heading_cells}<th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
-          <tbody>{rows}</tbody>
-        </table>
-      </div>
+      <table>
+        <thead>
+          <tr><th>Subject</th><th>Code</th>{component_heading_cells}<th>Total</th><th>Grade</th><th>Remark</th><th>Teacher</th></tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </table>
 
       <section class="comments">
         <article class="comment"><h3>Class teacher's comment</h3><p>{teacher_comment}</p></article>
         <article class="comment"><h3>Principal's comment</h3><p>{principal_comment}</p></article>
-      </section>
-
-      <section class="signatures">
-        <div class="signature">Class teacher signature</div>
-        <div class="signature">Principal signature</div>
       </section>
 
       <footer>

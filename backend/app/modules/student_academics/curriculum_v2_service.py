@@ -42,6 +42,7 @@ from app.modules.student_academics.curriculum_v2_schemas import (
     CurriculumSubjectUpdate,
     EligibleTeacherAssignmentClassResponse,
     ResolvedClassSubjectResponse,
+    TeacherAssignmentSubjectAvailabilityResponse,
 )
 from app.modules.student_academics.models import (
     AcademicLifecycleAudit,
@@ -1200,6 +1201,99 @@ class AcademicCurriculumService:
                     display_name=classroom.display_name,
                     department_name=department.department_name if department else None,
                     already_assigned=classroom.id in protected_assignments,
+                )
+            )
+        return result
+
+    @staticmethod
+    async def teacher_assignment_subject_availability(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        academic_level_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> list[TeacherAssignmentSubjectAvailabilityResponse]:
+        curriculum = await AcademicCurriculumService._curriculum(
+            db,
+            tenant_id,
+            academic_level_id,
+            require_active_level=True,
+        )
+        await AcademicCurriculumService._term(db, tenant_id, academic_term_id)
+        curriculum_subject_ids = set(
+            (
+                await db.execute(
+                    select(CurriculumSubject.id)
+                    .join(Subject, Subject.id == CurriculumSubject.subject_id)
+                    .where(
+                        CurriculumSubject.tenant_id == tenant_id,
+                        CurriculumSubject.curriculum_id == curriculum.id,
+                        CurriculumSubject.is_active.is_(True),
+                        Subject.tenant_id == tenant_id,
+                        Subject.is_active.is_(True),
+                        Subject.archived_at.is_(None),
+                    )
+                )
+            ).scalars()
+        )
+        if not curriculum_subject_ids:
+            return []
+
+        classes = list(
+            (
+                await db.execute(
+                    select(ClassRoom).where(
+                        ClassRoom.tenant_id == tenant_id,
+                        ClassRoom.academic_level_id == academic_level_id,
+                        ClassRoom.is_active.is_(True),
+                        ClassRoom.archived_at.is_(None),
+                    )
+                )
+            ).scalars()
+        )
+        eligible_class_ids = {subject_id: set() for subject_id in curriculum_subject_ids}
+        for classroom in classes:
+            try:
+                resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
+                    db,
+                    tenant_id=tenant_id,
+                    class_id=classroom.id,
+                    academic_term_id=academic_term_id,
+                )
+            except ConflictException:
+                continue
+            for resolved_subject in resolved_subjects:
+                if resolved_subject.curriculum_subject_id in eligible_class_ids:
+                    eligible_class_ids[resolved_subject.curriculum_subject_id].add(classroom.id)
+
+        protected_rows = (
+            await db.execute(
+                select(
+                    TeacherAssignment.curriculum_subject_id,
+                    TeacherAssignment.class_id,
+                ).where(
+                    TeacherAssignment.tenant_id == tenant_id,
+                    TeacherAssignment.curriculum_subject_id.in_(curriculum_subject_ids),
+                    (TeacherAssignment.effective_to.is_(None))
+                    | (TeacherAssignment.effective_to >= date.today()),
+                )
+            )
+        ).all()
+        protected_class_ids = {subject_id: set() for subject_id in curriculum_subject_ids}
+        for subject_id, class_id in protected_rows:
+            if subject_id in protected_class_ids:
+                protected_class_ids[subject_id].add(class_id)
+
+        result = []
+        for subject_id in curriculum_subject_ids:
+            eligible = eligible_class_ids[subject_id]
+            assigned = eligible & protected_class_ids[subject_id]
+            result.append(
+                TeacherAssignmentSubjectAvailabilityResponse(
+                    curriculum_subject_id=subject_id,
+                    eligible_class_count=len(eligible),
+                    assigned_class_count=len(assigned),
+                    unassigned_class_count=len(eligible - assigned),
                 )
             )
         return result

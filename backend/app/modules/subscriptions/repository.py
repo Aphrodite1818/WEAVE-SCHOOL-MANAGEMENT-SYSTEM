@@ -345,7 +345,6 @@ class SubscriptionRepository:
                     StudentEnrollment.tenant_id == tenant_id,
                     StudentEnrollment.academic_session_id == academic_session_id,
                     StudentEnrollment.is_current.is_(True),
-                    StudentEnrollment.ended_on.is_(None),
                     Student.tenant_id == tenant_id,
                     Student.status == AcademicStatus.ACTIVE,
                     Student.is_archived.is_(False),

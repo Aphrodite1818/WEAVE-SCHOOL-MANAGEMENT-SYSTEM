@@ -299,6 +299,10 @@ async def test_ensure_for_actor_refreshes_reactivated_identity_before_response()
             new=AsyncMock(return_value=identity),
         ),
         patch(
+            "app.modules.students.repository.StudentRepository.get_by_id",
+            new=AsyncMock(return_value=SimpleNamespace(status="active")),
+        ),
+        patch(
             "app.modules.auth_identity.service.AuthIdentityRepository.save",
             new=AsyncMock(return_value=identity),
         ) as save,

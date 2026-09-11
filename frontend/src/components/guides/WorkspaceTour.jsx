@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { tourContentForItem } from "../../features/guides/workspaceTourContent";
 import { filterAvailableItems } from "../../features/navigation/featureAvailability";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { authSession, getErrorMessage } from "../../services/api";
 import { navGroups } from "../layout/navConfig";
@@ -20,17 +21,10 @@ function connectorGeometry(card, target) {
   const targetX = target.left + target.width + 2;
   const targetY = target.top + target.height / 2;
   const targetIsLeft = targetX < card.left;
-  const startX = targetIsLeft ? card.left - 8 : card.left + card.width + 8;
-  const startY =
-    card.top + Math.min(Math.max(card.height * 0.42, 100), card.height - 90);
-  const distance = Math.abs(startX - targetX);
-  const bend = Math.max(80, distance * 0.48);
-  const controlOneX = targetIsLeft ? startX - bend : startX + bend;
-  const controlTwoX = targetIsLeft
-    ? targetX + Math.max(52, distance * 0.24)
-    : targetX - Math.max(52, distance * 0.24);
+  const startX = targetIsLeft ? card.left - 10 : card.left + card.width + 10;
+  const startY = clamp(targetY, card.top + 42, card.top + card.height - 42);
   return {
-    path: `M ${startX} ${startY} C ${controlOneX} ${startY}, ${controlTwoX} ${targetY}, ${targetX} ${targetY}`,
+    path: `M ${startX} ${startY} L ${targetX} ${targetY}`,
   };
 }
 
@@ -40,10 +34,13 @@ export default function WorkspaceTour({
   onSetup,
   initialIndex = -1,
   focusTo = null,
+  focusRoutes = null,
   dedicated = false,
+  dedicatedKind = null,
 }) {
   const subscription = useSubscription();
   const runtimeConfig = useRuntimeConfig();
+  const { hasClassTeacherDuties } = useTeacherClassDutyAccess();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -56,8 +53,13 @@ export default function WorkspaceTour({
         subscription,
         runtimeFeatures: runtimeConfig?.features || {},
         isAccountScope,
+        hasClassTeacherDuties,
       },
     );
+    if (focusRoutes?.length) {
+      const focusedRoutes = new Set(focusRoutes);
+      return availableItems.filter((item) => focusedRoutes.has(item.to));
+    }
     if (!focusTo) return availableItems;
     const settingsItem = availableItems.find(
       (item) => item.to === "/admin/settings",
@@ -74,7 +76,15 @@ export default function WorkspaceTour({
           : settingsItem.label,
       },
     ];
-  }, [focusTo, isAccountScope, role, runtimeConfig, subscription]);
+  }, [
+    focusRoutes,
+    focusTo,
+    hasClassTeacherDuties,
+    isAccountScope,
+    role,
+    runtimeConfig,
+    subscription,
+  ]);
   const [steps, setSteps] = useState([]);
   const [index, setIndex] = useState(-1);
   const [geometry, setGeometry] = useState(null);
@@ -97,13 +107,15 @@ export default function WorkspaceTour({
       Array.from(document.querySelectorAll("[data-tour-target]"))
         .filter((node) => node.getBoundingClientRect().width > 0)
         .map((node) => node.dataset.tourTarget),
-      );
+    );
     setSteps(
       configuredItems
         .filter((item) => rendered.has(item.to))
-        .map((item) => tourContentForItem(role, item, { dedicated })),
+        .map((item) =>
+          tourContentForItem(role, item, { dedicated, dedicatedKind }),
+        ),
     );
-  }, [configuredItems, dedicated, role]);
+  }, [configuredItems, dedicated, dedicatedKind, role]);
 
   useEffect(() => {
     if (restoredIndex.current || !steps.length) return;
@@ -168,8 +180,10 @@ export default function WorkspaceTour({
         ? 0
         : Math.max(16, Math.min(navRect?.right || 0, width * 0.34) + 20);
       const availableWidth = Math.max(320, width - usableLeft - 32);
-      const cardWidth = Math.min(500, availableWidth);
+      const cardWidth = Math.min(440, availableWidth);
       const cardHeight = cardRef.current?.offsetHeight || 520;
+      const mobileCardWidth = Math.min(300, Math.max(0, width - 24));
+      const mobileGutter = Math.max(10, viewport?.offsetTop ? 10 : 18);
       const hasTarget = Boolean(
         rect && rect.bottom > top && rect.top < top + height,
       );
@@ -180,13 +194,6 @@ export default function WorkspaceTour({
             usableLeft + 16,
             width - cardWidth - 16,
           );
-      const cardTop = mobile
-        ? 0
-        : clamp(
-            top + (height - cardHeight) / 2,
-            top + 20,
-            top + height - cardHeight - 20,
-          );
       const targetBox = hasTarget
         ? {
             left: rect.left - 5,
@@ -195,10 +202,86 @@ export default function WorkspaceTour({
             height: rect.height + 10,
           }
         : null;
+      const targetCenter = targetBox
+        ? targetBox.top + targetBox.height / 2
+        : top + height / 2;
+      const cardTop = mobile
+        ? 0
+        : clamp(
+            targetCenter - cardHeight / 2,
+            top + 20,
+            top + height - cardHeight - 20,
+          );
+      const desktopCardLeft = targetBox
+        ? clamp(
+            targetBox.left + targetBox.width + 44,
+            usableLeft + 16,
+            width - cardWidth - 16,
+          )
+        : cardLeft;
+      const mobileCandidates = targetBox
+        ? [
+            {
+              placement: "right",
+              left: targetBox.left + targetBox.width + mobileGutter,
+              top: targetCenter - cardHeight / 2,
+            },
+            {
+              placement: "left",
+              left: targetBox.left - mobileCardWidth - mobileGutter,
+              top: targetCenter - cardHeight / 2,
+            },
+            {
+              placement: "bottom",
+              left: targetCenter - mobileCardWidth / 2,
+              top: targetBox.top + targetBox.height + mobileGutter,
+            },
+            {
+              placement: "top",
+              left: targetCenter - mobileCardWidth / 2,
+              top: targetBox.top - cardHeight - mobileGutter,
+            },
+          ]
+        : [
+            {
+              placement: "bottom",
+              left: (width - mobileCardWidth) / 2,
+              top: height - cardHeight - mobileGutter,
+            },
+          ];
+      const mobileCandidate =
+        mobileCandidates.find((candidate) => {
+          const left = candidate.left;
+          const right = left + mobileCardWidth;
+          const bottom = candidate.top + cardHeight;
+          const insideViewport =
+            left >= mobileGutter &&
+            right <= width - mobileGutter &&
+            candidate.top >= top + mobileGutter &&
+            bottom <= top + height - mobileGutter;
+          const overlapsTarget =
+            targetBox &&
+            left < targetBox.left + targetBox.width &&
+            right > targetBox.left &&
+            candidate.top < targetBox.top + targetBox.height &&
+            bottom > targetBox.top;
+          return insideViewport && !overlapsTarget;
+        }) || mobileCandidates[0];
+      const mobileCardLeft = clamp(
+        mobileCandidate.left,
+        mobileGutter,
+        width - mobileCardWidth - mobileGutter,
+      );
+      const mobileCardTop = clamp(
+        mobileCandidate.top,
+        top + mobileGutter,
+        top + height - cardHeight - mobileGutter,
+      );
+      const mobilePlacement = mobileCandidate.placement;
       const cardBox = mobile
         ? null
         : {
-            left: cardLeft,
+            left: desktopCardLeft,
             top: cardTop,
             width: cardWidth,
             height: cardHeight,
@@ -207,7 +290,24 @@ export default function WorkspaceTour({
         mobile,
         viewport: { width, height },
         target: targetBox,
-        card: mobile ? {} : { width: cardWidth, left: cardLeft, top: cardTop },
+        card: mobile
+          ? {
+              width: mobileCardWidth,
+              left: mobileCardLeft,
+              top: mobileCardTop,
+              "--workspace-tour-pointer-top": `${clamp(
+                targetCenter - mobileCardTop,
+                28,
+                Math.max(28, cardHeight - 28),
+              )}px`,
+              "--workspace-tour-pointer-left": `${clamp(
+                targetCenter - mobileCardLeft,
+                28,
+                Math.max(28, mobileCardWidth - 28),
+              )}px`,
+            }
+          : { width: cardWidth, left: desktopCardLeft, top: cardTop },
+        placement: mobilePlacement,
         connector:
           !mobile && targetBox && !welcome
             ? connectorGeometry(cardBox, targetBox)
@@ -339,14 +439,16 @@ export default function WorkspaceTour({
         aria-modal="true"
         aria-labelledby="workspace-tour-title"
         aria-describedby="workspace-tour-description"
-        className={`workspace-tour-card${dedicated ? " workspace-tour-card-upgrade" : ""}`}
+        className={`workspace-tour-card workspace-tour-card-${geometry?.placement || "right"}${dedicated ? " workspace-tour-card-upgrade" : ""}`}
         style={geometry?.card}
       >
         <div className="workspace-tour-body">
           <div className="flex items-center justify-between gap-4">
             <span className="text-xs font-semibold uppercase tracking-widest text-text-muted">
               {dedicated
-                ? `What's new · ${index + 1} of ${steps.length}`
+                ? dedicatedKind === "class-duties"
+                  ? `New responsibility · ${index + 1} of ${steps.length}`
+                  : `What's new · ${index + 1} of ${steps.length}`
                 : welcome
                   ? "Welcome to Weave"
                   : `Your workspace · ${index + 1} of ${steps.length}`}
@@ -391,7 +493,11 @@ export default function WorkspaceTour({
             className="mt-4 text-2xl font-semibold leading-tight tracking-tight text-text outline-none"
           >
             {step?.title ||
-              (dedicated ? "New features are ready" : "Find your way around.")}
+              (dedicatedKind === "class-duties"
+                ? "Your class-teacher tools are ready"
+                : dedicated
+                  ? "New features are ready"
+                  : "Find your way around.")}
           </h2>
           <p
             id="workspace-tour-description"
@@ -399,7 +505,9 @@ export default function WorkspaceTour({
           >
             {step?.description ||
               (dedicated
-                ? "These plan features are now available for your school. This quick update points out where admins can find them."
+                ? dedicatedKind === "class-duties"
+                  ? "You have been assigned as a class teacher. This quick guide introduces the duties now available in your workspace."
+                  : "These plan features are now available for your school. This quick update points out where admins can find them."
                 : onSetup
                   ? "Take a quick look around your workspace. Then we’ll help you prepare your session, first term, and calendar."
                   : "Get to know the places you’ll use in your school workspace. There’s nothing to fill in—just take a look around.")}
@@ -407,7 +515,11 @@ export default function WorkspaceTour({
           {step ? (
             <div className="workspace-tour-preview">
               <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                {dedicated ? `What's new in ${step.label}` : `A quick look inside ${step.label}`}
+                {dedicated
+                  ? dedicatedKind === "class-duties"
+                    ? `Available for ${step.label}`
+                    : `What's new in ${step.label}`
+                  : `A quick look inside ${step.label}`}
               </p>
               <WorkspaceTourSnapshot
                 step={step}
@@ -522,7 +634,9 @@ export default function WorkspaceTour({
                   className="workspace-tour-secondary-action"
                 >
                   {dedicated
-                    ? "Close update"
+                    ? dedicatedKind === "class-duties"
+                      ? "Close guide"
+                      : "Close update"
                     : onSetup
                       ? "Skip to school setup"
                       : "Skip for now"}
