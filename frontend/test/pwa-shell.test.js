@@ -19,13 +19,66 @@ const readPngDimensions = (buffer) => {
   };
 };
 
-test("the installed bottom navigation never cancels page touch movement", async () => {
+test("the mobile bottom navigation renders only in installed app context", async () => {
   const source = await read("src/components/layout/BottomNav.jsx");
 
   assert.doesNotMatch(source, /onTouchMove\s*=/);
   assert.doesNotMatch(source, /\btouch-none\b/);
   assert.doesNotMatch(source, /\boverscroll-none\b/);
+  assert.match(source, /display-mode:\s*standalone/);
+  assert.match(source, /if\s*\(!isPwaDisplay\)\s*return\s+null/);
   assert.match(source, /data-mobile-bottom-nav="true"/);
+  assert.match(source, /aria-label="Primary mobile app navigation"/);
+});
+
+test("mobile bottom navigation uses live inbox routes and keeps Home centered", async () => {
+  const [source, adminRoutes, teacherRoutes, studentRoutes, parentRoutes, superadminRoutes, interactionsCss] = await Promise.all([
+    read("src/components/layout/BottomNav.jsx"),
+    read("src/routes/adminRoutes.jsx"),
+    read("src/routes/teacherRoutes.jsx"),
+    read("src/routes/studentRoutes.jsx"),
+    read("src/routes/parentRoutes.jsx"),
+    read("src/routes/superadminRoutes.jsx"),
+    read("src/styles/pwaInteractions.css"),
+  ]);
+  const routeSource = [
+    adminRoutes,
+    teacherRoutes,
+    studentRoutes,
+    parentRoutes,
+    superadminRoutes,
+  ].join("\n");
+
+  assert.doesNotMatch(source, /\/admin\/announcements|\/superadmin\/announcements/);
+  assert.doesNotMatch(source, /label: "Notices"/);
+  assert.match(source, /label: "Inbox", to: "\/admin\/inbox"/);
+  assert.match(source, /label: "Inbox", to: "\/teacher\/inbox"/);
+  assert.match(source, /label: "Inbox", to: "\/student\/inbox"/);
+  assert.match(source, /label: "Inbox", to: "\/parent\/inbox"/);
+  assert.match(source, /label: "Inbox", to: "\/superadmin\/inbox"/);
+  assert.doesNotMatch(interactionsCss, /\/admin\/announcements|\/admin\/messages/);
+  assert.match(interactionsCss, /Academics, Inbox, Home, Calendar, Menu/);
+
+  const roleBlocks = [
+    ...source.matchAll(/\s{2}(admin|teacher|student|parent|superadmin): \[([\s\S]*?)\n\s{2}\]/g),
+  ];
+  assert.equal(roleBlocks.length, 5);
+
+  for (const [, role, block] of roleBlocks) {
+    const labels = [...block.matchAll(/label: "([^"]+)"/g)].map((match) => match[1]);
+    const paths = [...block.matchAll(/to: "([^"]+)"/g)].map((match) => match[1]);
+    assert.equal(labels.length, 4, `${role} should expose four links plus Menu`);
+    assert.equal(labels[2], "Home", `${role} Home should be the centered third link`);
+    assert.equal((labels.length + 1) % 2, 1, `${role} link count plus Menu should be odd`);
+
+    for (const routePath of paths) {
+      assert.match(
+        routeSource,
+        new RegExp(`path="${routePath.replaceAll("/", "\\/")}"`),
+        `${routePath} should be a real route`,
+      );
+    }
+  }
 });
 
 test("standalone PWA scrolling and floating dock geometry have one final authority", async () => {
@@ -41,6 +94,7 @@ test("standalone PWA scrolling and floating dock geometry have one final authori
     /data-mobile-bottom-nav="true"[\s\S]*?position:\s*fixed\s*!important/,
   );
   assert.match(stabilityCss, /transform:\s*translate3d\(0, 0, 0\)\s*!important/);
+  assert.doesNotMatch(stabilityCss, /var\(--virtual-keyboard-height\)/);
   assert.match(
     stabilityCss,
     /data-mobile-bottom-nav="true"[\s\S]*?background:\s*transparent\s*!important/,
@@ -55,7 +109,7 @@ test("standalone PWA scrolling and floating dock geometry have one final authori
   );
   assert.match(
     stabilityCss,
-    /data-pwa-platform="ios"[\s\S]*?safe-area-inset-bottom, 0px\) - 1\.45rem/,
+    /data-pwa-platform="ios"[\s\S]*?safe-area-inset-bottom, 0px\) - 1\.8rem/,
   );
   assert.match(
     stabilityCss,

@@ -208,6 +208,7 @@ function Modal({
         height: `${visualViewportRect.height}px`,
       }
     : undefined;
+  const bottomPlacement = placement === "bottom";
 
   return (
     <div
@@ -215,10 +216,10 @@ function Modal({
       data-modal-placement={placement}
       data-modal-visual-viewport="true"
       className={cn(
-        "fixed inset-x-0 top-0 z-[100] flex h-[100dvh] min-h-0 justify-center overflow-hidden bg-slate-950/35",
-        placement === "bottom"
+        "fixed inset-x-0 top-0 z-[100] flex h-[100dvh] min-h-0 justify-center overflow-hidden bg-slate-950/35 backdrop-blur-sm",
+        bottomPlacement
           ? "items-end px-0 pb-0 pt-3 sm:items-center sm:px-4 sm:py-6"
-          : "items-end px-0 pb-0 pt-3 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6",
+          : "items-center px-4 py-4 sm:px-4 sm:py-6",
       )}
       style={visualViewportStyle}
       onClick={handleOverlayClick}
@@ -231,7 +232,9 @@ function Modal({
         tabIndex={-1}
         className={cn(
           "flex min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface animate-fadein",
-          "max-h-[min(90dvh,100%)] rounded-b-none border-b-0 shadow-none sm:max-h-full sm:rounded-2xl sm:border-b sm:shadow-premium",
+          bottomPlacement
+            ? "max-h-[min(90dvh,100%)] rounded-b-none border-b-0 shadow-none sm:max-h-full sm:rounded-2xl sm:border-b sm:shadow-premium"
+            : "max-h-[min(82dvh,calc(100%_-_1rem))] shadow-premium sm:max-h-[min(90dvh,100%)]",
           className,
         )}
         onClick={(event) => event.stopPropagation()}

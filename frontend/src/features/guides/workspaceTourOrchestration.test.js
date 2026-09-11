@@ -50,6 +50,53 @@ test("completed or dismissed users are never automatically requeued", async () =
   }
 });
 
+test("admin setup completion can recover a non-terminal premature welcome state", async () => {
+  const updates = [];
+  const service = {
+    getState: async () => ({
+      status: "in_progress",
+      current_step: "welcome_seen",
+      sync_pending: false,
+    }),
+    updateState: async (_key, payload) => {
+      updates.push(payload);
+      return { ...payload, sync_pending: false };
+    },
+  };
+
+  const queued = await queueInitialTour("admin", true, service, {
+    requeueNonTerminal: true,
+  });
+  assert.equal(queued, true);
+  assert.deepEqual(updates, [
+    {
+      status: "in_progress",
+      current_step: TOUR_QUEUED_STEP,
+      remind_after: null,
+    },
+  ]);
+});
+
+test("admin setup completion does not reopen terminal workspace tours", async () => {
+  for (const status of ["completed", "dismissed"]) {
+    let writes = 0;
+    const service = {
+      getState: async () => ({ status, sync_pending: false }),
+      updateState: async () => {
+        writes += 1;
+        return {};
+      },
+    };
+    assert.equal(
+      await queueInitialTour("admin", true, service, {
+        requeueNonTerminal: true,
+      }),
+      false,
+    );
+    assert.equal(writes, 0);
+  }
+});
+
 test("only a durably queued welcome is eligible for automatic display", () => {
   assert.equal(
     canAutoShowTour({
@@ -72,13 +119,15 @@ test("only a durably queued welcome is eligible for automatic display", () => {
 
 test("all first-entry actor boundaries queue or consume the workspace tour", () => {
   const onboardingGate = readSource("components", "layout", "useOnboardingGate.js");
+  const adminGettingStartedRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
   const invitation = readSource("pages", "public", "InvitationAcceptancePage.jsx");
   const studentPassword = readSource("pages", "student", "StudentChangePasswordPage.jsx");
   const tourHook = readSource("features", "guides", "useWorkspaceTour.js");
   const teacherRoutes = readSource("routes", "teacherRoutes.jsx");
   const parentRoutes = readSource("routes", "parentRoutes.jsx");
 
-  assert.match(onboardingGate, /queueInitialTour\(\s*normalizedRole,\s*completedInitialOnboarding,\s*guideService,?\s*\)/);
+  assert.match(onboardingGate, /completedInitialOnboarding && normalizedRole !== "admin"/);
+  assert.match(adminGettingStartedRoute, /queueInitialTour\("admin", true, guideService, \{\s*requeueNonTerminal: true,/);
   assert.match(invitation, /queueInitialTour\(role, true, guideService\)/);
   assert.match(studentPassword, /queueInitialTour\("student", true, guideService\)/);
   assert.match(tourHook, /pathname !== `\/\$\{role\}\/dashboard`/);

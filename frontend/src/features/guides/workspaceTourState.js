@@ -73,12 +73,23 @@ export function consumePendingUpgradeTour() {
   }
 }
 
-export async function queueInitialTour(role, shouldQueue, service) {
+export async function queueInitialTour(
+  role,
+  shouldQueue,
+  service,
+  { requeueNonTerminal = false } = {},
+) {
   const key = tourKeyForRole(role);
   if (!shouldQueue || !key || !service) return false;
 
   const state = await service.getState(key);
-  if (state.status !== "not_started" || state.sync_pending) return false;
+  if (
+    state.sync_pending ||
+    ["completed", "dismissed"].includes(state.status) ||
+    (state.status !== "not_started" && !requeueNonTerminal)
+  ) {
+    return false;
+  }
 
   const saved = await service.updateState(key, {
     status: "in_progress",

@@ -1,14 +1,12 @@
 import {
-  Bell,
   BookOpen,
-  Building2,
   CalendarDays,
   ClipboardList,
   FileText,
   Home,
-  Mail,
+  Inbox,
   Menu,
-  Users,
+  Settings,
 } from "lucide-react";
 import {
   memo,
@@ -35,61 +33,40 @@ const isStandalonePwaDisplay = () => {
 
   return Boolean(
     window.matchMedia?.("(display-mode: standalone)")?.matches ||
-    window.navigator?.standalone === true,
+      window.navigator?.standalone === true,
   );
 };
 
 const bottomNavConfig = {
   admin: [
     { label: "Academic", to: "/admin/academic", icon: ClipboardList },
-    {
-      label: "Messages",
-      to: "/admin/messages",
-      icon: Mail,
-      runtimeFeature: "messaging",
-    },
+    { label: "Inbox", to: "/admin/inbox", icon: Inbox },
     { label: "Home", to: "/admin/dashboard", icon: Home, isHome: true },
-    { label: "Notices", to: "/admin/announcements", icon: Bell },
     { label: "Calendar", to: "/admin/calendar", icon: CalendarDays },
   ],
   teacher: [
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
-    {
-      label: "Classes",
-      to: "/teacher/classes",
-      icon: Users,
-      requiresClassTeacher: true,
-    },
+    { label: "Inbox", to: "/teacher/inbox", icon: Inbox },
     { label: "Home", to: "/teacher/dashboard", icon: Home, isHome: true },
-    {
-      label: "Schools",
-      to: "/teacher/schools",
-      icon: Building2,
-      accountScope: true,
-    },
+    { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
   ],
   student: [
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
-    { label: "Calendar", to: "/student/calendar", icon: CalendarDays },
+    { label: "Inbox", to: "/student/inbox", icon: Inbox },
     { label: "Home", to: "/student/dashboard", icon: Home, isHome: true },
     { label: "Reports", to: "/student/report-cards", icon: FileText },
   ],
   parent: [
     { label: "Results", to: "/parent/results", icon: BookOpen },
-    { label: "Children", to: "/parent/student-linking", icon: Users },
+    { label: "Inbox", to: "/parent/inbox", icon: Inbox },
     { label: "Home", to: "/parent/dashboard", icon: Home, isHome: true },
-    {
-      label: "Schools",
-      to: "/parent/schools",
-      icon: Building2,
-      accountScope: true,
-    },
+    { label: "Calendar", to: "/parent/calendar", icon: CalendarDays },
   ],
   superadmin: [
     { label: "Verify", to: "/superadmin/verification", icon: BookOpen },
-    { label: "Calendar", to: "/superadmin/calendar", icon: CalendarDays },
+    { label: "Inbox", to: "/superadmin/inbox", icon: Inbox },
     { label: "Home", to: "/superadmin/dashboard", icon: Home, isHome: true },
-    { label: "Notices", to: "/superadmin/announcements", icon: Bell },
+    { label: "Settings", to: "/superadmin/settings", icon: Settings },
   ],
 };
 
@@ -118,6 +95,9 @@ function BottomNav({ role, onOpenMenu }) {
     opacity: 0,
   });
   const [loadingVisible, setLoadingVisible] = useState(false);
+  const [isPwaDisplay, setIsPwaDisplay] = useState(() =>
+    isStandalonePwaDisplay(),
+  );
   const navRef = useRef(null);
   const itemRefs = useRef({});
   const indicatorTimerRef = useRef(null);
@@ -148,15 +128,32 @@ function BottomNav({ role, onOpenMenu }) {
     timerRef.current = null;
   }, []);
 
-  const [isPwaDisplay, setIsPwaDisplay] = useState(() =>
-    isStandalonePwaDisplay(),
-  );
-
   const clearLoadingTimers = useCallback(() => {
     clearTimer(loadingShowTimerRef);
     clearTimer(loadingHideTimerRef);
     clearTimer(loadingMaxTimerRef);
   }, [clearTimer]);
+
+  useEffect(() => {
+    const syncStandalonePwaMode = () => {
+      setIsPwaDisplay(isStandalonePwaDisplay());
+    };
+
+    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
+
+    syncStandalonePwaMode();
+    standaloneQuery?.addEventListener?.("change", syncStandalonePwaMode);
+    window.addEventListener("pageshow", syncStandalonePwaMode);
+    window.addEventListener("resize", syncStandalonePwaMode);
+    document.addEventListener("visibilitychange", syncStandalonePwaMode);
+
+    return () => {
+      standaloneQuery?.removeEventListener?.("change", syncStandalonePwaMode);
+      window.removeEventListener("pageshow", syncStandalonePwaMode);
+      window.removeEventListener("resize", syncStandalonePwaMode);
+      document.removeEventListener("visibilitychange", syncStandalonePwaMode);
+    };
+  }, []);
 
   const abortStalePageRequests = useCallback(() => {
     window.dispatchEvent(new CustomEvent(NAVIGATION_ABORT_EVENT));
@@ -220,29 +217,6 @@ function BottomNav({ role, onOpenMenu }) {
       loadingMaxTimerRef.current = null;
     }, NAV_LOADING_MAX_MS);
   }, [clearLoadingTimers]);
-
-  useEffect(() => {
-    const syncStandalonePwaMode = () => {
-      const nextValue = isStandalonePwaDisplay();
-      document.documentElement.dataset.standalonePwa = String(nextValue);
-      setIsPwaDisplay(nextValue);
-    };
-
-    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
-
-    syncStandalonePwaMode();
-    standaloneQuery?.addEventListener?.("change", syncStandalonePwaMode);
-    window.addEventListener("pageshow", syncStandalonePwaMode);
-    window.addEventListener("resize", syncStandalonePwaMode);
-    document.addEventListener("visibilitychange", syncStandalonePwaMode);
-
-    return () => {
-      standaloneQuery?.removeEventListener?.("change", syncStandalonePwaMode);
-      window.removeEventListener("pageshow", syncStandalonePwaMode);
-      window.removeEventListener("resize", syncStandalonePwaMode);
-      document.removeEventListener("visibilitychange", syncStandalonePwaMode);
-    };
-  }, []);
 
   useLayoutEffect(() => {
     clearTimer(indicatorTimerRef);
@@ -344,7 +318,7 @@ function BottomNav({ role, onOpenMenu }) {
       <nav
         data-mobile-bottom-nav="true"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background px-2 pt-0.5 pb-3 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
-        aria-label="Primary installed app navigation"
+        aria-label="Primary mobile app navigation"
       >
         <div
           ref={navRef}

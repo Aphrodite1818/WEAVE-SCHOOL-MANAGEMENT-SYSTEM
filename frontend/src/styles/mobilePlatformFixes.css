@@ -1,8 +1,12 @@
 @media (max-width: 767px) {
-  /* Android positioning is intentionally unchanged. */
+  html[data-standalone-pwa="true"][data-pwa-platform="android"]
+    [data-mobile-bottom-nav="true"] {
+    bottom: -0.3rem !important;
+  }
+
   html[data-standalone-pwa="true"][data-pwa-platform="ios"]
     [data-mobile-bottom-nav="true"] {
-    bottom: -0.35rem !important;
+    bottom: -0.65rem !important;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-billing-page="true"] {

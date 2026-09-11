@@ -315,15 +315,38 @@
     min-height: 2.75rem;
   }
 
-  #dashboard-content .page-header-actions,
+  #dashboard-content .page-header {
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #dashboard-content .page-header-actions {
+    width: auto;
+    max-width: 100%;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
   #dashboard-content .page-header-actions > *,
   #dashboard-content .page-header-actions .btn-base {
-    width: 100%;
+    width: auto;
   }
 
   #dashboard-content .page-header-actions .btn-base,
   #dashboard-content .dashboard-section-action .btn-base {
     white-space: normal;
+  }
+
+  #dashboard-content .admin-dashboard-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  #dashboard-content .admin-dashboard-header .page-header-actions {
+    justify-self: end;
+    margin-left: 0;
   }
 
   .dashboard-topbar {
@@ -420,12 +443,17 @@
   }
 
   [data-modal-footer="true"] > .flex {
-    flex-wrap: wrap;
+    flex-direction: row;
+    flex-wrap: nowrap;
     gap: 0.5rem;
+    width: 100%;
   }
 
   [data-modal-footer="true"] > .flex > .btn-base {
-    flex: 1 1 9rem;
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
   }
 
   #dashboard-content .dashboard-section-action,
@@ -718,7 +746,7 @@
   }
 }
 
-/* Installed-PWA drawer/nav polish. Keep the bottom nav hidden in normal mobile browser. */
+/* Mobile drawer/nav polish shared by browser and installed app surfaces. */
 @media (max-width: 767px) {
   header button[aria-label="Open navigation"],
   header button[aria-label="Open notifications"],

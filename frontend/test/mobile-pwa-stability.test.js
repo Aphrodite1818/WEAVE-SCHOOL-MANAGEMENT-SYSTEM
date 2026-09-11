@@ -56,12 +56,13 @@ test("the PWA navbar geometry remains frozen while scroll ownership changes", as
   );
   assert.match(
     css,
-    /data-pwa-platform="ios"[\s\S]*?calc\(env\(safe-area-inset-bottom, 0px\) - 1\.45rem\)/,
+    /data-pwa-platform="ios"[\s\S]*?calc\(env\(safe-area-inset-bottom, 0px\) - 1\.8rem\)/,
   );
   assert.match(
     css,
-    /data-keyboard-open="true"[\s\S]*?translate3d\([\s\S]*?var\(--virtual-keyboard-height\)/,
+    /data-keyboard-open="true"[\s\S]*?transform:\s*translate3d\(0, 0, 0\)\s*!important/,
   );
+  assert.doesNotMatch(css, /var\(--virtual-keyboard-height\)/);
   assert.match(
     css,
     /data-mobile-bottom-nav="true"[\s\S]*?position:\s*fixed\s*!important/,

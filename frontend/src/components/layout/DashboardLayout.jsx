@@ -553,7 +553,7 @@ function DashboardShellFrame({
         className="min-h-[100dvh] overflow-y-auto bg-background text-text"
       >
         <header className="sticky top-0 z-40 border-b border-border/70 bg-surface/95 backdrop-blur-xl">
-          <div className="mx-auto flex min-h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex min-h-16 w-full max-w-md items-center justify-between gap-4 px-5 sm:max-w-[1440px] sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <WeaveIcon className="h-10 w-10 shrink-0" decorative />
               <div>
@@ -575,7 +575,7 @@ function DashboardShellFrame({
             </Button>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1440px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
+        <main className="mx-auto w-full max-w-md px-5 py-6 sm:max-w-[1440px] sm:px-6 sm:py-7 lg:px-8 lg:py-9">
           {children}
         </main>
       </div>

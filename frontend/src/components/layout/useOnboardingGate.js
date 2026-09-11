@@ -98,7 +98,7 @@ export default function useOnboardingGate({ role, enabled = true }) {
       try {
         await queueInitialTour(
           normalizedRole,
-          completedInitialOnboarding,
+          completedInitialOnboarding && normalizedRole !== "admin",
           guideService,
         );
       } catch {

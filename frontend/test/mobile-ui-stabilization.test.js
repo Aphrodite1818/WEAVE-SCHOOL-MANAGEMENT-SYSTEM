@@ -36,21 +36,32 @@ test("mobile records use natural page scrolling and readable single-column rows"
 });
 
 test("shared mobile actions and dialogs expose comfortable touch layouts", async () => {
-  const [dashboardCss, primitives, pageHeader, modal] = await Promise.all([
+  const [dashboardCss, primitives, pageHeader, modal, adminDashboard] = await Promise.all([
     read("src/styles/mobileDashboard.css"),
     read("src/components/dashboard/DashboardPrimitives.jsx"),
     read("src/components/shared/PageHeader.jsx"),
     read("src/components/ui/Modal.jsx"),
+    read("src/pages/admin/AdminDashboardPage.jsx"),
   ]);
 
   assert.match(dashboardCss, /#dashboard-content \.btn-base \{\s*min-height:\s*2\.75rem/);
-  assert.match(dashboardCss, /#dashboard-content \.page-header-actions[\s\S]*?width:\s*100%/);
+  assert.match(dashboardCss, /#dashboard-content \.page-header \{[\s\S]*?justify-content:\s*space-between/);
+  assert.match(dashboardCss, /#dashboard-content \.page-header-actions \{[\s\S]*?width:\s*auto/);
+  assert.match(dashboardCss, /#dashboard-content \.page-header-actions > \*,[\s\S]*?#dashboard-content \.page-header-actions \.btn-base \{[\s\S]*?width:\s*auto/);
+  assert.match(dashboardCss, /#dashboard-content \.admin-dashboard-header \{[\s\S]*?display:\s*grid/);
+  assert.match(dashboardCss, /#dashboard-content \.admin-dashboard-header \.page-header-actions \{[\s\S]*?justify-self:\s*end/);
   assert.match(primitives, /dashboard-section-action/);
   assert.match(pageHeader, /className="page-header/);
   assert.match(pageHeader, /className="page-header-actions"/);
-  assert.match(modal, /items-end px-0 pb-0 pt-3 backdrop-blur-sm sm:items-center/);
+  assert.match(adminDashboard, /className="admin-dashboard-header page-header"/);
+  assert.match(adminDashboard, /Create student/);
+  assert.match(modal, /bg-slate-950\/35 backdrop-blur-sm/);
+  assert.match(modal, /items-end px-0 pb-0 pt-3 sm:items-center/);
   assert.match(modal, /max-h-\[min\(90dvh,100%\)\] rounded-b-none/);
   assert.match(modal, /px-4 py-4[^"]*sm:px-5 sm:py-5/);
+  assert.match(dashboardCss, /\[data-modal-footer="true"\] > \.flex \{[\s\S]*?flex-direction:\s*row/);
+  assert.match(dashboardCss, /\[data-modal-footer="true"\] > \.flex > \.btn-base \{[\s\S]*?flex:\s*1 1 0/);
+  assert.doesNotMatch(dashboardCss, /\[data-modal-footer="true"\] > \.flex > \.btn-base \{[\s\S]*?flex:\s*1 1 9rem/);
 });
 
 test("mobile dashboard KPIs retain the established two-column contract", async () => {

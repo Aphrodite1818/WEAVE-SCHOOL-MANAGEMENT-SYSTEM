@@ -31,7 +31,7 @@ test("only a confirmed initial-onboarding invitation can auto-open", () => {
   assert.equal(canAutoShowTour({ ...queued, current_step: "welcome_seen" }), false);
 });
 
-test("all four initial profile completions queue one invitation, with superadmin excluded", async () => {
+test("initial tour queuing supports workspace roles and excludes superadmin", async () => {
   for (const role of ["admin", "teacher", "student", "parent"]) {
     const service = fakeService();
     await queueInitialTour(role, true, service);

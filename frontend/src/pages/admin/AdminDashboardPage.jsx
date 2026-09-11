@@ -149,18 +149,20 @@ function AdminDashboardPage() {
   ].filter(Boolean);
 
   return (
-    <DashboardLayout
-      role="admin"
-      title={`${firstName}'s Dashboard`}
-      actions={
-        <Link to="/admin/students/create">
-          <Button>
-            <PlusCircle className="h-4 w-4" />
-            Create student
-          </Button>
-        </Link>
-      }
-    >
+    <DashboardLayout role="admin">
+      <section className="admin-dashboard-header page-header">
+        <div className="page-header-actions">
+          <Link to="/admin/students/create">
+            <Button>
+              <PlusCircle className="h-4 w-4" />
+              Create student
+            </Button>
+          </Link>
+        </div>
+        <div className="min-w-0">
+          <h1 className="page-title">{firstName}'s Dashboard</h1>
+        </div>
+      </section>
       {error ? (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {error}

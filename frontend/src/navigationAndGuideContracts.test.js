@@ -137,7 +137,7 @@ test("paid-only admin features are hidden instead of rendered for ineligible pla
   assert.doesNotMatch(adminDashboard, /FEATURE_CODES\.ADVANCED_ANALYTICS/);
 });
 
-test("new tenant admins enter the dashboard tour after initial profile onboarding", () => {
+test("new tenant admins return to the dashboard after profile onboarding", () => {
   const onboardingGate = readSource(
     "components",
     "layout",
@@ -213,13 +213,14 @@ test("other role introductions offer an explicit tour and return to their dashbo
   assert.doesNotMatch(roleGuide, /markComplete|skipCurrent|guide\.start/);
 });
 
-test("terminal guide completion must be confirmed before leaving setup", () => {
+test("admin setup completion queues the workspace tour before leaving setup", () => {
   const guideService = readSource("services", "guideService.js");
   const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
   assert.match(guideService, /const terminalWrite = TERMINAL_STATUSES\.has\(requestedStatus\)/);
   assert.match(guideService, /ensureTerminalConfirmation\(requestedStatus, response\)/);
   assert.match(guideService, /throw error;/);
-  assert.match(setupRoute, /await guide\.finish\(\);\s*leaveGuideRoute/);
+  assert.match(setupRoute, /await guide\.finish\(\);[\s\S]*queueInitialTour\("admin", true, guideService, \{[\s\S]*requeueNonTerminal: true/);
+  assert.match(setupRoute, /queueInitialTour[\s\S]*leaveGuideRoute/);
   assert.doesNotMatch(setupRoute, /finally\s*\{\s*leaveGuideRoute/);
 });
 

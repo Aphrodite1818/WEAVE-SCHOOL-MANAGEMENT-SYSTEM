@@ -32,16 +32,12 @@
     padding-bottom: calc(7.5rem + env(safe-area-inset-bottom));
   }
 
-  /* Admin PWA navigation: Academics, Notices, Home, Calendar, Menu. */
-  [data-mobile-bottom-nav="true"] a[href="/admin/messages"] {
-    display: none !important;
-  }
-
+  /* Admin PWA navigation: Academics, Inbox, Home, Calendar, Menu. */
   [data-mobile-bottom-nav="true"] a[href="/admin/academic"] {
     order: 1;
   }
 
-  [data-mobile-bottom-nav="true"] a[href="/admin/announcements"] {
+  [data-mobile-bottom-nav="true"] a[href="/admin/inbox"] {
     order: 2;
   }
 

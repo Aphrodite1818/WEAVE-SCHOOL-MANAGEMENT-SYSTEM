@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 import { adminSchoolYearCompletion } from "../features/guides/adminSchoolYearCompletion";
 import { leaveGuideRoute } from "../features/guides/guideNavigation";
+import { queueInitialTour } from "../features/guides/workspaceTourState";
 import useRoleGuide from "../features/guides/useRoleGuide";
 import { useAdminSetupReadiness } from "../features/guides/useAdminSetupReadiness";
 import { schoolYearProgress } from "../features/guides/schoolYearProgress";
@@ -8,6 +9,7 @@ import { useToast } from "../hooks/useToast";
 import AdminGettingStartedPage from "../pages/admin/AdminGettingStartedPage";
 import AdminGettingStartedStepPage from "../pages/admin/AdminGettingStartedStepPage";
 import { getErrorMessage } from "../services/api";
+import { guideService } from "../services/guideService";
 
 export default function AdminGettingStartedRoute() {
   const setup = useAdminSetupReadiness();
@@ -34,6 +36,9 @@ export default function AdminGettingStartedRoute() {
     }
     try {
       await guide.finish();
+      await queueInitialTour("admin", true, guideService, {
+        requeueNonTerminal: true,
+      });
       leaveGuideRoute("admin", "/admin/dashboard", { replace: true });
     } catch (error) {
       showError(getErrorMessage(error, "Could not save setup completion. Please try again."));
