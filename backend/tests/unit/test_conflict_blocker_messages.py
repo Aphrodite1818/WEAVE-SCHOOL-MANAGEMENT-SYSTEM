@@ -51,7 +51,4 @@ def test_conflict_filters_blank_blocker_messages() -> None:
         },
     )
 
-    assert (
-        error.detail
-        == "1 active class belongs to an inactive or missing academic level."
-    )
+    assert error.detail == "1 active class belongs to an inactive or missing academic level."
