@@ -1109,9 +1109,7 @@ class AcademicCurriculumService:
             if CurriculumResolutionService.specialization_is_active(level, term)
         }
         required_classes = [
-            classroom
-            for classroom in classes
-            if classroom.academic_level_id in required
+            classroom for classroom in classes if classroom.academic_level_id in required
         ]
         class_ids = {row.id for row in required_classes}
         valid_assignments: set[uuid.UUID] = set()

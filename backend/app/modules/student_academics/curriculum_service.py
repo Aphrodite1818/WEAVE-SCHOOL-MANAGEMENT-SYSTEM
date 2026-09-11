@@ -287,10 +287,7 @@ class CurriculumResolutionService:
             classroom
             for classroom in classrooms
             if classroom.id not in invalid_level_classes
-            and (
-                not specialization_by_class[classroom.id]
-                or classroom.id in department_by_class
-            )
+            and (not specialization_by_class[classroom.id] or classroom.id in department_by_class)
         ]
         usable_level_ids = {row.academic_level_id for row in usable_classes}
         if not usable_level_ids:
@@ -351,9 +348,7 @@ class CurriculumResolutionService:
                         curriculum_subject_id=curriculum_subject.id,
                         subject_id=curriculum_subject.subject_id,
                         academic_level_department_id=(
-                            None
-                            if is_general or not specialization_active
-                            else level_department_id
+                            None if is_general or not specialization_active else level_department_id
                         ),
                         is_elective=curriculum_subject.is_elective,
                         is_general=is_general,
