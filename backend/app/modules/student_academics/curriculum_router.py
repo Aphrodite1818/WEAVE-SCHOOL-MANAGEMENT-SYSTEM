@@ -26,6 +26,7 @@ from app.modules.student_academics.curriculum_v2_schemas import (
     ResolvedClassSubjectResponse,
     TeacherAssignmentBulkCreate,
     TeacherAssignmentBulkResponse,
+    TeacherAssignmentSubjectAvailabilityResponse,
 )
 from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 from app.modules.student_academics.curriculum_bulk_service import add_curriculum_subjects
@@ -183,6 +184,24 @@ async def eligible_classes_for_curriculum_subject(
         db,
         tenant_id=current_admin.tenant_id,
         curriculum_subject_id=curriculum_subject_id,
+        academic_term_id=academic_term_id,
+    )
+
+
+@router.get(
+    "/levels/{academic_level_id}/teacher-assignment-availability/{academic_term_id}",
+    response_model=list[TeacherAssignmentSubjectAvailabilityResponse],
+)
+async def teacher_assignment_subject_availability(
+    academic_level_id: uuid.UUID,
+    academic_term_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await AcademicCurriculumService.teacher_assignment_subject_availability(
+        db,
+        tenant_id=current_admin.tenant_id,
+        academic_level_id=academic_level_id,
         academic_term_id=academic_term_id,
     )
 

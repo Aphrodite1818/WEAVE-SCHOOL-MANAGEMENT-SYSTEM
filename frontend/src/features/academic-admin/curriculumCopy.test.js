@@ -34,8 +34,11 @@ test("copy form loads an isolated preview and submits through the dedicated back
   const service = readFileSync(new URL("../../services/curriculumService.js", import.meta.url), "utf8");
   assert.match(panel, /if \(!cancelled\) setSource\(data\)/);
   assert.match(panel, /preview\.unavailableDepartments\.length/);
-  assert.match(workspace, /curriculumService\.copyCurriculum\(levelId, sourceLevelId\)/);
-  assert.match(workspace, /<CurriculumCopyPanel key=\{levelId\}/);
+  assert.match(
+    workspace,
+    /curriculumService\.copyCurriculum\(\s*levelId,\s*sourceLevelId,?\s*\)/,
+  );
+  assert.match(workspace, /<CurriculumCopyPanel\s+key=\{levelId\}/);
   assert.match(service, /curriculum\/copy/);
   assert.match(service, /source_academic_level_id: sourceLevelId/);
 });

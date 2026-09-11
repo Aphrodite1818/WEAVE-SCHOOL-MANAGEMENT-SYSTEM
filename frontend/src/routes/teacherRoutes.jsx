@@ -7,6 +7,7 @@ import { DashboardShell } from "../components/layout/DashboardLayout";
 import MembershipScopeGuard from "./MembershipScopeGuard";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
+import TeacherClassDutyRoute from "./TeacherClassDutyRoute";
 
 const CommunicationInboxPage = lazy(
   () => import("../pages/shared/CommunicationInboxPage"),
@@ -60,17 +61,19 @@ export const teacherRoutes = (
           path="/teacher/analytics"
           element={<RoleAnalyticsPage role="teacher" />}
         />
-        <Route path="/teacher/classes" element={<TeacherClassesPage />} />
         <Route path="/teacher/students" element={<TeacherStudentsPage />} />
         <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />
-        <Route
-          path="/teacher/student-comments"
-          element={<TeacherStudentCommentsPage />}
-        />
-        <Route
-          path="/teacher/comment-templates"
-          element={<TeacherCommentTemplatesPage />}
-        />
+        <Route element={<TeacherClassDutyRoute />}>
+          <Route path="/teacher/classes" element={<TeacherClassesPage />} />
+          <Route
+            path="/teacher/student-comments"
+            element={<TeacherStudentCommentsPage />}
+          />
+          <Route
+            path="/teacher/comment-templates"
+            element={<TeacherCommentTemplatesPage />}
+          />
+        </Route>
         <Route
           path="/teacher/attendance"
           element={

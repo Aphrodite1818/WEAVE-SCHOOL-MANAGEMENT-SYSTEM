@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,9 +53,19 @@ from app.modules.parents.models import Parent
 from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.students.models import Student
 from app.modules.students.repository import StudentParentLinkRepository
-from app.modules.teachers.models import Teacher, TeacherAccountStatus, TeacherMembershipStatus
+from app.modules.teachers.models import (
+    Teacher,
+    TeacherAccountStatus,
+    TeacherMembership,
+    TeacherMembershipStatus,
+)
 from app.modules.teachers.repository import TeacherMembershipRepository
 from app.modules.tenant_admins.models import TenantAdmin
+from app.modules.user_guides.service import (
+    TEACHER_CLASS_DUTIES_GUIDE_KEY,
+    TEACHER_CLASS_DUTIES_QUEUED_STEP,
+    UserGuideService,
+)
 from app.tenant_management.repository import TenantRepository
 
 
@@ -679,7 +690,7 @@ class ClassRoomService:
     @staticmethod
     async def _validate_teacher(db, tenant_id, teacher_membership_id):
         if teacher_membership_id is None:
-            return
+            return None
         teacher = await TeacherMembershipRepository.get_by_id(
             db, teacher_membership_id, tenant_id=tenant_id, load_account=True
         )
@@ -690,6 +701,90 @@ class ClassRoomService:
             or not teacher.teacher_account.is_active
         ):
             raise BadRequestException("Cannot assign an inactive teacher")
+        return teacher
+
+    @staticmethod
+    async def _teacher_membership(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        teacher_membership_id: uuid.UUID,
+    ) -> TeacherMembership:
+        teacher = await TeacherMembershipRepository.get_by_id(
+            db,
+            teacher_membership_id,
+            tenant_id=tenant_id,
+            load_account=True,
+        )
+        if teacher is None:
+            raise BadRequestException("Cannot assign an inactive teacher")
+        return teacher
+
+    @staticmethod
+    async def _queue_first_class_teacher_guide(
+        db: AsyncSession,
+        *,
+        teacher: TeacherMembership,
+        exclude_class_id: uuid.UUID | None = None,
+    ) -> None:
+        filters = [
+            TeacherMembership.teacher_account_id == teacher.teacher_account_id,
+            ClassRoom.teacher_membership_id == TeacherMembership.id,
+            ClassRoom.is_active.is_(True),
+            ClassRoom.archived_at.is_(None),
+        ]
+        if exclude_class_id is not None:
+            filters.append(ClassRoom.id != exclude_class_id)
+        existing_class = (
+            await db.execute(
+                select(ClassRoom.id)
+                .join(
+                    TeacherMembership,
+                    TeacherMembership.id == ClassRoom.teacher_membership_id,
+                )
+                .where(*filters)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing_class is not None:
+            return
+        await UserGuideService.queue_if_absent(
+            db,
+            actor=teacher,
+            guide_key=TEACHER_CLASS_DUTIES_GUIDE_KEY,
+            current_step=TEACHER_CLASS_DUTIES_QUEUED_STEP,
+        )
+
+    @staticmethod
+    async def _complete_class_teacher_guide(
+        db: AsyncSession,
+        *,
+        teacher: TeacherMembership,
+        exclude_class_id: uuid.UUID,
+    ) -> None:
+        remaining_class = (
+            await db.execute(
+                select(ClassRoom.id)
+                .join(
+                    TeacherMembership,
+                    TeacherMembership.id == ClassRoom.teacher_membership_id,
+                )
+                .where(
+                    TeacherMembership.teacher_account_id == teacher.teacher_account_id,
+                    ClassRoom.teacher_membership_id == TeacherMembership.id,
+                    ClassRoom.is_active.is_(True),
+                    ClassRoom.archived_at.is_(None),
+                    ClassRoom.id != exclude_class_id,
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if remaining_class is not None:
+            return
+        await UserGuideService.complete_if_unfinished(
+            db,
+            actor=teacher,
+            guide_key=TEACHER_CLASS_DUTIES_GUIDE_KEY,
+        )
 
     @staticmethod
     async def _validate_structure(db, tenant_id, level_id, arm_label_id):
@@ -729,11 +824,20 @@ class ClassRoomService:
         await ClassRoomService._validate_structure(
             db, actor.tenant_id, payload.academic_level_id, payload.arm_label_id
         )
-        await ClassRoomService._validate_teacher(db, actor.tenant_id, payload.teacher_membership_id)
+        teacher = await ClassRoomService._validate_teacher(
+            db,
+            actor.tenant_id,
+            payload.teacher_membership_id,
+        )
         if await ClassRoomRepository.get_by_level_arm_label(
             db, actor.tenant_id, payload.academic_level_id, payload.arm_label_id
         ):
             raise ConflictException("This class arm already exists for the level")
+        if teacher is not None:
+            await ClassRoomService._queue_first_class_teacher_guide(
+                db,
+                teacher=teacher,
+            )
         row = ClassRoom(
             tenant_id=actor.tenant_id,
             academic_level_id=payload.academic_level_id,
@@ -844,10 +948,32 @@ class ClassRoomService:
             if existing and existing.id != row.id:
                 raise ConflictException("This class arm already exists for the level")
 
+        validated_next_teacher = None
         if "teacher_membership_id" in data:
-            await ClassRoomService._validate_teacher(
+            validated_next_teacher = await ClassRoomService._validate_teacher(
                 db, actor.tenant_id, data["teacher_membership_id"]
             )
+
+        previous_teacher_id = row.teacher_membership_id
+        next_teacher_id = data.get("teacher_membership_id", previous_teacher_id)
+        if previous_teacher_id != next_teacher_id:
+            if previous_teacher_id is not None:
+                previous_teacher = await ClassRoomService._teacher_membership(
+                    db,
+                    actor.tenant_id,
+                    previous_teacher_id,
+                )
+                await ClassRoomService._complete_class_teacher_guide(
+                    db,
+                    teacher=previous_teacher,
+                    exclude_class_id=row.id,
+                )
+            if next_teacher_id is not None:
+                await ClassRoomService._queue_first_class_teacher_guide(
+                    db,
+                    teacher=validated_next_teacher,
+                    exclude_class_id=row.id,
+                )
 
         for key, value in data.items():
             setattr(row, key, value)

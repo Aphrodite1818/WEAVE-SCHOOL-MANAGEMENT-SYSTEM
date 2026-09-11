@@ -10,12 +10,18 @@ export function resolveFeatureAvailability(
     entitledFeatures,
     subscription,
     isAccountScope = false,
+    historicalFeatures = {},
+    hasClassTeacherDuties = false,
   } = {},
 ) {
   if (!item) return { visible: false, reason: "missing-item" };
 
   if (isAccountScope && !item.accountScope) {
     return { visible: false, reason: "tenant-workspace-required" };
+  }
+
+  if (item.requiresClassTeacher && !hasClassTeacherDuties) {
+    return { visible: false, reason: "class-teacher-required" };
   }
 
   if (
@@ -40,6 +46,12 @@ export function resolveFeatureAvailability(
     const guard = getFeatureGuard(featureCode);
     if (guard?.pending) return { visible: false, reason: "entitlement-pending" };
     if (guard?.allowed === false) {
+      if (
+        item.allowHistoricalAccess &&
+        historicalFeatures?.[featureCode] === true
+      ) {
+        return { visible: true, reason: "historical-access" };
+      }
       return { visible: false, reason: guard.reason || "entitlement-disabled" };
     }
   } else if (item.feature && entitledFeatures?.[featureCode] !== true) {

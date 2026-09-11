@@ -209,6 +209,13 @@ class EligibleTeacherAssignmentClassResponse(OutputBase):
     already_assigned: bool = False
 
 
+class TeacherAssignmentSubjectAvailabilityResponse(OutputBase):
+    curriculum_subject_id: uuid.UUID
+    eligible_class_count: int = Field(ge=0)
+    assigned_class_count: int = Field(ge=0)
+    unassigned_class_count: int = Field(ge=0)
+
+
 class TeacherAssignmentBulkCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

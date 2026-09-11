@@ -29,6 +29,8 @@ _ACCOUNT_SCOPED_ACTORS = {
 }
 _GUIDE_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,99}$")
 _TERMINAL_GUIDE_STATUSES = frozenset({"completed", "dismissed"})
+TEACHER_CLASS_DUTIES_GUIDE_KEY = "teacher_class_duties_intro_v1"
+TEACHER_CLASS_DUTIES_QUEUED_STEP = "welcome_pending"
 
 
 @dataclass(slots=True, frozen=True)
@@ -40,6 +42,82 @@ class GuideActorContext:
 
 
 class UserGuideService:
+    @staticmethod
+    async def queue_if_absent(
+        db: AsyncSession,
+        *,
+        actor: Any,
+        guide_key: str,
+        current_step: str,
+    ) -> bool:
+        """Enroll an actor in a guide without committing the caller's transaction."""
+
+        context = UserGuideService.actor_context(actor)
+        normalized_key = UserGuideService.validate_guide_key(guide_key)
+        state = await UserGuideRepository.get_state(
+            db,
+            actor_type=context.actor_type,
+            actor_id=context.actor_id,
+            scope_key=context.scope_key,
+            guide_key=normalized_key,
+            for_update=True,
+        )
+        if state is not None:
+            return False
+
+        await UserGuideRepository.save(
+            db,
+            UserGuideState(
+                actor_type=context.actor_type,
+                actor_id=context.actor_id,
+                tenant_id=context.tenant_id,
+                scope_key=context.scope_key,
+                guide_key=normalized_key,
+                status="in_progress",
+                current_step=current_step,
+            ),
+        )
+        return True
+
+    @staticmethod
+    async def complete_if_unfinished(
+        db: AsyncSession,
+        *,
+        actor: Any,
+        guide_key: str,
+    ) -> None:
+        """Record prior eligibility and prevent a removed duty from reopening later."""
+
+        context = UserGuideService.actor_context(actor)
+        normalized_key = UserGuideService.validate_guide_key(guide_key)
+        state = await UserGuideRepository.get_state(
+            db,
+            actor_type=context.actor_type,
+            actor_id=context.actor_id,
+            scope_key=context.scope_key,
+            guide_key=normalized_key,
+            for_update=True,
+        )
+        if state is not None and state.status in _TERMINAL_GUIDE_STATUSES:
+            return
+
+        now = datetime.now(timezone.utc)
+        if state is None:
+            state = UserGuideState(
+                actor_type=context.actor_type,
+                actor_id=context.actor_id,
+                tenant_id=context.tenant_id,
+                scope_key=context.scope_key,
+                guide_key=normalized_key,
+            )
+        state.status = "completed"
+        state.current_step = None
+        state.remind_after = None
+        state.dismissed_at = None
+        state.completed_at = now
+        state.last_seen_at = now
+        await UserGuideRepository.save(db, state)
+
     @staticmethod
     def actor_context(actor: Any) -> GuideActorContext:
         class_name = actor.__class__.__name__

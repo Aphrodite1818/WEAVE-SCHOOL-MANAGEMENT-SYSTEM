@@ -9,12 +9,15 @@ if str(BACKEND_ROOT) not in sys.path:
 
 import app.models  # noqa: F401
 
-# Keep plugin registration explicit so CI loads the shared fixtures in a stable order.
-pytest_plugins = [
-    "tests.fixtures.database",
-    "tests.fixtures.auth",
-    "tests.fixtures.tenants",
-    "tests.fixtures.users",
-    "tests.fixtures.teachers",
-    "tests.fixtures.subjects",
-]
+
+def pytest_configure(config) -> None:
+    """Register shared fixtures when backend is pytest's configured root."""
+    for plugin in (
+        "tests.fixtures.database",
+        "tests.fixtures.auth",
+        "tests.fixtures.tenants",
+        "tests.fixtures.users",
+        "tests.fixtures.teachers",
+        "tests.fixtures.subjects",
+    ):
+        config.pluginmanager.import_plugin(plugin)

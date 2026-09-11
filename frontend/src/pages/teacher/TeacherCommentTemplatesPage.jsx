@@ -2,6 +2,7 @@ import { Archive, CheckCircle2, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import PerformanceRangeInput from "../../components/reporting/PerformanceRangeInput";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
@@ -19,20 +20,13 @@ const asItems = (response) =>
       ? response.items
       : [];
 
-const gradeLabel = (scale) =>
-  scale ? `${scale.grade}${scale.remark ? ` · ${scale.remark}` : ""}` : "Unknown grade";
-
-const templateGradeId = (template) => template?.grading_scale_ids?.[0] || "";
-const templateIsDefault = (template) => {
-  const gradeId = templateGradeId(template);
-  return Boolean(gradeId && template?.default_grading_scale_ids?.includes(gradeId));
-};
+const rangeKey = (item) => `${Number(item.minimum_score)}:${Number(item.maximum_score)}`;
+const rangeLabel = (item) => `${Number(item.minimum_score)}% – ${Number(item.maximum_score)}%`;
 
 function TeacherCommentTemplatesPage() {
   const { showSuccess, showError } = useToast();
   const [summary, setSummary] = useState(null);
   const [templates, setTemplates] = useState([]);
-  const [gradingScales, setGradingScales] = useState([]);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(null);
@@ -41,14 +35,12 @@ function TeacherCommentTemplatesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [summaryResponse, templateResponse, gradeResponse] = await Promise.all([
+      const [summaryResponse, templateResponse] = await Promise.all([
         reportCommentService.getTeacherCommentSummary(),
         reportCommentService.listTeacherTemplates({ include_archived: includeArchived }),
-        reportCommentService.listTeacherGradingScales(),
       ]);
       setSummary(summaryResponse);
       setTemplates(asItems(templateResponse));
-      setGradingScales(asItems(gradeResponse));
     } catch (requestError) {
       showError(parseApiError(requestError, "Failed to load comment templates.").message);
     } finally {
@@ -62,16 +54,24 @@ function TeacherCommentTemplatesPage() {
   }, [includeArchived]);
 
   const canCreate = Number(summary?.class_teacher_class_count || 0) > 0;
-  const scaleById = useMemo(
-    () => new Map(gradingScales.map((item) => [item.id, item])),
-    [gradingScales],
-  );
+  const groups = useMemo(() => {
+    const grouped = new Map();
+    templates.forEach((template) => {
+      const key = rangeKey(template);
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(template);
+    });
+    return Array.from(grouped.values()).sort(
+      (left, right) => Number(right[0].minimum_score) - Number(left[0].minimum_score),
+    );
+  }, [templates]);
 
-  const openCreate = () =>
+  const openCreate = (range = null) =>
     setEditor({
       id: null,
       text: "",
-      gradingScaleId: gradingScales[0]?.id || "",
+      minimum: range ? Number(range.minimum_score) : 60,
+      maximum: range ? Number(range.maximum_score) : 70,
       isDefault: false,
     });
 
@@ -79,28 +79,28 @@ function TeacherCommentTemplatesPage() {
     setEditor({
       id: template.id,
       text: template.text,
-      gradingScaleId: templateGradeId(template),
-      isDefault: templateIsDefault(template),
+      minimum: Number(template.minimum_score),
+      maximum: Number(template.maximum_score),
+      isDefault: Boolean(template.is_default),
     });
 
   const save = async (event) => {
     event.preventDefault();
-    if (!editor?.text.trim() || !editor?.gradingScaleId) return;
+    if (!editor?.text.trim()) return;
     setBusy(true);
+    const payload = {
+      text: editor.text.trim(),
+      minimum_score: editor.minimum,
+      maximum_score: editor.maximum,
+      is_default: editor.isDefault,
+    };
     try {
       if (editor.id) {
-        await reportCommentService.updateTeacherTemplate(editor.id, {
-          text: editor.text.trim(),
-          is_default: editor.isDefault,
-        });
+        await reportCommentService.updateTeacherTemplate(editor.id, payload);
         showSuccess("Comment updated. Existing submitted student comments were not changed.");
       } else {
-        await reportCommentService.createTeacherTemplate({
-          text: editor.text.trim(),
-          grading_scale_id: editor.gradingScaleId,
-          is_default: editor.isDefault,
-        });
-        showSuccess("Personal class-teacher comment saved for this grade.");
+        await reportCommentService.createTeacherTemplate(payload);
+        showSuccess("Class-teacher comment saved for this performance range.");
       }
       setEditor(null);
       await load();
@@ -128,7 +128,7 @@ function TeacherCommentTemplatesPage() {
     setBusy(true);
     try {
       await reportCommentService.updateTeacherTemplate(template.id, { is_default: true });
-      showSuccess(`Default comment updated for Grade ${scaleById.get(templateGradeId(template))?.grade || ""}.`);
+      showSuccess(`Default comment updated for ${rangeLabel(template)}.`);
       await load();
     } catch (requestError) {
       showError(parseApiError(requestError, "Failed to make this the default comment.").message);
@@ -164,16 +164,11 @@ function TeacherCommentTemplatesPage() {
               My Comment Templates
             </h1>
             <p className="mt-1 text-sm text-text-muted">
-              Save the actual class-teacher comment for one grade. You can keep several comments for the same grade, with one personal default.
+              Save reusable wording for non-overlapping overall-performance ranges. Each range can contain several comments with one personal default.
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={openCreate}
-            disabled={!canCreate || gradingScales.length === 0}
-          >
-            <Plus className="h-4 w-4" />
-            New comment
+          <Button type="button" onClick={() => openCreate()} disabled={!canCreate}>
+            <Plus className="h-4 w-4" /> New range comment
           </Button>
         </div>
 
@@ -184,113 +179,70 @@ function TeacherCommentTemplatesPage() {
         ) : null}
 
         <label className="flex items-center gap-2 text-sm font-semibold text-text-soft">
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(event) => setIncludeArchived(event.target.checked)}
-          />
+          <input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />
           Include archived comments
         </label>
 
         {loading ? (
           <LoadingState label="Loading personal comments..." />
-        ) : gradingScales.length === 0 ? (
-          <Card className="p-6">
-            <EmptyState
-              title="No grading scale is available"
-              description="The school must configure grades before class teachers can save grade-linked comments."
-            />
-          </Card>
-        ) : templates.length === 0 ? (
+        ) : groups.length === 0 ? (
           <Card className="p-6">
             <EmptyState
               title="No saved comments yet"
-              description="Create reusable wording for grades you commonly comment on."
+              description="Create reusable wording for a student's overall-performance percentage range."
             />
           </Card>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {templates.map((template) => {
-              const gradeId = templateGradeId(template);
-              const scale = scaleById.get(gradeId);
-              const isDefault = templateIsDefault(template);
+          <div className="space-y-4">
+            {groups.map((group) => {
+              const range = group[0];
               return (
-                <Card key={template.id} className="p-4 sm:p-5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="default">Grade {scale?.grade || "—"}</Badge>
-                    <Badge variant={template.status === "active" ? "success" : "default"}>
-                      {template.status}
-                    </Badge>
-                    {isDefault ? <Badge variant="success">Default</Badge> : null}
+                <Card key={rangeKey(range)} className="p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default">{rangeLabel(range)}</Badge>
+                        <span className="text-xs text-text-muted">{group.length} comment{group.length === 1 ? "" : "s"}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-text-muted">Both endpoints are included. Different ranges cannot overlap.</p>
+                    </div>
+                    {range.status !== "archived" ? (
+                      <Button type="button" size="small" variant="outline" onClick={() => openCreate(range)} disabled={busy || !canCreate}>
+                        <Plus className="h-4 w-4" /> Add wording
+                      </Button>
+                    ) : null}
                   </div>
-                  <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-text-soft">
-                    {template.text}
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-border/70 pt-3">
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="outline"
-                      onClick={() => openEdit(template)}
-                      disabled={busy || template.status === "archived" || !canCreate}
-                    >
-                      Edit comment
-                    </Button>
-                    {template.status === "active" && !isDefault ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        onClick={() => makeDefault(template)}
-                        disabled={busy || !canCreate}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        Make default
-                      </Button>
-                    ) : null}
-                    {template.status === "active" ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        onClick={() => setStatus(template, "inactive")}
-                        disabled={busy}
-                      >
-                        Deactivate
-                      </Button>
-                    ) : template.status === "inactive" ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        onClick={() => setStatus(template, "active")}
-                        disabled={busy || !canCreate}
-                      >
-                        Activate
-                      </Button>
-                    ) : null}
-                    {template.status !== "archived" ? (
-                      <Button
-                        type="button"
-                        size="small"
-                        variant="outline"
-                        onClick={() => setStatus(template, "archived")}
-                        disabled={busy}
-                      >
-                        <Archive className="h-4 w-4" />
-                        Archive
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="danger"
-                      onClick={() => remove(template)}
-                      disabled={busy}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete if unused
-                    </Button>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    {group.map((template) => (
+                      <div key={template.id} className="rounded-xl border border-border/70 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={template.status === "active" ? "success" : "default"}>{template.status}</Badge>
+                          {template.is_default ? <Badge variant="success">My default</Badge> : null}
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-text-soft">{template.text}</p>
+                        <div className="mt-4 flex flex-wrap gap-2 border-t border-border/70 pt-3">
+                          <Button type="button" size="small" variant="outline" onClick={() => openEdit(template)} disabled={busy || template.status === "archived" || !canCreate}>Edit</Button>
+                          {template.status === "active" && !template.is_default ? (
+                            <Button type="button" size="small" variant="outline" onClick={() => makeDefault(template)} disabled={busy || !canCreate}>
+                              <CheckCircle2 className="h-4 w-4" /> Make default
+                            </Button>
+                          ) : null}
+                          {template.status === "active" ? (
+                            <Button type="button" size="small" variant="outline" onClick={() => setStatus(template, "inactive")} disabled={busy}>Deactivate</Button>
+                          ) : template.status === "inactive" ? (
+                            <Button type="button" size="small" variant="outline" onClick={() => setStatus(template, "active")} disabled={busy || !canCreate}>Activate</Button>
+                          ) : null}
+                          {template.status !== "archived" ? (
+                            <Button type="button" size="small" variant="outline" onClick={() => setStatus(template, "archived")} disabled={busy}>
+                              <Archive className="h-4 w-4" /> Archive
+                            </Button>
+                          ) : null}
+                          <Button type="button" size="small" variant="danger" onClick={() => remove(template)} disabled={busy}>
+                            <Trash2 className="h-4 w-4" /> Delete if unused
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </Card>
               );
@@ -302,52 +254,27 @@ function TeacherCommentTemplatesPage() {
       <Modal
         open={Boolean(editor)}
         title={editor?.id ? "Edit teacher comment" : "Create teacher comment"}
-        description={
-          editor?.id
-            ? "The grade stays fixed. Edit the wording or make this your default comment for that grade."
-            : "Write the comment exactly as you want it used and assign it to one grade."
-        }
+        description="Choose the student's overall-performance percentage range, then write the wording you want available for that range."
         onClose={() => !busy && setEditor(null)}
         closeOnOverlay={!busy}
       >
         {editor ? (
-          <form onSubmit={save} className="space-y-4">
+          <form onSubmit={save} className="space-y-5">
+            <PerformanceRangeInput
+              minimum={editor.minimum}
+              maximum={editor.maximum}
+              disabled={busy}
+              onChange={({ minimum, maximum }) => setEditor((current) => ({ ...current, minimum, maximum }))}
+            />
             <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Grade</span>
-              <select
-                className="input-base"
-                value={editor.gradingScaleId}
-                disabled={Boolean(editor.id)}
-                required
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, gradingScaleId: event.target.value }))
-                }
-              >
-                {gradingScales.map((scale) => (
-                  <option key={scale.id} value={scale.id}>
-                    {gradeLabel(scale)}
-                  </option>
-                ))}
-              </select>
-              {editor.id ? (
-                <p className="mt-1 text-xs text-text-muted">
-                  Create another comment if you want separate wording for another grade.
-                </p>
-              ) : null}
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-semibold text-text-soft">
-                Class-teacher comment
-              </span>
+              <span className="mb-1.5 block text-sm font-semibold text-text-soft">Class-teacher comment</span>
               <textarea
                 className="input-base min-h-36"
                 maxLength={2000}
                 required
-                placeholder="e.g. An excellent performance this term. Keep it up."
+                placeholder="e.g. Good overall performance this term. Keep improving."
                 value={editor.text}
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, text: event.target.value }))
-                }
+                onChange={(event) => setEditor((current) => ({ ...current, text: event.target.value }))}
               />
             </label>
             <label className="flex items-start gap-3 rounded-xl border border-border/70 p-3 text-sm text-text-soft">
@@ -356,27 +283,17 @@ function TeacherCommentTemplatesPage() {
                 className="mt-0.5"
                 checked={editor.isDefault}
                 disabled={Boolean(editor.id && editor.isDefault)}
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, isDefault: event.target.checked }))
-                }
+                onChange={(event) => setEditor((current) => ({ ...current, isDefault: event.target.checked }))}
               />
               <span>
-                <span className="font-semibold text-text">Use as my default for this grade</span>
-                <span className="mt-0.5 block text-xs text-text-muted">
-                  Your first active comment for a grade becomes the default automatically. Choosing another comment as default replaces the old default.
-                </span>
+                <span className="font-semibold text-text">Use as my default for this exact range</span>
+                <span className="mt-0.5 block text-xs text-text-muted">The first active comment for a range becomes the default automatically. Selecting another one replaces it.</span>
               </span>
             </label>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setEditor(null)} disabled={busy}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={busy || !editor.text.trim() || !editor.gradingScaleId}
-              >
-                <Save className="h-4 w-4" />
-                {busy ? "Saving..." : "Save comment"}
+              <Button type="button" variant="outline" onClick={() => setEditor(null)} disabled={busy}>Cancel</Button>
+              <Button type="submit" disabled={busy || !editor.text.trim()}>
+                <Save className="h-4 w-4" /> {busy ? "Saving..." : "Save comment"}
               </Button>
             </div>
           </form>

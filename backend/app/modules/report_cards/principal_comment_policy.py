@@ -1,47 +1,38 @@
-"""Shared validation for grade-scoped personal principal comments."""
+"""Validation for performance-range principal comment selection."""
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException
-from app.modules.report_cards.comment_models import (
-    CommentTemplateOwnerType,
-    CommentTemplateStatus,
-)
+from app.modules.report_cards.comment_models import CommentTemplateOwnerType
 from app.modules.report_cards.comment_schemas import CommentTemplateResponse
 from app.modules.report_cards.comment_service import ReportCommentService
 from app.modules.tenant_admins.models import TenantAdmin
 
 
-def _status_value(value: object) -> str:
-    return str(getattr(value, "value", value))
-
-
-async def require_admin_template_for_grade(
+async def require_admin_template_for_performance(
     db: AsyncSession,
     *,
     admin: TenantAdmin,
     template_id: UUID,
-    grading_scale_id: UUID,
+    performance_percentage: Decimal,
 ) -> CommentTemplateResponse:
-    """Require one active personal admin comment mapped to exactly one expected grade."""
+    """Require an active admin comment covering the calculated performance."""
 
-    templates = await ReportCommentService.list_templates(
+    matches = await ReportCommentService.templates_for_performance(
         db,
         tenant_id=admin.tenant_id,
         owner_type=CommentTemplateOwnerType.TENANT_ADMIN,
         owner_id=admin.id,
-        include_archived=False,
+        performance_percentage=performance_percentage,
     )
-    template = next((item for item in templates if item.id == template_id), None)
-    if template is None or _status_value(template.status) != CommentTemplateStatus.ACTIVE.value:
-        raise BadRequestException("Principal comment is unavailable.")
-    grade_ids = list(template.grading_scale_ids or [])
-    if len(grade_ids) != 1 or grade_ids[0] != grading_scale_id:
+    template = next((item for item in matches if item.id == template_id), None)
+    if template is None:
         raise BadRequestException(
-            "The selected principal comment is not assigned to this student's calculated grade."
+            "The selected principal comment does not match this student's overall performance range."
         )
     return template

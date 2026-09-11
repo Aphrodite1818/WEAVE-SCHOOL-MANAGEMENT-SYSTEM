@@ -63,8 +63,12 @@ async def test_bulk_report_card_reopen_skips_superseded_history() -> None:
     with (
         patch.object(
             BulkReportCardService,
-            "_scope_cards",
-            new=AsyncMock(return_value=[current, historical]),
+            "_scope_card_ids",
+            new=AsyncMock(return_value=[current.id, historical.id]),
+        ),
+        patch(
+            "app.modules.report_cards.bulk_service.ReportCardRepository.get_by_id",
+            new=AsyncMock(side_effect=[current, historical]),
         ),
         patch(
             "app.modules.report_cards.bulk_service.ReportCardRepository.get_current_draft",

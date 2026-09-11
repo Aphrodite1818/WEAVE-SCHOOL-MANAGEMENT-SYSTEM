@@ -24,6 +24,17 @@ class TeacherEligibleClassCoverageContractTests(unittest.TestCase):
         block = source[start:end]
         self.assertIn("CurriculumResolutionService.resolve_class_subjects", block)
 
+    def test_subject_availability_is_batched_and_uses_the_same_coverage_rule(self):
+        source = SERVICE.read_text(encoding="utf-8")
+        start = source.index("async def teacher_assignment_subject_availability")
+        end = source.index("async def resolved_class_subject_responses", start)
+        block = source[start:end]
+        self.assertEqual(block.count("CurriculumResolutionService.resolve_class_subjects"), 1)
+        self.assertIn("for classroom in classes", block)
+        self.assertIn("TeacherAssignment.effective_to.is_(None)", block)
+        self.assertIn("TeacherAssignment.effective_to >= date.today()", block)
+        self.assertIn("unassigned_class_count=len(eligible - assigned)", block)
+
 
 if __name__ == "__main__":
     unittest.main()

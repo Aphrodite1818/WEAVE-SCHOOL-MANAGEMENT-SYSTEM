@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -29,94 +29,65 @@ from app.modules.cbt.enums import (
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
 
 
+def _new_ingestion_reference() -> str:
+    """Generate a compact human-facing reference independent of machine IDs."""
+
+    year = datetime.now(timezone.utc).year
+    return f"CBT-{year}-{uuid.uuid4().hex[:16].upper()}"
+
+
 class CBTResultIngestionBatch(BaseModel):
     """
     Immutable audit record for one result batch received from a paired CBT server.
 
     Academic identifiers supplied by CBT are intentionally stored as raw UUIDs
     so stale or invalid client references can still be preserved for auditing.
+    Human-facing metadata is additive and never replaces those machine identities.
     """
 
     __tablename__ = "cbt_result_ingestion_batches"
 
-    # ------------------------------------------------------------------
-    # Authenticated machine identity
-    # ------------------------------------------------------------------
-
     cbt_server_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            f"{PUBLIC_SCHEMA}.cbt_servers.id",
-            ondelete="RESTRICT",
-        ),
+        ForeignKey(f"{PUBLIC_SCHEMA}.cbt_servers.id", ondelete="RESTRICT"),
         nullable=False,
     )
-
     credential_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(
-            f"{PUBLIC_SCHEMA}.cbt_server_credentials.id",
-            ondelete="RESTRICT",
-        ),
+        ForeignKey(f"{PUBLIC_SCHEMA}.cbt_server_credentials.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
-    # ------------------------------------------------------------------
-    # Client / idempotency identity
-    # ------------------------------------------------------------------
-
-    batch_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    batch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    ingestion_reference: Mapped[str] = mapped_column(
+        String(32),
         nullable=False,
+        default=_new_ingestion_reference,
     )
-
-    source_exam_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=False,
-    )
-
-    request_hash: Mapped[str] = mapped_column(
-        String(64),
-        nullable=False,
-    )
-
-    # ------------------------------------------------------------------
-    # Academic context asserted by CBT
-    # ------------------------------------------------------------------
+    source_exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
     academic_session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
     )
-
     academic_term_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
     )
-
     academic_level_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
     )
-
     curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
     )
-
     assessment_component_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
     )
-
-    exam_date: Mapped[date] = mapped_column(
-        Date,
-        nullable=False,
-    )
-
-    # ------------------------------------------------------------------
-    # Processing state
-    # ------------------------------------------------------------------
+    exam_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     status: Mapped[CBTResultIngestionStatus] = mapped_column(
         SQLEnum(
@@ -129,49 +100,36 @@ class CBTResultIngestionBatch(BaseModel):
         default=CBTResultIngestionStatus.PROCESSING,
         server_default=CBTResultIngestionStatus.PROCESSING.value,
     )
-
     received_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
         server_default="0",
     )
-
     applied_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
         server_default="0",
     )
-
     unchanged_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
         server_default="0",
     )
-
     rejected_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
         server_default="0",
     )
-
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
-
-    batch_error_code: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
-
-    batch_error_detail: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
+    batch_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    batch_error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -180,16 +138,13 @@ class CBTResultIngestionBatch(BaseModel):
             "batch_id",
             name="uq_cbt_result_ingestion_tenant_server_batch",
         ),
-        Index(
-            "ix_cbt_result_ingestion_tenant_status",
+        UniqueConstraint(
             "tenant_id",
-            "status",
+            "ingestion_reference",
+            name="uq_cbt_result_ingestion_tenant_reference",
         ),
-        Index(
-            "ix_cbt_result_ingestion_tenant_server",
-            "tenant_id",
-            "cbt_server_id",
-        ),
+        Index("ix_cbt_result_ingestion_tenant_status", "tenant_id", "status"),
+        Index("ix_cbt_result_ingestion_tenant_server", "tenant_id", "cbt_server_id"),
         Index(
             "ix_cbt_result_ingestion_tenant_source_exam",
             "tenant_id",
@@ -237,11 +192,7 @@ class CBTResultIngestionBatch(BaseModel):
         ),
         CheckConstraint(
             """
-            status NOT IN (
-                'completed',
-                'completed_with_rejections',
-                'rejected'
-            )
+            status NOT IN ('completed', 'completed_with_rejections', 'rejected')
             OR applied_count + unchanged_count + rejected_count = received_count
             """,
             name="ck_cbt_result_ingestion_finished_counts_match",
@@ -250,12 +201,7 @@ class CBTResultIngestionBatch(BaseModel):
 
 
 class CBTResultIngestionItem(BaseModel):
-    """
-    Immutable audit evidence for one student score submitted inside a CBT batch.
-
-    submitted_student_id is intentionally not a foreign key so attempts using
-    invalid, stale, or cross-tenant student identifiers can still be recorded.
-    """
+    """Immutable audit evidence for one student score submitted inside a CBT batch."""
 
     __tablename__ = "cbt_result_ingestion_items"
 
@@ -267,39 +213,27 @@ class CBTResultIngestionItem(BaseModel):
         ),
         nullable=False,
     )
-
-    # Exact student identity supplied by CBT.
     submitted_student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
     )
-
-    # Canonical ownership resolved by Weave.
     resolved_teacher_assignment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
     )
-
-    incoming_score: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2),
-        nullable=False,
-    )
-
+    incoming_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     previous_score: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2),
         nullable=True,
     )
-
     resulting_score: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2),
         nullable=True,
     )
-
     student_subject_result_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
     )
-
     outcome: Mapped[CBTResultIngestionOutcome] = mapped_column(
         SQLEnum(
             CBTResultIngestionOutcome,
@@ -309,17 +243,8 @@ class CBTResultIngestionItem(BaseModel):
         ),
         nullable=False,
     )
-
-    error_code: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
-
-    error_detail: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
-
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -369,17 +294,11 @@ class CBTResultIngestionItem(BaseModel):
             name="ck_cbt_result_ingestion_item_resulting_score_nonnegative",
         ),
         CheckConstraint(
-            """
-            outcome <> 'rejected'
-            OR error_code IS NOT NULL
-            """,
+            "outcome <> 'rejected' OR error_code IS NOT NULL",
             name="ck_cbt_result_ingestion_item_rejection_has_error",
         ),
         CheckConstraint(
-            """
-            outcome = 'rejected'
-            OR resulting_score IS NOT NULL
-            """,
+            "outcome = 'rejected' OR resulting_score IS NOT NULL",
             name="ck_cbt_result_ingestion_item_success_has_resulting_score",
         ),
     )

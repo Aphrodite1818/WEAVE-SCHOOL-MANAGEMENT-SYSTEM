@@ -27,6 +27,7 @@ def test_machine_cbt_routes_expose_result_ingestion_and_branding_projection() ->
 def test_tenant_admin_audit_routes_are_read_only() -> None:
     routes = _route_keys(tenant_admin_router)
     assert ("GET", "/tenant-admin/cbt/result-ingestions") in routes
+    assert ("GET", "/tenant-admin/cbt/result-ingestions/filter-options") in routes
     assert ("GET", "/tenant-admin/cbt/result-ingestions/{batch_record_id}") in routes
     assert ("GET", "/tenant-admin/cbt/result-ingestions/{batch_record_id}/items") in routes
     assert not any(method in {"POST", "PUT", "PATCH", "DELETE"} for method, _ in routes)
@@ -35,6 +36,7 @@ def test_tenant_admin_audit_routes_are_read_only() -> None:
 def test_superadmin_audit_routes_are_read_only() -> None:
     routes = _route_keys(superadmin_router)
     assert ("GET", "/superadmin/cbt/result-ingestions") in routes
+    assert ("GET", "/superadmin/cbt/result-ingestions/filter-options") in routes
     assert ("GET", "/superadmin/cbt/result-ingestions/{batch_record_id}") in routes
     assert ("GET", "/superadmin/cbt/result-ingestions/{batch_record_id}/items") in routes
     assert not any(method in {"POST", "PUT", "PATCH", "DELETE"} for method, _ in routes)

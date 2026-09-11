@@ -323,7 +323,6 @@ class StudentEnrollmentRepository:
             StudentEnrollment.student_id == student_id,
             StudentEnrollment.academic_session_id == academic_session_id,
             StudentEnrollment.is_current.is_(True),
-            StudentEnrollment.ended_on.is_(None),
         )
         if lock:
             query = query.with_for_update()
@@ -385,6 +384,30 @@ class StudentEnrollmentRepository:
             )
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_upcoming(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> StudentEnrollment | None:
+        """Load the student's next never-effective placement segment."""
+
+        query = (
+            select(StudentEnrollment)
+            .where(
+                StudentEnrollment.tenant_id == tenant_id,
+                StudentEnrollment.student_id == student_id,
+                StudentEnrollment.started_on > func.current_date(),
+            )
+            .order_by(StudentEnrollment.started_on.asc(), StudentEnrollment.created_at.asc())
+            .limit(1)
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def list_current_for_class_session(

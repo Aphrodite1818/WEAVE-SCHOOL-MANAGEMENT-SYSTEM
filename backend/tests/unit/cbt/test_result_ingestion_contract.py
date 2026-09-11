@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
 from app.modules.cbt.enums import CBTResultIngestionStatus
+from app.modules.cbt.results.models import _new_ingestion_reference
 from app.modules.cbt.results.schemas import CBTResultBulkRequest, CBTResultBulkScoreItem
 from app.modules.cbt.results.service import CBTResultIngestionService
+from app.modules.report_cards.service import ReportCardService
 
 
 def _payload(*, score_a: str = "35.00", reverse: bool = False) -> CBTResultBulkRequest:
@@ -42,6 +46,16 @@ def test_result_ingestion_status_contract_matches_service_terminal_states() -> N
         "rejected",
         "failed",
     }
+
+
+def test_ingestion_reference_is_human_facing_and_not_a_raw_uuid() -> None:
+    first = _new_ingestion_reference()
+    second = _new_ingestion_reference()
+
+    assert first.startswith("CBT-")
+    assert len(first) <= 32
+    assert first != second
+    assert "-" in first
 
 
 def test_request_hash_is_score_order_independent() -> None:
@@ -118,3 +132,56 @@ def test_bulk_request_rejects_duplicate_student() -> None:
                 CBTResultBulkScoreItem(student_id=student_id, score=Decimal("25")),
             ],
         )
+
+
+@pytest.mark.asyncio
+async def test_applied_cbt_results_invalidate_each_report_context_once(monkeypatch) -> None:
+    tenant_id = uuid4()
+    session_id = uuid4()
+    term_id = uuid4()
+    first_student = uuid4()
+    second_student = uuid4()
+    invalidate = AsyncMock()
+    monkeypatch.setattr(
+        ReportCardService,
+        "mark_outdated_for_score_change",
+        invalidate,
+    )
+
+    await CBTResultIngestionService._invalidate_report_derivations(
+        SimpleNamespace(),
+        tenant_id=tenant_id,
+        results=[
+            SimpleNamespace(
+                student_id=first_student,
+                academic_session_id=session_id,
+                academic_term_id=term_id,
+            ),
+            SimpleNamespace(
+                student_id=first_student,
+                academic_session_id=session_id,
+                academic_term_id=term_id,
+            ),
+            SimpleNamespace(
+                student_id=second_student,
+                academic_session_id=session_id,
+                academic_term_id=term_id,
+            ),
+        ],
+    )
+
+    assert invalidate.await_count == 2
+    invalidate.assert_any_await(
+        ANY,
+        tenant_id,
+        first_student,
+        session_id,
+        term_id,
+    )
+    invalidate.assert_any_await(
+        ANY,
+        tenant_id,
+        second_student,
+        session_id,
+        term_id,
+    )

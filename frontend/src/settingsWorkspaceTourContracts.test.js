@@ -45,6 +45,6 @@ test("tour css preserves primary button backgrounds in light mode", () => {
   );
   assert.match(
     source,
-    /\.workspace-tour-close, \.workspace-tour-secondary-action, \.workspace-tour-dismiss-action \{ background-image: none; \}/,
+    /\.workspace-tour-close,\s*\.workspace-tour-secondary-action,\s*\.workspace-tour-dismiss-action\s*\{\s*background-image:\s*none;\s*\}/,
   );
 });

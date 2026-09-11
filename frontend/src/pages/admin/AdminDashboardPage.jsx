@@ -299,8 +299,8 @@ function AdminDashboardPage() {
 function InfoTile({ label, value }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
+      <p className="text-xs font-semibold leading-5 text-text-soft sm:text-[11px] sm:uppercase sm:tracking-wide sm:text-text-muted">{label}</p>
+      <p className="mt-1 whitespace-normal break-words text-sm font-semibold leading-5 text-text sm:truncate">{value}</p>
     </div>
   );
 }

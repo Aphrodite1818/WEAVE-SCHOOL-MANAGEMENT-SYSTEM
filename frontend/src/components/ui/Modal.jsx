@@ -218,7 +218,7 @@ function Modal({
         "fixed inset-x-0 top-0 z-[100] flex h-[100dvh] min-h-0 justify-center overflow-hidden bg-slate-950/35",
         placement === "bottom"
           ? "items-end px-0 pb-0 pt-3 sm:items-center sm:px-4 sm:py-6"
-          : "items-center px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6",
+          : "items-end px-0 pb-0 pt-3 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6",
       )}
       style={visualViewportStyle}
       onClick={handleOverlayClick}
@@ -230,19 +230,18 @@ function Modal({
         aria-modal="true"
         tabIndex={-1}
         className={cn(
-          "flex min-h-0 max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-premium animate-fadein",
-          placement === "bottom" &&
-            "max-h-[86dvh] rounded-b-none border-b-0 shadow-none sm:max-h-full sm:rounded-2xl sm:border-b sm:shadow-premium",
+          "flex min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface animate-fadein",
+          "max-h-[min(90dvh,100%)] rounded-b-none border-b-0 shadow-none sm:max-h-full sm:rounded-2xl sm:border-b sm:shadow-premium",
           className,
         )}
         onClick={(event) => event.stopPropagation()}
       >
         <div
           data-modal-header="true"
-          className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4"
+          className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3.5 sm:gap-4 sm:px-5 sm:py-4"
         >
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold">{title}</h2>
+            <h2 className="break-words text-lg font-semibold">{title}</h2>
             {description && (
               <p className="mt-1 text-sm text-text-muted">{description}</p>
             )}
@@ -254,7 +253,7 @@ function Modal({
               size="icon"
               onClick={onClose}
               aria-label="Close modal"
-              className="shrink-0"
+              className="min-h-11 min-w-11 shrink-0 sm:min-h-10 sm:min-w-10"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -262,14 +261,14 @@ function Modal({
         </div>
         <div
           data-modal-scroll-container="true"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [-webkit-overflow-scrolling:touch]"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch] sm:px-5 sm:py-5"
         >
           {children}
         </div>
         {footer ? (
           <div
             data-modal-footer="true"
-            className="shrink-0 border-t border-border bg-surface px-5 py-4"
+            className="shrink-0 border-t border-border bg-surface px-4 py-3.5 sm:px-5 sm:py-4"
           >
             {footer}
           </div>

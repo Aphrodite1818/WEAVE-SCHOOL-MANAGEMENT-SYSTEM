@@ -121,7 +121,7 @@ test("availability matrix and department catalog use one bulk read and only spec
 
 test("curriculum batch requires review and scopes departments only for specialization-capable levels", async () => {
   const text = await source("CurriculumWorkspace.jsx");
-  assert.match(text, /\|\| !reviewing/);
+  assert.match(text, /\|\|\s*!reviewing/);
   assert.match(text, /curriculumService\.addSubjects/);
   assert.match(text, /selectedSubjectIds\.map/);
   assert.match(text, /is_elective: elective/);

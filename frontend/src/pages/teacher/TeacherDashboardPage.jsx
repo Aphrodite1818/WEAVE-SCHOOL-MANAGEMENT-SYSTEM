@@ -160,7 +160,11 @@ function TeacherDashboardPage() {
             variant="blue"
             eyebrow="Teacher dashboard"
             title={`Good day, ${teacher?.first_name || firstName}`}
-            description="Review assigned subjects, teaching rosters, and class-teacher report comments. Scores are managed by school admins."
+            description={
+              hasClassTeacherClasses
+                ? "Review assigned subjects, teaching rosters, and class-teacher report comments. Scores are managed by school admins."
+                : "Review assigned subjects and teaching rosters. Class-teacher tools appear only when a class is placed under your care."
+            }
             profileCompletion={teacher?.profile_completed}
             chips={[
               {
@@ -184,7 +188,8 @@ function TeacherDashboardPage() {
             ]}
           />
 
-          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          {hasClassTeacherClasses ? (
+            <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Class teacher classes"
               value={classTeacherCount}
@@ -217,27 +222,45 @@ function TeacherDashboardPage() {
               tone="success"
               to={hasClassTeacherClasses ? "/teacher/student-comments" : undefined}
             />
-          </section>
+            </section>
+          ) : null}
 
-          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+          <section
+            className={
+              hasClassTeacherClasses
+                ? "grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"
+                : "grid gap-5"
+            }
+          >
             <DashboardFocusCard
               title="Teaching focus"
-              description="Comment actions appear only for explicit class-teacher assignments. Subject results remain read-only."
+              description={
+                hasClassTeacherClasses
+                  ? "Use the class-teacher tools for the class explicitly assigned to your care. Subject results remain read-only."
+                  : "Use your teaching rosters and attendance tools. Class-teacher duties will appear when a class is explicitly assigned to you."
+              }
               icon={BookOpen}
               tone="primary"
-              primaryAction={{
-                to: "/teacher/student-comments",
-                label: "Student comments",
-                icon: MessageSquareText,
-                disabled: !hasClassTeacherClasses,
-              }}
+              primaryAction={
+                hasClassTeacherClasses
+                  ? {
+                      to: "/teacher/student-comments",
+                      label: "Student comments",
+                      icon: MessageSquareText,
+                    }
+                  : {
+                      to: "/teacher/students",
+                      label: "Teaching rosters",
+                      icon: Users,
+                      disabled: !hasSubjectAssignments,
+                    }
+              }
               secondaryAction={
                 attendanceEnabled
                   ? {
                       to: "/teacher/attendance",
                       label: "Attendance",
                       icon: CheckSquare,
-                      disabled: !hasClassTeacherClasses,
                     }
                   : null
               }
@@ -245,22 +268,24 @@ function TeacherDashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Assigned subjects" value={subjectNames.length} />
                 <InfoTile label="Subject classes" value={subjectClasses.length} />
-                <InfoTile label="Needs review" value={needsReview} />
-                <InfoTile label="Comment completion" value={`${completion.toFixed(0)}%`} />
+                {hasClassTeacherClasses ? (
+                  <>
+                    <InfoTile label="Needs review" value={needsReview} />
+                    <InfoTile label="Comment completion" value={`${completion.toFixed(0)}%`} />
+                  </>
+                ) : null}
               </div>
             </DashboardFocusCard>
 
-            <DashboardListCard
-              title="Needs attention"
-              description="Class-teacher report-comment work that needs action."
-              items={attentionItems}
-              emptyTitle="No report comment needs attention"
-              emptyDescription={
-                hasClassTeacherClasses
-                  ? "No ready student is waiting for a class-teacher comment right now."
-                  : "You are not currently assigned as a class teacher. Subject teaching assignments do not grant report-comment access."
-              }
-            />
+            {hasClassTeacherClasses ? (
+              <DashboardListCard
+                title="Needs attention"
+                description="Class-teacher report-comment work that needs action."
+                items={attentionItems}
+                emptyTitle="No report comment needs attention"
+                emptyDescription="No ready student is waiting for a class-teacher comment right now."
+              />
+            ) : null}
           </section>
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -318,22 +343,24 @@ function TeacherDashboardPage() {
             title="Quick actions"
             description="Assignment-scoped teacher workflows."
             actions={[
-              {
-                label: "Student comments",
-                description: "Review finalized performance and submit comments",
-                to: "/teacher/student-comments",
-                icon: MessageSquareText,
-                tone: "success",
-                disabled: !hasClassTeacherClasses,
-              },
-              {
-                label: "My comment templates",
-                description: "Manage personal class-teacher wording",
-                to: "/teacher/comment-templates",
-                icon: FilePenLine,
-                tone: "warning",
-                disabled: !hasClassTeacherClasses,
-              },
+              hasClassTeacherClasses
+                ? {
+                    label: "Student comments",
+                    description: "Review finalized performance and submit comments",
+                    to: "/teacher/student-comments",
+                    icon: MessageSquareText,
+                    tone: "success",
+                  }
+                : null,
+              hasClassTeacherClasses
+                ? {
+                    label: "My comment templates",
+                    description: "Manage personal class-teacher wording",
+                    to: "/teacher/comment-templates",
+                    icon: FilePenLine,
+                    tone: "warning",
+                  }
+                : null,
               {
                 label: "Teaching rosters",
                 description: "Students in assigned subject classes",
@@ -349,7 +376,7 @@ function TeacherDashboardPage() {
                 icon: BarChart3,
                 tone: "accent",
               },
-            ]}
+            ].filter(Boolean)}
           />
         </>
       ) : null}
@@ -360,10 +387,10 @@ function TeacherDashboardPage() {
 function InfoTile({ label, value }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">
+      <p className="text-xs font-semibold leading-5 text-text-soft sm:text-[11px] sm:uppercase sm:tracking-wide sm:text-text-muted">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
+      <p className="mt-1 whitespace-normal break-words text-sm font-semibold leading-5 text-text sm:truncate">{value}</p>
     </div>
   );
 }

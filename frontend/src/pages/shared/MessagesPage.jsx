@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  ArrowLeft,
   Check,
   CheckCheck,
   MessageCircle,
@@ -216,6 +217,7 @@ export default function MessagesPage() {
   const [conversationTotal, setConversationTotal] = useState(0);
   const [conversationPage, setConversationPage] = useState(1);
   const [selectedId, setSelectedId] = useState(requestedConversationId);
+  const [mobileChatOpen, setMobileChatOpen] = useState(Boolean(requestedConversationId));
   const [selected, setSelected] = useState(null);
   const [recipientGroups, setRecipientGroups] = useState([]);
   const [recipientKey, setRecipientKey] = useState("");
@@ -237,6 +239,8 @@ export default function MessagesPage() {
   );
 
   const threadEndRef = useRef(null);
+  const mobileBackRef = useRef(null);
+  const mobileCardRef = useRef(null);
   const selectedIdRef = useRef(selectedId);
   const recipientKeyRef = useRef(recipientKey);
   const seenRealtimeEventsRef = useRef(new Set());
@@ -269,7 +273,18 @@ export default function MessagesPage() {
   }, [recipientKey]);
 
   useEffect(() => {
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = mobileChatOpen ? mobileBackRef.current : mobileCardRef.current;
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [mobileChatOpen]);
+
+  useEffect(() => {
     if (requestedConversationId) {
+      setMobileChatOpen(true);
       setSelectedId(requestedConversationId);
       setRecipientKey("");
       setSidebarMode("chats");
@@ -623,12 +638,14 @@ export default function MessagesPage() {
   }, [currentActorKey, refreshConversations, refreshRecipients, soundEnabled]);
 
   const startNewChat = () => {
+    setMobileChatOpen(false);
     setSidebarMode("people");
     setSidebarSearch("");
     setSidebarRole("all");
   };
 
   const chooseRecipient = (recipient) => {
+    setMobileChatOpen(true);
     setRecipientKey(actorKeyFor(recipient));
     setSelectedId("");
     setSelected(null);
@@ -637,6 +654,7 @@ export default function MessagesPage() {
   };
 
   const chooseConversation = (conversationId) => {
+    setMobileChatOpen(true);
     setRecipientKey("");
     setSelectedId(conversationId);
     setSidebarMode("chats");
@@ -760,7 +778,7 @@ export default function MessagesPage() {
 
   return (
     <DashboardLayout role={dashboardRole}>
-      <section className="weave-chat-shell grid h-[calc(100dvh-6.5rem)] min-h-[36rem] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden lg:h-[calc(100dvh-8rem)] lg:grid-cols-[21rem_minmax(0,1fr)] lg:grid-rows-1 lg:gap-4 xl:grid-cols-[23.5rem_minmax(0,1fr)]">
+      <section data-mobile-chat-open={String(mobileChatOpen)} className="weave-chat-shell grid h-[calc(100dvh-6.5rem)] min-h-[36rem] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden lg:h-[calc(100dvh-8rem)] lg:grid-cols-[21rem_minmax(0,1fr)] lg:grid-rows-1 lg:gap-4 xl:grid-cols-[23.5rem_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
           <div className="border-b border-border p-3 sm:p-4">
             <div className="flex items-center justify-between gap-3">
@@ -827,7 +845,7 @@ export default function MessagesPage() {
               <button
                 type="button"
                 onClick={() => setSidebarRole("all")}
-                className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === "all" ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
+                className={`weave-message-role-filter rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === "all" ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
               >
                 All
               </button>
@@ -836,7 +854,7 @@ export default function MessagesPage() {
                   key={actorType}
                   type="button"
                   onClick={() => setSidebarRole(actorType)}
-                  className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === actorType ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
+                  className={`weave-message-role-filter rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === actorType ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
                 >
                   {roleLabel(actorType)}
                 </button>
@@ -844,7 +862,13 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {error ? (
+            <div role="alert" className="border-b border-error/30 bg-error-soft px-4 py-3 text-sm font-semibold text-error lg:hidden">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="weave-chat-directory min-h-0 flex-1 overflow-y-auto">
             {loading ? <LoadingState label="Loading messages" /> : null}
 
             {!loading && sidebarMode === "chats" ? (
@@ -872,7 +896,10 @@ export default function MessagesPage() {
                       <button
                         key={conversation.id}
                         type="button"
-                        onClick={() => chooseConversation(conversation.id)}
+                        onClick={(event) => {
+                          mobileCardRef.current = event.currentTarget;
+                          chooseConversation(conversation.id);
+                        }}
                         className={`block w-full px-3 py-3 text-left transition sm:px-4 ${active ? "bg-primary-soft/70" : "hover:bg-surface-muted/50"} ${live ? "weave-conversation-live" : ""}`}
                       >
                         <span className="flex items-start gap-3">
@@ -939,7 +966,10 @@ export default function MessagesPage() {
                           <button
                             key={actorKeyFor(recipient)}
                             type="button"
-                            onClick={() => chooseRecipient(recipient)}
+                            onClick={(event) => {
+                              mobileCardRef.current = event.currentTarget;
+                              chooseRecipient(recipient);
+                            }}
                             className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${selectedPerson ? "bg-primary-soft/70" : "hover:bg-surface-muted/50"}`}
                           >
                             <Avatar label={recipient.label} size="sm" />
@@ -1012,8 +1042,19 @@ export default function MessagesPage() {
             </div>
           ) : null}
 
-          <header className="flex min-h-[4.75rem] items-center justify-between gap-3 border-b border-border px-3 py-3 sm:px-5">
+          <header className="weave-chat-header flex min-h-[4.75rem] shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-3 sm:px-5">
             <div className="flex min-w-0 items-center gap-3">
+              <Button
+                ref={mobileBackRef}
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="shrink-0 lg:hidden"
+                aria-label="Back to conversations and people"
+                onClick={() => setMobileChatOpen(false)}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
               <Avatar label={selectedTitle} />
               <div className="min-w-0">
                 <h2 className="truncate text-sm font-black text-text sm:text-base">
@@ -1160,11 +1201,11 @@ export default function MessagesPage() {
                                 })}
                               </p>
                             ) : null}
-                            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                            <p className="weave-message-body whitespace-pre-wrap break-words text-sm leading-relaxed">
                               {message.body}
                             </p>
                             <div
-                              className={`mt-1.5 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-primary-foreground/70" : "text-text-faint"}`}
+                              className={`weave-message-meta mt-1.5 flex flex-wrap items-center justify-end gap-1 text-xs ${mine ? "text-primary-foreground" : "text-text-muted"}`}
                             >
                               <time>{fullTimestampLabel(message.created_at)}</time>
                               {mine && isLastMine ? (
@@ -1205,7 +1246,7 @@ export default function MessagesPage() {
 
               <form
                 onSubmit={sendMessage}
-                className="weave-chat-composer border-t border-border bg-surface px-3 py-3 sm:px-4"
+                className="weave-chat-composer shrink-0 border-t border-border bg-surface px-3 py-3 sm:px-4"
               >
                 {selected?.can_reply === false ? (
                   <div className="rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-xs font-semibold text-text-muted">
@@ -1242,7 +1283,7 @@ export default function MessagesPage() {
                         <Send className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-[10px] text-text-faint">
+                    <div className="weave-chat-composer-help mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 text-xs leading-5 text-text-muted">
                       <span>Enter to send · Shift + Enter for a new line</span>
                       <span>
                         {liveConnected

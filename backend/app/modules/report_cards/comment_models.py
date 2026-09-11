@@ -1,4 +1,4 @@
-"""Personal report-comment configuration and pre-report teacher comment evidence."""
+"""Performance-range report-comment configuration and teacher comment evidence."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from enum import Enum as PyEnum
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DDL,
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
@@ -18,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -52,12 +54,24 @@ class TeacherCommentSource(str, PyEnum):
 
 
 class CommentTemplate(BaseModel):
-    """A reusable comment owned by exactly one admin or teacher."""
+    """Reusable wording for one inclusive overall-performance range.
+
+    Owners may keep several comments for the *same exact* range. Exactly one
+    active comment for an active range is selected as the default by the
+    service. Distinct ranges are not allowed to overlap.
+    """
 
     __tablename__ = "comment_templates"
 
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    minimum_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    maximum_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
     owner_type: Mapped[CommentTemplateOwnerType] = mapped_column(
         SQLEnum(
             CommentTemplateOwnerType,
@@ -90,8 +104,15 @@ class CommentTemplate(BaseModel):
     )
 
     __table_args__ = (
-        CheckConstraint("length(trim(name)) > 0", name="ck_comment_templates_name_nonempty"),
         CheckConstraint("length(trim(text)) > 0", name="ck_comment_templates_text_nonempty"),
+        CheckConstraint(
+            "minimum_score >= 0 AND maximum_score <= 100 AND minimum_score <= maximum_score",
+            name="ck_comment_templates_score_range",
+        ),
+        CheckConstraint(
+            "is_default = false OR status = 'active'",
+            name="ck_comment_templates_default_active",
+        ),
         CheckConstraint(
             "(owner_type = 'tenant_admin' AND tenant_admin_id IS NOT NULL AND teacher_membership_id IS NULL) "
             "OR (owner_type = 'teacher' AND teacher_membership_id IS NOT NULL AND tenant_admin_id IS NULL)",
@@ -100,45 +121,83 @@ class CommentTemplate(BaseModel):
         Index("ix_comment_templates_tenant_status", "tenant_id", "status"),
         Index("ix_comment_templates_admin_owner", "tenant_id", "tenant_admin_id"),
         Index("ix_comment_templates_teacher_owner", "tenant_id", "teacher_membership_id"),
-    )
-
-
-class CommentTemplateGradeMapping(BaseModel):
-    """Grade applicability for a personal template; grading scale stays authoritative."""
-
-    __tablename__ = "comment_template_grade_mappings"
-
-    comment_template_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("comment_templates.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    grading_scale_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("grading_scales.id", ondelete="RESTRICT"),
-        nullable=False,
-    )
-    is_default: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "tenant_id",
-            "comment_template_id",
-            "grading_scale_id",
-            name="uq_comment_template_grade_mapping",
-        ),
         Index(
-            "ix_comment_template_grade_mappings_grade",
+            "ix_comment_templates_owner_range",
             "tenant_id",
-            "grading_scale_id",
-            "is_default",
+            "owner_type",
+            "minimum_score",
+            "maximum_score",
+            "status",
         ),
     )
+
+
+event.listen(
+    CommentTemplate.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE OR REPLACE FUNCTION public.enforce_comment_template_range_overlap()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+            owner_key text;
+        BEGIN
+            IF NEW.status = 'archived' THEN
+                RETURN NEW;
+            END IF;
+
+            owner_key := NEW.tenant_id::text || ':' || NEW.owner_type::text || ':' ||
+                COALESCE(NEW.tenant_admin_id::text, NEW.teacher_membership_id::text, 'none');
+            PERFORM pg_advisory_xact_lock(hashtextextended(owner_key, 0));
+
+            IF EXISTS (
+                SELECT 1
+                FROM public.comment_templates existing
+                WHERE existing.tenant_id = NEW.tenant_id
+                  AND existing.owner_type = NEW.owner_type
+                  AND existing.status <> 'archived'
+                  AND existing.id <> NEW.id
+                  AND (
+                    (NEW.owner_type = 'tenant_admin'
+                     AND existing.tenant_admin_id = NEW.tenant_admin_id)
+                    OR
+                    (NEW.owner_type = 'teacher'
+                     AND existing.teacher_membership_id = NEW.teacher_membership_id)
+                  )
+                  AND NEW.minimum_score <= existing.maximum_score
+                  AND NEW.maximum_score >= existing.minimum_score
+                  AND NOT (
+                    NEW.minimum_score = existing.minimum_score
+                    AND NEW.maximum_score = existing.maximum_score
+                  )
+            ) THEN
+                RAISE EXCEPTION 'Comment performance ranges cannot overlap'
+                    USING ERRCODE = '23514',
+                          CONSTRAINT = 'ck_comment_templates_no_distinct_range_overlap';
+            END IF;
+
+            RETURN NEW;
+        END;
+        $$
+        """
+    ).execute_if(dialect="postgresql"),
+)
+event.listen(
+    CommentTemplate.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER trg_comment_templates_no_distinct_range_overlap
+        BEFORE INSERT OR UPDATE OF tenant_id, owner_type, tenant_admin_id,
+            teacher_membership_id, minimum_score, maximum_score, status
+        ON public.comment_templates
+        FOR EACH ROW
+        EXECUTE FUNCTION public.enforce_comment_template_range_overlap()
+        """
+    ).execute_if(dialect="postgresql"),
+)
 
 
 class StudentTermTeacherComment(BaseModel):
@@ -170,6 +229,8 @@ class StudentTermTeacherComment(BaseModel):
         ForeignKey("teacher_memberships.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    # Historical column name retained in the physical schema for report evidence;
+    # its value is now the canonical weighted overall-performance percentage.
     average_snapshot: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False)
     grade_snapshot: Mapped[str] = mapped_column(String(10), nullable=False)
     comment_text: Mapped[str] = mapped_column(Text, nullable=False)

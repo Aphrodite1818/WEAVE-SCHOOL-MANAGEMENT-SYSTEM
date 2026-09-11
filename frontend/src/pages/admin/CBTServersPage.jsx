@@ -15,6 +15,7 @@ import {
   Server,
   ShieldAlert,
   ShieldX,
+  ClipboardCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -251,7 +252,7 @@ export default function CBTServersPage() {
   };
 
   useEffect(() => {
-    if (!featureGuard.allowed || featureGuard.pending) {
+    if (featureGuard.pending) {
       setLoading(false);
       return;
     }
@@ -447,26 +448,6 @@ export default function CBTServersPage() {
     );
   }
 
-  if (!featureGuard.allowed) {
-    return (
-      <DashboardLayout role="admin" title="CBT Servers">
-        <Card className="mx-auto max-w-2xl p-6">
-          <ShieldAlert className="h-8 w-8 text-primary" />
-          <h1 className="mt-4 text-xl font-bold text-text">
-            CBT server pairing is not active on this plan
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-text-muted">
-            CBT server pairing is available on Professional and Enterprise plans
-            only.
-          </p>
-          <Link to="/admin/billing/plans" className="mt-5 inline-flex">
-            <Button>View plans</Button>
-          </Link>
-        </Card>
-      </DashboardLayout>
-    );
-  }
-
   const usage = resourceGuard.usage;
   const selectedStatusMeta = statusMetaFor(selectedServer?.status);
 
@@ -482,14 +463,28 @@ export default function CBTServersPage() {
               Manage and monitor CBT examination servers
             </p>
           </div>
-          <Button
-            onClick={generatePairingCode}
-            disabled={Boolean(busyAction) || resourceGuard.allowed === false}
-            className="min-w-[210px] justify-center rounded-lg"
-          >
-            <Plus className="h-4 w-4" />
-            Pair Server
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              className="justify-center rounded-lg"
+              onClick={() => navigate("/admin/cbt/results")}
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              Result Ledger
+            </Button>
+            <Button
+              onClick={generatePairingCode}
+              disabled={
+                Boolean(busyAction) ||
+                !featureGuard.allowed ||
+                resourceGuard.allowed === false
+              }
+              className="min-w-[180px] justify-center rounded-lg"
+            >
+              <Plus className="h-4 w-4" />
+              Pair Server
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
@@ -529,7 +524,21 @@ export default function CBTServersPage() {
           </div>
         ) : null}
 
-        {resourceGuard.allowed === false ? (
+        {!featureGuard.allowed ? (
+          <div className="flex flex-col gap-3 rounded-2xl border border-warning/30 bg-warning-soft px-4 py-4 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold">Historical CBT access is limited on this plan.</p>
+              <p className="mt-1 text-xs leading-5">
+                Existing servers and result evidence remain available. Upgrade to Professional or Enterprise to pair, reactivate, or rotate credentials.
+              </p>
+            </div>
+            <Link to="/admin/billing/plans" className="shrink-0">
+              <Button size="sm" variant="outline">View plans</Button>
+            </Link>
+          </div>
+        ) : null}
+
+        {featureGuard.allowed && resourceGuard.allowed === false ? (
           <div className="rounded-2xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-amber-700">
             {resourceGuard.reason ||
               "This plan cannot pair another CBT server right now."}
@@ -790,8 +799,9 @@ export default function CBTServersPage() {
                                   Suspend server
                                 </button>
                               ) : null}
-                              {String(server.status).toLowerCase() ===
-                              "suspended" ? (
+                              {featureGuard.allowed &&
+                              String(server.status).toLowerCase() ===
+                                "suspended" ? (
                                 <button
                                   type="button"
                                   className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-text transition hover:bg-success-soft"
@@ -814,17 +824,19 @@ export default function CBTServersPage() {
                               {String(server.status).toLowerCase() !==
                               "revoked" ? (
                                 <>
-                                  <button
-                                    type="button"
-                                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-text transition hover:bg-primary-subtle"
-                                    onClick={() => {
-                                      setActionMenuServerId("");
-                                      rotateCredential(server.id);
-                                    }}
-                                  >
-                                    <RotateCcw className="h-4 w-4" />
-                                    Rotate credential
-                                  </button>
+                                  {featureGuard.allowed ? (
+                                    <button
+                                      type="button"
+                                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-text transition hover:bg-primary-subtle"
+                                      onClick={() => {
+                                        setActionMenuServerId("");
+                                        rotateCredential(server.id);
+                                      }}
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                      Rotate credential
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
                                     className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-error transition hover:bg-error-soft"
@@ -1043,8 +1055,9 @@ export default function CBTServersPage() {
                     </Button>
                   ) : null}
 
-                  {String(selectedServer.status).toLowerCase() ===
-                  "suspended" ? (
+                  {featureGuard.allowed &&
+                  String(selectedServer.status).toLowerCase() ===
+                    "suspended" ? (
                     <Button
                       variant="outline"
                       className="w-full justify-center rounded-xl"
@@ -1066,15 +1079,17 @@ export default function CBTServersPage() {
 
                   {String(selectedServer.status).toLowerCase() !== "revoked" ? (
                     <>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-center rounded-xl"
-                        onClick={() => rotateCredential(selectedServer.id)}
-                        disabled={busyAction === `rotate:${selectedServer.id}`}
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                        Rotate Credential
-                      </Button>
+                      {featureGuard.allowed ? (
+                        <Button
+                          variant="outline"
+                          className="w-full justify-center rounded-xl"
+                          onClick={() => rotateCredential(selectedServer.id)}
+                          disabled={busyAction === `rotate:${selectedServer.id}`}
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                          Rotate Credential
+                        </Button>
+                      ) : null}
 
                       <Button
                         variant="danger"

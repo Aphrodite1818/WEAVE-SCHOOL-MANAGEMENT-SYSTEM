@@ -1,36 +1,35 @@
-from pathlib import Path
+"""Canonical curriculum scope checks after the pre-production baseline reset."""
+
+from sqlalchemy import ForeignKeyConstraint
+
+import app.models  # noqa: F401
+from app.shared.base_model import Base
 
 
-MIGRATION = (
-    Path(__file__).resolve().parents[3]
-    / "alembic"
-    / "versions"
-    / "20260903_persistent_curriculum_department_scopes.py"
-)
-
-
-def test_persistent_curriculum_cutover_has_one_predecessor_and_no_downgrade_alias() -> None:
-    source = MIGRATION.read_text(encoding="utf-8")
-
-    assert (
-        'down_revision: Union[str, Sequence[str], None] = "20260901_global_departments"' in source
-    )
-    assert 'op.drop_table("curriculum_offerings"' in source
-    assert "cannot reconstruct removed term-specific curriculum offerings" in source
+def test_initial_schema_excludes_obsolete_term_specific_curriculum_tables() -> None:
+    table_names = {table.name for table in Base.metadata.tables.values()}
+    assert "curriculum_offerings" not in table_names
+    assert "subject_offerings" not in table_names
+    assert "level_subjects" not in table_names
 
 
 def test_persistent_scope_foreign_keys_include_tenant_identity() -> None:
-    source = MIGRATION.read_text(encoding="utf-8")
+    table = next(
+        table
+        for table in Base.metadata.tables.values()
+        if table.name == "curriculum_subject_departments"
+    )
+    constraints = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in table.constraints
+        if isinstance(constraint, ForeignKeyConstraint)
+    }
 
-    assert '["tenant_id", "curriculum_subject_id"]' in source
-    assert '["tenant_id", "academic_level_department_id"]' in source
-    assert "fk_curriculum_subject_department_tenant_subject" in source
-    assert "fk_curriculum_subject_department_tenant_level_department" in source
-
-
-def test_cbt_sync_enum_is_cut_over_without_offering_compatibility() -> None:
-    source = MIGRATION.read_text(encoding="utf-8")
-
-    assert "WHERE entity_type = 'subject_offering'" in source
-    assert '"curriculum_subject_department"' in source
-    assert "DROP TYPE {SCHEMA}.cbt_sync_entity_type_old" in source
+    assert constraints["fk_curriculum_subject_department_tenant_subject"] == (
+        "tenant_id",
+        "curriculum_subject_id",
+    )
+    assert constraints["fk_curriculum_subject_department_tenant_level_department"] == (
+        "tenant_id",
+        "academic_level_department_id",
+    )

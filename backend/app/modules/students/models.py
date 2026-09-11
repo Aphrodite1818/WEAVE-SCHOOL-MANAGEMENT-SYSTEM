@@ -332,13 +332,15 @@ class StudentEnrollment(BaseModel):
 
     @hybrid_property
     def is_current(self) -> bool:
-        """Return whether this placement segment is still open."""
+        """Return whether this placement segment is effective today."""
 
-        return self.ended_on is None
+        today = date.today()
+        return self.started_on <= today and (self.ended_on is None or self.ended_on >= today)
 
     @is_current.expression
     def is_current(cls):
-        return cls.ended_on.is_(None)
+        today = func.current_date()
+        return (cls.started_on <= today) & (cls.ended_on.is_(None) | (cls.ended_on >= today))
 
     __table_args__ = (
         CheckConstraint(
@@ -388,7 +390,11 @@ Student.class_id = column_property(  # type: ignore[attr-defined]
     .where(
         StudentEnrollment.tenant_id == Student.tenant_id,
         StudentEnrollment.student_id == Student.id,
-        StudentEnrollment.ended_on.is_(None),
+        StudentEnrollment.started_on <= func.current_date(),
+        (
+            StudentEnrollment.ended_on.is_(None)
+            | (StudentEnrollment.ended_on >= func.current_date())
+        ),
     )
     .correlate(Student)
     .scalar_subquery()

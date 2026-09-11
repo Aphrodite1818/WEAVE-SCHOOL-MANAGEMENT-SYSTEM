@@ -25,6 +25,9 @@ const CBTPairingCodePage = lazy(
   () => import("../pages/admin/CBTPairingCodePage"),
 );
 const CBTServersPage = lazy(() => import("../pages/admin/CBTServersPage"));
+const CBTResultLedgerPage = lazy(
+  () => import("../pages/admin/CBTResultLedgerPage"),
+);
 const InstitutionTypeSettingsPage = lazy(
   () => import("../pages/admin/InstitutionTypeSettingsPage"),
 );
@@ -68,6 +71,7 @@ const SchoolCalendarPage = lazy(
 );
 import AdminGettingStartedRoute from "./AdminGettingStartedRoute";
 import BulkImportRouteGuard from "./BulkImportRouteGuard";
+import CBTHistoricalAccessRouteGuard from "./CBTHistoricalAccessRouteGuard";
 import RoleGuard from "./RoleGuard";
 import RuntimeFeatureRoute from "./RuntimeFeatureRoute";
 import SubscriptionFeatureRouteGuard from "./SubscriptionFeatureRouteGuard";
@@ -123,9 +127,17 @@ export const adminRoutes = (
       <Route
         path="/admin/cbt"
         element={protectedWorkflow(
-          <SubscriptionFeatureRouteGuard featureCode={FEATURE_CODES.CBT_PAIRING}>
+          <CBTHistoricalAccessRouteGuard>
             <CBTServersPage />
-          </SubscriptionFeatureRouteGuard>,
+          </CBTHistoricalAccessRouteGuard>,
+        )}
+      />
+      <Route
+        path="/admin/cbt/results"
+        element={protectedWorkflow(
+          <CBTHistoricalAccessRouteGuard>
+            <CBTResultLedgerPage />
+          </CBTHistoricalAccessRouteGuard>,
         )}
       />
       <Route

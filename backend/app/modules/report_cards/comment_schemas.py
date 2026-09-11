@@ -1,4 +1,4 @@
-"""API contracts for personal comment templates and teacher term comments."""
+"""API contracts for performance-range comments and teacher term comments."""
 
 from __future__ import annotations
 
@@ -23,93 +23,58 @@ class OutputBase(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
-# Internal service contracts. The HTTP boundary exposes the simpler one-comment /
-# one-grade contracts below and derives the internal name automatically from text.
-class CommentTemplateWrite(InputBase):
-    name: str = Field(min_length=1, max_length=120)
+class CommentTemplateCreate(InputBase):
     text: str = Field(min_length=1, max_length=2000)
-    grading_scale_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
-    default_grading_scale_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+    minimum_score: Decimal = Field(ge=Decimal("0"), le=Decimal("100"))
+    maximum_score: Decimal = Field(ge=Decimal("0"), le=Decimal("100"))
+    is_default: bool = False
 
     @model_validator(mode="after")
-    def validate_defaults(self) -> "CommentTemplateWrite":
-        grade_ids = set(self.grading_scale_ids)
-        defaults = set(self.default_grading_scale_ids)
-        if len(grade_ids) != len(self.grading_scale_ids):
-            raise ValueError("grading_scale_ids must not contain duplicates")
-        if len(defaults) != len(self.default_grading_scale_ids):
-            raise ValueError("default_grading_scale_ids must not contain duplicates")
-        if not defaults.issubset(grade_ids):
-            raise ValueError("defaults must also appear in grading_scale_ids")
+    def validate_range(self) -> "CommentTemplateCreate":
+        if self.minimum_score > self.maximum_score:
+            raise ValueError("minimum_score must be less than or equal to maximum_score")
         return self
 
 
 class CommentTemplateUpdate(InputBase):
-    name: str | None = Field(default=None, min_length=1, max_length=120)
     text: str | None = Field(default=None, min_length=1, max_length=2000)
+    minimum_score: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
+    )
+    maximum_score: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        le=Decimal("100"),
+    )
+    is_default: bool | None = None
     status: CommentTemplateStatus | None = None
-    grading_scale_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
-    default_grading_scale_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
     @model_validator(mode="after")
     def validate_patch(self) -> "CommentTemplateUpdate":
         if not self.model_fields_set:
             raise ValueError("at least one field must be provided")
-        if self.status == CommentTemplateStatus.ARCHIVED and (
-            self.name is not None or self.text is not None
-        ):
-            raise ValueError("archive a template separately from editing its content")
-        grade_ids = set(self.grading_scale_ids or [])
-        defaults = set(self.default_grading_scale_ids or [])
-        if self.grading_scale_ids is not None and len(grade_ids) != len(self.grading_scale_ids):
-            raise ValueError("grading_scale_ids must not contain duplicates")
-        if self.default_grading_scale_ids is not None and len(defaults) != len(
-            self.default_grading_scale_ids
-        ):
-            raise ValueError("default_grading_scale_ids must not contain duplicates")
-        if self.default_grading_scale_ids is not None:
-            if self.grading_scale_ids is None:
-                raise ValueError("grading_scale_ids is required when defaults are changed")
-            if not defaults.issubset(grade_ids):
-                raise ValueError("defaults must also appear in grading_scale_ids")
-        return self
-
-
-class PersonalCommentTemplateCreate(InputBase):
-    """Create one reusable personal comment for exactly one grading-scale entry."""
-
-    text: str = Field(min_length=1, max_length=2000)
-    grading_scale_id: uuid.UUID
-    is_default: bool = False
-
-
-class PersonalCommentTemplateUpdate(InputBase):
-    """Edit wording/lifecycle or make this comment the default for its fixed grade."""
-
-    text: str | None = Field(default=None, min_length=1, max_length=2000)
-    is_default: bool | None = None
-    status: CommentTemplateStatus | None = None
-
-    @model_validator(mode="after")
-    def validate_patch(self) -> "PersonalCommentTemplateUpdate":
-        if not self.model_fields_set:
-            raise ValueError("at least one field must be provided")
         if self.status == CommentTemplateStatus.ARCHIVED and self.text is not None:
             raise ValueError("archive a comment separately from editing its text")
+        if (
+            self.minimum_score is not None
+            and self.maximum_score is not None
+            and self.minimum_score > self.maximum_score
+        ):
+            raise ValueError("minimum_score must be less than or equal to maximum_score")
         return self
 
 
 class CommentTemplateResponse(OutputBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
-    # Kept in the response for the current database/service implementation only.
-    # UI must display `text`, not ask the actor to manage this derived value.
-    name: str
     text: str
+    minimum_score: Decimal
+    maximum_score: Decimal
+    is_default: bool
     owner_type: CommentTemplateOwnerType
     status: CommentTemplateStatus
-    grading_scale_ids: list[uuid.UUID] = Field(default_factory=list)
-    default_grading_scale_ids: list[uuid.UUID] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -134,6 +99,8 @@ class TeacherCommentResponse(OutputBase):
     academic_session_id: uuid.UUID
     academic_term_id: uuid.UUID
     teacher_membership_id: uuid.UUID
+    # This historical storage field now contains the canonical weighted
+    # report-scope performance percentage.
     average_snapshot: Decimal
     grade_snapshot: str
     comment_text: str

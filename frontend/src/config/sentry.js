@@ -126,6 +126,43 @@ export const sanitizeSentryEvent = (event) => {
   }
 };
 
+export const sanitizeSentryBreadcrumb = (breadcrumb) => {
+  try {
+    const category = String(breadcrumb?.category || "").toLowerCase();
+
+    if (
+      category === "console" ||
+      category.startsWith("ui.") ||
+      category === "navigation"
+    ) {
+      return null;
+    }
+
+    const sanitized = scrubValue({ ...breadcrumb });
+    const data = sanitized?.data;
+    if (data && typeof data === "object") {
+      const safeUrl = sanitizeRequestUrl(data.url);
+      if (safeUrl) data.url = safeUrl;
+      else if ("url" in data) delete data.url;
+
+      const method = String(data.method || "GET").toUpperCase();
+      const status = Number(data.status_code ?? data.status ?? 0);
+      const isHttpBreadcrumb =
+        category.includes("fetch") ||
+        category.includes("xhr") ||
+        breadcrumb?.type === "http";
+
+      if (isHttpBreadcrumb && method === "GET" && status > 0 && status < 400) {
+        return null;
+      }
+    }
+
+    return sanitized;
+  } catch {
+    return null;
+  }
+};
+
 export const parseSentrySampleRate = (value, fallback = 1) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return fallback;
@@ -209,6 +246,30 @@ export const captureFrontendException = (error, context = {}) => {
 
   enqueueException(normalizedError, context);
   return null;
+};
+
+export const addFrontendBreadcrumb = ({
+  category,
+  message,
+  data = {},
+  level = "info",
+}) => {
+  if (!sentryConfigured) return;
+
+  const sdk = getSdk();
+  if (!sdk?.addBreadcrumb) return;
+
+  try {
+    const breadcrumb = sanitizeSentryBreadcrumb({
+      category,
+      message: scrubString(message || category || "frontend.action"),
+      data,
+      level,
+    });
+    if (breadcrumb) sdk.addBreadcrumb(breadcrumb);
+  } catch {
+    // Telemetry must never affect the user-facing application flow.
+  }
 };
 
 const flushPendingErrors = () => {
@@ -316,10 +377,11 @@ export const initializeSentry = () => {
         environment: config.environment,
         release: config.release || undefined,
         sampleRate: config.errorSampleRate,
-        enableLogs : true,
+        enableLogs: false,
         sendDefaultPii: false,
         debug: config.debug,
         beforeSend: sanitizeSentryEvent,
+        beforeBreadcrumb: sanitizeSentryBreadcrumb,
       });
 
       sdk.setTag?.("service", "frontend");

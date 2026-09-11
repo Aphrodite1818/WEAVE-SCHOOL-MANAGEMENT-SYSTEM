@@ -1,13 +1,12 @@
-"""Authoritative teacher-comment and personal template workflow."""
+"""Authoritative performance-range comment and teacher-term workflow."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Iterable
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -17,9 +16,9 @@ from app.core.exceptions import (
     NotFoundException,
 )
 from app.modules.classes.models import ClassRoom
+from app.modules.report_cards.cache import ReportReadinessCache
 from app.modules.report_cards.comment_models import (
     CommentTemplate,
-    CommentTemplateGradeMapping,
     CommentTemplateOwnerType,
     CommentTemplateStatus,
     StudentTermTeacherComment,
@@ -28,9 +27,9 @@ from app.modules.report_cards.comment_models import (
     TeacherCommentStatus,
 )
 from app.modules.report_cards.comment_schemas import (
+    CommentTemplateCreate,
     CommentTemplateResponse,
     CommentTemplateUpdate,
-    CommentTemplateWrite,
     TeacherCommentOverrideRequest,
     TeacherCommentOverrideResponse,
     TeacherCommentResponse,
@@ -39,17 +38,17 @@ from app.modules.report_cards.comment_schemas import (
     TeacherStudentCommentRow,
 )
 from app.modules.report_cards.models import ReportCard
-from app.modules.student_academics.curriculum_service import CurriculumResolutionService
-from app.modules.student_academics.models import AcademicResultStatus, GradingScale
-from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.students.models import Student, StudentEnrollment
+from app.modules.report_cards.readiness_service import ReportReadinessService
+from app.modules.report_cards.repository import ReportCardRepository
+from app.modules.student_academics.models import GradingScale
+from app.modules.students.models import StudentEnrollment
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
 from app.modules.teachers.models import TeacherMembership
 from app.modules.tenant_admins.models import TenantAdmin
 
 
 class ReportCommentService:
-    """Own comment readiness, authorship, templates, and audited overrides."""
+    """Own comment readiness, range templates, authorship and audited overrides."""
 
     @staticmethod
     async def _is_current_class_teacher(
@@ -89,29 +88,6 @@ class ReportCommentService:
             )
 
     @staticmethod
-    async def _validate_grading_scales(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        grading_scale_ids: Iterable[uuid.UUID],
-    ) -> None:
-        ids = set(grading_scale_ids)
-        if not ids:
-            return
-        found = set(
-            (
-                await db.execute(
-                    select(GradingScale.id).where(
-                        GradingScale.tenant_id == tenant_id,
-                        GradingScale.id.in_(ids),
-                    )
-                )
-            ).scalars()
-        )
-        if found != ids:
-            raise BadRequestException("One or more grading-scale entries are invalid.")
-
-    @staticmethod
     def _owner_filters(
         owner_type: CommentTemplateOwnerType,
         owner_id: uuid.UUID,
@@ -129,34 +105,16 @@ class ReportCommentService:
         ]
 
     @staticmethod
-    async def _template_response(
-        db: AsyncSession,
-        template: CommentTemplate,
-    ) -> CommentTemplateResponse:
-        mappings = list(
-            (
-                await db.execute(
-                    select(CommentTemplateGradeMapping).where(
-                        CommentTemplateGradeMapping.tenant_id == template.tenant_id,
-                        CommentTemplateGradeMapping.comment_template_id == template.id,
-                    )
-                )
-            ).scalars()
-        )
-        return CommentTemplateResponse(
-            id=template.id,
-            tenant_id=template.tenant_id,
-            name=template.name,
-            text=template.text,
-            owner_type=template.owner_type,
-            status=template.status,
-            grading_scale_ids=[item.grading_scale_id for item in mappings],
-            default_grading_scale_ids=[
-                item.grading_scale_id for item in mappings if item.is_default
-            ],
-            created_at=template.created_at,
-            updated_at=template.updated_at,
-        )
+    def _actor_owner(
+        actor: TenantAdmin | TeacherMembership,
+    ) -> tuple[CommentTemplateOwnerType, uuid.UUID]:
+        if isinstance(actor, TenantAdmin):
+            return CommentTemplateOwnerType.TENANT_ADMIN, actor.id
+        return CommentTemplateOwnerType.TEACHER, actor.id
+
+    @staticmethod
+    def _template_response(template: CommentTemplate) -> CommentTemplateResponse:
+        return CommentTemplateResponse.model_validate(template)
 
     @staticmethod
     async def list_templates(
@@ -178,134 +136,16 @@ class ReportCommentService:
                 await db.execute(
                     select(CommentTemplate)
                     .where(*filters)
-                    .order_by(CommentTemplate.created_at.desc())
-                )
-            ).scalars()
-        )
-        return [await ReportCommentService._template_response(db, item) for item in templates]
-
-    @staticmethod
-    async def _clear_personal_defaults(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        owner_type: CommentTemplateOwnerType,
-        owner_id: uuid.UUID,
-        grading_scale_ids: set[uuid.UUID],
-        excluding_template_id: uuid.UUID | None = None,
-    ) -> None:
-        if not grading_scale_ids:
-            return
-        query = (
-            select(CommentTemplateGradeMapping)
-            .join(
-                CommentTemplate,
-                CommentTemplate.id == CommentTemplateGradeMapping.comment_template_id,
-            )
-            .where(
-                CommentTemplateGradeMapping.tenant_id == tenant_id,
-                CommentTemplateGradeMapping.grading_scale_id.in_(grading_scale_ids),
-                CommentTemplateGradeMapping.is_default.is_(True),
-                CommentTemplate.tenant_id == tenant_id,
-                *ReportCommentService._owner_filters(owner_type, owner_id),
-            )
-            .with_for_update()
-        )
-        if excluding_template_id is not None:
-            query = query.where(CommentTemplate.id != excluding_template_id)
-        for mapping in (await db.execute(query)).scalars():
-            mapping.is_default = False
-            db.add(mapping)
-
-    @staticmethod
-    async def _replace_grade_mappings(
-        db: AsyncSession,
-        *,
-        template: CommentTemplate,
-        owner_type: CommentTemplateOwnerType,
-        owner_id: uuid.UUID,
-        grading_scale_ids: list[uuid.UUID],
-        default_grading_scale_ids: list[uuid.UUID],
-    ) -> None:
-        await ReportCommentService._validate_grading_scales(
-            db,
-            tenant_id=template.tenant_id,
-            grading_scale_ids=grading_scale_ids,
-        )
-        defaults = set(default_grading_scale_ids)
-        await ReportCommentService._clear_personal_defaults(
-            db,
-            tenant_id=template.tenant_id,
-            owner_type=owner_type,
-            owner_id=owner_id,
-            grading_scale_ids=defaults,
-            excluding_template_id=template.id,
-        )
-        existing = list(
-            (
-                await db.execute(
-                    select(CommentTemplateGradeMapping).where(
-                        CommentTemplateGradeMapping.tenant_id == template.tenant_id,
-                        CommentTemplateGradeMapping.comment_template_id == template.id,
+                    .order_by(
+                        CommentTemplate.minimum_score.desc(),
+                        CommentTemplate.maximum_score.desc(),
+                        CommentTemplate.is_default.desc(),
+                        CommentTemplate.created_at.asc(),
                     )
                 )
             ).scalars()
         )
-        for row in existing:
-            await db.delete(row)
-        await db.flush()
-        for grading_scale_id in grading_scale_ids:
-            db.add(
-                CommentTemplateGradeMapping(
-                    tenant_id=template.tenant_id,
-                    comment_template_id=template.id,
-                    grading_scale_id=grading_scale_id,
-                    is_default=grading_scale_id in defaults,
-                )
-            )
-        await db.flush()
-
-    @staticmethod
-    async def create_template(
-        db: AsyncSession,
-        *,
-        actor: TenantAdmin | TeacherMembership,
-        payload: CommentTemplateWrite,
-    ) -> CommentTemplateResponse:
-        if isinstance(actor, TenantAdmin):
-            owner_type = CommentTemplateOwnerType.TENANT_ADMIN
-            owner_id = actor.id
-            template = CommentTemplate(
-                tenant_id=actor.tenant_id,
-                name=payload.name,
-                text=payload.text,
-                owner_type=owner_type,
-                tenant_admin_id=actor.id,
-            )
-        else:
-            await ReportCommentService._require_class_teacher_capability(db, actor)
-            owner_type = CommentTemplateOwnerType.TEACHER
-            owner_id = actor.id
-            template = CommentTemplate(
-                tenant_id=actor.tenant_id,
-                name=payload.name,
-                text=payload.text,
-                owner_type=owner_type,
-                teacher_membership_id=actor.id,
-            )
-        db.add(template)
-        await db.flush()
-        await ReportCommentService._replace_grade_mappings(
-            db,
-            template=template,
-            owner_type=owner_type,
-            owner_id=owner_id,
-            grading_scale_ids=payload.grading_scale_ids,
-            default_grading_scale_ids=payload.default_grading_scale_ids,
-        )
-        await db.commit()
-        await db.refresh(template)
-        return await ReportCommentService._template_response(db, template)
+        return [ReportCommentService._template_response(item) for item in templates]
 
     @staticmethod
     async def _owned_template(
@@ -330,6 +170,137 @@ class ReportCommentService:
         return template
 
     @staticmethod
+    async def _validate_non_overlapping_range(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        owner_type: CommentTemplateOwnerType,
+        owner_id: uuid.UUID,
+        minimum_score: Decimal,
+        maximum_score: Decimal,
+        excluding_template_id: uuid.UUID | None = None,
+    ) -> None:
+        """Reject inclusive overlap while allowing duplicate exact ranges.
+
+        The Alembic trigger enforces the same rule under concurrent writes. This
+        service validation exists to return a useful HTTP conflict before flush.
+        """
+
+        if minimum_score < 0 or maximum_score > 100 or minimum_score > maximum_score:
+            raise BadRequestException("Comment score ranges must stay between 0 and 100.")
+
+        query = (
+            select(CommentTemplate)
+            .where(
+                CommentTemplate.tenant_id == tenant_id,
+                CommentTemplate.status != CommentTemplateStatus.ARCHIVED,
+                *ReportCommentService._owner_filters(owner_type, owner_id),
+            )
+            .with_for_update()
+        )
+        if excluding_template_id is not None:
+            query = query.where(CommentTemplate.id != excluding_template_id)
+        rows = list((await db.execute(query)).scalars())
+        for row in rows:
+            row_min = Decimal(row.minimum_score)
+            row_max = Decimal(row.maximum_score)
+            if row_min == minimum_score and row_max == maximum_score:
+                continue
+            if minimum_score <= row_max and maximum_score >= row_min:
+                raise ConflictException(
+                    f"Performance range {minimum_score}-{maximum_score}% overlaps "
+                    f"the existing {row_min}-{row_max}% range."
+                )
+
+    @staticmethod
+    async def _ensure_exact_range_default(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        owner_type: CommentTemplateOwnerType,
+        owner_id: uuid.UUID,
+        minimum_score: Decimal,
+        maximum_score: Decimal,
+        preferred_template_id: uuid.UUID | None = None,
+    ) -> None:
+        rows = list(
+            (
+                await db.execute(
+                    select(CommentTemplate)
+                    .where(
+                        CommentTemplate.tenant_id == tenant_id,
+                        CommentTemplate.status == CommentTemplateStatus.ACTIVE,
+                        CommentTemplate.minimum_score == minimum_score,
+                        CommentTemplate.maximum_score == maximum_score,
+                        *ReportCommentService._owner_filters(owner_type, owner_id),
+                    )
+                    .order_by(CommentTemplate.created_at.asc(), CommentTemplate.id.asc())
+                    .with_for_update()
+                )
+            ).scalars()
+        )
+        if not rows:
+            return
+
+        preferred = None
+        if preferred_template_id is not None:
+            preferred = next((row for row in rows if row.id == preferred_template_id), None)
+        if preferred is None:
+            preferred = next((row for row in rows if row.is_default), None) or rows[0]
+
+        for row in rows:
+            target = row.id == preferred.id
+            if row.is_default != target:
+                row.is_default = target
+                db.add(row)
+
+    @staticmethod
+    async def create_template(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin | TeacherMembership,
+        payload: CommentTemplateCreate,
+    ) -> CommentTemplateResponse:
+        owner_type, owner_id = ReportCommentService._actor_owner(actor)
+        if isinstance(actor, TeacherMembership):
+            await ReportCommentService._require_class_teacher_capability(db, actor)
+
+        minimum_score = Decimal(payload.minimum_score)
+        maximum_score = Decimal(payload.maximum_score)
+        await ReportCommentService._validate_non_overlapping_range(
+            db,
+            tenant_id=actor.tenant_id,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            minimum_score=minimum_score,
+            maximum_score=maximum_score,
+        )
+        template = CommentTemplate(
+            tenant_id=actor.tenant_id,
+            text=payload.text,
+            minimum_score=minimum_score,
+            maximum_score=maximum_score,
+            is_default=False,
+            owner_type=owner_type,
+            tenant_admin_id=actor.id if isinstance(actor, TenantAdmin) else None,
+            teacher_membership_id=actor.id if isinstance(actor, TeacherMembership) else None,
+        )
+        db.add(template)
+        await db.flush()
+        await ReportCommentService._ensure_exact_range_default(
+            db,
+            tenant_id=actor.tenant_id,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            minimum_score=minimum_score,
+            maximum_score=maximum_score,
+            preferred_template_id=template.id if payload.is_default else None,
+        )
+        await db.commit()
+        await db.refresh(template)
+        return ReportCommentService._template_response(template)
+
+    @staticmethod
     async def update_template(
         db: AsyncSession,
         *,
@@ -337,40 +308,89 @@ class ReportCommentService:
         template_id: uuid.UUID,
         payload: CommentTemplateUpdate,
     ) -> CommentTemplateResponse:
-        owner_type = (
-            CommentTemplateOwnerType.TENANT_ADMIN
-            if isinstance(actor, TenantAdmin)
-            else CommentTemplateOwnerType.TEACHER
-        )
-        if not isinstance(actor, TenantAdmin) and payload.status != CommentTemplateStatus.ARCHIVED:
+        owner_type, owner_id = ReportCommentService._actor_owner(actor)
+        if (
+            isinstance(actor, TeacherMembership)
+            and payload.status != CommentTemplateStatus.ARCHIVED
+        ):
             await ReportCommentService._require_class_teacher_capability(db, actor)
+
         template = await ReportCommentService._owned_template(
             db,
             tenant_id=actor.tenant_id,
             owner_type=owner_type,
-            owner_id=actor.id,
+            owner_id=owner_id,
             template_id=template_id,
             lock=True,
         )
         if template.status == CommentTemplateStatus.ARCHIVED:
             raise BadRequestException("Archived templates are immutable.")
-        for field in ("name", "text", "status"):
-            value = getattr(payload, field)
-            if value is not None:
-                setattr(template, field, value)
-        if payload.grading_scale_ids is not None:
-            await ReportCommentService._replace_grade_mappings(
+
+        old_min = Decimal(template.minimum_score)
+        old_max = Decimal(template.maximum_score)
+        old_default = bool(template.is_default)
+        new_min = Decimal(payload.minimum_score) if payload.minimum_score is not None else old_min
+        new_max = Decimal(payload.maximum_score) if payload.maximum_score is not None else old_max
+        target_status = payload.status or template.status
+
+        if target_status != CommentTemplateStatus.ARCHIVED:
+            await ReportCommentService._validate_non_overlapping_range(
                 db,
-                template=template,
+                tenant_id=actor.tenant_id,
                 owner_type=owner_type,
-                owner_id=actor.id,
-                grading_scale_ids=payload.grading_scale_ids,
-                default_grading_scale_ids=payload.default_grading_scale_ids or [],
+                owner_id=owner_id,
+                minimum_score=new_min,
+                maximum_score=new_max,
+                excluding_template_id=template.id,
             )
+        if payload.is_default is True and target_status != CommentTemplateStatus.ACTIVE:
+            raise ConflictException("Only an active comment can be the default for a range.")
+
+        if payload.text is not None:
+            template.text = payload.text
+        template.minimum_score = new_min
+        template.maximum_score = new_max
+        template.status = target_status
+
+        range_changed = old_min != new_min or old_max != new_max
+        if target_status != CommentTemplateStatus.ACTIVE:
+            template.is_default = False
+        elif payload.is_default is True:
+            template.is_default = True
+        elif payload.is_default is False:
+            template.is_default = False
+        elif range_changed:
+            template.is_default = False
+        else:
+            template.is_default = old_default
+
         db.add(template)
+        await db.flush()
+
+        if range_changed or target_status != CommentTemplateStatus.ACTIVE:
+            await ReportCommentService._ensure_exact_range_default(
+                db,
+                tenant_id=actor.tenant_id,
+                owner_type=owner_type,
+                owner_id=owner_id,
+                minimum_score=old_min,
+                maximum_score=old_max,
+            )
+        if target_status == CommentTemplateStatus.ACTIVE:
+            preferred = template.id if payload.is_default is True else None
+            await ReportCommentService._ensure_exact_range_default(
+                db,
+                tenant_id=actor.tenant_id,
+                owner_type=owner_type,
+                owner_id=owner_id,
+                minimum_score=new_min,
+                maximum_score=new_max,
+                preferred_template_id=preferred,
+            )
+
         await db.commit()
         await db.refresh(template)
-        return await ReportCommentService._template_response(db, template)
+        return ReportCommentService._template_response(template)
 
     @staticmethod
     async def delete_template(
@@ -379,16 +399,12 @@ class ReportCommentService:
         actor: TenantAdmin | TeacherMembership,
         template_id: uuid.UUID,
     ) -> None:
-        owner_type = (
-            CommentTemplateOwnerType.TENANT_ADMIN
-            if isinstance(actor, TenantAdmin)
-            else CommentTemplateOwnerType.TEACHER
-        )
+        owner_type, owner_id = ReportCommentService._actor_owner(actor)
         template = await ReportCommentService._owned_template(
             db,
             tenant_id=actor.tenant_id,
             owner_type=owner_type,
-            owner_id=actor.id,
+            owner_id=owner_id,
             template_id=template_id,
             lock=True,
         )
@@ -416,40 +432,81 @@ class ReportCommentService:
             raise ConflictException(
                 "Referenced templates cannot be deleted; deactivate or archive the template instead."
             )
+
+        minimum_score = Decimal(template.minimum_score)
+        maximum_score = Decimal(template.maximum_score)
+        was_active = template.status == CommentTemplateStatus.ACTIVE
         await db.delete(template)
+        await db.flush()
+        if was_active:
+            await ReportCommentService._ensure_exact_range_default(
+                db,
+                tenant_id=actor.tenant_id,
+                owner_type=owner_type,
+                owner_id=owner_id,
+                minimum_score=minimum_score,
+                maximum_score=maximum_score,
+            )
         await db.commit()
 
     @staticmethod
-    async def default_template_for_grade(
+    async def templates_for_performance(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
         owner_type: CommentTemplateOwnerType,
         owner_id: uuid.UUID,
-        grading_scale_id: uuid.UUID,
-    ) -> CommentTemplateResponse | None:
+        performance_percentage: Decimal,
+    ) -> list[CommentTemplateResponse]:
+        score = Decimal(performance_percentage)
         rows = list(
             (
                 await db.execute(
                     select(CommentTemplate)
-                    .join(
-                        CommentTemplateGradeMapping,
-                        CommentTemplateGradeMapping.comment_template_id == CommentTemplate.id,
-                    )
                     .where(
                         CommentTemplate.tenant_id == tenant_id,
                         CommentTemplate.status == CommentTemplateStatus.ACTIVE,
-                        CommentTemplateGradeMapping.tenant_id == tenant_id,
-                        CommentTemplateGradeMapping.grading_scale_id == grading_scale_id,
-                        CommentTemplateGradeMapping.is_default.is_(True),
+                        CommentTemplate.minimum_score <= score,
+                        CommentTemplate.maximum_score >= score,
                         *ReportCommentService._owner_filters(owner_type, owner_id),
                     )
+                    .order_by(CommentTemplate.is_default.desc(), CommentTemplate.created_at.asc())
                 )
             ).scalars()
         )
-        if len(rows) > 1:
-            raise ConflictException("Multiple personal default templates exist for this grade.")
-        return await ReportCommentService._template_response(db, rows[0]) if rows else None
+        if not rows:
+            return []
+        ranges = {(Decimal(row.minimum_score), Decimal(row.maximum_score)) for row in rows}
+        if len(ranges) > 1:
+            raise ConflictException(
+                "Overlapping active performance comment ranges exist. Resolve the range configuration."
+            )
+        return [ReportCommentService._template_response(row) for row in rows]
+
+    @staticmethod
+    async def default_template_for_performance(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        owner_type: CommentTemplateOwnerType,
+        owner_id: uuid.UUID,
+        performance_percentage: Decimal,
+    ) -> CommentTemplateResponse | None:
+        matches = await ReportCommentService.templates_for_performance(
+            db,
+            tenant_id=tenant_id,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            performance_percentage=performance_percentage,
+        )
+        if not matches:
+            return None
+        defaults = [item for item in matches if item.is_default]
+        if len(defaults) != 1:
+            raise ConflictException(
+                "Every active performance range must have exactly one default comment."
+            )
+        return defaults[0]
 
     @staticmethod
     async def _academic_readiness(
@@ -460,41 +517,23 @@ class ReportCommentService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> tuple[bool, Decimal | None, GradingScale | None]:
-        expected = await CurriculumResolutionService.resolve_student_curriculum(
+        snapshot = await ReportReadinessService.resolve_result_readiness(
             db,
-            tenant_id=tenant_id,
-            student_id=student_id,
-            academic_term_id=academic_term_id,
-        )
-        if not expected:
-            return False, None, None
-        results, _ = await StudentAcademicRepository.list_results(
-            db=db,
             tenant_id=tenant_id,
             student_id=student_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
-            finalized_only=True,
-            limit=500,
         )
-        by_curriculum = {item.curriculum_subject_id: item for item in results}
-        expected_ids = {item.curriculum_subject_id for item in expected}
-        if not expected_ids.issubset(by_curriculum) or any(
-            by_curriculum[item_id].status != AcademicResultStatus.LOCKED for item_id in expected_ids
-        ):
-            return False, None, None
-        applicable = [by_curriculum[item_id] for item_id in expected_ids]
-        average = sum((item.total_score for item in applicable), Decimal("0")) / Decimal(
-            len(applicable)
-        )
-        grading_scale = await StudentAcademicRepository.find_grade_for_score(
-            db=db,
+        if not snapshot.complete or snapshot.performance_percentage is None:
+            return False, snapshot.performance_percentage, None
+        grading_scale = await ReportReadinessService.grading_scale_for_snapshot(
+            db,
             tenant_id=tenant_id,
-            score=average,
+            snapshot=snapshot,
         )
         if grading_scale is None:
-            return False, average, None
-        return True, average, grading_scale
+            return False, snapshot.performance_percentage, None
+        return True, snapshot.performance_percentage, grading_scale
 
     @staticmethod
     async def _current_comment_context(
@@ -525,11 +564,12 @@ class ReportCommentService:
         return enrollment, classroom
 
     @staticmethod
-    async def _active_teacher_template(
+    async def _active_teacher_template_for_performance(
         db: AsyncSession,
         *,
         teacher: TeacherMembership,
         template_id: uuid.UUID,
+        performance_percentage: Decimal,
     ) -> CommentTemplate:
         template = await ReportCommentService._owned_template(
             db,
@@ -540,6 +580,14 @@ class ReportCommentService:
         )
         if template.status != CommentTemplateStatus.ACTIVE:
             raise BadRequestException("Inactive or archived templates cannot be used.")
+        if not (
+            Decimal(template.minimum_score)
+            <= performance_percentage
+            <= Decimal(template.maximum_score)
+        ):
+            raise BadRequestException(
+                "The selected saved comment does not match this student's overall performance range."
+            )
         return template
 
     @staticmethod
@@ -558,29 +606,40 @@ class ReportCommentService:
             academic_session_id=payload.academic_session_id,
         )
         await ReportCommentService._require_class_teacher_capability(
-            db, teacher, class_id=classroom.id
+            db,
+            teacher,
+            class_id=classroom.id,
         )
         if classroom.teacher_membership_id != teacher.id:
             raise ForbiddenException("Only the student's explicit class teacher can comment.")
-        ready, average, grading_scale = await ReportCommentService._academic_readiness(
+
+        (
+            ready,
+            performance_percentage,
+            grading_scale,
+        ) = await ReportCommentService._academic_readiness(
             db,
             tenant_id=teacher.tenant_id,
             student_id=student_id,
             academic_session_id=payload.academic_session_id,
             academic_term_id=payload.academic_term_id,
         )
-        if not ready or average is None or grading_scale is None:
+        if not ready or performance_percentage is None or grading_scale is None:
             if submit:
                 raise BadRequestException(
                     "Teacher comments cannot be submitted until all expected results are locked."
                 )
-            average = average or Decimal("0")
+            performance_percentage = performance_percentage or Decimal("0")
             grade_snapshot = grading_scale.grade if grading_scale else "Pending"
         else:
             grade_snapshot = grading_scale.grade
+
         if payload.source_template_id is not None:
-            await ReportCommentService._active_teacher_template(
-                db, teacher=teacher, template_id=payload.source_template_id
+            await ReportCommentService._active_teacher_template_for_performance(
+                db,
+                teacher=teacher,
+                template_id=payload.source_template_id,
+                performance_percentage=performance_percentage,
             )
 
         comment = (
@@ -603,19 +662,29 @@ class ReportCommentService:
                 academic_session_id=payload.academic_session_id,
                 academic_term_id=payload.academic_term_id,
                 teacher_membership_id=teacher.id,
-                average_snapshot=average,
+                average_snapshot=performance_percentage,
                 grade_snapshot=grade_snapshot,
                 comment_text=payload.comment_text,
                 source_template_id=payload.source_template_id,
             )
         else:
-            comment.average_snapshot = average
+            comment.average_snapshot = performance_percentage
             comment.grade_snapshot = grade_snapshot
             comment.comment_text = payload.comment_text
             comment.source_template_id = payload.source_template_id
         comment.status = TeacherCommentStatus.SUBMITTED if submit else TeacherCommentStatus.DRAFT
         comment.submitted_at = datetime.now(timezone.utc) if submit else None
         db.add(comment)
+
+        # A report snapshot is no longer authoritative if its effective teacher
+        # comment changes after generation.
+        await ReportCardRepository.mark_outdated_for_student_period(
+            db,
+            teacher.tenant_id,
+            student_id,
+            payload.academic_session_id,
+            payload.academic_term_id,
+        )
         await db.commit()
         await db.refresh(comment)
         return TeacherCommentResponse.model_validate(comment)
@@ -629,7 +698,11 @@ class ReportCommentService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> TeacherStudentCommentListResponse:
-        await ReportCommentService._require_class_teacher_capability(db, teacher, class_id=class_id)
+        await ReportCommentService._require_class_teacher_capability(
+            db,
+            teacher,
+            class_id=class_id,
+        )
         enrollments = await StudentEnrollmentRepository.list_current_for_class_session(
             db,
             teacher.tenant_id,
@@ -639,11 +712,17 @@ class ReportCommentService:
         rows: list[TeacherStudentCommentRow] = []
         for enrollment in enrollments:
             student = await StudentRepository.get_by_id(
-                db, teacher.tenant_id, enrollment.student_id
+                db,
+                teacher.tenant_id,
+                enrollment.student_id,
             )
             if student is None:
                 continue
-            ready, average, grading_scale = await ReportCommentService._academic_readiness(
+            (
+                ready,
+                performance_percentage,
+                grading_scale,
+            ) = await ReportCommentService._academic_readiness(
                 db,
                 tenant_id=teacher.tenant_id,
                 student_id=student.id,
@@ -670,20 +749,21 @@ class ReportCommentService:
             if comment is not None and comment.status == TeacherCommentStatus.SUBMITTED:
                 if (
                     not ready
-                    or average != comment.average_snapshot
+                    or performance_percentage != comment.average_snapshot
                     or grading_scale is None
                     or grading_scale.grade != comment.grade_snapshot
                 ):
                     comment.status = TeacherCommentStatus.NEEDS_REVIEW
                     db.add(comment)
+
             suggested = None
-            if grading_scale is not None:
-                suggested = await ReportCommentService.default_template_for_grade(
+            if performance_percentage is not None:
+                suggested = await ReportCommentService.default_template_for_performance(
                     db,
                     tenant_id=teacher.tenant_id,
                     owner_type=CommentTemplateOwnerType.TEACHER,
                     owner_id=teacher.id,
-                    grading_scale_id=grading_scale.id,
+                    performance_percentage=performance_percentage,
                 )
             status = (
                 comment.status.value
@@ -700,7 +780,7 @@ class ReportCommentService:
                     admission_number=student.admission_number,
                     academic_ready=ready,
                     readiness_label="READY FOR COMMENT" if ready else "WAITING FOR RESULTS",
-                    average=average,
+                    average=performance_percentage,
                     overall_grade=grading_scale.grade if grading_scale else None,
                     comment=(TeacherCommentResponse.model_validate(comment) if comment else None),
                     comment_status=status,
@@ -724,6 +804,12 @@ class ReportCommentService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> None:
+        await ReportReadinessCache.invalidate_context(
+            tenant_id=tenant_id,
+            student_id=student_id,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+        )
         comments = list(
             (
                 await db.execute(
@@ -749,6 +835,11 @@ class ReportCommentService:
         student_id: uuid.UUID,
         academic_session_id: uuid.UUID,
     ) -> None:
+        await ReportReadinessCache.invalidate_student_session(
+            tenant_id=tenant_id,
+            student_id=student_id,
+            academic_session_id=academic_session_id,
+        )
         comments = list(
             (
                 await db.execute(
@@ -790,6 +881,13 @@ class ReportCommentService:
             reason=payload.reason,
         )
         db.add(override)
+        await ReportCardRepository.mark_outdated_for_student_period(
+            db,
+            admin.tenant_id,
+            payload.student_id,
+            payload.academic_session_id,
+            payload.academic_term_id,
+        )
         await db.commit()
         await db.refresh(override)
         return TeacherCommentOverrideResponse.model_validate(override)
@@ -859,7 +957,11 @@ class ReportCommentService:
             raise BadRequestException(
                 "Teacher comment is missing or needs review; an explicit admin override is required."
             )
-        ready, average, grading_scale = await ReportCommentService._academic_readiness(
+        (
+            ready,
+            performance_percentage,
+            grading_scale,
+        ) = await ReportCommentService._academic_readiness(
             db,
             tenant_id=tenant_id,
             student_id=student_id,
@@ -868,7 +970,7 @@ class ReportCommentService:
         )
         if (
             not ready
-            or average != comment.average_snapshot
+            or performance_percentage != comment.average_snapshot
             or grading_scale is None
             or grading_scale.grade != comment.grade_snapshot
         ):
@@ -888,23 +990,16 @@ class ReportCommentService:
         )
 
     @staticmethod
-    async def principal_default_for_average(
+    async def principal_default_for_performance(
         db: AsyncSession,
         *,
         admin: TenantAdmin,
-        average: Decimal,
+        performance_percentage: Decimal,
     ) -> CommentTemplateResponse | None:
-        scale = await StudentAcademicRepository.find_grade_for_score(
-            db=db,
-            tenant_id=admin.tenant_id,
-            score=average,
-        )
-        if scale is None:
-            return None
-        return await ReportCommentService.default_template_for_grade(
+        return await ReportCommentService.default_template_for_performance(
             db,
             tenant_id=admin.tenant_id,
             owner_type=CommentTemplateOwnerType.TENANT_ADMIN,
             owner_id=admin.id,
-            grading_scale_id=scale.id,
+            performance_percentage=performance_percentage,
         )

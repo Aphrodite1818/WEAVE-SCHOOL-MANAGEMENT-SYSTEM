@@ -167,6 +167,13 @@ async def get_current_actor(token: TokenDependency, db: DbDependency) -> Current
             actor_id=actor_id,
             tenant_id=tenant_id,
         )
+        if tenant_id is not None:
+            from app.modules.students.lifecycle_service import StudentLifecycleService
+
+            await StudentLifecycleService.activate_due_returns_for_tenant(
+                db,
+                tenant_id=tenant_id,
+            )
     except (JWTError, ValueError, TypeError) as exc:
         raise UnauthorizedException("Could not validate credentials") from exc
 

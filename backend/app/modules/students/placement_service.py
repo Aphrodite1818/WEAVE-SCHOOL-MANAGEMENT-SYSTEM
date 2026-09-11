@@ -30,11 +30,13 @@ from app.modules.student_academics.curriculum_models import ClassTermDepartmentA
 from app.modules.student_academics.curriculum_service import CurriculumResolutionService
 from app.modules.student_academics.lifecycle_repository import AcademicSessionLifecycleRepository
 from app.modules.student_academics.models import (
+    AcademicLifecycleAudit,
     AcademicSession,
     AcademicSessionStatus,
     StudentSubjectResult,
 )
 from app.modules.student_academics.write_guard import ensure_academic_write_window
+from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.enrollment_schemas import (
     PlacementImpactPreviewRequest,
     PlacementImpactPreviewResponse,
@@ -43,14 +45,20 @@ from app.modules.students.enrollment_schemas import (
     StudentClassPlacementRequest,
     StudentClassPlacementResponse,
     StudentClassReassignmentRequest,
+    StudentUpcomingEnrollmentUpdateRequest,
 )
 from app.modules.students.models import (
     AcademicStatus,
     StudentEnrollment,
     StudentEnrollmentOutcome,
 )
+from app.modules.students.enrollment_evidence import StudentEnrollmentEvidenceService
 from app.modules.students.repository import StudentEnrollmentRepository, StudentRepository
-from app.modules.students.schemas import StudentDetailResponse, StudentEnrollmentDetailResponse
+from app.modules.students.schemas import (
+    StudentDetailResponse,
+    StudentEnrollmentDetailResponse,
+    StudentLifecycleReasonRequest,
+)
 from app.modules.students.service import StudentService
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.tenant_admins.models import TenantAdmin
@@ -110,8 +118,10 @@ class StudentPlacementService:
                     "class_arm",
                     "academic_level_name",
                     "academic_session_name",
+                    "lifecycle_state",
                 }
             )
+            today = date.today()
             output.append(
                 StudentEnrollmentDetailResponse(
                     **base,
@@ -119,6 +129,13 @@ class StudentPlacementService:
                     class_arm=arm_label.label if arm_label else None,
                     academic_level_name=level.name,
                     academic_session_name=session.name,
+                    lifecycle_state=(
+                        "upcoming"
+                        if enrollment.started_on > today
+                        else "current"
+                        if enrollment.ended_on is None or enrollment.ended_on >= today
+                        else "historical"
+                    ),
                 )
             )
         return output
@@ -236,6 +253,56 @@ class StudentPlacementService:
             db.add(card)
 
     @staticmethod
+    async def _correct_same_day_placement(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        enrollment: StudentEnrollment,
+        target_academic_level_id: UUID,
+        target_class_id: UUID,
+        reason: str,
+    ) -> None:
+        counts = await StudentEnrollmentEvidenceService.segment_dependency_counts(
+            db,
+            tenant_id=actor.tenant_id,
+            enrollment_id=enrollment.id,
+        )
+        blockers = {name: count for name, count in counts.items() if count > 0}
+        if blockers:
+            raise ConflictException(
+                "This same-day placement can no longer be corrected because academic activity "
+                "already depends on it. Use a later reassignment instead.",
+                payload={"dependency_counts": blockers},
+            )
+
+        previous_level_id = enrollment.academic_level_id
+        previous_class_id = enrollment.class_id
+        enrollment.academic_level_id = target_academic_level_id
+        enrollment.class_id = target_class_id
+        await StudentEnrollmentRepository.save(db, enrollment)
+        await StudentAcademicRepository.add_academic_lifecycle_audit(
+            db,
+            AcademicLifecycleAudit(
+                tenant_id=actor.tenant_id,
+                entity_type="student",
+                entity_id=enrollment.student_id,
+                action="student_placement_corrected",
+                previous_status="placed",
+                new_status="placed",
+                acting_admin_id=actor.id,
+                reason=reason,
+                metadata_json={
+                    "enrollment_id": str(enrollment.id),
+                    "effective_date": enrollment.started_on.isoformat(),
+                    "previous_academic_level_id": str(previous_level_id),
+                    "previous_class_id": str(previous_class_id) if previous_class_id else None,
+                    "new_academic_level_id": str(target_academic_level_id),
+                    "new_class_id": str(target_class_id),
+                },
+            ),
+        )
+
+    @staticmethod
     async def place_class(
         db: AsyncSession,
         *,
@@ -340,15 +407,46 @@ class StudentPlacementService:
         )
         if current is None or current.academic_session_id != session.id:
             raise ConflictException("Student has no current enrollment for this session.")
+        if (
+            await StudentEnrollmentRepository.get_upcoming(
+                db,
+                tenant_id,
+                student.id,
+                lock=True,
+            )
+            is not None
+        ):
+            raise ConflictException(
+                "Student already has an upcoming enrollment. Edit or cancel it first.",
+                payload={"code": "UPCOMING_ENROLLMENT_EXISTS"},
+            )
         if current.class_id is None:
             raise ConflictException("Unassigned students must use Class Placement.")
         if target_class.academic_level_id != current.academic_level_id:
             raise BadRequestException("Reassign Class cannot change academic level.")
         if target_class.id == current.class_id:
             raise ConflictException("Student is already in the target class.")
+        if payload.effective_date == current.started_on == date.today():
+            await StudentPlacementService._correct_same_day_placement(
+                db,
+                actor=actor,
+                enrollment=current,
+                target_academic_level_id=current.academic_level_id,
+                target_class_id=target_class.id,
+                reason=payload.reason,
+            )
+            await StudentPlacementService._invalidate_derived_context(
+                db,
+                tenant_id=tenant_id,
+                student_id=student.id,
+                academic_session_id=current.academic_session_id,
+            )
+            await db.commit()
+            return await StudentService.get_student_profile(db, actor, student.id)
         if payload.effective_date <= current.started_on:
             raise BadRequestException(
-                "Reassignment effective date must be after the current placement start."
+                "Reassignment must follow the current placement start. Only a placement that "
+                "started today can be corrected on the same date."
             )
 
         await StudentPlacementService._close_segment(
@@ -408,11 +506,42 @@ class StudentPlacementService:
         )
         if current is None or current.academic_session_id != session.id:
             raise ConflictException("Student has no current enrollment for this session.")
+        if (
+            await StudentEnrollmentRepository.get_upcoming(
+                db,
+                tenant_id,
+                student.id,
+                lock=True,
+            )
+            is not None
+        ):
+            raise ConflictException(
+                "Student already has an upcoming enrollment. Edit or cancel it first.",
+                payload={"code": "UPCOMING_ENROLLMENT_EXISTS"},
+            )
         if current.academic_level_id == payload.target_academic_level_id:
             raise BadRequestException("Use Reassign Class for a same-level move.")
+        if payload.effective_date == current.started_on == date.today():
+            await StudentPlacementService._correct_same_day_placement(
+                db,
+                actor=actor,
+                enrollment=current,
+                target_academic_level_id=payload.target_academic_level_id,
+                target_class_id=target_class.id,
+                reason=payload.reason,
+            )
+            await StudentPlacementService._invalidate_derived_context(
+                db,
+                tenant_id=tenant_id,
+                student_id=student.id,
+                academic_session_id=current.academic_session_id,
+            )
+            await db.commit()
+            return await StudentService.get_student_profile(db, actor, student.id)
         if payload.effective_date <= current.started_on:
             raise BadRequestException(
-                "Reassignment effective date must be after the current placement start."
+                "Reassignment must follow the current placement start. Only a placement that "
+                "started today can be corrected on the same date."
             )
 
         await StudentPlacementService._close_segment(
@@ -442,6 +571,247 @@ class StudentPlacementService:
             academic_session_id=current.academic_session_id,
         )
         await db.commit()
+        return await StudentService.get_student_profile(db, actor, student.id)
+
+    @staticmethod
+    async def _require_editable_upcoming(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        student_id: UUID,
+        enrollment_id: UUID,
+    ) -> StudentEnrollment:
+        enrollment = await StudentEnrollmentRepository.get_by_id(
+            db,
+            tenant_id,
+            enrollment_id,
+            lock=True,
+        )
+        if enrollment is None or enrollment.student_id != student_id:
+            raise NotFoundException("Upcoming enrollment not found.")
+        if enrollment.started_on <= date.today():
+            raise ConflictException(
+                "This enrollment has already become effective and cannot be edited as upcoming.",
+                payload={"code": "ENROLLMENT_ALREADY_EFFECTIVE"},
+            )
+        counts = await StudentEnrollmentEvidenceService.segment_dependency_counts(
+            db,
+            tenant_id=tenant_id,
+            enrollment_id=enrollment.id,
+        )
+        blockers = {name: count for name, count in counts.items() if count > 0}
+        if blockers:
+            raise ConflictException(
+                "Protected academic evidence prevents changing this upcoming enrollment.",
+                payload={
+                    "code": "UPCOMING_ENROLLMENT_EVIDENCE_EXISTS",
+                    "dependency_counts": blockers,
+                },
+            )
+        return enrollment
+
+    @staticmethod
+    def _takeover_predecessor(
+        upcoming: StudentEnrollment,
+        history: list[StudentEnrollment],
+    ) -> StudentEnrollment | None:
+        takeover_outcomes = {
+            StudentEnrollmentOutcome.RECLASSIFIED,
+            StudentEnrollmentOutcome.LEVEL_REASSIGNED,
+        }
+        if upcoming.entry_outcome not in takeover_outcomes:
+            return None
+        expected_end = upcoming.started_on - timedelta(days=1)
+        return next(
+            (
+                row
+                for row in history
+                if row.id != upcoming.id
+                and row.ended_on == expected_end
+                and row.exit_outcome == upcoming.entry_outcome
+            ),
+            None,
+        )
+
+    @staticmethod
+    async def update_upcoming_enrollment(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+        enrollment_id: UUID,
+        payload: StudentUpcomingEnrollmentUpdateRequest,
+    ) -> StudentDetailResponse:
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        student = await StudentRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            student_id,
+            lock=True,
+            include_archived=True,
+        )
+        if student is None:
+            raise NotFoundException("Student not found.")
+        upcoming = await StudentPlacementService._require_editable_upcoming(
+            db,
+            tenant_id=actor.tenant_id,
+            student_id=student_id,
+            enrollment_id=enrollment_id,
+        )
+        if payload.effective_date <= date.today():
+            raise BadRequestException("Upcoming enrollment must start after today.")
+        session = await StudentPlacementService._require_open_session(
+            db,
+            tenant_id=actor.tenant_id,
+            academic_session_id=payload.academic_session_id,
+        )
+        if session.start_date is not None and payload.effective_date < session.start_date:
+            raise BadRequestException("Enrollment cannot start before the academic session.")
+        if session.end_date is not None and payload.effective_date > session.end_date:
+            raise BadRequestException("Enrollment cannot start after the academic session.")
+        classroom = await StudentPlacementService._require_target_class(
+            db,
+            tenant_id=actor.tenant_id,
+            class_id=payload.target_class_id,
+        )
+        if classroom.academic_level_id != payload.target_academic_level_id:
+            raise BadRequestException("Target class does not belong to the target academic level.")
+
+        history = await StudentEnrollmentRepository.list_for_student(
+            db,
+            actor.tenant_id,
+            student_id,
+        )
+        previous_values = {
+            "academic_level_id": str(upcoming.academic_level_id),
+            "class_id": str(upcoming.class_id),
+            "academic_session_id": str(upcoming.academic_session_id),
+            "started_on": upcoming.started_on.isoformat(),
+        }
+        predecessor = StudentPlacementService._takeover_predecessor(upcoming, history)
+        prior_rows = [row for row in history if row.id != upcoming.id]
+        if predecessor is not None:
+            if payload.effective_date <= predecessor.started_on:
+                raise BadRequestException(
+                    "Upcoming enrollment must start after the current placement begins."
+                )
+            predecessor.ended_on = payload.effective_date - timedelta(days=1)
+            db.add(predecessor)
+        else:
+            previous = max(
+                (row for row in prior_rows if row.ended_on is not None),
+                key=lambda row: row.ended_on,
+                default=None,
+            )
+            if previous is not None and payload.effective_date <= previous.ended_on:
+                raise ConflictException(
+                    f"This student's previous enrollment ends on {previous.ended_on.isoformat()}. "
+                    f"Choose {previous.ended_on + timedelta(days=1)} or later.",
+                    payload={"code": "ENROLLMENT_DATE_OVERLAP"},
+                )
+
+        upcoming.academic_level_id = payload.target_academic_level_id
+        upcoming.class_id = classroom.id
+        upcoming.academic_session_id = session.id
+        upcoming.started_on = payload.effective_date
+        upcoming.entry_reason = payload.reason
+        try:
+            await StudentEnrollmentRepository.save(db, upcoming)
+            await StudentAcademicRepository.add_academic_lifecycle_audit(
+                db,
+                AcademicLifecycleAudit(
+                    tenant_id=actor.tenant_id,
+                    entity_type="student_enrollment",
+                    entity_id=upcoming.id,
+                    action="upcoming_enrollment_updated",
+                    acting_admin_id=actor.id,
+                    reason=payload.reason,
+                    metadata_json={
+                        "student_id": str(student.id),
+                        "previous": previous_values,
+                        "new": {
+                            "academic_level_id": str(upcoming.academic_level_id),
+                            "class_id": str(upcoming.class_id),
+                            "academic_session_id": str(upcoming.academic_session_id),
+                            "started_on": upcoming.started_on.isoformat(),
+                        },
+                    },
+                ),
+            )
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                "Student enrollment overlaps existing placement history.",
+                payload={"code": "ENROLLMENT_OVERLAP"},
+            ) from exc
+        return await StudentService.get_student_profile(db, actor, student.id)
+
+    @staticmethod
+    async def cancel_upcoming_enrollment(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+        enrollment_id: UUID,
+        payload: StudentLifecycleReasonRequest,
+    ) -> StudentDetailResponse:
+        await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
+        student = await StudentRepository.get_by_id(
+            db,
+            actor.tenant_id,
+            student_id,
+            lock=True,
+            include_archived=True,
+        )
+        if student is None:
+            raise NotFoundException("Student not found.")
+        upcoming = await StudentPlacementService._require_editable_upcoming(
+            db,
+            tenant_id=actor.tenant_id,
+            student_id=student_id,
+            enrollment_id=enrollment_id,
+        )
+        history = await StudentEnrollmentRepository.list_for_student(
+            db,
+            actor.tenant_id,
+            student_id,
+        )
+        predecessor = StudentPlacementService._takeover_predecessor(upcoming, history)
+        identity_deactivated = False
+        await db.delete(upcoming)
+        await db.flush()
+        if predecessor is not None:
+            predecessor.ended_on = None
+            predecessor.exit_outcome = None
+            predecessor.exit_reason = None
+            predecessor.ended_by_admin_id = None
+            await StudentEnrollmentRepository.save(db, predecessor)
+        elif student.status not in {AcademicStatus.ACTIVE, AcademicStatus.SUSPENDED}:
+            from app.modules.auth_identity.models import ActorType
+            from app.modules.auth_identity.service import AuthIdentityService
+
+            await AuthIdentityService.deactivate_for_actor(
+                db,
+                actor_type=ActorType.STUDENT,
+                actor_id=student.id,
+            )
+            identity_deactivated = True
+        await StudentAcademicRepository.add_academic_lifecycle_audit(
+            db,
+            AcademicLifecycleAudit(
+                tenant_id=actor.tenant_id,
+                entity_type="student_enrollment",
+                entity_id=enrollment_id,
+                action="upcoming_enrollment_cancelled",
+                acting_admin_id=actor.id,
+                reason=payload.reason,
+                metadata_json={"student_id": str(student.id)},
+            ),
+        )
+        await db.commit()
+        if identity_deactivated:
+            await AuthIdentityService.invalidate_after_commit(db)
         return await StudentService.get_student_profile(db, actor, student.id)
 
     @staticmethod

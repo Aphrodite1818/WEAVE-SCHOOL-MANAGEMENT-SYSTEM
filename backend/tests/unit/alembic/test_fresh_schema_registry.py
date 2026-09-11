@@ -1,9 +1,14 @@
 """Regression checks for the fresh Alembic schema baseline."""
 
+from pathlib import Path
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import configure_mappers
 
 import app.models  # noqa: F401
+from app.config.database_bootstrap import BASELINE_REVISION
 from app.modules.student_academics.models import StudentProgressionRun
 from app.shared.base_model import Base
 
@@ -42,7 +47,6 @@ CRITICAL_TABLES = {
     "report_card_subject_lines",
     "report_card_subject_components",
     "comment_templates",
-    "comment_template_grade_mappings",
     "student_term_teacher_comments",
     "teacher_comment_overrides",
     "cbt_servers",
@@ -61,6 +65,17 @@ OBSOLETE_ACADEMIC_TABLES = {
     "level_subjects",
     "student_department_assignments",
 }
+
+
+def test_alembic_has_one_initial_baseline_head() -> None:
+    backend_root = Path(__file__).resolve().parents[3]
+    config = Config(str(backend_root / "alembic.ini"))
+    script = ScriptDirectory.from_config(config)
+
+    assert script.get_heads() == [BASELINE_REVISION]
+    revision = script.get_revision(BASELINE_REVISION)
+    assert revision is not None
+    assert revision.down_revision is None
 
 
 def test_model_registry_contains_critical_fresh_schema_tables() -> None:

@@ -64,41 +64,45 @@ test("report-card workspace uses authoritative readiness and audited teacher ove
     "ReportCardsWorkspace.jsx",
   );
 
-  assert.match(workspace, /report_readiness === "ready"/);
+  assert.match(workspace, /report_readiness !== "ready"/);
   assert.match(workspace, /teacher_comment_status/);
   assert.match(workspace, /overrideTeacherComment/);
   assert.match(workspace, /Audit reason/);
   assert.match(workspace, /apply_default_principal_template/);
   assert.match(workspace, /principal_template_id/);
-  assert.match(workspace, /Create replacement v/);
+  assert.match(workspace, /Create editable revision/);
+  assert.match(workspace, /Regenerate draft/);
   assert.doesNotMatch(workspace, /generate_for_class/);
 });
 
-test("class report generation always uses the admins per-grade principal defaults", () => {
+test("class report generation uses the admins performance-range defaults", () => {
   const workspace = readSource(
     "features",
     "academic-admin",
     "ReportCardsWorkspace.jsx",
   );
 
-  assert.match(workspace, /if \(generationTarget === "class"\)/);
+  assert.match(workspace, /generationTarget === "class"/);
   assert.match(workspace, /payload\.apply_default_principal_template = true/);
-  assert.match(workspace, /Each student receives your\s+default principal comment for their calculated grade/);
+  assert.match(
+    workspace,
+    /Each student receives your default active principal comment for the inclusive performance range/,
+  );
 });
 
-test("individual principal comment choices are scoped to the students calculated grade", () => {
+test("individual principal comment choices are scoped to calculated performance", () => {
   const workspace = readSource(
     "features",
     "academic-admin",
     "ReportCardsWorkspace.jsx",
   );
 
-  assert.match(workspace, /scaleIdByGrade/);
-  assert.match(workspace, /optionsForGradeId/);
-  assert.match(workspace, /grading_scale_ids/);
-  assert.match(workspace, /selectedStudentGradeId/);
-  assert.match(workspace, /principalEditorGradeId/);
-  assert.match(workspace, /Default for this grade/);
+  assert.match(workspace, /templatesForPerformance/);
+  assert.match(workspace, /performance_percentage/);
+  assert.match(workspace, /minimum_score/);
+  assert.match(workspace, /maximum_score/);
+  assert.match(workspace, /principalEditor\.card\.average_score/);
+  assert.match(workspace, /Use my performance-range default/);
 });
 
 test("teacher navigation and guide expose comments but no score-entry authority", () => {
@@ -116,7 +120,7 @@ test("teacher navigation and guide expose comments but no score-entry authority"
   assert.doesNotMatch(guide, /entering attendance or scores/);
 });
 
-test("personal comment editors ask for text and one grade, never a template name", () => {
+test("personal comment editors ask for text and one performance range", () => {
   const admin = readSource(
     "features",
     "academic-admin",
@@ -130,26 +134,28 @@ test("personal comment editors ask for text and one grade, never a template name
 
   for (const source of [admin, teacher]) {
     assert.doesNotMatch(source, /Template name/);
-    assert.match(source, /grading_scale_id/);
+    assert.match(source, /minimum_score/);
+    assert.match(source, /maximum_score/);
     assert.match(source, /is_default/);
-    assert.match(source, /New comment/);
+    assert.match(source, /New range comment/);
     assert.match(source, /Make default/);
-    assert.match(source, /default for this grade/i);
+    assert.match(source, /default for this exact range/i);
   }
 });
 
-test("teacher student-comment picker is scoped to the calculated grade", () => {
+test("teacher student-comment picker is scoped to calculated performance", () => {
   const source = readSource(
     "pages",
     "teacher",
     "TeacherStudentCommentsPage.jsx",
   );
 
-  assert.match(source, /listTeacherGradingScales/);
+  assert.match(source, /listTeacherTemplates/);
   assert.match(source, /overall_grade/);
-  assert.match(source, /grading_scale_ids/);
+  assert.match(source, /minimum_score/);
+  assert.match(source, /maximum_score/);
   assert.match(source, /Default suggestion/);
-  assert.match(source, /My Grade \$\{editor\.row\.overall_grade/);
+  assert.match(source, /editor\.row\.average/);
   assert.doesNotMatch(source, /suggested_template\.name/);
 });
 

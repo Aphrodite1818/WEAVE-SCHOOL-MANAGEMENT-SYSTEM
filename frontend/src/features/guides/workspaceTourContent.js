@@ -154,7 +154,11 @@ const upgradeCopy = {
   ],
 };
 
-export function tourContentForItem(role, item, { dedicated = false } = {}) {
+export function tourContentForItem(
+  role,
+  item,
+  { dedicated = false, dedicatedKind = null } = {},
+) {
   const segment = item.to.split("/").filter(Boolean).at(-1);
   let entry = dedicated
     ? upgradeCopy[segment] || [
@@ -163,6 +167,26 @@ export function tourContentForItem(role, item, { dedicated = false } = {}) {
         ["New on this plan", "Available now", "Admin workspace"],
       ]
     : copy[segment] || copy.dashboard;
+  if (dedicatedKind === "class-duties" && role === "teacher") {
+    const classDutyCopy = {
+      classes: [
+        "Your class is now available",
+        "Review the class placed under your care without mixing it with the subject rosters you teach.",
+        ["Your assigned class", "Class roster", "Clear responsibility"],
+      ],
+      "student-comments": [
+        "Complete student comments",
+        "Review finalized performance and prepare the class-teacher comment used on each student's report card.",
+        ["Comment readiness", "Draft and review", "Final submission"],
+      ],
+      "comment-templates": [
+        "Save reusable comment wording",
+        "Prepare personal comment templates for performance ranges, then review the wording before applying it to a student.",
+        ["Performance ranges", "Saved wording", "Your defaults"],
+      ],
+    };
+    entry = classDutyCopy[segment] || entry;
+  }
   if (!dedicated && role === "teacher" && segment === "students")
     entry = [
       "Meet the students you teach",

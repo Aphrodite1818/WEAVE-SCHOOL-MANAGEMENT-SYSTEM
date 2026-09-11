@@ -12,6 +12,7 @@ from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.schemas import LoginSessionUser
 from app.modules.auth.service import AuthenticatedActor
 from app.modules.auth_identity.models import ActorType, IdentifierType
+from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.students.models import AcademicStatus, StudentAccountStatus
 from app.modules.students.repository import (
@@ -29,14 +30,27 @@ async def authenticate_student_actor(
     credential: str,
 ) -> AuthenticatedActor:
     normalized = admission_number.strip().upper()
+    resolved_inactive_identity = False
     try:
         resolution = await AuthIdentityService.resolve_identifier(
             db,
             identifier=normalized,
             identifier_type=IdentifierType.ADMISSION_NUMBER,
         )
-    except NotFoundException as exc:
-        raise UnauthorizedException("Invalid admission number or credential.") from exc
+    except NotFoundException:
+        # Terminal lifecycle actions deactivate the canonical login identity. A
+        # scheduled formal return keeps it inactive until the enrollment becomes
+        # effective, so login may inspect the inactive identity only to determine
+        # whether that return is due. Non-due inactive identities still fail with
+        # the generic invalid-credential response to avoid account enumeration.
+        resolution = await AuthIdentityRepository.get_by_identifier(
+            db,
+            normalized,
+            IdentifierType.ADMISSION_NUMBER,
+        )
+        if resolution is None:
+            raise UnauthorizedException("Invalid admission number or credential.")
+        resolved_inactive_identity = True
 
     if resolution.actor_type != ActorType.STUDENT or resolution.tenant_id is None:
         raise UnauthorizedException("Invalid admission number or credential.")
@@ -55,6 +69,12 @@ async def authenticate_student_actor(
         resolution.actor_id,
     )
     if student is None:
+        raise UnauthorizedException("Invalid admission number or credential.")
+
+    from app.modules.students.lifecycle_service import StudentLifecycleService
+
+    activated_due_return = await StudentLifecycleService.activate_due_return(db, student=student)
+    if resolved_inactive_identity and not activated_due_return:
         raise UnauthorizedException("Invalid admission number or credential.")
 
     if student.status == AcademicStatus.EXPELLED:

@@ -301,6 +301,10 @@ class AuthSessionService:
                 session.tenant_id,
                 session.actor_id,
             )
+            if student is not None:
+                from app.modules.students.lifecycle_service import StudentLifecycleService
+
+                await StudentLifecycleService.activate_due_return(db, student=student)
             if (
                 student is None
                 or not student.is_active

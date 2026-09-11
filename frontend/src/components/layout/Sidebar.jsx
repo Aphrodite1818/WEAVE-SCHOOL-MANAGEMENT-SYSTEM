@@ -3,8 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { isFeatureAvailable } from "../../features/navigation/featureAvailability";
+import useCbtHistoricalAccess from "../../features/cbt/useCbtHistoricalAccess";
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
+import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
 import { authSession } from "../../services/api";
 import { cn } from "../../utils/cn";
 import WeaveIcon from "../brand/WeaveIcon";
@@ -34,7 +37,9 @@ export default function SidebarContent({
 }) {
   const location = useLocation();
   const subscription = useSubscription();
+  const cbtAccess = useCbtHistoricalAccess({ enabled: role === "admin" });
   const runtimeConfig = useRuntimeConfig();
+  const { hasClassTeacherDuties } = useTeacherClassDutyAccess();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -48,6 +53,11 @@ export default function SidebarContent({
     subscription,
     runtimeFeatures: runtimeConfig?.features || {},
     isAccountScope,
+    hasClassTeacherDuties,
+    historicalFeatures: {
+      [FEATURE_CODES.CBT_PAIRING]:
+        cbtAccess.source === "history" && cbtAccess.allowed,
+    },
   };
   const groups = (navGroups[role] || navGroups.admin)
     .map((group) => ({

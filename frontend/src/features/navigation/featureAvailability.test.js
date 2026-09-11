@@ -37,6 +37,21 @@ test("pending and denied subscription features are hidden", () => {
   );
 });
 
+test("historical access can preserve a denied feature destination", () => {
+  const result = resolveFeatureAvailability(
+    { featureCode: "cbt_pairing", allowHistoricalAccess: true },
+    {
+      subscription: subscription({
+        guard: { allowed: false, pending: false },
+      }),
+      historicalFeatures: { cbt_pairing: true },
+    },
+  );
+
+  assert.equal(result.visible, true);
+  assert.equal(result.reason, "historical-access");
+});
+
 test("free trial keeps bulk import out of navigation and tour surfaces", () => {
   const result = resolveFeatureAvailability(
     { featureCode: "bulk_import" },
@@ -55,6 +70,19 @@ test("account-scoped actors only see account-scoped destinations", () => {
     { isAccountScope: true },
   );
   assert.deepEqual(visible.map((item) => item.to), ["/teacher/schools"]);
+});
+
+test("class-teacher destinations are hidden until a current class is assigned", () => {
+  const item = {
+    to: "/teacher/student-comments",
+    requiresClassTeacher: true,
+  };
+
+  assert.equal(resolveFeatureAvailability(item).visible, false);
+  assert.equal(
+    resolveFeatureAvailability(item, { hasClassTeacherDuties: true }).visible,
+    true,
+  );
 });
 
 test("legacy guide feature flags remain opt-in", () => {
