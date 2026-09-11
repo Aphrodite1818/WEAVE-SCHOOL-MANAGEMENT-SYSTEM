@@ -70,7 +70,9 @@ export default function useOnboardingGate({ role, enabled = true }) {
         }
       } catch {
         if (mounted) {
-          setOnboardingState((current) => ({ ...current, loading: false }));
+          // Unknown onboarding state must never be interpreted as completed.
+          // Keep first-run progression blocked until a later mount can confirm it.
+          setOnboardingState((current) => ({ ...current, loading: true }));
         }
       }
     }
@@ -98,7 +100,7 @@ export default function useOnboardingGate({ role, enabled = true }) {
       try {
         await queueInitialTour(
           normalizedRole,
-          completedInitialOnboarding && normalizedRole !== "admin",
+          completedInitialOnboarding,
           guideService,
         );
       } catch {
