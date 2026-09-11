@@ -186,9 +186,7 @@ class ConflictException(AppException):
         blocker_messages = normalized_payload.get("blocker_messages")
         if isinstance(blocker_messages, list):
             concrete_blockers = [
-                str(message).strip()
-                for message in blocker_messages
-                if str(message).strip()
+                str(message).strip() for message in blocker_messages if str(message).strip()
             ]
             if concrete_blockers:
                 detail = " ".join(concrete_blockers)
