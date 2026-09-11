@@ -116,18 +116,18 @@ export default function useWorkspaceTour({
     const nextState = await refreshState();
     if (canAutoShowTour(nextState) && !claimed.current) {
       claimed.current = true;
-      const saved = await saveState({
+      setInitialWelcome(true);
+      setResumeIndex(-1);
+      setOpen(true);
+
+      // The overlay is claimed before persistence. Once a welcome has been
+      // presented, persist it as resumable rather than as a dead-end "seen"
+      // state so an interrupted first run always leaves a dashboard reminder.
+      await saveState({
         status: "in_progress",
-        current_step: TOUR_SEEN_STEP,
+        current_step: pausedTourStep(-1),
         remind_after: null,
       });
-      if (!saved?.sync_pending) {
-        setInitialWelcome(true);
-        setResumeIndex(-1);
-        setOpen(true);
-      } else {
-        claimed.current = false;
-      }
       return;
     }
 
@@ -145,24 +145,20 @@ export default function useWorkspaceTour({
     if (!canAutoShowTour(dutyState) || claimed.current) return;
 
     claimed.current = true;
-    const saved = await guideService.updateState(
-      TEACHER_CLASS_DUTIES_GUIDE_KEY,
-      {
-        status: "in_progress",
-        current_step: TOUR_SEEN_STEP,
-        remind_after: null,
-      },
-    );
-    if (!saved?.sync_pending) {
-      setInitialWelcome(false);
-      setClassDutyTour(true);
-      setDedicated(true);
-      setFocusRoutes(TEACHER_CLASS_DUTY_ROUTES);
-      setResumeIndex(0);
-      setOpen(true);
-    } else {
-      claimed.current = false;
-    }
+    setInitialWelcome(false);
+    setClassDutyTour(true);
+    setDedicated(true);
+    setFocusRoutes(TEACHER_CLASS_DUTY_ROUTES);
+    setResumeIndex(0);
+    setOpen(true);
+
+    // Class-duty guides are dedicated one-shot announcements. Open first so a
+    // slow or failed state write cannot suppress the UI that earned the claim.
+    await guideService.updateState(TEACHER_CLASS_DUTIES_GUIDE_KEY, {
+      status: "in_progress",
+      current_step: TOUR_SEEN_STEP,
+      remind_after: null,
+    });
   }, [
     enabled,
     hasClassTeacherDuties,
@@ -198,11 +194,6 @@ export default function useWorkspaceTour({
       cancelled = true;
     };
   }, [checkWelcome, identityKey, navigationKey, queueVersion]);
-
-  useEffect(() => {
-    if (!enabled || !key) return;
-    refreshState().catch(() => {});
-  }, [enabled, key, refreshState]);
 
   useEffect(() => {
     const queued = (event) => {
