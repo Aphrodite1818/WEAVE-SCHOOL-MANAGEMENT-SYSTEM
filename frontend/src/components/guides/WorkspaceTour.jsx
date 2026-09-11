@@ -261,7 +261,7 @@ export default function WorkspaceTour({
             bottom <= top + height - mobileGutter;
           const overlapsTarget =
             targetBox &&
-            left < targetBox.left &&
+            left < targetBox.left + targetBox.width &&
             right > targetBox.left &&
             candidate.top < targetBox.top + targetBox.height &&
             bottom > targetBox.top;
