@@ -162,16 +162,37 @@ class AcademicProgressionService:
 
         tenant = await TenantRepository.get_by_id(db, run.tenant_id)
 
+        target_session_start: date | None = None
+        if run.next_academic_session_id is not None:
+            result = await db.execute(
+                select(AcademicSession.start_date)
+                .where(
+                    AcademicSession.tenant_id == run.tenant_id,
+                    AcademicSession.id == run.next_academic_session_id,
+                )
+                .with_for_update()
+            )
+            target_session_start = result.scalar_one_or_none()
+
         target_enrollments: dict[uuid.UUID, StudentEnrollment] = {}
-        if student_ids and run.next_academic_session_id is not None:
+        if student_ids and target_session_start is not None:
             result = await db.execute(
                 select(StudentEnrollment)
                 .where(
                     StudentEnrollment.tenant_id == run.tenant_id,
                     StudentEnrollment.student_id.in_(student_ids),
                     StudentEnrollment.academic_session_id == run.next_academic_session_id,
+                    StudentEnrollment.started_on <= target_session_start,
+                    (
+                        StudentEnrollment.ended_on.is_(None)
+                        | (StudentEnrollment.ended_on >= target_session_start)
+                    ),
                 )
-                .order_by(StudentEnrollment.student_id.asc(), StudentEnrollment.created_at.asc())
+                .order_by(
+                    StudentEnrollment.student_id.asc(),
+                    StudentEnrollment.started_on.desc(),
+                    StudentEnrollment.created_at.desc(),
+                )
                 .with_for_update()
             )
             for enrollment in result.scalars().all():
@@ -337,12 +358,29 @@ class AcademicProgressionService:
                     StudentEnrollment.tenant_id == tenant_id,
                     StudentEnrollment.student_id == student.id,
                     StudentEnrollment.academic_session_id == next_session.id,
+                    StudentEnrollment.started_on <= next_session.start_date,
+                    (
+                        StudentEnrollment.ended_on.is_(None)
+                        | (StudentEnrollment.ended_on >= next_session.start_date)
+                    ),
                 )
-                .order_by(StudentEnrollment.created_at.asc())
+                .order_by(
+                    StudentEnrollment.started_on.desc(),
+                    StudentEnrollment.created_at.desc(),
+                )
                 .limit(1)
                 .with_for_update()
             )
             existing_target = result.scalar_one_or_none()
+
+        if existing_target is not None and not (
+            existing_target.started_on <= next_session.start_date
+            and (
+                existing_target.ended_on is None
+                or existing_target.ended_on >= next_session.start_date
+            )
+        ):
+            existing_target = None
 
         if existing_target is not None:
             if existing_target.academic_level_id != target_level.id:
