@@ -551,53 +551,36 @@ class StudentAcademicRepository:
         await db.flush()
         return results
 
-
-
     @staticmethod
     async def get_component_scores_batch(
-        db : AsyncSession,
-        tenant_id : uuid.UUID,
-        result_ids : set[uuid.UUID],
-        assessment_component_id : uuid.UUID,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        result_ids: set[uuid.UUID],
+        assessment_component_id: uuid.UUID,
         *,
-        lock : bool = False
-    ):# -> dict | dict[UUID, StudentAssessmentScore]:
+        lock: bool = False,
+    ):  # -> dict | dict[UUID, StudentAssessmentScore]:
         """
         Load one assessment component score accross many subject results.
 
         The returned mapping is Keyed by student_subject_result_id
         """
 
-
         if not result_ids:
             return {}
-
 
         query = select(StudentAssessmentScore).where(
             StudentAssessmentScore.tenant_id == tenant_id,
             StudentAssessmentScore.student_subject_result_id.in_(result_ids),
-            StudentAssessmentScore.assessment_component_id == assessment_component_id
+            StudentAssessmentScore.assessment_component_id == assessment_component_id,
         )
-
 
         if lock:
             query = query.with_for_update()
 
+        rows = list((await db.execute(query)).scalars().all())
 
-        rows  = list(
-            (
-                await db.execute(query)
-            )
-            .scalars()
-            .all()
-        )
-
-        return {
-            score.student_subject_result_id : score
-            for score in rows 
-        }
-
-
+        return {score.student_subject_result_id: score for score in rows}
 
     @staticmethod
     async def add_component_scores_batch(
@@ -618,7 +601,6 @@ class StudentAcademicRepository:
         await db.flush()
 
         return scores
-
 
     @staticmethod
     async def list_result_component_scores(
