@@ -17,6 +17,7 @@ from app.modules.classes.models import (
     AcademicLevel,
     AcademicLevelDepartment,
     AcademicLevelStatus,
+    ArmLabel,
     ClassRoom,
     Department,
 )
@@ -151,16 +152,22 @@ class AcademicCurriculumService:
         return row, curriculum, subject
 
     @staticmethod
-    async def _subject_department_scopes(
+    async def _subject_department_scope_map(
         db: AsyncSession,
-        row: CurriculumSubject,
-    ) -> list[CurriculumSubjectDepartmentResponse]:
-        scopes = (
+        *,
+        tenant_id: uuid.UUID,
+        curriculum_subject_ids: list[uuid.UUID] | set[uuid.UUID],
+    ) -> dict[uuid.UUID, list[CurriculumSubjectDepartmentResponse]]:
+        subject_ids = list(dict.fromkeys(curriculum_subject_ids))
+        if not subject_ids:
+            return {}
+        rows = (
             await db.execute(
                 select(
-                    CurriculumSubjectDepartment,
-                    AcademicLevelDepartment,
-                    Department,
+                    CurriculumSubjectDepartment.curriculum_subject_id,
+                    AcademicLevelDepartment.id,
+                    Department.id,
+                    Department.name,
                 )
                 .join(
                     AcademicLevelDepartment,
@@ -169,28 +176,46 @@ class AcademicCurriculumService:
                 )
                 .join(Department, Department.id == AcademicLevelDepartment.department_id)
                 .where(
-                    CurriculumSubjectDepartment.tenant_id == row.tenant_id,
-                    CurriculumSubjectDepartment.curriculum_subject_id == row.id,
-                    AcademicLevelDepartment.tenant_id == row.tenant_id,
-                    Department.tenant_id == row.tenant_id,
+                    CurriculumSubjectDepartment.tenant_id == tenant_id,
+                    CurriculumSubjectDepartment.curriculum_subject_id.in_(subject_ids),
+                    AcademicLevelDepartment.tenant_id == tenant_id,
+                    Department.tenant_id == tenant_id,
                 )
-                .order_by(Department.name)
+                .order_by(CurriculumSubjectDepartment.curriculum_subject_id, Department.name)
             )
         ).all()
-        return [
-            CurriculumSubjectDepartmentResponse(
-                academic_level_department_id=link.id,
-                department_id=department.id,
-                department_name=department.name,
+        result: dict[uuid.UUID, list[CurriculumSubjectDepartmentResponse]] = {
+            subject_id: [] for subject_id in subject_ids
+        }
+        for curriculum_subject_id, link_id, department_id, department_name in rows:
+            result.setdefault(curriculum_subject_id, []).append(
+                CurriculumSubjectDepartmentResponse(
+                    academic_level_department_id=link_id,
+                    department_id=department_id,
+                    department_name=department_name,
+                )
             )
-            for _scope, link, department in scopes
-        ]
+        return result
+
+    @staticmethod
+    async def _subject_department_scopes(
+        db: AsyncSession,
+        row: CurriculumSubject,
+    ) -> list[CurriculumSubjectDepartmentResponse]:
+        scopes = await AcademicCurriculumService._subject_department_scope_map(
+            db,
+            tenant_id=row.tenant_id,
+            curriculum_subject_ids=[row.id],
+        )
+        return scopes.get(row.id, [])
 
     @staticmethod
     async def _curriculum_subject_response(
         db: AsyncSession,
         row: CurriculumSubject,
         subject: Subject | None = None,
+        *,
+        departments: list[CurriculumSubjectDepartmentResponse] | None = None,
     ) -> CurriculumSubjectResponse:
         if subject is None:
             subject = (
@@ -203,6 +228,8 @@ class AcademicCurriculumService:
             ).scalar_one_or_none()
         if subject is None:
             raise NotFoundException("Subject not found.")
+        if departments is None:
+            departments = await AcademicCurriculumService._subject_department_scopes(db, row)
         return CurriculumSubjectResponse(
             id=row.id,
             tenant_id=row.tenant_id,
@@ -212,7 +239,7 @@ class AcademicCurriculumService:
             subject_code=subject.code,
             is_elective=row.is_elective,
             is_active=row.is_active,
-            departments=await AcademicCurriculumService._subject_department_scopes(db, row),
+            departments=departments,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -255,24 +282,34 @@ class AcademicCurriculumService:
             tenant_id=tenant_id,
             academic_level_id=academic_level_id,
         )
-        result: list[AcademicLevelDepartment] = []
-        for link_id in ids:
-            link = await AcademicLevelDepartmentRepository.get_by_id(
-                db, tenant_id, link_id, lock=True
-            )
-            if link is None or link.academic_level_id != academic_level_id:
-                raise ConflictException(
-                    "Every selected department must be enabled for this academic level."
+        requested_ids = list(dict.fromkeys(ids))
+        rows = (
+            await db.execute(
+                select(AcademicLevelDepartment, Department)
+                .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                .where(
+                    AcademicLevelDepartment.tenant_id == tenant_id,
+                    AcademicLevelDepartment.academic_level_id == academic_level_id,
+                    AcademicLevelDepartment.id.in_(requested_ids),
+                    Department.tenant_id == tenant_id,
                 )
+                .with_for_update()
+            )
+        ).all()
+        by_id = {link.id: (link, department) for link, department in rows}
+        if set(by_id) != set(requested_ids):
+            raise ConflictException(
+                "Every selected department must be enabled for this academic level."
+            )
+        for link, department in by_id.values():
             if (
                 not link.is_active
                 or link.archived_at is not None
-                or not link.department.is_active
-                or link.department.archived_at is not None
+                or not department.is_active
+                or department.archived_at is not None
             ):
                 raise ConflictException("Every selected level department must be active.")
-            result.append(link)
-        return result
+        return [by_id[link_id][0] for link_id in requested_ids]
 
     @staticmethod
     async def _replace_department_scopes(
@@ -333,13 +370,23 @@ class AcademicCurriculumService:
                 .order_by(Subject.name)
             )
         ).all()
+        scope_map = await AcademicCurriculumService._subject_department_scope_map(
+            db,
+            tenant_id=tenant_id,
+            curriculum_subject_ids=[item.id for item, _subject in rows],
+        )
         return CurriculumResponse(
             id=curriculum.id,
             tenant_id=tenant_id,
             academic_level_id=level_id,
             level_name=level.name if level else None,
             subjects=[
-                await AcademicCurriculumService._curriculum_subject_response(db, item, subject)
+                await AcademicCurriculumService._curriculum_subject_response(
+                    db,
+                    item,
+                    subject,
+                    departments=scope_map.get(item.id, []),
+                )
                 for item, subject in rows
             ],
         )
@@ -550,27 +597,63 @@ class AcademicCurriculumService:
         return response
 
     @staticmethod
+    async def _class_department_responses(
+        db: AsyncSession,
+        rows: list[ClassTermDepartmentAssignment],
+    ) -> list[ClassTermDepartmentResponse]:
+        if not rows:
+            return []
+        tenant_id = rows[0].tenant_id
+        link_ids = {row.academic_level_department_id for row in rows}
+        contexts = (
+            await db.execute(
+                select(
+                    AcademicLevelDepartment.id,
+                    AcademicLevelDepartment.department_id,
+                    Department.name,
+                )
+                .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                .where(
+                    AcademicLevelDepartment.tenant_id == tenant_id,
+                    AcademicLevelDepartment.id.in_(link_ids),
+                    Department.tenant_id == tenant_id,
+                )
+            )
+        ).all()
+        by_link_id = {
+            link_id: (department_id, department_name)
+            for link_id, department_id, department_name in contexts
+        }
+        responses: list[ClassTermDepartmentResponse] = []
+        for row in rows:
+            context = by_link_id.get(row.academic_level_department_id)
+            if context is None:
+                raise ConflictException(
+                    "Class specialization references a missing level department."
+                )
+            department_id, department_name = context
+            responses.append(
+                ClassTermDepartmentResponse(
+                    id=row.id,
+                    tenant_id=row.tenant_id,
+                    class_id=row.class_id,
+                    academic_term_id=row.academic_term_id,
+                    academic_level_department_id=row.academic_level_department_id,
+                    department_id=department_id,
+                    department_name=department_name,
+                    assigned_by_admin_id=row.assigned_by_admin_id,
+                    created_at=row.created_at,
+                    updated_at=row.updated_at,
+                )
+            )
+        return responses
+
+    @staticmethod
     async def _class_department_response(
         db: AsyncSession,
         row: ClassTermDepartmentAssignment,
     ) -> ClassTermDepartmentResponse:
-        link = await AcademicLevelDepartmentRepository.get_by_id(
-            db, row.tenant_id, row.academic_level_department_id
-        )
-        if link is None:
-            raise ConflictException("Class specialization references a missing level department.")
-        return ClassTermDepartmentResponse(
-            id=row.id,
-            tenant_id=row.tenant_id,
-            class_id=row.class_id,
-            academic_term_id=row.academic_term_id,
-            academic_level_department_id=row.academic_level_department_id,
-            department_id=link.department_id,
-            department_name=link.department.name if link.department else None,
-            assigned_by_admin_id=row.assigned_by_admin_id,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
+        return (await AcademicCurriculumService._class_department_responses(db, [row]))[0]
 
     @staticmethod
     async def get_class_department(
@@ -613,7 +696,37 @@ class AcademicCurriculumService:
                 )
             ).scalars()
         )
-        return [await AcademicCurriculumService._class_department_response(db, row) for row in rows]
+        return await AcademicCurriculumService._class_department_responses(db, rows)
+
+    @staticmethod
+    async def _class_department_name_map(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        term_id: uuid.UUID,
+        class_ids: set[uuid.UUID],
+    ) -> dict[uuid.UUID, str | None]:
+        if not class_ids:
+            return {}
+        rows = (
+            await db.execute(
+                select(ClassTermDepartmentAssignment.class_id, Department.name)
+                .join(
+                    AcademicLevelDepartment,
+                    AcademicLevelDepartment.id
+                    == ClassTermDepartmentAssignment.academic_level_department_id,
+                )
+                .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                .where(
+                    ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                    ClassTermDepartmentAssignment.academic_term_id == term_id,
+                    ClassTermDepartmentAssignment.class_id.in_(class_ids),
+                    AcademicLevelDepartment.tenant_id == tenant_id,
+                    Department.tenant_id == tenant_id,
+                )
+            )
+        ).all()
+        return {class_id: department_name for class_id, department_name in rows}
 
     @staticmethod
     async def _subject_ids_for_level_department(
@@ -876,32 +989,61 @@ class AcademicCurriculumService:
                 )
             ).scalars()
         )
+        candidates = [row for row in source_rows if row.class_id not in existing_class_ids]
+        candidate_class_ids = {row.class_id for row in candidates}
+        candidate_link_ids = {row.academic_level_department_id for row in candidates}
+
+        class_contexts: dict[uuid.UUID, tuple[ClassRoom, AcademicLevel]] = {}
+        if candidate_class_ids:
+            class_rows = (
+                await db.execute(
+                    select(ClassRoom, AcademicLevel)
+                    .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
+                    .where(
+                        ClassRoom.tenant_id == tenant_id,
+                        ClassRoom.id.in_(candidate_class_ids),
+                        ClassRoom.is_active.is_(True),
+                        ClassRoom.archived_at.is_(None),
+                        AcademicLevel.tenant_id == tenant_id,
+                        AcademicLevel.status == AcademicLevelStatus.ACTIVE,
+                    )
+                )
+            ).all()
+            class_contexts = {classroom.id: (classroom, level) for classroom, level in class_rows}
+
+        link_contexts: dict[uuid.UUID, tuple[AcademicLevelDepartment, Department]] = {}
+        if candidate_link_ids:
+            link_rows = (
+                await db.execute(
+                    select(AcademicLevelDepartment, Department)
+                    .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                    .where(
+                        AcademicLevelDepartment.tenant_id == tenant_id,
+                        AcademicLevelDepartment.id.in_(candidate_link_ids),
+                        AcademicLevelDepartment.is_active.is_(True),
+                        AcademicLevelDepartment.archived_at.is_(None),
+                        Department.tenant_id == tenant_id,
+                        Department.is_active.is_(True),
+                        Department.archived_at.is_(None),
+                    )
+                )
+            ).all()
+            link_contexts = {link.id: (link, department) for link, department in link_rows}
+
         copied_rows: list[ClassTermDepartmentAssignment] = []
-        skipped = 0
-        for source_row in source_rows:
-            if source_row.class_id in existing_class_ids:
+        skipped = len(source_rows) - len(candidates)
+        for source_row in candidates:
+            class_context = class_contexts.get(source_row.class_id)
+            link_context = link_contexts.get(source_row.academic_level_department_id)
+            if class_context is None or link_context is None:
                 skipped += 1
                 continue
-            classroom = await ClassRoomRepository.get_by_id(db, tenant_id, source_row.class_id)
-            link = await AcademicLevelDepartmentRepository.get_by_id(
-                db, tenant_id, source_row.academic_level_department_id
-            )
-            if (
-                classroom is None
-                or not classroom.is_active
-                or classroom.archived_at is not None
-                or link is None
-                or not link.is_active
-                or link.archived_at is not None
-            ):
+            classroom, level = class_context
+            link, _department = link_context
+            if link.academic_level_id != classroom.academic_level_id:
                 skipped += 1
                 continue
-            level = await AcademicLevelRepository.get_by_id(
-                db, tenant_id, classroom.academic_level_id
-            )
-            if level is None or not CurriculumResolutionService.specialization_is_active(
-                level, target
-            ):
+            if not CurriculumResolutionService.specialization_is_active(level, target):
                 skipped += 1
                 continue
             row = ClassTermDepartmentAssignment(
@@ -914,10 +1056,7 @@ class AcademicCurriculumService:
             db.add(row)
             copied_rows.append(row)
         await db.flush()
-        responses = [
-            await AcademicCurriculumService._class_department_response(db, row)
-            for row in copied_rows
-        ]
+        responses = await AcademicCurriculumService._class_department_responses(db, copied_rows)
         await db.commit()
         return ClassTermDepartmentCopyResponse(
             copied=len(copied_rows), skipped=skipped, assignments=responses
@@ -930,51 +1069,96 @@ class AcademicCurriculumService:
         tenant_id: uuid.UUID,
         term: AcademicTerm,
     ) -> tuple[dict[str, int], list[str]]:
+        """Validate minimum term structure and exact-term specialization in one contract."""
+
         levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, active_only=True)
-        required = {
-            level.id: level
-            for level in levels
-            if CurriculumResolutionService.specialization_is_active(level, term)
-        }
-        if not required:
-            return {"classes_missing_department": 0}, []
+        levels_by_id = {level.id: level for level in levels}
         classes = list(
             (
                 await db.execute(
                     select(ClassRoom).where(
                         ClassRoom.tenant_id == tenant_id,
-                        ClassRoom.academic_level_id.in_(required),
                         ClassRoom.is_active.is_(True),
                         ClassRoom.archived_at.is_(None),
                     )
                 )
             ).scalars()
         )
-        class_ids = {row.id for row in classes}
-        assigned = set()
-        if class_ids:
-            assigned = set(
-                (
-                    await db.execute(
-                        select(ClassTermDepartmentAssignment.class_id).where(
-                            ClassTermDepartmentAssignment.tenant_id == tenant_id,
-                            ClassTermDepartmentAssignment.academic_term_id == term.id,
-                            ClassTermDepartmentAssignment.class_id.in_(class_ids),
-                        )
-                    )
-                ).scalars()
+        invalid_level_classes = [
+            classroom for classroom in classes if classroom.academic_level_id not in levels_by_id
+        ]
+        counts = {
+            "active_academic_levels": len(levels),
+            "active_classes": len(classes),
+            "classes_on_inactive_levels": len(invalid_level_classes),
+            "classes_missing_department": 0,
+        }
+        blockers: list[str] = []
+        if not levels:
+            blockers.append("Activate at least one academic level before opening the term.")
+        if not classes:
+            blockers.append("Create at least one active class before opening the term.")
+        if invalid_level_classes:
+            blockers.append(
+                f"{len(invalid_level_classes)} active classes belong to an inactive or missing academic level."
             )
+
+        required = {
+            level.id: level
+            for level in levels
+            if CurriculumResolutionService.specialization_is_active(level, term)
+        }
+        required_classes = [
+            classroom for classroom in classes if classroom.academic_level_id in required
+        ]
+        class_ids = {row.id for row in required_classes}
+        valid_assignments: set[uuid.UUID] = set()
+        if class_ids:
+            assignment_rows = (
+                await db.execute(
+                    select(
+                        ClassTermDepartmentAssignment.class_id,
+                        AcademicLevelDepartment.academic_level_id,
+                    )
+                    .join(
+                        AcademicLevelDepartment,
+                        AcademicLevelDepartment.id
+                        == ClassTermDepartmentAssignment.academic_level_department_id,
+                    )
+                    .join(Department, Department.id == AcademicLevelDepartment.department_id)
+                    .where(
+                        ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                        ClassTermDepartmentAssignment.academic_term_id == term.id,
+                        ClassTermDepartmentAssignment.class_id.in_(class_ids),
+                        AcademicLevelDepartment.tenant_id == tenant_id,
+                        AcademicLevelDepartment.is_active.is_(True),
+                        AcademicLevelDepartment.archived_at.is_(None),
+                        Department.tenant_id == tenant_id,
+                        Department.is_active.is_(True),
+                        Department.archived_at.is_(None),
+                    )
+                )
+            ).all()
+            level_by_class = {row.id: row.academic_level_id for row in required_classes}
+            valid_assignments = {
+                class_id
+                for class_id, level_id in assignment_rows
+                if level_by_class.get(class_id) == level_id
+            }
+
         missing_by_level: dict[uuid.UUID, int] = {}
-        for classroom in classes:
-            if classroom.id not in assigned:
+        for classroom in required_classes:
+            if classroom.id not in valid_assignments:
                 missing_by_level[classroom.academic_level_id] = (
                     missing_by_level.get(classroom.academic_level_id, 0) + 1
                 )
-        blockers = [
-            f"{count} {required[level_id].name} classes need a department specialization for {term.name.value.replace('_', ' ').title()}."
+        term_name = getattr(term.name, "value", str(term.name)).replace("_", " ").title()
+        blockers.extend(
+            f"{count} {required[level_id].name} classes need a valid active department specialization for {term_name}."
             for level_id, count in missing_by_level.items()
-        ]
-        return {"classes_missing_department": sum(missing_by_level.values())}, blockers
+        )
+        counts["classes_missing_department"] = sum(missing_by_level.values())
+        return counts, blockers
 
     @staticmethod
     async def update_specialization_policy(
@@ -1148,18 +1332,29 @@ class AcademicCurriculumService:
         )
         if not row.is_active:
             raise ConflictException("Curriculum subject is inactive.")
-        await AcademicCurriculumService._term(db, tenant_id, academic_term_id)
-        classes = list(
-            (
-                await db.execute(
-                    select(ClassRoom).where(
-                        ClassRoom.tenant_id == tenant_id,
-                        ClassRoom.academic_level_id == curriculum.academic_level_id,
-                        ClassRoom.is_active.is_(True),
-                        ClassRoom.archived_at.is_(None),
-                    )
+        class_rows = (
+            await db.execute(
+                select(ClassRoom, AcademicLevel, ArmLabel)
+                .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
+                .join(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
+                .where(
+                    ClassRoom.tenant_id == tenant_id,
+                    ClassRoom.academic_level_id == curriculum.academic_level_id,
+                    ClassRoom.is_active.is_(True),
+                    ClassRoom.archived_at.is_(None),
+                    AcademicLevel.tenant_id == tenant_id,
+                    AcademicLevel.status == AcademicLevelStatus.ACTIVE,
+                    ArmLabel.tenant_id == tenant_id,
                 )
-            ).scalars()
+            )
+        ).all()
+        class_ids = {classroom.id for classroom, _level, _arm in class_rows}
+        resolved_by_class = await CurriculumResolutionService.resolve_classes_subjects(
+            db,
+            tenant_id=tenant_id,
+            class_ids=class_ids,
+            academic_term_id=academic_term_id,
+            skip_unresolvable=True,
         )
         protected_assignments = set(
             (
@@ -1167,39 +1362,31 @@ class AcademicCurriculumService:
                     select(TeacherAssignment.class_id).where(
                         TeacherAssignment.tenant_id == tenant_id,
                         TeacherAssignment.curriculum_subject_id == row.id,
-                        # Current and future scheduled assignments both reserve
-                        # this class-subject slot. Only assignments already ended
-                        # before today are available for a new assignment.
                         (TeacherAssignment.effective_to.is_(None))
                         | (TeacherAssignment.effective_to >= date.today()),
                     )
                 )
             ).scalars()
         )
+        department_names = await AcademicCurriculumService._class_department_name_map(
+            db,
+            tenant_id=tenant_id,
+            term_id=academic_term_id,
+            class_ids=class_ids,
+        )
         result: list[EligibleTeacherAssignmentClassResponse] = []
-        for classroom in classes:
-            try:
-                subjects = await CurriculumResolutionService.resolve_class_subjects(
-                    db,
-                    tenant_id=tenant_id,
-                    class_id=classroom.id,
-                    academic_term_id=academic_term_id,
-                )
-            except ConflictException:
-                continue
+        for classroom, level, arm in class_rows:
+            subjects = resolved_by_class.get(classroom.id, [])
             if row.id not in {item.curriculum_subject_id for item in subjects}:
                 continue
-            department = await AcademicCurriculumService.get_class_department(
-                db, tenant_id, classroom.id, academic_term_id
-            )
             result.append(
                 EligibleTeacherAssignmentClassResponse(
                     class_id=classroom.id,
                     academic_level_id=classroom.academic_level_id,
-                    academic_level_name=classroom.academic_level_name,
-                    arm_label=classroom.arm_label,
-                    display_name=classroom.display_name,
-                    department_name=department.department_name if department else None,
+                    academic_level_name=level.name,
+                    arm_label=arm.label,
+                    display_name=f"{level.name} {arm.label}".strip(),
+                    department_name=department_names.get(classroom.id),
                     already_assigned=classroom.id in protected_assignments,
                 )
             )
@@ -1219,7 +1406,6 @@ class AcademicCurriculumService:
             academic_level_id,
             require_active_level=True,
         )
-        await AcademicCurriculumService._term(db, tenant_id, academic_term_id)
         curriculum_subject_ids = set(
             (
                 await db.execute(
@@ -1251,18 +1437,16 @@ class AcademicCurriculumService:
                 )
             ).scalars()
         )
+        resolved_by_class = await CurriculumResolutionService.resolve_classes_subjects(
+            db,
+            tenant_id=tenant_id,
+            class_ids={classroom.id for classroom in classes},
+            academic_term_id=academic_term_id,
+            skip_unresolvable=True,
+        )
         eligible_class_ids = {subject_id: set() for subject_id in curriculum_subject_ids}
         for classroom in classes:
-            try:
-                resolved_subjects = await CurriculumResolutionService.resolve_class_subjects(
-                    db,
-                    tenant_id=tenant_id,
-                    class_id=classroom.id,
-                    academic_term_id=academic_term_id,
-                )
-            except ConflictException:
-                continue
-            for resolved_subject in resolved_subjects:
+            for resolved_subject in resolved_by_class.get(classroom.id, []):
                 if resolved_subject.curriculum_subject_id in eligible_class_ids:
                     eligible_class_ids[resolved_subject.curriculum_subject_id].add(classroom.id)
 
@@ -1369,24 +1553,23 @@ class AcademicCurriculumService:
         if term.start_date is not None and boundary < term.start_date:
             boundary = term.start_date
 
-        cache: dict[uuid.UUID, set[uuid.UUID]] = {}
-        ineligible: list[TeacherAssignment] = []
-        for assignment in assignments:
-            eligible = cache.get(assignment.class_id)
-            if eligible is None:
-                try:
-                    resolved = await CurriculumResolutionService.resolve_class_subjects(
-                        db,
-                        tenant_id=tenant_id,
-                        class_id=assignment.class_id,
-                        academic_term_id=term.id,
-                    )
-                    eligible = {item.curriculum_subject_id for item in resolved}
-                except (ConflictException, NotFoundException):
-                    eligible = set()
-                cache[assignment.class_id] = eligible
-            if assignment.curriculum_subject_id not in eligible:
-                ineligible.append(assignment)
+        resolved_by_class = await CurriculumResolutionService.resolve_classes_subjects(
+            db,
+            tenant_id=tenant_id,
+            class_ids={assignment.class_id for assignment in assignments},
+            academic_term_id=term.id,
+            skip_unresolvable=True,
+        )
+        eligible_by_class = {
+            class_id: {item.curriculum_subject_id for item in subjects}
+            for class_id, subjects in resolved_by_class.items()
+        }
+        ineligible = [
+            assignment
+            for assignment in assignments
+            if assignment.curriculum_subject_id
+            not in eligible_by_class.get(assignment.class_id, set())
+        ]
 
         scheduled_conflicts = [
             assignment for assignment in ineligible if assignment.effective_from >= boundary

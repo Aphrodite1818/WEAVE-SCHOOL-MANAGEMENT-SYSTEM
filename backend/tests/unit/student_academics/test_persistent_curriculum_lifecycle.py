@@ -51,8 +51,8 @@ async def test_reconciliation_ends_removed_assignment_and_preserves_general() ->
     term = SimpleNamespace(id=uuid4(), start_date=boundary, end_date=boundary + timedelta(days=80))
 
     with patch(
-        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_class_subjects",
-        new=AsyncMock(return_value=resolved),
+        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_classes_subjects",
+        new=AsyncMock(return_value={removed.class_id: resolved}),
     ):
         counts = await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
             db, tenant_id=removed.tenant_id, term=term, acting_admin_id=uuid4()
@@ -76,8 +76,8 @@ async def test_future_assignment_blocks_transition_without_rewriting_history() -
     term = SimpleNamespace(id=uuid4(), start_date=boundary, end_date=boundary + timedelta(days=80))
 
     with patch(
-        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_class_subjects",
-        new=AsyncMock(return_value=[]),
+        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_classes_subjects",
+        new=AsyncMock(return_value={future.class_id: []}),
     ):
         with pytest.raises(ConflictException, match="scheduled teacher assignment"):
             await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
