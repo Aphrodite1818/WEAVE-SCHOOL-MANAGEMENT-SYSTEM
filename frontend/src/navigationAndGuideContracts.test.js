@@ -143,9 +143,16 @@ test("new tenant admins return to the dashboard after profile onboarding", () =>
     "layout",
     "useOnboardingGate.js",
   );
+  const orchestration = readSource(
+    "components",
+    "layout",
+    "onboardingOrchestration.js",
+  );
 
   assert.match(onboardingGate, /postOnboardingRoute\(normalizedRole\)/);
-  assert.match(onboardingGate, /profileMode === "onboarding"/);
+  assert.match(onboardingGate, /onboardingWasRequiredRef/);
+  assert.match(onboardingGate, /didCompleteInitialOnboarding/);
+  assert.match(orchestration, /profileMode === "onboarding"/);
   assert.match(
     onboardingGate,
     /admin: "\/admin\/dashboard"/,
@@ -227,7 +234,7 @@ test("admin setup completion does not requeue the first-run workspace tour", () 
   assert.match(guideService, /throw error;/);
   assert.match(
     onboardingGate,
-    /queueInitialTour\(\s*normalizedRole,\s*completedInitialOnboarding,\s*guideService,/,
+    /queueInitialTour\(\s*normalizedRole,\s*true,\s*guideService,\s*\{ requeueNonTerminal: true \},/,
   );
   assert.match(
     setupRoute,
