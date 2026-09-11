@@ -213,14 +213,27 @@ test("other role introductions offer an explicit tour and return to their dashbo
   assert.doesNotMatch(roleGuide, /markComplete|skipCurrent|guide\.start/);
 });
 
-test("admin setup completion queues the workspace tour before leaving setup", () => {
+test("admin setup completion does not requeue the first-run workspace tour", () => {
   const guideService = readSource("services", "guideService.js");
   const setupRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
+  const onboardingGate = readSource(
+    "components",
+    "layout",
+    "useOnboardingGate.js",
+  );
+
   assert.match(guideService, /const terminalWrite = TERMINAL_STATUSES\.has\(requestedStatus\)/);
   assert.match(guideService, /ensureTerminalConfirmation\(requestedStatus, response\)/);
   assert.match(guideService, /throw error;/);
-  assert.match(setupRoute, /await guide\.finish\(\);[\s\S]*queueInitialTour\("admin", true, guideService, \{[\s\S]*requeueNonTerminal: true/);
-  assert.match(setupRoute, /queueInitialTour[\s\S]*leaveGuideRoute/);
+  assert.match(
+    onboardingGate,
+    /queueInitialTour\(\s*normalizedRole,\s*completedInitialOnboarding,\s*guideService,/,
+  );
+  assert.match(
+    setupRoute,
+    /await guide\.finish\(\);[\s\S]*leaveGuideRoute\("admin", "\/admin\/dashboard"/,
+  );
+  assert.doesNotMatch(setupRoute, /queueInitialTour/);
   assert.doesNotMatch(setupRoute, /finally\s*\{\s*leaveGuideRoute/);
 });
 
