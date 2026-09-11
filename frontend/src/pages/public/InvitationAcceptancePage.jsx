@@ -12,8 +12,10 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import AuthLayout from "../../components/layout/AuthLayout";
 import Button from "../../components/ui/Button";
+import { queueInitialTour } from "../../features/guides/workspaceTourState";
 import { authSession, parseApiError } from "../../services/api";
 import { authService } from "../../services/auth.service";
+import { guideService } from "../../services/guideService";
 import { parentService } from "../../services/parentService";
 import { teacherService } from "../../services/teacherService";
 import { getValidTokenPayload } from "../../utils/auth";
@@ -155,6 +157,16 @@ function InvitationAcceptancePage({ role }) {
           ? await parentService.acceptInvitation(token, admissionNumber)
           : await teacherService.acceptInvitation(token);
       setSuccess(result);
+
+      // Teacher/parent guide state is account-global. Queue the first-workspace
+      // invitation at the membership boundary, but consume it only after legal
+      // and profile onboarding are complete and a tenant dashboard is entered.
+      try {
+        await queueInitialTour(role, true, guideService);
+      } catch {
+        // Membership acceptance is authoritative and must not fail because an
+        // optional guide-state write is temporarily unavailable.
+      }
     } catch (err) {
       const apiError = parseApiError(err, "Could not accept this invitation.");
       setError(apiError.message);

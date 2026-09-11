@@ -27,14 +27,15 @@ class TenantStatus(str, PyEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
-    TRIAL = "trial"  # schools evaluating the product
-    EXPIRED = "expired"  # subscription lapsed
+    TRIAL = "trial"  # legacy tenant lifecycle value retained for existing rows
+    EXPIRED = "expired"  # legacy subscription lifecycle value
 
 
 class SubscriptionPlan(str, PyEnum):
     """Represents the subscription plan options for a tenant (school)."""
 
-    FREE_TRIAL = "free_trial"
+    FREE_TRIAL = "free_trial"  # legacy persisted value; runtime normalizes to Free
+    FREE = "free"
     PLUS = "plus"
     PROFESSIONAL = "professional"
     ENTERPRISE = "enterprise"
@@ -46,6 +47,13 @@ class TenantVerificationStatus(str, PyEnum):
     PENDING_VERIFICATION = "pending_verification"
     ACTIVE = "active"
     REJECTED = "rejected"
+
+
+class InstitutionType(str, PyEnum):
+    """Academic structure family selected during tenant-admin onboarding."""
+
+    PRIMARY_SCHOOL = "PRIMARY_SCHOOL"
+    SECONDARY_SCHOOL = "SECONDARY_SCHOOL"
 
 
 # ── 4. Tenant Model ──────────────────────────────────────────────────────────
@@ -87,7 +95,9 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
     country: Mapped[str] = mapped_column(String(100), nullable=False, server_default="Nigeria")
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # ── Status & subscription ────────────────────────────────────────────────
+    # ── Account lifecycle & billing snapshot ────────────────────────────────
+    # New tenants remain INACTIVE until their admin email is verified. Billing
+    # state is represented separately by ``plan`` and term entitlements.
     status: Mapped[TenantStatus] = mapped_column(
         SQLEnum(
             TenantStatus,
@@ -95,7 +105,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
             schema=PUBLIC_SCHEMA,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
-        default=TenantStatus.TRIAL,  # new schools start on trial
+        default=TenantStatus.INACTIVE,
         nullable=False,
     )
     plan: Mapped[SubscriptionPlan] = mapped_column(
@@ -105,8 +115,17 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
             schema=PUBLIC_SCHEMA,
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
         ),
-        default=SubscriptionPlan.FREE_TRIAL,
+        default=SubscriptionPlan.FREE,
         nullable=False,
+    )
+    initial_plan_intent: Mapped[SubscriptionPlan | None] = mapped_column(
+        SQLEnum(
+            SubscriptionPlan,
+            name="subscriptionplan",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=True,
     )
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     subscription_ends_at: Mapped[datetime | None] = mapped_column(
@@ -122,7 +141,7 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
         Integer,
         default=500,
         nullable=False,
-        comment="Hard cap on student count for this tenant's plan.",
+        comment="Legacy tenant snapshot; runtime quotas come from subscription entitlements.",
     )
     max_teachers: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     # Flexible bag for feature flags, e.g. {"whatsapp_bot": true, "stt": true}
@@ -134,6 +153,15 @@ class Tenant(UUIDMixin, TimestampMixin, Base):
 
     # ── Onboarding ───────────────────────────────────────────────────────────
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    institution_type: Mapped[InstitutionType | None] = mapped_column(
+        SQLEnum(
+            InstitutionType,
+            name="institution_type",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=True,
+    )
 
     branches: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=None)
 

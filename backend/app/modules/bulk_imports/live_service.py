@@ -43,6 +43,8 @@ from app.modules.bulk_imports.service import (
     utc_now,
 )
 from app.modules.bulk_imports.validators import ImportRowValidationResult
+from app.modules.cbt.sync.model_events import prepare_cbt_sync_commit
+from app.modules.realtime.publisher import RealtimePublisher
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.repository import TenantAdminRepository
@@ -51,6 +53,27 @@ from app.tenant_management.repository import TenantRepository
 LIVE_IMPORT_CHUNK_SIZE = 25
 ACTIVE_IMPORT_STATUSES = {ImportJobStatus.PENDING, ImportJobStatus.PROCESSING}
 TERMINAL_ROW_STATUSES = {"created", "failed"}
+
+
+async def _publish_job_event(
+    *,
+    event_type: str,
+    tenant_id: UUID,
+    actor_id: UUID,
+    import_job: ImportJob,
+) -> None:
+    await RealtimePublisher.to_actor(
+        event_type=event_type,
+        actor_type="tenant_admin",
+        actor_id=actor_id,
+        tenant_id=tenant_id,
+        data={
+            "job_id": str(import_job.id),
+            "status": import_job.status.value,
+            "processed_rows": int(import_job.processed_rows or 0),
+            "total_rows": int(import_job.total_rows or 0),
+        },
+    )
 
 
 def _sorted_result_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -340,6 +363,7 @@ class BulkImportLiveService:
         db: AsyncSession,
         *,
         import_job: ImportJob,
+        actor_id: UUID,
         error_message: str,
     ) -> None:
         metadata_json = dict(import_job.metadata_json or {})
@@ -356,6 +380,13 @@ class BulkImportLiveService:
             ),
         )
         await db.commit()
+        await RealtimePublisher.publish_deferred_after_commit(db)
+        await _publish_job_event(
+            event_type="bulk_import.failed",
+            tenant_id=import_job.tenant_id,
+            actor_id=actor_id,
+            import_job=import_job,
+        )
 
     @staticmethod
     async def process_confirmed_import_job(
@@ -404,12 +435,19 @@ class BulkImportLiveService:
             job_update=ImportJobUpdate(metadata_json=metadata_json),
         )
         await db.commit()
+        await _publish_job_event(
+            event_type="bulk_import.started",
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            import_job=import_job,
+        )
 
         actor = await TenantAdminRepository.get_by_id(db=db, admin_id=actor_id)
         if actor is None:
             await BulkImportLiveService._mark_job_failed(
                 db=db,
                 import_job=import_job,
+                actor_id=actor_id,
                 error_message="Tenant admin that started the import no longer exists.",
             )
             return {"status": "failed", "processed": 0, "created": 0, "failed": 1}
@@ -419,6 +457,7 @@ class BulkImportLiveService:
             await BulkImportLiveService._mark_job_failed(
                 db=db,
                 import_job=import_job,
+                actor_id=actor_id,
                 error_message="Tenant not found for background import.",
             )
             return {"status": "failed", "processed": 0, "created": 0, "failed": 1}
@@ -432,6 +471,7 @@ class BulkImportLiveService:
             await BulkImportLiveService._mark_job_failed(
                 db=db,
                 import_job=import_job,
+                actor_id=actor_id,
                 error_message="No staged rows found for background import.",
             )
             return {"status": "failed", "processed": 0, "created": 0, "failed": 1}
@@ -546,7 +586,18 @@ class BulkImportLiveService:
                         metadata_json=metadata_json,
                     ),
                 )
+                # Bulk rows are created through nested SAVEPOINTs. Prepare the
+                # accumulated CBT-visible mutations explicitly at the chunk's
+                # real transaction boundary so the durable sync rows and NOTIFY
+                # calls are guaranteed to participate in this exact commit.
+                await db.run_sync(prepare_cbt_sync_commit)
                 await db.commit()
+                await _publish_job_event(
+                    event_type="bulk_import.progress",
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    import_job=import_job,
+                )
                 if created_count > 0:
                     await AuthIdentityService.invalidate_after_commit(db)
 
@@ -597,6 +648,13 @@ class BulkImportLiveService:
                 await SubscriptionFeatureService.invalidate_tenant_subscription_state(tenant_id)
 
             await db.commit()
+            await RealtimePublisher.publish_deferred_after_commit(db)
+            await _publish_job_event(
+                event_type=f"bulk_import.{final_status.value}",
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                import_job=import_job,
+            )
 
             if successful_rows > 0:
                 await AuthIdentityService.invalidate_after_commit(db)
@@ -629,6 +687,7 @@ class BulkImportLiveService:
                 await BulkImportLiveService._mark_job_failed(
                     db=db,
                     import_job=latest_job,
+                    actor_id=actor_id,
                     error_message=str(exc),
                 )
             return {

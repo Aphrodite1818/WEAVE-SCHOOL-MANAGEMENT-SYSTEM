@@ -25,7 +25,8 @@ from app.modules.student_academics.models import (
     StudentSubjectResult,
 )
 from app.modules.subscriptions.models import (
-    SubscriptionPlanChange,
+    PaymentTransaction,
+    TermPlanEntitlement,
     TenantSubscription,
 )
 from app.shared.base_model import Base
@@ -37,18 +38,42 @@ REQUIRED_MODELS = (
     StudentSubjectResult,
     ReportCard,
     TenantSubscription,
-    SubscriptionPlanChange,
+    PaymentTransaction,
+    TermPlanEntitlement,
     NotificationDelivery,
     SchoolCalendar,
 )
 
 REQUIRED_ROUTES = {
     "/api/v1/subscriptions/payments",
-    "/api/v1/subscriptions/plan-change",
-    "/api/v1/subscriptions/cancel",
+    "/api/v1/subscriptions/terms/activate-free",
+    "/api/v1/subscriptions/terms/checkout",
+    "/api/v1/subscriptions/terms/verify/{reference}",
     "/api/v1/tenant-admin/academic/report-cards/bulk/publish",
     "/api/v1/tenant-admin/academics/results/bulk/transition",
+}
+
+FORBIDDEN_LEGACY_ROUTES = {
+    "/api/v1/subscriptions/plan-change",
+    "/api/v1/subscriptions/cancel",
     "/api/v1/teachers/academics/results/bulk/submit",
+    "/api/v1/tenant-admin/academics/results/bulk/submit",
+}
+
+REQUIRED_INDEXES = {
+    TenantSubscription: {
+        "uq_tenant_subscriptions_current_per_tenant",
+        "ix_tenant_subscriptions_tenant_current",
+    },
+    PaymentTransaction: {
+        "uq_payment_transactions_pending_term",
+        "ix_payment_transactions_tenant_term",
+    },
+    TermPlanEntitlement: {
+        "uq_term_entitlements_active_term",
+        "uq_term_entitlements_payment_transaction",
+        "ix_term_entitlements_tenant_term",
+    },
 }
 
 
@@ -64,14 +89,25 @@ def main() -> None:
     if missing_routes:
         raise SystemExit(f"Lifecycle routes are not registered: {sorted(missing_routes)}")
 
-    index_names = {index.name for index in SubscriptionPlanChange.__table__.indexes}
-    if "uq_subscription_plan_changes_open_per_tenant" not in index_names:
-        raise SystemExit("Open plan changes are not protected by the expected unique index")
+    surviving_legacy_routes = FORBIDDEN_LEGACY_ROUTES & route_paths
+    if surviving_legacy_routes:
+        raise SystemExit(
+            f"Obsolete lifecycle routes are still registered: {sorted(surviving_legacy_routes)}"
+        )
+
+    missing_indexes: list[str] = []
+    for model, required_names in REQUIRED_INDEXES.items():
+        actual_names = {index.name for index in model.__table__.indexes}
+        for name in sorted(required_names - actual_names):
+            missing_indexes.append(f"{model.__tablename__}.{name}")
+    if missing_indexes:
+        raise SystemExit(f"Lifecycle database guards are missing: {missing_indexes}")
 
     print(
         "Lifecycle architecture verified:",
         f"{len(REQUIRED_MODELS)} models,",
-        f"{len(REQUIRED_ROUTES)} routes.",
+        f"{len(REQUIRED_ROUTES)} routes,",
+        f"{sum(len(names) for names in REQUIRED_INDEXES.values())} indexes.",
     )
 
 

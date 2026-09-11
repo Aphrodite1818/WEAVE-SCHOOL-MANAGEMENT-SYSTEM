@@ -1,1 +1,1 @@
-"""Canonical communication, messaging, announcements, and notification module."""
+"""Canonical communication, messaging, notices, inbox, and notification module."""

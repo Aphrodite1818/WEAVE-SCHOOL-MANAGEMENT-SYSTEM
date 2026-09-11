@@ -3,6 +3,7 @@ import {
   BarChart3,
   BookOpen,
   Building2,
+  Cpu,
   CalendarDays,
   CheckSquare,
   ClipboardList,
@@ -32,7 +33,12 @@ export const roleLabels = {
 };
 
 export const workspaceSearchRoles = new Set(["admin", "teacher"]);
-export const tenantNameFallbackRoles = new Set(["admin", "teacher", "student", "parent"]);
+export const tenantNameFallbackRoles = new Set([
+  "admin",
+  "teacher",
+  "student",
+  "parent",
+]);
 
 export const inboxPaths = {
   admin: "/admin/inbox",
@@ -90,25 +96,55 @@ export const navGroups = {
         { label: "Students", to: "/admin/students", icon: GraduationCap },
         { label: "Teachers", to: "/admin/teachers", icon: Users },
         { label: "Parents", to: "/admin/parents", icon: Users },
-        { label: "Bulk Imports", to: "/admin/imports", icon: UploadCloud, featureCode: FEATURE_CODES.BULK_IMPORT },
+        {
+          label: "Bulk Imports",
+          to: "/admin/imports",
+          icon: UploadCloud,
+          featureCode: FEATURE_CODES.BULK_IMPORT,
+        },
         { label: "Classes", to: "/admin/academic/classes", icon: Library },
         { label: "Subjects", to: "/admin/academic/subjects", icon: BookOpen },
-        { label: "Attendance", to: "/admin/attendance", icon: CheckSquare, runtimeFeature: "attendance" },
+        {
+          label: "Attendance",
+          to: "/admin/attendance",
+          icon: CheckSquare,
+          runtimeFeature: "attendance",
+        },
       ],
     },
     {
       label: "Communication",
       items: [
         { label: "Inbox", to: "/admin/inbox", icon: Inbox },
-        { label: "Messages", to: "/admin/messages", icon: Mail, runtimeFeature: "messaging" },
-        { label: "Announcements", to: "/admin/announcements", icon: FileText },
+        {
+          label: "Messages",
+          to: "/admin/messages",
+          icon: Mail,
+          runtimeFeature: "messaging",
+        },
+        { label: "Notices", to: "/admin/notices", icon: FileText },
+        {
+          label: "Received Notices",
+          to: "/admin/notices/received",
+          icon: FileText,
+        },
       ],
     },
     {
       label: "Operations",
       items: [
-        { label: "Reports", to: "/admin/academic/report-cards", icon: BarChart3 },
+        {
+          label: "Reports",
+          to: "/admin/academic/report-cards",
+          icon: BarChart3,
+        },
         { label: "Billing", to: "/admin/billing", icon: CreditCard },
+        {
+          label: "CBT Servers",
+          to: "/admin/cbt",
+          icon: Cpu,
+          featureCode: FEATURE_CODES.CBT_PAIRING,
+        },
         { label: "Usage", to: "/admin/usage", icon: Activity },
         { label: "Settings", to: "/admin/settings", icon: Settings },
       ],
@@ -120,20 +156,54 @@ export const navGroups = {
       items: [
         { label: "Dashboard", to: "/teacher/dashboard", icon: Home },
         { label: "Analytics", to: "/teacher/analytics", icon: BarChart3 },
-        { label: "Teaching Rosters", to: "/teacher/students", icon: GraduationCap },
+        {
+          label: "Teaching Rosters",
+          to: "/teacher/students",
+          icon: GraduationCap,
+        },
         { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen },
-        { label: "Score Entry", to: "/teacher/score-entry", icon: BarChart3 },
         { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
         { label: "Inbox", to: "/teacher/inbox", icon: Inbox },
-        { label: "Messages", to: "/teacher/messages", icon: Mail, runtimeFeature: "messaging" },
+        {
+          label: "Messages",
+          to: "/teacher/messages",
+          icon: Mail,
+          runtimeFeature: "messaging",
+        },
+        { label: "Notices", to: "/teacher/notices", icon: FileText },
+        {
+          label: "Received Notices",
+          to: "/teacher/notices/received",
+          icon: FileText,
+        },
       ],
     },
     {
       label: "Class teacher duties",
       items: [
         { label: "My Class", to: "/teacher/classes", icon: Library },
-        { label: "Class Attendance", to: "/teacher/attendance", icon: CheckSquare, runtimeFeature: "attendance" },
-        { label: "Switch School", to: "/teacher/schools", icon: Building2, accountScope: true },
+        {
+          label: "Student Comments",
+          to: "/teacher/student-comments",
+          icon: ClipboardList,
+        },
+        {
+          label: "My Comment Templates",
+          to: "/teacher/comment-templates",
+          icon: FileText,
+        },
+        {
+          label: "Class Attendance",
+          to: "/teacher/attendance",
+          icon: CheckSquare,
+          runtimeFeature: "attendance",
+        },
+        {
+          label: "Switch School",
+          to: "/teacher/schools",
+          icon: Building2,
+          accountScope: true,
+        },
         { label: "Settings", to: "/teacher/settings", icon: Settings },
       ],
     },
@@ -149,7 +219,13 @@ export const navGroups = {
         { label: "Report Cards", to: "/student/report-cards", icon: FileText },
         { label: "Calendar", to: "/student/calendar", icon: CalendarDays },
         { label: "Inbox", to: "/student/inbox", icon: Inbox },
-        { label: "Messages", to: "/student/messages", icon: Mail, runtimeFeature: "messaging" },
+        {
+          label: "Messages",
+          to: "/student/messages",
+          icon: Mail,
+          runtimeFeature: "messaging",
+        },
+        { label: "Notices", to: "/student/notices", icon: FileText },
         { label: "Settings", to: "/student/settings", icon: Settings },
       ],
     },
@@ -159,14 +235,35 @@ export const navGroups = {
       label: "Family",
       items: [
         { label: "Dashboard", to: "/parent/dashboard", icon: Home },
-        { label: "Student Linking", to: "/parent/student-linking", icon: Link2 },
+        { label: "Family Insights", to: "/parent/analytics", icon: BarChart3 },
+        {
+          label: "Student Linking",
+          to: "/parent/student-linking",
+          icon: Link2,
+        },
         { label: "Report Cards", to: "/parent/report-cards", icon: FileText },
         { label: "Results", to: "/parent/results", icon: BarChart3 },
-        { label: "Attendance", to: "/parent/attendance", icon: CheckSquare, runtimeFeature: "attendance" },
+        {
+          label: "Attendance",
+          to: "/parent/attendance",
+          icon: CheckSquare,
+          runtimeFeature: "attendance",
+        },
         { label: "Calendar", to: "/parent/calendar", icon: CalendarDays },
         { label: "Inbox", to: "/parent/inbox", icon: Inbox },
-        { label: "Messages", to: "/parent/messages", icon: Mail, runtimeFeature: "messaging" },
-        { label: "Switch School", to: "/parent/schools", icon: Building2, accountScope: true },
+        {
+          label: "Messages",
+          to: "/parent/messages",
+          icon: Mail,
+          runtimeFeature: "messaging",
+        },
+        { label: "Notices", to: "/parent/notices", icon: FileText },
+        {
+          label: "Switch School",
+          to: "/parent/schools",
+          icon: Building2,
+          accountScope: true,
+        },
         { label: "Settings", to: "/parent/settings", icon: Settings },
       ],
     },
@@ -176,19 +273,41 @@ export const navGroups = {
       label: "Command",
       items: [
         { label: "Dashboard", to: "/superadmin/dashboard", icon: Home },
-        { label: "Security Analytics", to: "/superadmin/analytics", icon: BarChart3 },
-        { label: "Control Center", to: "/superadmin/control-center", icon: Shield },
+        {
+          label: "Security Analytics",
+          to: "/superadmin/analytics",
+          icon: BarChart3,
+        },
+        {
+          label: "Control Center",
+          to: "/superadmin/control-center",
+          icon: Shield,
+        },
         { label: "Tenant Usage", to: "/superadmin/usage", icon: Database },
         { label: "Traffic Monitor", to: "/superadmin/traffic", icon: Activity },
-        { label: "Simulation Lab", to: "/superadmin/simulations", icon: Activity, runtimeFeature: "simulations" },
+        {
+          label: "Simulation Lab",
+          to: "/superadmin/simulations",
+          icon: Activity,
+          runtimeFeature: "simulations",
+        },
       ],
     },
     {
       label: "Platform",
       items: [
         { label: "Inbox", to: "/superadmin/inbox", icon: Inbox },
-        { label: "Messages", to: "/superadmin/messages", icon: Mail, runtimeFeature: "messaging" },
-        { label: "Announcements", to: "/superadmin/announcements", icon: FileText },
+        {
+          label: "Messages",
+          to: "/superadmin/messages",
+          icon: Mail,
+          runtimeFeature: "messaging",
+        },
+        {
+          label: "Notices",
+          to: "/superadmin/notices",
+          icon: FileText,
+        },
         { label: "Settings", to: "/superadmin/settings", icon: Settings },
       ],
     },

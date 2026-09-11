@@ -160,7 +160,7 @@ class OTPService:
                 if tenant is not None:
                     tenant.verification_status = TenantVerificationStatus.ACTIVE
                     if tenant.status == TenantStatus.INACTIVE:
-                        tenant.status = TenantStatus.TRIAL
+                        tenant.status = TenantStatus.ACTIVE
                     db.add(tenant)
             elif isinstance(actor, ParentAccount):
                 actor.account_status = ParentAccountStatus.ACTIVE
@@ -236,7 +236,7 @@ class TenantActivationService:
         admin.is_verified = True
         admin.is_active = True
         tenant.verification_status = TenantVerificationStatus.ACTIVE
-        tenant.status = TenantStatus.TRIAL
+        tenant.status = TenantStatus.ACTIVE
         record.is_used = True
         db.add(admin)
         db.add(tenant)

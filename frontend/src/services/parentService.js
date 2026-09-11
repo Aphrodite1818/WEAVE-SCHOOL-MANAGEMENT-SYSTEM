@@ -1,6 +1,15 @@
 import { api } from "./api";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+} from "./patchPayload";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
+
+const parentLinkSnapshots = new Map();
+let myParentSnapshot = null;
 
 const normalizeParentMembershipStatus = (status) =>
   status === "ended" ? "inactive" : status;
@@ -73,11 +82,26 @@ export const parentService = {
   getMembership: (membershipId) =>
     api.get(`/parents/memberships/${membershipId}`),
 
-  listMembershipLinks: (membershipId) =>
-    api.get(`/parents/memberships/${membershipId}/student-links`),
+  listMembershipLinks: async (membershipId) => {
+    const response = await api.get(
+      `/parents/memberships/${membershipId}/student-links`,
+    );
+    return rememberById(parentLinkSnapshots, response);
+  },
 
-  updateParentLink: (linkId, payload) =>
-    api.patch(`/tenant-admin/student-parent-links/${linkId}`, payload),
+  updateParentLink: async (linkId, payload) => {
+    const key = String(linkId);
+    const current = parentLinkSnapshots.get(key);
+    const changes = buildChangedPatch(current, payload);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch(
+      `/tenant-admin/student-parent-links/${linkId}`,
+      changes,
+    );
+    parentLinkSnapshots.set(key, mergePatchResult(current, changes, response));
+    return response;
+  },
 
   endMembership: (membershipId, reason) =>
     api.post(`/parents/memberships/${membershipId}/end`, { reason }),
@@ -97,11 +121,20 @@ export const parentService = {
   reactivateParentLink: (linkId, payload) =>
     api.post(`/parents/student-parent-links/${linkId}/reactivate`, payload),
 
-  getMyParent: (requestOptions) =>
-    api.get("/parents/me", requestOptions),
+  getMyParent: async (requestOptions) => {
+    const response = await api.get("/parents/me", requestOptions);
+    myParentSnapshot = response;
+    return response;
+  },
 
-  updateMyParentProfile: (payload) =>
-    api.patch("/parents/accounts/me/profile", payload),
+  updateMyParentProfile: async (payload) => {
+    const changes = buildChangedPatch(myParentSnapshot, payload);
+    if (!hasPatchChanges(changes)) return myParentSnapshot;
+
+    const response = await api.patch("/parents/accounts/me/profile", changes);
+    myParentSnapshot = mergePatchResult(myParentSnapshot, changes, response);
+    return response;
+  },
 
   getMyStudents: (requestOptions) =>
     api.get("/parents/me/students", requestOptions),

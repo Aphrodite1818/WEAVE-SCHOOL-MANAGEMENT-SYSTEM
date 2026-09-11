@@ -7,9 +7,6 @@ export const bulkAcademicService = {
   reopenClassResults: (payload) =>
     api.post("/tenant-admin/academics/results/bulk/reopen", payload),
 
-  submitTeacherResults: (payload) =>
-    api.post("/teachers/academics/results/bulk/submit", payload),
-
   publishClassReportCards: (payload) =>
     api.post("/tenant-admin/academic/report-cards/bulk/publish", payload),
 

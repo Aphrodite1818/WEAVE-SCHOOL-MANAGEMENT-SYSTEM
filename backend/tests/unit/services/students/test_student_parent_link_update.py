@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.modules.students.models import (
     ParentLinkVerifiedByType,
@@ -49,43 +50,18 @@ def _link(tenant_id: uuid.UUID) -> StudentParentLink:
     )
 
 
-@pytest.mark.asyncio
-async def test_update_parent_link_ignores_explicit_null_values() -> None:
-    tenant_id = uuid.uuid4()
-    link = _link(tenant_id)
-    db = AsyncMock()
-
-    with (
-        patch(
-            "app.modules.students.service.StudentParentLinkRepository.get_by_id",
-            new=AsyncMock(return_value=link),
-        ),
-        patch(
-            "app.modules.students.service.StudentParentLinkRepository.save",
-            new=AsyncMock(return_value=link),
-        ),
-    ):
-        response = await StudentParentLinkService.update(
-            db=db,
-            actor=_actor(tenant_id),
-            link_id=link.id,
-            payload=StudentParentLinkUpdateRequest(
-                relationship_type=None,
-                is_primary_contact=None,
-                receives_academic_updates=None,
-                receives_fee_updates=None,
-            ),
+def test_update_parent_link_rejects_explicit_null_values() -> None:
+    with pytest.raises(ValidationError):
+        StudentParentLinkUpdateRequest(
+            relationship_type=None,
+            is_primary_contact=None,
+            receives_academic_updates=None,
+            receives_fee_updates=None,
         )
 
-    assert link.relationship_type == ParentRelationship.MOTHER
-    assert link.is_primary_contact is True
-    assert link.receives_academic_updates is True
-    assert link.receives_fee_updates is True
-    assert response.relationship_type == ParentRelationship.MOTHER
-
 
 @pytest.mark.asyncio
-async def test_update_parent_link_applies_explicit_values() -> None:
+async def test_update_parent_link_applies_explicit_values_only() -> None:
     tenant_id = uuid.uuid4()
     link = _link(tenant_id)
     db = AsyncMock()
@@ -112,5 +88,6 @@ async def test_update_parent_link_applies_explicit_values() -> None:
 
     assert link.relationship_type == ParentRelationship.FATHER
     assert link.receives_fee_updates is False
+    assert link.is_primary_contact is True
     assert link.receives_academic_updates is True
     assert response.relationship_type == ParentRelationship.FATHER

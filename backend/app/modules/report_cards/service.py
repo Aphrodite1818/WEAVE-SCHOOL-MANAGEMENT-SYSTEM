@@ -1,18 +1,29 @@
-import html
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import (
-    BadRequestException,
-    ForbiddenException,
-    NotFoundException,
-)
+from app.core.exceptions import BadRequestException, ForbiddenException, NotFoundException
 from app.modules.auth_identity.models import ActorType
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.models import (
+    AcademicLevel,
+    AcademicLevelDepartment,
+    ArmLabel,
+    ClassRoom,
+    Department,
+)
 from app.modules.parents.models import Parent
+from app.modules.report_cards.comment_models import (
+    CommentTemplate,
+    CommentTemplateOwnerType,
+    CommentTemplateStatus,
+    TeacherCommentSource,
+)
+from app.modules.report_cards.comment_service import ReportCommentService
 from app.modules.report_cards.models import (
     ReportCard,
     ReportCardStatus,
@@ -24,26 +35,30 @@ from app.modules.report_cards.schemas import (
     ReportCardBulkGenerateResponse,
     ReportCardClassOverviewResponse,
     ReportCardClassOverviewRow,
-    ReportCardCommentsUpdate,
     ReportCardGenerateRequest,
+    ReportCardPrincipalCommentUpdate,
     ReportCardResponse,
-    ReportCardSubjectLineResponse,
     ReportCardSubjectComponentResponse,
+    ReportCardSubjectLineResponse,
 )
-from app.modules.student_academics.models import AcademicResultStatus, ClassSubject
+from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
+from app.modules.student_academics.curriculum_service import CurriculumResolutionService
+from app.modules.student_academics.models import AcademicResultStatus
 from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import Student
 from app.modules.students.repository import (
+    StudentEnrollmentRepository,
     StudentParentLinkRepository,
     StudentRepository,
 )
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.teachers.repository import TeacherRepository
 from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.repository import TenantRepository
 
 
 class ReportCardService:
+    """Single authoritative report readiness, generation and revision policy."""
+
     @staticmethod
     async def mark_outdated_for_score_change(
         db: AsyncSession,
@@ -52,28 +67,34 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> None:
-        await ReportCardRepository.mark_outdated_for_student_period(
-            db=db,
+        await ReportCommentService.invalidate_for_result_change(
+            db,
             tenant_id=tenant_id,
             student_id=student_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
         )
+        await ReportCardRepository.mark_outdated_for_student_period(
+            db,
+            tenant_id,
+            student_id,
+            academic_session_id,
+            academic_term_id,
+        )
 
     @staticmethod
-    async def _expected_class_subjects(
+    async def _expected_curriculum_subjects(
         db: AsyncSession,
         tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
-    ) -> list[ClassSubject]:
-        items, _ = await StudentAcademicRepository.list_class_subjects(
-            db=db,
+        student_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> list:
+        return await CurriculumResolutionService.resolve_student_curriculum(
+            db,
             tenant_id=tenant_id,
-            class_id=class_id,
-            active_only=True,
-            limit=500,
+            student_id=student_id,
+            academic_term_id=academic_term_id,
         )
-        return items
 
     @staticmethod
     async def _finalized_results_for_student(
@@ -95,27 +116,34 @@ class ReportCardService:
         return results
 
     @staticmethod
-    async def _missing_subjects(
+    async def _ready_results(
         db: AsyncSession,
+        *,
         tenant_id: uuid.UUID,
-        class_id: uuid.UUID,
         student_id: uuid.UUID,
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
-    ) -> list[str]:
-        expected = await ReportCardService._expected_class_subjects(db, tenant_id, class_id)
-        submitted = await ReportCardService._finalized_results_for_student(
+    ) -> tuple[list, list, list[str]]:
+        expected = await ReportCardService._expected_curriculum_subjects(
+            db, tenant_id, student_id, academic_term_id
+        )
+        if not expected:
+            raise BadRequestException("Expected curriculum could not be resolved for this student.")
+        results = await ReportCardService._finalized_results_for_student(
             db, tenant_id, student_id, academic_session_id, academic_term_id
         )
-        submitted_subject_ids = {result.subject_id for result in submitted}
-        missing: list[str] = []
-        for class_subject in expected:
-            if class_subject.subject_id not in submitted_subject_ids:
-                subject = await SubjectRepository.get_subject_by_id(
-                    db, tenant_id, class_subject.subject_id
-                )
-                missing.append(subject.name if subject else str(class_subject.subject_id))
-        return missing
+        by_curriculum_id = {item.curriculum_subject_id: item for item in results}
+        expected_ids = {item.curriculum_subject_id for item in expected}
+        missing_names: list[str] = []
+        for item in expected:
+            result = by_curriculum_id.get(item.curriculum_subject_id)
+            if result is None or result.status != AcademicResultStatus.LOCKED:
+                subject = await SubjectRepository.get_subject_by_id(db, tenant_id, item.subject_id)
+                missing_names.append(subject.name if subject else str(item.subject_id))
+        if missing_names:
+            raise BadRequestException(f"Missing locked scores for: {', '.join(missing_names)}")
+        applicable = [by_curriculum_id[item_id] for item_id in expected_ids]
+        return expected, applicable, missing_names
 
     @staticmethod
     def _dense_rank(values: list[tuple[uuid.UUID, Decimal]]) -> dict[uuid.UUID, int]:
@@ -132,20 +160,22 @@ class ReportCardService:
 
     @staticmethod
     async def _teacher_name_for_result(
-        db: AsyncSession, tenant_id: uuid.UUID, result
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        result,
     ) -> str | None:
         teacher = None
         if result.teacher_assignment_id is not None:
-            teacher_assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
+            assignment = await StudentAcademicRepository.get_teacher_assignment_by_id(
                 db=db,
                 tenant_id=tenant_id,
                 assignment_id=result.teacher_assignment_id,
             )
-            if teacher_assignment is not None:
+            if assignment is not None:
                 teacher = await TeacherRepository.get_teacher_by_id(
                     db=db,
                     tenant_id=tenant_id,
-                    teacher_id=teacher_assignment.teacher_membership_id,
+                    teacher_id=assignment.teacher_membership_id,
                 )
         if teacher is None:
             teacher = await TeacherRepository.get_teacher_by_id(
@@ -161,93 +191,274 @@ class ReportCardService:
         )
 
     @staticmethod
+    async def _placement_snapshot(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        student_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> dict[str, object | None]:
+        enrollment = await StudentEnrollmentRepository.get_authoritative_for_session(
+            db,
+            tenant_id,
+            student_id,
+            academic_session_id,
+        )
+        if enrollment is None or enrollment.class_id is None:
+            raise BadRequestException("Resolved class placement is required for report generation.")
+        row = (
+            await db.execute(
+                select(ClassRoom, AcademicLevel, ArmLabel)
+                .join(
+                    AcademicLevel,
+                    and_(
+                        AcademicLevel.id == ClassRoom.academic_level_id,
+                        AcademicLevel.tenant_id == tenant_id,
+                    ),
+                )
+                .join(
+                    ArmLabel,
+                    and_(
+                        ArmLabel.id == ClassRoom.arm_label_id,
+                        ArmLabel.tenant_id == tenant_id,
+                    ),
+                )
+                .where(
+                    ClassRoom.tenant_id == tenant_id,
+                    ClassRoom.id == enrollment.class_id,
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            raise BadRequestException("Current class placement is invalid.")
+        classroom, level, arm = row
+        department_row = (
+            await db.execute(
+                select(AcademicLevelDepartment.id, Department.name)
+                .select_from(ClassTermDepartmentAssignment)
+                .join(
+                    AcademicLevelDepartment,
+                    and_(
+                        AcademicLevelDepartment.id
+                        == ClassTermDepartmentAssignment.academic_level_department_id,
+                        AcademicLevelDepartment.tenant_id == tenant_id,
+                    ),
+                )
+                .join(
+                    Department,
+                    and_(
+                        Department.id == AcademicLevelDepartment.department_id,
+                        Department.tenant_id == tenant_id,
+                    ),
+                )
+                .where(
+                    ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                    ClassTermDepartmentAssignment.class_id == classroom.id,
+                    ClassTermDepartmentAssignment.academic_term_id == academic_term_id,
+                )
+            )
+        ).one_or_none()
+        teacher_name = None
+        if classroom.teacher_membership_id is not None:
+            teacher = await TeacherRepository.get_teacher_by_id(
+                db=db,
+                tenant_id=tenant_id,
+                teacher_id=classroom.teacher_membership_id,
+            )
+            if teacher is not None:
+                teacher_name = (
+                    " ".join(
+                        part for part in [teacher.first_name, teacher.last_name] if part
+                    ).strip()
+                    or None
+                )
+        return {
+            "enrollment_id": enrollment.id,
+            "class_id": classroom.id,
+            "academic_level_id": level.id,
+            "academic_level_name": level.name,
+            "class_name": level.name,
+            "class_arm": arm.label,
+            "academic_level_department_id": department_row[0] if department_row else None,
+            "department_name": department_row[1] if department_row else None,
+            "teacher_name": teacher_name,
+        }
+
+    @staticmethod
+    async def _principal_comment(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        average: Decimal,
+        principal_comment: str | None,
+        principal_template_id: uuid.UUID | None,
+        apply_default: bool,
+    ) -> tuple[str | None, uuid.UUID | None]:
+        if principal_template_id is not None:
+            template = (
+                await db.execute(
+                    select(CommentTemplate).where(
+                        CommentTemplate.tenant_id == actor.tenant_id,
+                        CommentTemplate.id == principal_template_id,
+                        CommentTemplate.owner_type == CommentTemplateOwnerType.TENANT_ADMIN,
+                        CommentTemplate.tenant_admin_id == actor.id,
+                        CommentTemplate.status == CommentTemplateStatus.ACTIVE,
+                    )
+                )
+            ).scalar_one_or_none()
+            if template is None:
+                raise BadRequestException("Principal comment template is unavailable.")
+            return principal_comment or template.text, template.id
+        if apply_default:
+            template = await ReportCommentService.principal_default_for_average(
+                db,
+                admin=actor,
+                average=average,
+            )
+            if template is not None:
+                return principal_comment or template.text, template.id
+        return principal_comment, None
+
+    @staticmethod
     async def _create_card_from_results(
         db: AsyncSession,
+        *,
         actor: TenantAdmin,
         student: Student,
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
         results: list,
-        *,
-        class_teacher_comment: str | None = None,
-        principal_comment: str | None = None,
-        version: int = 1,
-        replace_existing: ReportCard | None = None,
+        principal_comment: str | None,
+        principal_template_id: uuid.UUID | None,
+        apply_default_principal_template: bool,
+        replaces: ReportCard | None = None,
     ) -> ReportCard:
-        if student.class_id is None:
-            raise BadRequestException("Student class is required for report card generation.")
-        if not results:
-            raise BadRequestException("No locked scores are available for this student.")
+        placement = await ReportCardService._placement_snapshot(
+            db,
+            tenant_id=actor.tenant_id,
+            student_id=student.id,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+        )
+        expected, ready_results, _ = await ReportCardService._ready_results(
+            db,
+            tenant_id=actor.tenant_id,
+            student_id=student.id,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+        )
+        _ = expected
+        result_ids = {result.id for result in results}
+        ready_results = [result for result in ready_results if result.id in result_ids]
+        if not ready_results:
+            ready_results = await ReportCardService._finalized_results_for_student(
+                db,
+                actor.tenant_id,
+                student.id,
+                academic_session_id,
+                academic_term_id,
+            )
+            _, ready_results, _ = await ReportCardService._ready_results(
+                db,
+                tenant_id=actor.tenant_id,
+                student_id=student.id,
+                academic_session_id=academic_session_id,
+                academic_term_id=academic_term_id,
+            )
 
-        missing = await ReportCardService._missing_subjects(
+        total_score = sum((item.total_score for item in ready_results), Decimal("0"))
+        average_score = total_score / Decimal(len(ready_results))
+        (
+            teacher_comment,
+            teacher_source,
+            teacher_source_id,
+            override_reason,
+            override_admin_id,
+            override_at,
+        ) = await ReportCommentService.effective_teacher_comment(
+            db,
+            tenant_id=actor.tenant_id,
+            student_id=student.id,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+        )
+        principal_text, principal_source_template_id = await ReportCardService._principal_comment(
+            db,
+            actor=actor,
+            average=average_score,
+            principal_comment=principal_comment,
+            principal_template_id=principal_template_id,
+            apply_default=apply_default_principal_template,
+        )
+
+        version = await ReportCardRepository.next_version(
             db,
             actor.tenant_id,
-            student.class_id,
             student.id,
             academic_session_id,
             academic_term_id,
         )
-        if missing:
-            raise BadRequestException(f"Missing locked scores for: {', '.join(missing)}")
-        if any(result.status != AcademicResultStatus.LOCKED for result in results):
-            raise BadRequestException("Report cards can only be generated from locked scores.")
+        if replaces is not None and replaces.status == ReportCardStatus.DRAFT:
+            replaces.is_outdated = True
+            replaces.superseded_at = datetime.now(timezone.utc)
+            replaces.status = ReportCardStatus.ARCHIVED
+            await ReportCardRepository.save(db, replaces)
 
-        total_score = sum((result.total_score for result in results), Decimal("0"))
-        average_score = total_score / Decimal(str(len(results)))
-
-        if replace_existing is not None:
-            replace_existing.superseded_at = datetime.now(timezone.utc)
-            replace_existing.is_outdated = True
-            replace_existing.status = ReportCardStatus.ARCHIVED
-            await ReportCardRepository.save(db, replace_existing)
-            version = replace_existing.version + 1
-            class_teacher_comment = class_teacher_comment or replace_existing.class_teacher_comment
-            principal_comment = principal_comment or replace_existing.principal_comment
-
-        card = ReportCard(
-            tenant_id=actor.tenant_id,
-            student_id=student.id,
-            class_id=student.class_id,
-            academic_session_id=academic_session_id,
-            academic_term_id=academic_term_id,
-            total_score=total_score,
-            average_score=average_score,
-            class_teacher_comment=class_teacher_comment,
-            principal_comment=principal_comment,
-            version=version,
-            published_at=None,
-            published_by=None,
-            is_outdated=False,
-            status=ReportCardStatus.DRAFT,
-            generated_by_actor_type=ActorType.TENANT_ADMIN.value,
-            generated_by_actor_id=actor.id,
+        card = await ReportCardRepository.create(
+            db,
+            ReportCard(
+                tenant_id=actor.tenant_id,
+                student_id=student.id,
+                class_id=placement["class_id"],
+                academic_level_id=placement["academic_level_id"],
+                academic_level_department_id=placement["academic_level_department_id"],
+                academic_session_id=academic_session_id,
+                academic_term_id=academic_term_id,
+                academic_level_name_snapshot=placement["academic_level_name"],
+                class_name_snapshot=placement["class_name"],
+                class_arm_snapshot=placement["class_arm"],
+                department_name_snapshot=placement["department_name"],
+                teacher_name_snapshot=placement["teacher_name"],
+                total_score=total_score,
+                average_score=average_score,
+                class_teacher_comment=teacher_comment,
+                teacher_comment_source=teacher_source.value,
+                teacher_comment_source_id=teacher_source_id,
+                teacher_comment_override_reason=override_reason,
+                teacher_comment_override_admin_id=override_admin_id,
+                teacher_comment_override_at=(
+                    override_at if teacher_source == TeacherCommentSource.ADMIN_OVERRIDE else None
+                ),
+                principal_comment=principal_text,
+                principal_comment_source_template_id=principal_source_template_id,
+                version=version,
+                replaces_report_card_id=replaces.id if replaces else None,
+                is_outdated=False,
+                status=ReportCardStatus.DRAFT,
+                generated_by_actor_type=ActorType.TENANT_ADMIN.value,
+                generated_by_actor_id=actor.id,
+            ),
         )
-        card = await ReportCardRepository.create(db, card)
 
-        component_scores_by_result = (
-            await StudentAcademicRepository.list_result_component_scores_batch(
-                db, actor.tenant_id, results
-            )
+        component_scores = await StudentAcademicRepository.list_result_component_scores_batch(
+            db, actor.tenant_id, ready_results
         )
-        for result in results:
+        for result in ready_results:
             subject = await SubjectRepository.get_subject_by_id(
                 db, actor.tenant_id, result.subject_id
-            )
-            teacher_name = await ReportCardService._teacher_name_for_result(
-                db, actor.tenant_id, result
             )
             grade = result.grade
             remark = result.remark
             if grade is None:
-                grading_scale = await StudentAcademicRepository.find_grade_for_score(
+                scale = await StudentAcademicRepository.find_grade_for_score(
                     db=db,
                     tenant_id=actor.tenant_id,
                     score=result.total_score,
                 )
-                if grading_scale is not None:
-                    grade = grading_scale.grade
-                    remark = remark or grading_scale.remark
-
+                if scale is not None:
+                    grade = scale.grade
+                    remark = remark or scale.remark
             line = await ReportCardRepository.create_line(
                 db,
                 ReportCardSubjectLine(
@@ -257,14 +468,15 @@ class ReportCardService:
                     subject_id=result.subject_id,
                     subject_name=subject.name if subject else "Unknown subject",
                     subject_code=subject.code if subject else None,
-                    teacher_name=teacher_name,
+                    teacher_name=await ReportCardService._teacher_name_for_result(
+                        db, actor.tenant_id, result
+                    ),
                     total_score=result.total_score,
                     grade=grade or "Pending",
                     remark=remark,
                 ),
             )
-            component_rows = component_scores_by_result.get(result.id, [])
-            for component, score in component_rows:
+            for component, score in component_scores.get(result.id, []):
                 if score is None:
                     raise BadRequestException(
                         f"{component.name} is missing for {subject.name if subject else 'subject'}."
@@ -282,7 +494,6 @@ class ReportCardService:
                         score=score.score,
                     ),
                 )
-
         return card
 
     @staticmethod
@@ -293,14 +504,14 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> None:
-        cards = await ReportCardRepository.list_active_cards_for_class_period(
+        cards = await ReportCardRepository.list_current_drafts_for_class_period(
             db, tenant_id, class_id, academic_session_id, academic_term_id
         )
-        rank_map = ReportCardService._dense_rank(
+        ranks = ReportCardService._dense_rank(
             [(card.student_id, card.average_score) for card in cards]
         )
         for card in cards:
-            card.position = rank_map.get(card.student_id)
+            card.position = ranks.get(card.student_id)
             card.position_out_of = len(cards)
             await ReportCardRepository.save(db, card)
 
@@ -310,44 +521,54 @@ class ReportCardService:
         actor: TenantAdmin,
         payload: ReportCardGenerateRequest,
     ) -> ReportCardResponse | ReportCardBulkGenerateResponse:
-        if payload.class_id is not None:
-            students, _ = await StudentRepository.list_students(
-                db=db,
-                tenant_id=actor.tenant_id,
-                class_id=payload.class_id,
-                limit=500,
+        if payload.class_id is None:
+            assert payload.student_id is not None
+            return await ReportCardService.generate_for_student(
+                db,
+                actor,
+                student_id=payload.student_id,
+                academic_session_id=payload.academic_session_id,
+                academic_term_id=payload.academic_term_id,
+                principal_comment=payload.principal_comment,
+                principal_template_id=payload.principal_template_id,
+                apply_default_principal_template=payload.apply_default_principal_template,
             )
-            generated: list[ReportCardResponse] = []
-            skipped: list[dict] = []
-            for student in students:
-                try:
-                    card = await ReportCardService.generate_for_student(
-                        db=db,
-                        actor=actor,
+
+        students, _ = await StudentRepository.list_for_tenant(
+            db=db,
+            tenant_id=actor.tenant_id,
+            class_id=payload.class_id,
+            limit=500,
+        )
+        generated: list[ReportCardResponse] = []
+        skipped: list[dict] = []
+        for student in students:
+            try:
+                generated.append(
+                    await ReportCardService.generate_for_student(
+                        db,
+                        actor,
                         student_id=student.id,
                         academic_session_id=payload.academic_session_id,
                         academic_term_id=payload.academic_term_id,
+                        principal_comment=payload.principal_comment,
+                        principal_template_id=payload.principal_template_id,
+                        apply_default_principal_template=payload.apply_default_principal_template,
+                        commit=False,
                     )
-                    generated.append(card)
-                except BadRequestException as exc:
-                    skipped.append({"student_id": str(student.id), "reason": str(exc)})
-            await ReportCardService._apply_class_positions(
-                db,
-                actor.tenant_id,
-                payload.class_id,
-                payload.academic_session_id,
-                payload.academic_term_id,
-            )
-            await db.commit()
-            return ReportCardBulkGenerateResponse(generated=generated, skipped=skipped)
-
-        return await ReportCardService.generate_for_student(
-            db=db,
-            actor=actor,
-            student_id=payload.student_id,
-            academic_session_id=payload.academic_session_id,
-            academic_term_id=payload.academic_term_id,
+                )
+            except BadRequestException as exc:
+                skipped.append({"student_id": str(student.id), "reason": str(exc)})
+        await ReportCardService._apply_class_positions(
+            db,
+            actor.tenant_id,
+            payload.class_id,
+            payload.academic_session_id,
+            payload.academic_term_id,
         )
+        await db.commit()
+        generated = [await ReportCardService.get(db, actor, item.id) for item in generated]
+        return ReportCardBulkGenerateResponse(generated=generated, skipped=skipped)
 
     @staticmethod
     async def generate_for_student(
@@ -357,49 +578,61 @@ class ReportCardService:
         student_id: uuid.UUID,
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
+        principal_comment: str | None = None,
+        principal_template_id: uuid.UUID | None = None,
+        apply_default_principal_template: bool = False,
+        commit: bool = True,
     ) -> ReportCardResponse:
         student = await StudentRepository.get_student_by_id(
             db=db,
             tenant_id=actor.tenant_id,
             student_id=student_id,
         )
-        if student is None or student.class_id is None:
-            raise NotFoundException("Student or student class not found.")
-
-        existing = await ReportCardRepository.get_by_student_period(
+        if student is None:
+            raise NotFoundException("Student not found.")
+        existing_draft = await ReportCardRepository.get_current_draft(
             db,
             actor.tenant_id,
             student_id,
             academic_session_id,
             academic_term_id,
         )
-        if existing is not None:
-            raise BadRequestException(
-                "A report card already exists for this student and academic period."
-            )
-
+        if existing_draft is not None:
+            raise BadRequestException("A current report draft already exists for this student.")
+        published = await ReportCardRepository.get_current_published(
+            db,
+            actor.tenant_id,
+            student_id,
+            academic_session_id,
+            academic_term_id,
+        )
+        if published is not None and not published.is_outdated:
+            raise BadRequestException("The current published report is still authoritative.")
         results = await ReportCardService._finalized_results_for_student(
             db, actor.tenant_id, student_id, academic_session_id, academic_term_id
         )
-        if not results:
-            raise BadRequestException("No locked scores are available for this student.")
-
         card = await ReportCardService._create_card_from_results(
             db,
-            actor,
-            student,
-            academic_session_id,
-            academic_term_id,
-            results,
+            actor=actor,
+            student=student,
+            academic_session_id=academic_session_id,
+            academic_term_id=academic_term_id,
+            results=results,
+            principal_comment=principal_comment,
+            principal_template_id=principal_template_id,
+            apply_default_principal_template=apply_default_principal_template,
+            replaces=published,
         )
-        await ReportCardService._apply_class_positions(
-            db,
-            actor.tenant_id,
-            student.class_id,
-            academic_session_id,
-            academic_term_id,
-        )
-        await db.commit()
+        if card.class_id is not None:
+            await ReportCardService._apply_class_positions(
+                db,
+                actor.tenant_id,
+                card.class_id,
+                academic_session_id,
+                academic_term_id,
+            )
+        if commit:
+            await db.commit()
         return await ReportCardService.get(db, actor, card.id)
 
     @staticmethod
@@ -413,7 +646,6 @@ class ReportCardService:
             raise NotFoundException("Report card not found.")
         if existing.status == ReportCardStatus.ARCHIVED:
             raise BadRequestException("Archived report cards cannot be regenerated.")
-
         student = await StudentRepository.get_student_by_id(
             db=db,
             tenant_id=actor.tenant_id,
@@ -421,7 +653,15 @@ class ReportCardService:
         )
         if student is None:
             raise NotFoundException("Student not found.")
-
+        current_draft = await ReportCardRepository.get_current_draft(
+            db,
+            actor.tenant_id,
+            existing.student_id,
+            existing.academic_session_id,
+            existing.academic_term_id,
+        )
+        if current_draft is not None and current_draft.id != existing.id:
+            raise BadRequestException("A replacement draft already exists.")
         results = await ReportCardService._finalized_results_for_student(
             db,
             actor.tenant_id,
@@ -429,47 +669,54 @@ class ReportCardService:
             existing.academic_session_id,
             existing.academic_term_id,
         )
-        if not results:
-            raise BadRequestException("No locked scores are available for regeneration.")
-
         card = await ReportCardService._create_card_from_results(
             db,
-            actor,
-            student,
-            existing.academic_session_id,
-            existing.academic_term_id,
-            results,
-            replace_existing=existing,
+            actor=actor,
+            student=student,
+            academic_session_id=existing.academic_session_id,
+            academic_term_id=existing.academic_term_id,
+            results=results,
+            principal_comment=existing.principal_comment,
+            principal_template_id=None,
+            apply_default_principal_template=False,
+            replaces=existing,
         )
-        await ReportCardService._apply_class_positions(
-            db,
-            actor.tenant_id,
-            existing.class_id,
-            existing.academic_session_id,
-            existing.academic_term_id,
-        )
+        if card.class_id is not None:
+            await ReportCardService._apply_class_positions(
+                db,
+                actor.tenant_id,
+                card.class_id,
+                card.academic_session_id,
+                card.academic_term_id,
+            )
         await db.commit()
         return await ReportCardService.get(db, actor, card.id)
 
     @staticmethod
-    async def update_comments(
+    async def update_principal_comment(
         db: AsyncSession,
         actor: TenantAdmin,
         report_card_id: uuid.UUID,
-        payload: ReportCardCommentsUpdate,
+        payload: ReportCardPrincipalCommentUpdate,
     ) -> ReportCardResponse:
         card = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if card is None or card.superseded_at is not None:
             raise NotFoundException("Report card not found.")
         if card.status != ReportCardStatus.DRAFT:
-            raise BadRequestException("Only draft report cards can be edited.")
-
-        update_data = payload.model_dump(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(card, field, value)
-        saved = await ReportCardRepository.save(db, card)
+            raise BadRequestException("Published report revisions are immutable.")
+        principal_text, template_id = await ReportCardService._principal_comment(
+            db,
+            actor=actor,
+            average=card.average_score,
+            principal_comment=payload.principal_comment,
+            principal_template_id=payload.principal_template_id,
+            apply_default=False,
+        )
+        card.principal_comment = principal_text
+        card.principal_comment_source_template_id = template_id
+        await ReportCardRepository.save(db, card)
         await db.commit()
-        return await ReportCardService.get(db, actor, saved.id)
+        return await ReportCardService.get(db, actor, card.id)
 
     @staticmethod
     async def class_overview(
@@ -480,36 +727,83 @@ class ReportCardService:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> ReportCardClassOverviewResponse:
-        expected = await ReportCardService._expected_class_subjects(db, actor.tenant_id, class_id)
-        students, _ = await StudentRepository.list_students(
+        students, _ = await StudentRepository.list_for_tenant(
             db=db,
             tenant_id=actor.tenant_id,
             class_id=class_id,
             limit=500,
         )
-        cards = await ReportCardRepository.list_active_cards_for_class_period(
+        cards = await ReportCardRepository.list_current_cards_for_class_period(
             db, actor.tenant_id, class_id, academic_session_id, academic_term_id
         )
-        cards_by_student = {card.student_id: card for card in cards}
-
+        cards_by_student: dict[uuid.UUID, ReportCard] = {}
+        for card in cards:
+            existing = cards_by_student.get(card.student_id)
+            if existing is None or card.status == ReportCardStatus.DRAFT:
+                cards_by_student[card.student_id] = card
         rows: list[ReportCardClassOverviewRow] = []
+        expected_counts: list[int] = []
         for student in students:
-            submitted = await ReportCardService._finalized_results_for_student(
+            expected = await ReportCardService._expected_curriculum_subjects(
+                db, actor.tenant_id, student.id, academic_term_id
+            )
+            expected_counts.append(len(expected))
+            results = await ReportCardService._finalized_results_for_student(
                 db,
                 actor.tenant_id,
                 student.id,
                 academic_session_id,
                 academic_term_id,
             )
-            missing = await ReportCardService._missing_subjects(
-                db,
-                actor.tenant_id,
-                class_id,
-                student.id,
-                academic_session_id,
-                academic_term_id,
-            )
+            by_curriculum = {item.curriculum_subject_id: item for item in results}
+            missing: list[str] = []
+            for expected_item in expected:
+                result = by_curriculum.get(expected_item.curriculum_subject_id)
+                if result is None or result.status != AcademicResultStatus.LOCKED:
+                    subject = await SubjectRepository.get_subject_by_id(
+                        db, actor.tenant_id, expected_item.subject_id
+                    )
+                    missing.append(subject.name if subject else str(expected_item.subject_id))
+            applicable = [
+                by_curriculum[item.curriculum_subject_id]
+                for item in expected
+                if item.curriculum_subject_id in by_curriculum
+                and by_curriculum[item.curriculum_subject_id].status == AcademicResultStatus.LOCKED
+            ]
+            average = None
+            scale = None
+            if applicable and len(applicable) == len(expected):
+                average = sum((item.total_score for item in applicable), Decimal("0")) / Decimal(
+                    len(applicable)
+                )
+                scale = await StudentAcademicRepository.find_grade_for_score(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    score=average,
+                )
+            teacher_status = "missing"
+            try:
+                await ReportCommentService.effective_teacher_comment(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    student_id=student.id,
+                    academic_session_id=academic_session_id,
+                    academic_term_id=academic_term_id,
+                )
+                teacher_status = "submitted_or_overridden"
+            except BadRequestException as exc:
+                if "needs review" in str(exc).lower():
+                    teacher_status = "needs_review"
+            principal_default = None
+            if average is not None:
+                principal_default = await ReportCommentService.principal_default_for_average(
+                    db,
+                    admin=actor,
+                    average=average,
+                )
             card = cards_by_student.get(student.id)
+            results_status = "complete" if expected and not missing else "incomplete"
+            ready = results_status == "complete" and teacher_status == "submitted_or_overridden"
             rows.append(
                 ReportCardClassOverviewRow(
                     student_id=student.id,
@@ -520,8 +814,19 @@ class ReportCardService:
                         or None
                     ),
                     admission_number=student.admission_number,
-                    submitted_count=len(submitted),
+                    results_readiness=results_status,
+                    submitted_count=len(applicable),
                     expected_count=len(expected),
+                    teacher_comment_status=teacher_status,
+                    overall_grade=scale.grade if scale else None,
+                    principal_comment_status=(
+                        "available" if principal_default is not None else "manual"
+                    ),
+                    report_readiness="ready"
+                    if ready
+                    else "override_required"
+                    if results_status == "complete"
+                    else "waiting_for_results",
                     report_card_id=card.id if card else None,
                     report_card_status=card.status.value if card else None,
                     report_card_version=card.version if card else None,
@@ -529,12 +834,11 @@ class ReportCardService:
                     missing_subject_names=missing,
                 )
             )
-
         return ReportCardClassOverviewResponse(
             class_id=class_id,
             academic_session_id=academic_session_id,
             academic_term_id=academic_term_id,
-            expected_subject_count=len(expected),
+            expected_subject_count=max(expected_counts, default=0),
             items=rows,
         )
 
@@ -547,38 +851,72 @@ class ReportCardService:
         card = await ReportCardRepository.get_by_id(db, actor.tenant_id, report_card_id)
         if card is None:
             raise NotFoundException("Report card not found.")
-        if card.status != ReportCardStatus.DRAFT:
-            raise BadRequestException("Only draft report cards can be published.")
-        if card.superseded_at is not None:
-            raise BadRequestException("Superseded report cards cannot be published.")
+        if card.status != ReportCardStatus.DRAFT or card.superseded_at is not None:
+            raise BadRequestException("Only the current draft can be published.")
         if card.is_outdated:
             raise BadRequestException(
                 "Outdated report cards must be regenerated before publication."
             )
-        lines = await ReportCardRepository.list_lines(db, actor.tenant_id, card.id)
-        expected = await ReportCardService._expected_class_subjects(
-            db, actor.tenant_id, card.class_id
+        expected, _, _ = await ReportCardService._ready_results(
+            db,
+            tenant_id=actor.tenant_id,
+            student_id=card.student_id,
+            academic_session_id=card.academic_session_id,
+            academic_term_id=card.academic_term_id,
         )
-        expected_subject_ids = {class_subject.subject_id for class_subject in expected}
-        line_subject_ids = {line.subject_id for line in lines}
-        if line_subject_ids != expected_subject_ids:
-            raise BadRequestException("Report card is missing expected subject lines.")
+        expected_ids = {item.curriculum_subject_id for item in expected}
+        lines = await ReportCardRepository.list_lines(db, actor.tenant_id, card.id)
+        line_curriculum_ids: set[uuid.UUID] = set()
         for line in lines:
             result = await StudentAcademicRepository.get_result_by_id(
-                db,
-                actor.tenant_id,
-                line.student_subject_result_id,
+                db, actor.tenant_id, line.student_subject_result_id
             )
             if result is None or result.status != AcademicResultStatus.LOCKED:
-                raise BadRequestException(
-                    "Report card source scores must be locked before publication."
-                )
+                raise BadRequestException("Report source results must remain locked.")
+            if result.total_score != line.total_score:
+                raise BadRequestException("Report results changed; regenerate this draft.")
+            line_curriculum_ids.add(result.curriculum_subject_id)
+        if line_curriculum_ids != expected_ids:
+            raise BadRequestException("Report curriculum changed; regenerate this draft.")
+        (
+            teacher_text,
+            teacher_source,
+            teacher_source_id,
+            _,
+            _,
+            _,
+        ) = await ReportCommentService.effective_teacher_comment(
+            db,
+            tenant_id=actor.tenant_id,
+            student_id=card.student_id,
+            academic_session_id=card.academic_session_id,
+            academic_term_id=card.academic_term_id,
+        )
+        if (
+            card.class_teacher_comment != teacher_text
+            or card.teacher_comment_source != teacher_source.value
+            or card.teacher_comment_source_id != teacher_source_id
+        ):
+            raise BadRequestException("Teacher comment changed; regenerate this draft.")
+
+        previous = await ReportCardRepository.get_current_published(
+            db,
+            actor.tenant_id,
+            card.student_id,
+            card.academic_session_id,
+            card.academic_term_id,
+        )
+        now = datetime.now(timezone.utc)
+        if previous is not None and previous.id != card.id:
+            previous.is_outdated = True
+            previous.superseded_at = now
+            await ReportCardRepository.save(db, previous)
         card.status = ReportCardStatus.PUBLISHED
-        card.published_at = datetime.now(timezone.utc)
+        card.published_at = now
         card.published_by = actor.id
-        saved = await ReportCardRepository.save(db, card)
+        await ReportCardRepository.save(db, card)
         await db.commit()
-        return await ReportCardService.get(db, actor, saved.id)
+        return await ReportCardService.get(db, actor, card.id)
 
     @staticmethod
     async def _ensure_parent_can_view(
@@ -598,7 +936,6 @@ class ReportCardService:
     @staticmethod
     async def _response(db: AsyncSession, card: ReportCard) -> ReportCardResponse:
         student = await StudentRepository.get_student_by_id(db, card.tenant_id, card.student_id)
-        classroom = await ClassRoomRepository.get_by_id(db, card.tenant_id, card.class_id)
         session = await StudentAcademicRepository.get_academic_session_by_id(
             db, card.tenant_id, card.academic_session_id
         )
@@ -606,27 +943,26 @@ class ReportCardService:
             db, card.tenant_id, card.academic_term_id
         )
         lines = await ReportCardRepository.list_lines(db, card.tenant_id, card.id)
-        components_by_line = await ReportCardRepository.list_line_components_batch(
+        components = await ReportCardRepository.list_line_components_batch(
             db, card.tenant_id, [line.id for line in lines]
         )
-        response_lines = []
-        for line in lines:
-            response_lines.append(
-                ReportCardSubjectLineResponse(
-                    id=line.id,
-                    subject_id=line.subject_id,
-                    subject_name=line.subject_name,
-                    subject_code=line.subject_code,
-                    teacher_name=line.teacher_name,
-                    components=[
-                        ReportCardSubjectComponentResponse.model_validate(item)
-                        for item in components_by_line.get(line.id, [])
-                    ],
-                    total_score=line.total_score,
-                    grade=line.grade,
-                    remark=line.remark,
-                )
+        response_lines = [
+            ReportCardSubjectLineResponse(
+                id=line.id,
+                subject_id=line.subject_id,
+                subject_name=line.subject_name,
+                subject_code=line.subject_code,
+                teacher_name=line.teacher_name,
+                components=[
+                    ReportCardSubjectComponentResponse.model_validate(item)
+                    for item in components.get(line.id, [])
+                ],
+                total_score=line.total_score,
+                grade=line.grade,
+                remark=line.remark,
             )
+            for line in lines
+        ]
         return ReportCardResponse(
             id=card.id,
             tenant_id=card.tenant_id,
@@ -639,8 +975,12 @@ class ReportCardService:
             admission_number=student.admission_number if student else None,
             student_passport_photo_url=student.passport_photo_url if student else None,
             class_id=card.class_id,
-            class_name=classroom.name if classroom else None,
-            class_arm=classroom.arm if classroom else None,
+            academic_level_id=card.academic_level_id,
+            academic_level_department_id=card.academic_level_department_id,
+            class_name=card.class_name_snapshot,
+            class_arm=card.class_arm_snapshot,
+            department_name=card.department_name_snapshot,
+            class_teacher_name=card.teacher_name_snapshot,
             academic_session_id=card.academic_session_id,
             academic_session_name=session.name if session else None,
             academic_term_id=card.academic_term_id,
@@ -650,8 +990,12 @@ class ReportCardService:
             position=card.position,
             position_out_of=card.position_out_of,
             class_teacher_comment=card.class_teacher_comment,
+            teacher_comment_source=card.teacher_comment_source,
+            teacher_comment_source_id=card.teacher_comment_source_id,
             principal_comment=card.principal_comment,
+            principal_comment_source_template_id=card.principal_comment_source_template_id,
             version=card.version,
+            replaces_report_card_id=card.replaces_report_card_id,
             published_at=card.published_at,
             published_by=card.published_by,
             is_outdated=card.is_outdated,
@@ -694,12 +1038,13 @@ class ReportCardService:
         skip: int = 0,
         limit: int = 100,
     ) -> tuple[list[ReportCardResponse], int]:
-        published_only = isinstance(actor, Parent)
+        published_only = False
         if isinstance(actor, Parent):
             if student_id is None:
                 raise BadRequestException("student_id is required.")
             await ReportCardService._ensure_parent_can_view(db, actor, student_id)
-        if isinstance(actor, Student):
+            published_only = True
+        elif isinstance(actor, Student):
             student_id = actor.id
             published_only = True
         cards, total = await ReportCardRepository.list_cards(
@@ -716,127 +1061,3 @@ class ReportCardService:
             published_only=published_only,
         )
         return [await ReportCardService._response(db, card) for card in cards], total
-
-    @staticmethod
-    async def render_html(
-        db: AsyncSession,
-        actor: TenantAdmin | Parent | Student,
-        report_card_id: uuid.UUID,
-    ) -> str:
-        card = await ReportCardService.get(db, actor, report_card_id)
-        tenant = await TenantRepository.get_by_id(db, actor.tenant_id)
-
-        def _format_score(value: Decimal | None) -> str:
-            if value is None:
-                return "—"
-            text = format(value, "f")
-            if "." in text:
-                text = text.rstrip("0").rstrip(".")
-            return text or "0"
-
-        def _format_term(value: str | None) -> str:
-            normalized = " ".join(str(value or "").replace("_", " ").split()).lower()
-            if not normalized:
-                return "—"
-            return normalized[0].upper() + normalized[1:]
-
-        def _format_subject(value: str | None) -> str:
-            normalized = " ".join(str(value or "").split()).lower()
-            if not normalized:
-                return "—"
-            return " ".join(word.capitalize() for word in normalized.split(" "))
-
-        student_name = html.escape(card.student_name or card.admission_number or "")
-        admission_number = html.escape(card.admission_number or "Not assigned")
-        class_label = html.escape(
-            " ".join(part for part in [card.class_name, card.class_arm] if part) or "Not assigned"
-        )
-        session_label = html.escape(card.academic_session_name or "—")
-        term_label = html.escape(_format_term(card.academic_term_name))
-        school_name = html.escape((tenant.school_name if tenant else None) or "Weave")
-        status_value = getattr(card.status, "value", card.status)
-        status_label = html.escape(str(status_value).replace("_", " ").title())
-        component_headers = card.lines[0].components if card.lines else []
-        component_heading_cells = "".join(
-            f"<th>{html.escape(component.name)}</th>" for component in component_headers
-        )
-        rows = "".join(
-            "<tr>"
-            f"<td>{html.escape(_format_subject(line.subject_name))}</td>"
-            f"<td>{html.escape(line.subject_code or '—')}</td>"
-            + "".join(
-                f"<td>{_format_score(next((item.score for item in line.components if item.assessment_component_id == header.assessment_component_id), None))}</td>"
-                for header in component_headers
-            )
-            + f"<td>{_format_score(line.total_score)}</td>"
-            f"<td>{html.escape(line.grade)}</td>"
-            f"<td>{html.escape(line.remark or '')}</td>"
-            "</tr>"
-            for line in card.lines
-        )
-        return f"""
-<!doctype html>
-<html>
-<head>
-    <title>Report Card</title>
-    <style>
-        body {{ margin: 0; background: #e2e8f0; color: #0f172a; font-family: Arial, sans-serif; line-height: 1.45; }}
-        .page {{ width: min(100%, 960px); margin: 24px auto; background: white; border: 1px solid #cbd5e1; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.14); }}
-        .sheet {{ padding: 28px; }}
-        .brand {{ background: #1a237e; color: white; border-radius: 18px; margin-bottom: 24px; padding: 18px 20px; }}
-        h1 {{ margin: 0; font-size: 30px; }}
-        .status {{ display: inline-block; margin-top: 8px; border-radius: 999px; background: #e5e7eb; color: #374151; padding: 6px 10px; font-size: 12px; font-weight: 700; }}
-        .meta, .summary {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }}
-        .summary {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-        .card {{ border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; padding: 12px; }}
-        .card span {{ color: #64748b; display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; }}
-        .card strong {{ display: block; font-size: 15px; margin-top: 3px; }}
-        .table-wrapper {{ overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 12px; }}
-        table {{ border-collapse: collapse; width: 100%; font-size: 13px; min-width: 700px; }}
-        th, td {{ border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }}
-        th {{ background: #e8eaf6; color: #1a237e; font-size: 11px; text-transform: uppercase; }}
-        .footer {{ margin-top: 24px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 12px; padding-top: 14px; }}
-        @media (max-width: 640px) {{
-            .page {{ margin: 12px; }}
-            .sheet {{ padding: 16px; }}
-            h1 {{ font-size: 20px; }}
-            .brand h1 {{ font-size: 18px; }}
-            .meta {{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
-            .summary {{ grid-template-columns: 1fr; gap: 10px; }}
-            .card span {{ font-size: 10px; }}
-            .card strong {{ font-size: 14px; }}
-            table {{ font-size: 12px; min-width: 600px; }}
-            th, td {{ padding: 8px; }}
-        }}
-        @media print {{ body {{ background: white; }} .page {{ margin: 0; width: 100%; border: 0; box-shadow: none; }} }}
-    </style>
-</head>
-<body>
-    <main class="page">
-        <section class="sheet">
-            <section class="brand"><h1>{school_name}</h1><p>Termly academic report</p></section>
-            <h1>Report Card</h1>
-            <p><strong>{student_name}</strong></p>
-            <div class="status">{status_label}</div>
-            <section class="meta">
-                <div class="card"><span>Admission No.</span><strong>{admission_number}</strong></div>
-                <div class="card"><span>Class</span><strong>{class_label}</strong></div>
-                <div class="card"><span>Session</span><strong>{session_label}</strong></div>
-                <div class="card"><span>Term</span><strong>{term_label}</strong></div>
-            </section>
-            <section class="summary">
-                <div class="card"><span>Total score</span><strong>{_format_score(card.total_score)}</strong></div>
-                <div class="card"><span>Average</span><strong>{_format_score(card.average_score)}</strong></div>
-            </section>
-            <div class="table-wrapper">
-                <table>
-                    <thead><tr><th>Subject</th><th>Code</th>{component_heading_cells}<th>Total</th><th>Grade</th><th>Remark</th></tr></thead>
-                    <tbody>{rows}</tbody>
-                </table>
-            </div>
-            <footer class="footer">Generated by Weave - {session_label} academic session</footer>
-        </section>
-    </main>
-</body>
-</html>
-"""

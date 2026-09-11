@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import react from "@vitejs/plugin-react";
@@ -7,6 +9,7 @@ import { createServer } from "vite";
 let vite;
 let DayEditor;
 let buildDayUpdatePayload;
+const viteCacheDir = resolve(`.vite-test-cache-${process.pid}`);
 
 const createStorage = () => {
   const values = new Map();
@@ -71,6 +74,8 @@ const hasControl = (tree, label) =>
 test.before(async () => {
   vite = await createServer({
     configFile: false,
+    cacheDir: viteCacheDir,
+    optimizeDeps: { noDiscovery: true, include: [] },
     plugins: [react()],
     server: { middlewareMode: true },
     appType: "custom",
@@ -84,6 +89,7 @@ test.before(async () => {
 
 test.after(async () => {
   await vite?.close();
+  await rm(viteCacheDir, { recursive: true, force: true });
 });
 
 test("selecting Public holiday clears hours, closes operations, and hides incompatible controls", () => {
@@ -126,7 +132,10 @@ test("selecting Public holiday clears hours, closes operations, and hides incomp
   assert.equal(hasControl(closedTree, "Opens at"), false);
   assert.equal(hasControl(closedTree, "Closes at"), false);
   assert.equal(hasControl(closedTree, "School open"), false);
-  assert.match(textContent(closedTree), /Operating hours do not apply because the school is closed/);
+  assert.match(
+    textContent(closedTree),
+    /Operating hours do not apply because the school is closed/,
+  );
 });
 
 test("Public holiday preset uses the same state transition as the day-type control", () => {

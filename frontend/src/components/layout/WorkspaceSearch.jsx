@@ -8,7 +8,7 @@ import { cn } from "../../utils/cn";
 const ADMIN_SEARCH_STORAGE_PREFIX = "weave:admin-search:";
 
 const placeholderByRole = {
-  admin: "Search students, teachers, parents, classes...",
+  admin: "Search people, classes, subjects, departments...",
   teacher: "Search my students, classes, subjects, results...",
   superadmin: "Search tenants, schools, admins...",
 };
@@ -38,7 +38,7 @@ function WorkspaceSearch({ role }) {
       setItems([]);
 
       try {
-        const response = await searchService.searchWorkspace(searchRole, trimmed, 8);
+        const response = await searchService.searchWorkspace(searchRole, trimmed, 16);
         if (!active) return;
         setItems(response?.items || []);
         setHasSearched(true);

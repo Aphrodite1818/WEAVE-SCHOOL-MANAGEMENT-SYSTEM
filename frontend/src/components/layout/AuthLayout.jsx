@@ -40,7 +40,7 @@ function AuthLayout({
 
   return (
     <div className="auth-surface flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_26%),linear-gradient(180deg,#0b1220,#0f172a)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-text sm:px-6 lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(440px,0.68fr)] lg:px-0 lg:py-0">
-      <section className="hidden border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.92))] lg:flex lg:flex-col lg:justify-between lg:px-12 lg:py-10">
+      <section className="hidden border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_34%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.92))] lg:sticky lg:top-0 lg:flex lg:h-[100dvh] lg:flex-col lg:gap-8 lg:self-start lg:overflow-y-auto lg:justify-between lg:px-12 lg:py-10">
         <Link to="/" className="flex items-center gap-3">
           <WeaveIcon className="h-12 w-12 shrink-0" />
           <div>
@@ -50,15 +50,28 @@ function AuthLayout({
         </Link>
 
         <div className="max-w-xl">
-          <h1 className="text-5xl font-semibold leading-tight tracking-tight text-white">
-            Calm, secure access for every school role.
+          <h1
+            className="auth-headline text-5xl font-semibold leading-tight tracking-tight text-white"
+            aria-label="Calm, secure access for every school role."
+          >
+            {"Calm, secure access for every school role.".split(" ").map((word, index) => (
+              <span key={word} aria-hidden="true">
+                <span
+                  className="landing-headline-word"
+                  style={{ animationDelay: `${80 + index * 140}ms` }}
+                >
+                  {word}
+                </span>
+                {index < 6 ? " " : null}
+              </span>
+            ))}
           </h1>
-          <p className="mt-5 max-w-lg text-base leading-7 text-slate-300">
+          <p className="public-panel-reveal mt-5 max-w-lg text-base leading-7 text-slate-300" style={{ animationDelay: "350ms" }}>
             One workspace for administrators, teachers, parents, and learners to manage daily school operations.
           </p>
         </div>
 
-        <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-xl">
+        <div className="public-panel-reveal rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-xl" style={{ animationDelay: "500ms" }}>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             Built for real school workflows
           </p>
@@ -87,7 +100,7 @@ function AuthLayout({
             </div>
           </Link>
 
-          <Card className="rounded-[2rem] border border-slate-700/70 bg-slate-950/65 p-6 shadow-none sm:p-8">
+          <Card className="public-panel-reveal rounded-[2rem] border border-slate-700/70 bg-slate-950/65 p-6 shadow-none sm:p-8" style={{ animationDelay: "200ms" }}>
             <div className="mb-7">
               {iconPosition === "header" ? (
                 <span className="flex h-10 w-10 items-center justify-center rounded-[1rem] bg-white/10 text-slate-100">

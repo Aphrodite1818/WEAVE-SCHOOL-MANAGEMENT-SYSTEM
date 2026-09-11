@@ -6,9 +6,10 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ConflictException
 from app.tenant_management.models import Tenant, TenantVerificationStatus
 
 
@@ -169,7 +170,15 @@ class TenantRepository:
         db: AsyncSession,
         tenant: Tenant,
     ) -> Tenant:
-        """Persist tenant changes."""
+        """Persist tenant changes while protecting established institution type."""
+        institution_history = inspect(tenant).attrs.institution_type.history
+        if institution_history.has_changes() and any(
+            previous is not None for previous in institution_history.deleted
+        ):
+            raise ConflictException(
+                "Use the institution-type transition endpoint to change an established institution type."
+            )
+
         db.add(tenant)
         await db.flush()
         await db.refresh(tenant)

@@ -58,6 +58,10 @@ def resolve_log_level() -> int:
     return logging.DEBUG if is_development() else logging.INFO
 
 
+def resolve_access_log_level() -> int:
+    return logging.INFO if is_development() else logging.WARNING
+
+
 def _source_path(record: logging.LogRecord) -> str:
     try:
         path = Path(record.pathname).resolve().relative_to(BASE_DIR)
@@ -221,7 +225,7 @@ def configure_logging() -> None:
         _attach_handlers(uvicorn_logger, handlers)
 
     access_logger = logging.getLogger("uvicorn.access")
-    access_logger.setLevel(logging.WARNING)
+    access_logger.setLevel(resolve_access_log_level())
     _attach_handlers(access_logger, handlers)
 
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
@@ -235,6 +239,7 @@ def configure_logging() -> None:
         extra={
             "env": str(getattr(settings, "ENV", "unknown")),
             "console_level": logging.getLevelName(console_level),
+            "access_level": logging.getLevelName(resolve_access_log_level()),
             "file_logging": is_development(),
         },
     )

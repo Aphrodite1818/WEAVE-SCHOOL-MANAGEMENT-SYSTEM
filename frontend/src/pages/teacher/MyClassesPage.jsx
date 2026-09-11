@@ -1,4 +1,5 @@
 import ResourceModulePage from "../shared/ResourceModulePage";
+import { displayClass } from "../../components/academic/academicDisplay";
 import { classService } from "../../services/academicsService";
 
 const teacherClassConfig = {
@@ -7,23 +8,31 @@ const teacherClassConfig = {
   canCreate: false,
   canUpdate: false,
   canDelete: false,
-  filters: [{ name: "search", label: "Search", placeholder: "Class name or arm" }],
+  filters: [
+    { name: "search", label: "Search", placeholder: "Class name or arm" },
+  ],
   columns: [
-    { key: "name", label: "Class" },
-    { key: "arm", label: "Arm", render: (item) => item.arm || "-" },
+    {
+      key: "academic_level_name",
+      label: "Class",
+      render: (item) => displayClass(item),
+    },
+    { key: "arm_label", label: "Arm", render: (item) => item.arm_label || "-" },
     {
       key: "teacher",
       label: "Class teacher",
-      render: (item) => item.teacher_name || item.class_teacher_name || "Assigned to you",
+      render: (item) =>
+        item.teacher_name || item.class_teacher_name || "Assigned to you",
     },
   ],
-  fetchItems: (filters) => classService.getClasses({
-    search: filters.search,
-    limit: 100,
-    active_only: true,
-  }),
+  fetchItems: (filters) =>
+    classService.getClasses({
+      search: filters.search,
+      limit: 100,
+      activeOnly: true,
+    }),
   mapItemToForm: () => ({}),
-  getItemLabel: (item) => [item?.name, item?.arm].filter(Boolean).join(" ") || "Class",
+  getItemLabel: (item) => displayClass(item),
 };
 
 function MyClassesPage() {

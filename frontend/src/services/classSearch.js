@@ -18,13 +18,15 @@ const isSubsequence = (query, value) => {
 };
 
 const classSearchHaystacks = (item) => {
-  const label = [item?.name, item?.arm].filter(Boolean).join(" ");
-  return [item?.name, item?.arm, label]
-    .filter(Boolean)
-    .map((value) => ({
-      normalized: normalizeSearchText(value),
-      compact: compactSearchText(value),
-    }));
+  const label =
+    item?.display_name ||
+    [item?.academic_level_name, item?.department_name, item?.arm_label]
+      .filter(Boolean)
+      .join(" ");
+  return [item?.name, item?.arm_label, label].filter(Boolean).map((value) => ({
+    normalized: normalizeSearchText(value),
+    compact: compactSearchText(value),
+  }));
 };
 
 export const filterClasses = (items, search) => {
@@ -33,7 +35,7 @@ export const filterClasses = (items, search) => {
   if (!normalizedSearch) return items;
 
   const exactArmMatches = items.filter(
-    (item) => compactSearchText(item?.arm) === compactSearch,
+    (item) => compactSearchText(item?.arm_label) === compactSearch,
   );
   if (compactSearch.length === 1 && exactArmMatches.length > 0) {
     return exactArmMatches;

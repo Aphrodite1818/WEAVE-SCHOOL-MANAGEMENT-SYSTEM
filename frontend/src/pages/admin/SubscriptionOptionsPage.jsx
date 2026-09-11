@@ -1,488 +1,436 @@
-import { CheckCircle2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { CheckCircle2, CreditCard } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
-import WeaveIcon from "../../components/brand/WeaveIcon";
-import PublicLayout from "../../components/layout/PublicLayout";
+import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
-import Input from "../../components/ui/Input";
+import Card from "../../components/ui/Card";
 import Modal from "../../components/ui/Modal";
+import { savePendingUpgradeTour } from "../../features/guides/workspaceTourState";
 import {
-  BILLING_INTERVAL_OPTIONS,
   LANDING_PRICING_PLANS,
-  formatLimitValue,
   formatPlanName,
 } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
-import { authSession, parseApiError } from "../../services/api";
-import {
-  getSubscriptionCheckoutErrorMessage,
-  subscriptionService,
-} from "../../services/subscriptionService";
+import { academicService } from "../../services/academicService";
+import { parseApiError } from "../../services/api";
+import { subscriptionService } from "../../services/subscriptionService";
 
-const PLAN_RANK = {
-  free_trial: 0,
-  plus: 1,
-  professional: 2,
-  enterprise: 3,
-};
+const asItems = (value) => (Array.isArray(value) ? value : value?.items || []);
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const moneyFromKobo = (value) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0) / 100);
+
+const termLabel = (term) =>
+  String(term?.display_name || term?.name || "Academic term")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const resourceLabel = (value) =>
+  String(value || "resource")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 function SubscriptionOptionsPage() {
-  const user = authSession.getUser() || {};
-  const {
-    currentSubscription,
-    entitlements,
-    planCode,
-    statusCode,
-    statusMeta,
-    isLoading,
-    errors,
-  } = useSubscription();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { refreshSubscriptionState } = useSubscription();
+  const requestedTermId = searchParams.get("term");
+  const requestedPlanCode = searchParams.get("plan");
+  const intent = searchParams.get("intent");
+  const origin =
+    searchParams.get("origin") ||
+    (intent === "open-term" ? "academic-terms" : "billing");
+  const defaultReturn =
+    origin === "guided-onboarding"
+      ? "/admin/getting-started"
+      : origin === "academic-terms"
+        ? "/admin/academic/terms"
+        : "/admin/billing";
+  const returnPath = subscriptionService.safeReturnPath(
+    searchParams.get("return"),
+    defaultReturn,
+  );
+  const postPaymentAction = intent === "open-term" ? "open_term" : "none";
 
-  const paidPlans = useMemo(
-    () => LANDING_PRICING_PLANS.filter((plan) => plan.planCode !== "free_trial"),
+  const [term, setTerm] = useState(null);
+  const [planOptions, setPlanOptions] = useState(null);
+  const [planHistory, setPlanHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const checkoutLock = useRef(false);
+  const [busyPlan, setBusyPlan] = useState("");
+  const [error, setError] = useState("");
+  const [eligibilityWarning, setEligibilityWarning] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const termsResponse = await academicService.listTerms({ limit: 100 });
+      const terms = asItems(termsResponse);
+      const selectedTerm = requestedTermId
+        ? terms.find((item) => String(item.id) === String(requestedTermId))
+        : terms.find(
+            (item) =>
+              item.is_current &&
+              String(item.status || "").toLowerCase() === "open",
+          );
+
+      if (!selectedTerm) {
+        throw new Error(
+          requestedTermId
+            ? "The selected academic term could not be found."
+            : "There is no open academic term to manage. Choose a plan when opening the next term.",
+        );
+      }
+
+      const [options, history] = await Promise.all([
+        subscriptionService.getTermPlanOptions(selectedTerm.id),
+        subscriptionService.getTermPlanHistory(),
+      ]);
+      setTerm(selectedTerm);
+      setPlanOptions(options);
+      setPlanHistory(Array.isArray(history) ? history : []);
+    } catch (loadError) {
+      setError(
+        parseApiError(
+          loadError,
+          "Could not load plan options for this academic term.",
+        ).message,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [requestedTermId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const catalogueByCode = useMemo(
+    () => new Map(LANDING_PRICING_PLANS.map((plan) => [plan.planCode, plan])),
     [],
   );
-  const [targetPlanCode, setTargetPlanCode] = useState(null);
-  const [billingInterval, setBillingInterval] = useState("monthly");
-  const [billingEmail, setBillingEmail] = useState(user.email || "");
-  const [preview, setPreview] = useState(null);
-  const [planChange, setPlanChange] = useState(null);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [activePricingPlan, setActivePricingPlan] = useState("professional");
-
-  useEffect(() => {
-    let active = true;
-    subscriptionService
-      .getCurrentPlanChange()
-      .then((response) => {
-        if (active) setPlanChange(response || null);
-      })
-      .catch(() => {
-        if (active) setPlanChange(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (paidPlans.some((plan) => plan.planCode === planCode)) {
-      setActivePricingPlan(planCode);
-    }
-  }, [paidPlans, planCode]);
-
-  const getPlanContext = (candidatePlanCode) => {
-    const currentRank = PLAN_RANK[planCode] ?? 0;
-    const candidateRank = PLAN_RANK[candidatePlanCode] ?? 0;
-    const samePlan = candidatePlanCode === planCode;
-    const retryCurrentPlan =
-      samePlan
-      && ["past_due", "grace_period", "expired"].includes(
-        String(statusCode || "").toLowerCase(),
-      );
-    const matchingPlanChange =
-      planChange?.target_plan_code === candidatePlanCode ? planChange : null;
-
-    return {
-      samePlan,
-      retryCurrentPlan,
-      isDowngrade: candidateRank < currentRank,
-      isUpgrade: candidateRank > currentRank,
-      downgradeReadyForPayment: matchingPlanChange?.status === "awaiting_payment",
-    };
-  };
-
-  const selectedPlan = paidPlans.find((plan) => plan.planCode === targetPlanCode) || null;
-  const selectedContext = targetPlanCode ? getPlanContext(targetPlanCode) : null;
-  const requiresCheckout = Boolean(
-    selectedContext
-      && (!selectedContext.isDowngrade || selectedContext.downgradeReadyForPayment),
+  const paidOptions = (planOptions?.options || []).filter(
+    (option) => option.plan_code !== "free",
   );
-  const validBillingEmail = EMAIL_PATTERN.test(billingEmail.trim());
+  const freeOption = (planOptions?.options || []).find(
+    (option) => option.plan_code === "free",
+  );
 
-  const closeModal = () => {
-    if (busy) return;
-    setModalOpen(false);
-    setTargetPlanCode(null);
-    setPreview(null);
-    setPreviewLoading(false);
-  };
-
-  const openPlanModal = async (candidatePlanCode) => {
-    const context = getPlanContext(candidatePlanCode);
-    if (context.samePlan && !context.retryCurrentPlan) return;
-
-    setTargetPlanCode(candidatePlanCode);
-    setErrorMessage("");
-    setSuccessMessage("");
-    setPreview(null);
-    setModalOpen(true);
-
-    if (!context.isDowngrade || context.downgradeReadyForPayment) return;
-
-    setPreviewLoading(true);
-    try {
-      const response = await subscriptionService.previewPlanChange(candidatePlanCode);
-      setPreview(response);
-    } catch (error) {
-      const parsed = parseApiError(error, "Could not review this plan change.");
-      setErrorMessage(parsed.message);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const startCheckout = async () => {
-    if (!targetPlanCode || !validBillingEmail) return;
-
-    setBusy(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-    try {
-      const response = await subscriptionService.initializeSubscriptionCheckout({
-        plan_code: targetPlanCode,
-        billing_interval: billingInterval,
-        billing_email: billingEmail.trim(),
+  const handlePlan = async (option) => {
+    if (
+      checkoutLock.current ||
+      busyPlan ||
+      !term ||
+      !option ||
+      option.transition === "current"
+    )
+      return;
+    if (!option.eligible) {
+      setEligibilityWarning({
+        planName: formatPlanName(option.plan_code),
+        blockers: option.blockers || [],
       });
-      window.location.assign(response.authorization_url);
-    } catch (error) {
-      const parsed = parseApiError(error, "We could not initialize billing right now.");
-      setErrorMessage(getSubscriptionCheckoutErrorMessage(parsed.message) || parsed.message);
-      setBusy(false);
-    }
-  };
-
-  const scheduleDowngrade = async () => {
-    if (!targetPlanCode) return;
-
-    setBusy(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-    try {
-      const response = await subscriptionService.schedulePlanChange(targetPlanCode);
-      setPlanChange(response);
-      setSuccessMessage(
-        `${formatPlanName(targetPlanCode)} is scheduled for the end of the current billing period.`,
-      );
-      setModalOpen(false);
-      setTargetPlanCode(null);
-      setPreview(null);
-    } catch (error) {
-      const parsed = parseApiError(error, "Could not schedule this downgrade.");
-      setErrorMessage(parsed.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const performPlanAction = () => {
-    if (!selectedContext) return;
-    if (selectedContext.isDowngrade && !selectedContext.downgradeReadyForPayment) {
-      scheduleDowngrade();
       return;
     }
-    startCheckout();
+    checkoutLock.current = true;
+    setBusyPlan(option.plan_code);
+    setError("");
+
+    try {
+      const upgradeTour = subscriptionService.upgradeTourForPlan({
+        targetPlan: option.plan_code,
+        fromPlan: planOptions?.current_plan || "free",
+        history: planHistory,
+      });
+      if (option.requires_payment || Number(option.amount_due_kobo || 0) > 0) {
+        const checkout = await subscriptionService.initializeTermCheckout({
+          academic_term_id: term.id,
+          plan_code: option.plan_code,
+        });
+        subscriptionService.saveTermPaymentIntent({
+          academicTermId: term.id,
+          reference: checkout.reference,
+          origin,
+          returnPath,
+          postPaymentAction,
+          upgradeTour,
+        });
+        window.location.assign(
+          subscriptionService.checkoutRedirectUrl(checkout),
+        );
+        return;
+      }
+
+      if (
+        String(planOptions?.term_status || "").toLowerCase() === "draft" &&
+        option.plan_code === "free"
+      ) {
+        await subscriptionService.activateFreeTerm(term.id);
+        if (postPaymentAction === "open_term") {
+          await academicService.openTerm(term.id);
+        }
+      } else {
+        await subscriptionService.changeTermPlan({
+          academicTermId: term.id,
+          targetPlan: option.plan_code,
+        });
+      }
+
+      await refreshSubscriptionState({ silent: true });
+      if (upgradeTour) {
+        savePendingUpgradeTour({ ...upgradeTour, dedicated: true });
+      }
+      navigate(returnPath, { replace: true });
+    } catch (actionError) {
+      checkoutLock.current = false;
+      setError(
+        parseApiError(actionError, "Could not change the term plan.").message,
+      );
+      setBusyPlan("");
+    }
   };
 
-  const modalActionLabel = (() => {
-    if (busy) return "Working...";
-    if (!targetPlanCode || !selectedContext) return "Continue";
-    if (selectedContext.downgradeReadyForPayment) {
-      return `Checkout for ${formatPlanName(targetPlanCode)}`;
-    }
-    if (selectedContext.isDowngrade) {
-      return `Schedule ${formatPlanName(targetPlanCode)}`;
-    }
-    if (selectedContext.retryCurrentPlan) return "Retry payment";
-    return "Continue to Paystack";
-  })();
-
-  const modalActionDisabled =
-    busy
-    || !selectedContext
-    || (requiresCheckout && !validBillingEmail)
-    || (selectedContext?.isDowngrade
-      && !selectedContext.downgradeReadyForPayment
-      && (previewLoading || !preview?.eligible));
-
-  if (isLoading && !currentSubscription && !entitlements) {
-    return (
-      <PublicLayout>
-        <div className="mx-auto min-h-screen max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <LoadingState label="Loading subscription plans..." />
-        </div>
-      </PublicLayout>
-    );
-  }
-
   return (
-    <PublicLayout>
-      <main className="mx-auto min-h-screen max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
-        <section className="rounded-[1.75rem] border border-border/70 bg-surface p-5 shadow-sm sm:p-7">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-                Subscription plans
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold text-text">
-                Choose the plan that fits your school
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-                Compare plan features, including school colour branding on eligible plans, and continue securely through Paystack when you are ready.
-              </p>
+    <DashboardLayout
+      role="admin"
+      title="Term Plan"
+      description="Choose or change the plan for one operational academic term."
+    >
+      <div className="mx-auto w-full max-w-6xl space-y-4">
+        <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-text">
+                {term ? termLabel(term) : "Term plan"}
+              </h2>
+              {planOptions?.current_plan ? (
+                <Badge variant="success">
+                  {formatPlanName(planOptions.current_plan)} ?{" "}
+                  {String(planOptions.term_status).toLowerCase() === "draft"
+                    ? "Purchased for this term"
+                    : "Plan for this term"}
+                </Badge>
+              ) : null}
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={statusMeta.badgeVariant}>{statusMeta.label}</Badge>
-              <Link to="/admin/billing">
-                <Button variant="outline">Back to billing</Button>
-              </Link>
-            </div>
+            <p className="mt-1 text-sm capitalize text-text-muted">
+              {String(planOptions?.term_status || "").replaceAll("_", " ")}
+            </p>
           </div>
-        </section>
-
-        {errors.currentSubscription ? (
-          <Notice tone="warning">{errors.currentSubscription}</Notice>
-        ) : null}
-        {errors.entitlements ? <Notice tone="warning">{errors.entitlements}</Notice> : null}
-        {errorMessage ? <Notice tone="error">{errorMessage}</Notice> : null}
-        {successMessage ? <Notice tone="success">{successMessage}</Notice> : null}
-
-        {planChange ? (
-          <Notice tone={planChange.status === "blocked" ? "warning" : "info"}>
-            {formatPlanName(planChange.target_plan_code)} plan change: {String(
-              planChange.status,
-            ).replaceAll("_", " ")}.
-          </Notice>
-        ) : null}
-
-        <div className="mx-auto mt-6 flex max-w-full justify-center overflow-x-auto px-1 pb-1">
-          <div className="inline-grid min-w-[28rem] grid-cols-3 gap-1 rounded-full border border-border/70 bg-surface-muted/60 p-1 shadow-soft-card sm:min-w-[36rem]">
-            {paidPlans.map((plan) => (
-              <a
-                key={`subscription-plan-tab-${plan.planCode}`}
-                href={`#subscription-plan-${plan.planCode}`}
-                onClick={() => setActivePricingPlan(plan.planCode)}
-                aria-current={activePricingPlan === plan.planCode ? "true" : undefined}
-                className={`rounded-full px-3 py-2.5 text-center text-sm font-semibold transition ${
-                  activePricingPlan === plan.planCode
-                    ? "bg-surface text-primary shadow-[0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-border/60"
-                    : "text-text-muted hover:text-text"
-                }`}
+          <div className="flex items-center gap-2">
+            {freeOption?.eligible && freeOption.transition !== "current" ? (
+              <Button
+                size="small"
+                variant="ghost"
+                disabled={busyPlan === "free"}
+                onClick={() => handlePlan(freeOption)}
               >
-                {plan.name}
-              </a>
-            ))}
+                {busyPlan === "free" ? "Working..." : "Continue with Free"}
+              </Button>
+            ) : null}
+            <Link to={returnPath}>
+              <Button size="small" variant="outline">
+                Back
+              </Button>
+            </Link>
           </div>
         </div>
 
-        <section className="mt-8 grid auto-cols-[100%] grid-flow-col items-stretch gap-5 overflow-x-auto overscroll-x-contain pb-3 snap-x snap-mandatory touch-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:auto-cols-auto lg:grid-flow-row lg:grid-cols-3 lg:overflow-visible lg:pb-0 lg:snap-none">
-          {paidPlans.map((plan) => {
-            const context = getPlanContext(plan.planCode);
-            const current = context.samePlan && !context.retryCurrentPlan;
-            const buttonLabel = (() => {
-              if (current) return "Current plan";
-              if (context.retryCurrentPlan) return "Retry payment";
-              if (context.downgradeReadyForPayment) return "Checkout";
-              if (context.isDowngrade) return "Schedule downgrade";
-              return "Checkout";
-            })();
+        {error ? (
+          <div
+            role="alert"
+            className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error"
+          >
+            {error}
+          </div>
+        ) : null}
 
-            return (
-              <article
-                id={`subscription-plan-${plan.planCode}`}
-                key={plan.planCode}
-                className={`flex min-h-[34rem] snap-start scroll-mt-28 flex-col rounded-[1.6rem] border bg-surface p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-premium-hover sm:p-6 ${
-                  activePricingPlan === plan.planCode
-                    ? "border-primary/60 ring-4 ring-primary/10"
-                    : "border-border/70"
-                }`}
-              >
-                <div className="flex min-h-8 flex-wrap items-center gap-2">
-                  {plan.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
-                  {current ? <Badge variant="success">Current plan</Badge> : null}
-                </div>
-                <div className="mt-4 flex justify-center">
-                  <WeaveIcon className="h-16 w-16" decorative />
-                </div>
-                <h2 className="mt-3 text-center text-2xl font-semibold text-text">{plan.name}</h2>
-                <p className="mt-2 text-sm font-semibold text-primary">{plan.bestFor}</p>
-                <p className="mt-4 min-h-[4.5rem] text-sm leading-6 text-text-muted">
-                  {plan.description}
-                </p>
+        {loading ? <LoadingState label="Loading term plan options..." /> : null}
 
-                <div className="mt-5">
-                  <p className="text-2xl font-bold text-text">{plan.priceLabel}</p>
-                  <p className="mt-1 text-xs font-medium text-text-muted">Monthly subscription</p>
-                </div>
+        {!loading && planOptions ? (
+          <>
+            <section className="grid items-stretch gap-6 xl:grid-cols-3">
+              {paidOptions.map((option) => {
+                const plan = catalogueByCode.get(option.plan_code) || {
+                  planCode: option.plan_code,
+                  name: formatPlanName(option.plan_code),
+                  bestFor: "",
+                  description: "",
+                  features: [],
+                };
+                const isCurrent = option.transition === "current";
+                const isBusy = busyPlan === option.plan_code;
+                const selectedAtRegistration =
+                  requestedPlanCode === option.plan_code;
+                const actionLabel = getActionLabel(
+                  option,
+                  planOptions.term_status,
+                );
+                const displayAmount =
+                  option.transition === "select"
+                    ? option.list_price_kobo
+                    : option.amount_due_kobo;
 
-                <ul className="mt-5 space-y-3 text-sm text-text-soft">
-                  {(plan.features || []).slice(0, 6).map((feature) => (
-                    <li key={feature} className="flex gap-3">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="mt-5 grid gap-2 rounded-2xl border border-border/70 bg-surface-muted/25 px-4 py-3 text-sm text-text-muted">
-                  <PlanLimit label="Students" value={formatLimitValue(plan.limits?.students)} />
-                  <PlanLimit label="Teachers" value={formatLimitValue(plan.limits?.teachers)} />
-                  <PlanLimit label="Classes" value={formatLimitValue(plan.limits?.classes)} />
-                </div>
-
-                <div className="mt-auto flex flex-1 items-end justify-center pt-6">
-                  <Button
-                    className="w-full"
-                    variant={current ? "outline" : "primary"}
-                    disabled={current}
-                    onClick={() => openPlanModal(plan.planCode)}
+                return (
+                  <Card
+                    key={option.plan_code}
+                    className={`flex flex-col border-border/70 p-0 shadow-soft-card ${
+                      selectedAtRegistration || isCurrent
+                        ? "ring-2 ring-primary/15"
+                        : ""
+                    }`}
                   >
-                    {buttonLabel}
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
-        </section>
-
-        <Modal
-          open={modalOpen}
-          title={
-            selectedContext?.isDowngrade && !selectedContext?.downgradeReadyForPayment
-              ? `Schedule ${selectedPlan?.name || "plan"}`
-              : `Checkout for ${selectedPlan?.name || "plan"}`
-          }
-          description={
-            requiresCheckout
-              ? "Confirm the billing details Paystack should use for this payment."
-              : "Confirm the plan change before it is scheduled."
-          }
-          onClose={closeModal}
-          closeOnOverlay={!busy}
-          footer={(
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" disabled={busy} onClick={closeModal}>
-                Cancel
-              </Button>
-              <Button disabled={modalActionDisabled} onClick={performPlanAction}>
-                {modalActionLabel}
-              </Button>
-            </div>
-          )}
-        >
-          <div className="space-y-5">
-            <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-text">
-                    {selectedPlan?.name || formatPlanName(targetPlanCode)}
-                  </p>
-                  <p className="mt-1 text-sm text-text-muted">{selectedPlan?.priceLabel}</p>
-                </div>
-                {selectedPlan?.highlighted ? <Badge variant="primary">Recommended</Badge> : null}
-              </div>
-            </div>
-
-            {requiresCheckout ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-text-soft">
-                    Billing interval
-                  </span>
-                  <select
-                    className="input-base"
-                    value={billingInterval}
-                    onChange={(event) => setBillingInterval(event.target.value)}
-                  >
-                    {BILLING_INTERVAL_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Input
-                  label="Billing email"
-                  type="email"
-                  value={billingEmail}
-                  onChange={(event) => setBillingEmail(event.target.value)}
-                  placeholder="admin@school.example"
-                  error={
-                    billingEmail && !validBillingEmail
-                      ? "Enter a valid billing email address."
-                      : undefined
-                  }
-                />
-              </div>
-            ) : null}
-
-            {previewLoading ? <LoadingState label="Checking current usage..." /> : null}
-
-            {selectedContext?.isDowngrade && !selectedContext.downgradeReadyForPayment && preview ? (
-              preview.eligible ? (
-                <Notice tone="info">
-                  This plan can be scheduled for the end of the current billing period.
-                </Notice>
-              ) : (
-                <div className="rounded-2xl border border-warning/30 bg-warning-soft p-4">
-                  <p className="font-semibold text-amber-700">
-                    Current usage exceeds this plan.
-                  </p>
-                  <div className="mt-3 grid gap-2">
-                    {(preview.blockers || []).map((blocker) => (
-                      <div
-                        key={blocker.resource}
-                        className="rounded-xl border border-warning/25 bg-surface px-3 py-2 text-sm text-text"
-                      >
-                        <strong className="capitalize">
-                          {String(blocker.resource).replaceAll("_", " ")}
-                        </strong>
-                        : {blocker.used} active, limit {blocker.limit}, excess {blocker.excess}
+                    <div className="flex flex-1 flex-col p-6">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <h3 className="text-2xl font-semibold tracking-tight text-text">
+                            {plan.name}
+                          </h3>
+                          <p className="mt-2 text-sm text-text-muted">
+                            {plan.bestFor}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {isCurrent ? (
+                            <Badge variant="success">Current</Badge>
+                          ) : null}
+                          {selectedAtRegistration ? (
+                            <Badge variant="info">Signup preference</Badge>
+                          ) : null}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            ) : null}
 
-            {errorMessage ? <Notice tone="error">{errorMessage}</Notice> : null}
-          </div>
-        </Modal>
-      </main>
-    </PublicLayout>
+                      <p className="mt-6 min-h-[5.25rem] text-sm leading-7 text-text-muted">
+                        {plan.description}
+                      </p>
+
+                      <div className="mt-7">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                          {option.transition === "upgrade"
+                            ? "Additional amount due"
+                            : option.transition === "downgrade"
+                              ? "Additional payment"
+                              : "Term price"}
+                        </p>
+                        <strong className="mt-2 block text-4xl font-semibold tracking-tight text-text">
+                          {moneyFromKobo(displayAmount)}
+                        </strong>
+                        <p className="mt-2 text-xs leading-5 text-text-muted">
+                          {option.transition === "upgrade" ? (
+                            <>
+                              {moneyFromKobo(option.paid_to_date_kobo)} already
+                              paid toward this term.
+                            </>
+                          ) : option.transition === "downgrade" ? (
+                            "No automatic refund. Existing payments remain as term credit."
+                          ) : (
+                            "One activation for the selected academic term."
+                          )}
+                        </p>
+                      </div>
+
+                      <Button
+                        className="mt-7 min-h-12 w-full rounded-xl"
+                        disabled={isCurrent || isBusy}
+                        onClick={() => handlePlan(option)}
+                      >
+                        {Number(option.amount_due_kobo || 0) > 0 ? (
+                          <CreditCard className="h-4 w-4" />
+                        ) : null}
+                        {isBusy ? "Working..." : actionLabel}
+                      </Button>
+
+                      <div className="mt-8 border-t border-border/70 pt-7">
+                        <p className="text-sm font-semibold text-text">
+                          What's included
+                        </p>
+                      </div>
+
+                      {(plan.features || []).length ? (
+                        <ul className="mt-5 grid gap-y-4 text-sm text-text-soft">
+                          {plan.features.slice(0, 6).map((feature) => (
+                            <li key={feature} className="flex gap-2">
+                              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                              <span className="leading-5">{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-5 text-sm leading-6 text-text-muted">
+                          Feature details will appear when the live catalogue is
+                          available.
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </section>
+          </>
+        ) : null}
+      </div>
+      <Modal
+        open={Boolean(eligibilityWarning)}
+        title={`${eligibilityWarning?.planName || "This plan"} is not available yet`}
+        description="Current school usage exceeds this plan's capacity."
+        onClose={() => setEligibilityWarning(null)}
+        footer={
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => setEligibilityWarning(null)}
+          >
+            Got it
+          </Button>
+        }
+      >
+        <p className="text-sm leading-6 text-text-muted">
+          Reduce the following active usage before choosing this plan. Checkout
+          has not started.
+        </p>
+        <dl className="mt-5 divide-y divide-border/70 rounded-xl border border-border/70 px-4">
+          {(eligibilityWarning?.blockers || []).map((blocker) => (
+            <div
+              key={blocker.resource}
+              className="flex items-center justify-between gap-4 py-3 text-sm"
+            >
+              <dt className="text-text-muted">
+                {resourceLabel(blocker.resource)}
+              </dt>
+              <dd className="font-semibold text-text">
+                {Number(blocker.used).toLocaleString()} active · limit{" "}
+                {Number(blocker.limit).toLocaleString()}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Modal>
+    </DashboardLayout>
   );
 }
 
-function PlanLimit({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span>{label}</span>
-      <strong className="text-text">{value}</strong>
-    </div>
-  );
-}
-
-function Notice({ children, tone = "info" }) {
-  const classes = {
-    info: "border-info/30 bg-info-soft text-info",
-    warning: "border-warning/30 bg-warning-soft text-amber-700",
-    error: "border-error/30 bg-error-soft text-error",
-    success: "border-success/30 bg-success-soft text-success",
-  }[tone];
-  return (
-    <div className={`mt-5 rounded-2xl border px-4 py-3 text-sm font-medium ${classes}`}>
-      {children}
-    </div>
-  );
+function getActionLabel(option, termStatus) {
+  const planName = formatPlanName(option.plan_code);
+  if (!option.eligible) return `Choose ${planName}`;
+  if (option.transition === "current") return "Current term plan";
+  if (termStatus === "draft" && option.plan_code === "free") {
+    return "Continue with Free";
+  }
+  if (option.transition === "select") {
+    return `Choose ${planName}`;
+  }
+  if (option.transition === "upgrade") {
+    return Number(option.amount_due_kobo || 0) > 0
+      ? `Upgrade for ${moneyFromKobo(option.amount_due_kobo)}`
+      : `Switch to ${planName}`;
+  }
+  return `Downgrade to ${planName}`;
 }
 
 export default SubscriptionOptionsPage;

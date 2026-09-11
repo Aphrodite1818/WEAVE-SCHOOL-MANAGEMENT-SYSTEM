@@ -342,14 +342,12 @@ class Settings(BaseSettings):
     PAYSTACK_SECRET_KEY: str | None = None
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
     PAYSTACK_CALLBACK_URL: str | None = None
-    PAYSTACK_PLUS_MONTHLY_PLAN_CODE: str | None = None
-    PAYSTACK_PROFESSIONAL_MONTHLY_PLAN_CODE: str | None = None
-    PAYSTACK_ENTERPRISE_MONTHLY_PLAN_CODE: str | None = None
-    PAYSTACK_PLUS_MONTHLY_AMOUNT_KOBO: int | None = Field(default=1500000, ge=0)
-    PAYSTACK_PROFESSIONAL_MONTHLY_AMOUNT_KOBO: int | None = Field(default=3500000, ge=0)
-    PAYSTACK_ENTERPRISE_MONTHLY_AMOUNT_KOBO: int | None = Field(default=8000000, ge=0)
+    PAYSTACK_PLUS_TERM_AMOUNT_KOBO: int = Field(default=1500000, ge=0)
+    PAYSTACK_PROFESSIONAL_TERM_AMOUNT_KOBO: int = Field(default=3500000, ge=0)
+    PAYSTACK_ENTERPRISE_TERM_AMOUNT_KOBO: int = Field(default=8000000, ge=0)
 
     REDIS_URL: str | None = None
+    REALTIME_REDIS_URL: str | None = None
     CACHE_ENABLED: bool = False
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_REDIS_URL: str | None = None

@@ -14,11 +14,12 @@ from app.modules.auth.models import AuthPurpose
 from app.modules.auth.schemas import RequestOTP
 from app.modules.auth.service import OTPService
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.subscriptions.plans import coerce_subscription_plan
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.modules.tenant_admins.schemas import TenantAdminCreate
 from app.modules.tenant_admins.service import TenantAdminService
-from app.tenant_management.models import Tenant, TenantVerificationStatus
+from app.tenant_management.models import SubscriptionPlan, Tenant, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
 from app.tenant_management.schemas import TenantRegisterRequest
 from app.tenant_management.service import (
@@ -56,8 +57,8 @@ class TenantRegistrationService:
         *,
         admin: TenantAdmin,
         password: str,
-        selected_plan_code: str = "free_trial",
-        billing_interval: str = "monthly",
+        selected_plan_code: str | None = None,
+        billing_interval: str = "term",
     ) -> None:
         admin.password_hash = hash_password(password)
         admin.account_status = TenantAdminStatus.PENDING
@@ -65,9 +66,16 @@ class TenantRegistrationService:
         admin.is_active = True
         tenant = await TenantRepository.get_by_id(db, admin.tenant_id, lock=True)
         if tenant is not None:
+            tenant.initial_plan_intent = (
+                SubscriptionPlan(selected_plan_code) if selected_plan_code else None
+            )
             flags = dict(tenant.feature_flags or {})
-            flags["registration_selected_plan_code"] = selected_plan_code
-            flags["registration_billing_interval"] = billing_interval
+            if selected_plan_code:
+                flags["initial_plan_intent"] = selected_plan_code
+                flags["initial_plan_billing_interval"] = billing_interval
+            else:
+                flags.pop("initial_plan_intent", None)
+                flags.pop("initial_plan_billing_interval", None)
             tenant.feature_flags = flags
             await TenantRepository.save(db, tenant)
         await TenantAdminRepository.save(db, admin)
@@ -79,7 +87,7 @@ class TenantRegistrationService:
         normalized_email: str,
         school_name: str,
         password: str,
-        selected_plan_code: str,
+        selected_plan_code: str | None,
         billing_interval: str,
     ) -> tuple[Tenant, TenantAdmin]:
         """Recover the registration that won a concurrent insert race."""
@@ -140,8 +148,13 @@ class TenantRegistrationService:
 
         school_name = _normalize_school_name(payload.school_name)
         normalized_email = _normalize_email(str(payload.email))
-        selected_plan_code = payload.selected_plan_code.value
-        billing_interval = payload.billing_interval
+        selected_plan = (
+            coerce_subscription_plan(payload.initial_plan_intent)
+            if payload.initial_plan_intent is not None
+            else None
+        )
+        selected_plan_code = selected_plan.value if selected_plan is not None else None
+        billing_interval = "term"
         tenant: Tenant | None = None
         reused_pending_account = False
 
@@ -226,10 +239,15 @@ class TenantRegistrationService:
                     admission_number_prefix=None,
                     onboarding_completed=False,
                     verification_status=(TenantVerificationStatus.PENDING_VERIFICATION),
-                    feature_flags={
-                        "registration_selected_plan_code": selected_plan_code,
-                        "registration_billing_interval": billing_interval,
-                    },
+                    initial_plan_intent=selected_plan,
+                    feature_flags=(
+                        {
+                            "initial_plan_intent": selected_plan_code,
+                            "initial_plan_billing_interval": billing_interval,
+                        }
+                        if selected_plan_code
+                        else {}
+                    ),
                 )
                 await TenantRepository.create(db, tenant)
                 await db.flush()

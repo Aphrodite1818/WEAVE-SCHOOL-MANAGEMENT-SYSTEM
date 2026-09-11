@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import UploadFile
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,7 @@ from app.core.exceptions import (
     ConflictException,
     NotFoundException,
 )
+from app.core.utils.normalization import normalized_class_arm_key
 from app.modules.auth.account_email_guard import AccountEmailGuard
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
@@ -72,8 +74,16 @@ from app.modules.bulk_imports.validators import (
     ImportRowValidationResult,
     ImportValidationErrorItem,
 )
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.repository import (
+    AcademicLevelRepository,
+    ArmLabelRepository,
+    ClassRoomRepository,
+)
+from app.modules.classes.department_repository import AcademicLevelDepartmentRepository
+from app.modules.classes.models import AcademicLevelStatus
 from app.modules.parents.repository import ParentAccountRepository
+from app.modules.student_academics.curriculum_models import ClassTermDepartmentAssignment
+from app.modules.student_academics.repository import StudentAcademicRepository
 from app.modules.students.models import (
     ParentRelationship,
     Student,
@@ -175,11 +185,11 @@ def append_validation_error(
     )
 
 
-def _format_class_reference(class_name: Any, class_arm: Any) -> str:
+def _format_class_reference(*parts: Any) -> str:
     """Build a concise class label for validation messages."""
 
-    parts = [str(part).strip() for part in (class_name, class_arm) if not _is_blank(part)]
-    return " ".join(parts) or "the supplied class"
+    clean_parts = [str(part).strip() for part in parts if not _is_blank(part)]
+    return " ".join(clean_parts) or "the supplied class"
 
 
 def build_import_source_fingerprint(
@@ -456,45 +466,105 @@ class BulkImportService:
         return row_items
 
     @staticmethod
+    async def _get_class_term_department_assignment(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        class_id: UUID,
+        academic_term_id: UUID,
+    ) -> ClassTermDepartmentAssignment | None:
+        """Return the class specialization for one exact academic term."""
+
+        return (
+            await db.execute(
+                select(ClassTermDepartmentAssignment).where(
+                    ClassTermDepartmentAssignment.tenant_id == tenant_id,
+                    ClassTermDepartmentAssignment.class_id == class_id,
+                    ClassTermDepartmentAssignment.academic_term_id == academic_term_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
     async def resolve_student_class_references(
         db: AsyncSession,
         *,
         tenant_id: UUID,
         validation_results: list[ImportRowValidationResult],
     ) -> None:
-        """Resolve class_name/class_arm values to the real class UUID for student imports."""
+        """Resolve level + arm to class and derive current-term specialization."""
+
+        current_term = await StudentAcademicRepository.get_current_term(db, tenant_id)
 
         for validation_result in validation_results:
             normalized_row = validation_result.normalized_row
-            class_name = normalized_row.get("class_name")
-            class_arm = normalized_row.get("class_arm")
+            level_name = normalized_row.get("level")
+            arm_name = normalized_row.get("arm")
 
-            if _is_blank(class_name) and _is_blank(class_arm):
-                normalized_row["class_id"] = None
-                normalized_row["arm"] = None
+            if _is_blank(level_name) or _is_blank(arm_name):
                 continue
 
-            if _is_blank(class_name):
+            level = await AcademicLevelRepository.get_by_normalized_name(
+                db, tenant_id, str(level_name)
+            )
+            if level is None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="class_name",
-                    error_code="required_with_class_arm",
-                    error_message="class_name is required when class_arm is supplied.",
+                    field_name="level",
+                    error_code="level_not_found",
+                    error_message=f"Academic level {level_name} does not exist.",
+                )
+                continue
+            if level.status != AcademicLevelStatus.ACTIVE:
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="level",
+                    error_code="level_inactive",
+                    error_message=f"Academic level {level.name} is inactive or archived.",
                 )
                 continue
 
-            classroom = await ClassRoomRepository.get_by_normalized_name_and_arm(
+            normalized_row["academic_level_id"] = str(level.id)
+            normalized_row["level"] = level.name
+
+            arm_label = await ArmLabelRepository.get_by_normalized_label(
+                db,
+                tenant_id,
+                normalized_class_arm_key(arm_name),
+            )
+            if arm_label is None:
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="arm",
+                    error_code="arm_label_not_found",
+                    error_message=(
+                        f"Arm label {arm_name} does not exist. "
+                        "Create the arm label before importing students."
+                    ),
+                )
+                continue
+            if not arm_label.is_active or arm_label.archived_at is not None:
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="arm",
+                    error_code="arm_label_inactive",
+                    error_message=f"Arm label {arm_label.label} is inactive or archived.",
+                )
+                continue
+
+            normalized_row["arm"] = arm_label.label
+            classroom = await ClassRoomRepository.get_by_level_arm_label(
                 db=db,
                 tenant_id=tenant_id,
-                class_name=str(class_name),
-                class_arm=None if _is_blank(class_arm) else str(class_arm),
+                academic_level_id=level.id,
+                arm_label_id=arm_label.id,
             )
-            class_reference = _format_class_reference(class_name, class_arm)
+            class_reference = _format_class_reference(level.name, arm_label.label)
 
             if classroom is None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="class_name",
+                    field_name="arm",
                     error_code="class_not_found",
                     error_message=(
                         f"Class {class_reference} does not exist. "
@@ -505,7 +575,7 @@ class BulkImportService:
             if not classroom.is_active or classroom.archived_at is not None:
                 append_validation_error(
                     validation_result=validation_result,
-                    field_name="class_name",
+                    field_name="arm",
                     error_code="class_inactive",
                     error_message=(
                         f"Class {class_reference} is inactive or archived. "
@@ -515,9 +585,47 @@ class BulkImportService:
                 continue
 
             normalized_row["class_id"] = str(classroom.id)
-            normalized_row["class_name"] = classroom.name
-            normalized_row["class_arm"] = classroom.arm
-            normalized_row["arm"] = classroom.arm
+
+            if current_term is None:
+                normalized_row["department"] = None
+                continue
+
+            assignment = await BulkImportService._get_class_term_department_assignment(
+                db,
+                tenant_id=tenant_id,
+                class_id=classroom.id,
+                academic_term_id=current_term.id,
+            )
+
+            if assignment is None:
+                normalized_row["department"] = None
+                continue
+
+            assigned_link = await AcademicLevelDepartmentRepository.get_by_id(
+                db,
+                tenant_id,
+                assignment.academic_level_department_id,
+            )
+            if (
+                assigned_link is None
+                or assigned_link.academic_level_id != level.id
+                or not assigned_link.is_active
+                or assigned_link.archived_at is not None
+                or not assigned_link.department.is_active
+                or assigned_link.department.archived_at is not None
+            ):
+                append_validation_error(
+                    validation_result=validation_result,
+                    field_name="arm",
+                    error_code="class_department_assignment_invalid",
+                    error_message=(
+                        f"Class {class_reference} has an invalid current-term department assignment. "
+                        "Fix the academic setup before importing students."
+                    ),
+                )
+                continue
+
+            normalized_row["department"] = assigned_link.department.name
 
     @staticmethod
     async def preflight_student_parent_invitations(
@@ -611,12 +719,13 @@ class BulkImportService:
         first_name = normalized_row.get("first_name")
         last_name = normalized_row.get("last_name")
         date_of_birth = BulkImportValidator.parse_date(normalized_row.get("date_of_birth"))
+        academic_level_id = BulkImportValidator.parse_uuid(normalized_row.get("academic_level_id"))
         class_id = BulkImportValidator.parse_uuid(normalized_row.get("class_id"))
         if (
             _is_blank(first_name)
             or _is_blank(last_name)
             or date_of_birth is None
-            or class_id is None
+            or academic_level_id is None
         ):
             raise BadRequestException(detail="Validated student row is missing required fields.")
 
@@ -625,8 +734,8 @@ class BulkImportService:
             last_name=str(last_name),
             date_of_birth=date_of_birth,
             gender=normalized_row.get("gender"),
+            academic_level_id=academic_level_id,
             class_id=class_id,
-            arm=normalized_row.get("arm") or normalized_row.get("class_arm"),
             state_of_origin=normalized_row.get("state_of_origin"),
             parents=build_parent_invitations_from_row(normalized_row),
         )
@@ -650,6 +759,20 @@ class BulkImportService:
         """Process one validated row."""
 
         if resource_type == ImportResourceType.STUDENTS:
+            # Re-resolve at the actual creation boundary so the background worker
+            # never trusts a department value staged during dry-run. Class and
+            # current-term specialization remain the source of truth.
+            validation_result.errors.clear()
+            await BulkImportService.resolve_student_class_references(
+                db=db,
+                tenant_id=actor.tenant_id,
+                validation_results=[validation_result],
+            )
+            if validation_result.errors:
+                raise ConflictException(
+                    detail="; ".join(error.error_message for error in validation_result.errors)
+                )
+
             created = await BulkImportService.create_student_from_row(
                 db=db,
                 actor=actor,
@@ -662,8 +785,9 @@ class BulkImportService:
                 "first_name": student.first_name,
                 "last_name": student.last_name,
                 "admission_number": student.admission_number,
-                "class_name": validation_result.normalized_row.get("class_name"),
-                "class_arm": validation_result.normalized_row.get("class_arm"),
+                "level": validation_result.normalized_row.get("level"),
+                "arm": validation_result.normalized_row.get("arm"),
+                "department": validation_result.normalized_row.get("department"),
                 "setup_code": created.setup_code,
                 "access_code_expires_at": created.access_code_expires_at.isoformat(),
                 "parent_invitations_queued": created.parent_invitation_count,

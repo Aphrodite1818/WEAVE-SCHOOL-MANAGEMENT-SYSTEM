@@ -51,6 +51,7 @@ function ProfileSettingsPage() {
               role={role}
               submitLabel="Save changes"
               showMediaPreview={false}
+              institutionTypeReadOnly
             />
           </div>
         </Card>

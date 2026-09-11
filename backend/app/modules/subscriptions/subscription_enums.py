@@ -9,7 +9,7 @@ class FeatureCode(StrEnum):
     PARENT_PORTAL = "parent_portal"
     ACADEMIC_SETUP = "academic_setup"
     REPORT_CARDS = "report_cards"
-    ANNOUNCEMENTS = "announcements"
+    NOTICES = "notices"
     ATTENDANCE = "attendance"
     GEOFENCING = "geofencing"
     ADVANCED_ANALYTICS = "advanced_analytics"
@@ -17,6 +17,7 @@ class FeatureCode(StrEnum):
     BULK_IMPORT = "bulk_import"
     BULK_ACADEMIC_OPERATIONS = "bulk_academic_operations"
     TENANT_BRANDING = "tenant_branding"
+    CBT_PAIRING = "cbt_pairing"
 
 
 class ResourceLimitCode(StrEnum):
@@ -25,8 +26,7 @@ class ResourceLimitCode(StrEnum):
     STUDENTS = "students"
     TEACHERS = "teachers"
     PARENTS = "parents"
-    CLASSES = "classes"
-    SUBJECTS = "subjects"
+    CBT_SERVERS = "cbt_servers"
 
 
 class SubscriptionStatus(StrEnum):
@@ -34,6 +34,7 @@ class SubscriptionStatus(StrEnum):
 
     TRIALING = "trialing"
     ACTIVE = "active"
+    # Retained only because PostgreSQL enum values cannot be removed safely in-place.
     NON_RENEWING = "non_renewing"
     PAST_DUE = "past_due"
     GRACE_PERIOD = "grace_period"
@@ -44,7 +45,18 @@ class SubscriptionStatus(StrEnum):
 class BillingInterval(StrEnum):
     """Supported billing cadences."""
 
+    TRIAL = "trial"
+    TERM = "term"
+    # Database-history value; no live checkout or entitlement path uses it.
     MONTHLY = "monthly"
+
+
+class TermEntitlementStatus(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    CLOSED = "closed"
+    EXPIRED = "expired"
+    FAILED = "failed"
 
 
 class PaymentProvider(StrEnum):
@@ -63,25 +75,6 @@ class PaymentStatus(StrEnum):
     ABANDONED = "abandoned"
 
 
-class SubscriptionPlanChangeType(StrEnum):
-    """Direction of a requested subscription plan change."""
-
-    UPGRADE = "upgrade"
-    DOWNGRADE = "downgrade"
-
-
-class SubscriptionPlanChangeStatus(StrEnum):
-    """Lifecycle states for a requested plan change."""
-
-    PENDING = "pending"
-    BLOCKED = "blocked"
-    SCHEDULED = "scheduled"
-    AWAITING_PAYMENT = "awaiting_payment"
-    APPLIED = "applied"
-    CANCELLED = "cancelled"
-    FAILED = "failed"
-
-
 class SubscriptionBlockReason(StrEnum):
     """Why a subscription-gated action was denied."""
 
@@ -89,4 +82,3 @@ class SubscriptionBlockReason(StrEnum):
     RESOURCE_LIMIT_REACHED = "resource_limit_reached"
     TENANT_NOT_FOUND = "tenant_not_found"
     SUBSCRIPTION_INACTIVE = "subscription_inactive"
-    PLAN_CHANGE_BLOCKED = "plan_change_blocked"

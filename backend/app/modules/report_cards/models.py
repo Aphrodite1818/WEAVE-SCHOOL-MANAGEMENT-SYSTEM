@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -29,19 +30,38 @@ class ReportCardStatus(str, PyEnum):
 
 
 class ReportCard(BaseModel):
+    """Immutable issuance revision plus historical display snapshots."""
+
     __tablename__ = "report_cards"
 
     __table_args__ = (
         Index("ix_report_cards_tenant_student", "tenant_id", "student_id"),
         Index("ix_report_cards_tenant_status", "tenant_id", "status"),
+        UniqueConstraint(
+            "tenant_id",
+            "student_id",
+            "academic_session_id",
+            "academic_term_id",
+            "version",
+            name="uq_report_cards_student_period_version",
+        ),
         Index(
-            "ix_report_cards_active_student_period",
+            "uq_report_cards_current_published_period",
             "tenant_id",
             "student_id",
             "academic_session_id",
             "academic_term_id",
             unique=True,
-            postgresql_where="superseded_at IS NULL",
+            postgresql_where=text("status = 'published' AND superseded_at IS NULL"),
+        ),
+        Index(
+            "uq_report_cards_current_draft_period",
+            "tenant_id",
+            "student_id",
+            "academic_session_id",
+            "academic_term_id",
+            unique=True,
+            postgresql_where=text("status = 'draft' AND superseded_at IS NULL"),
         ),
         CheckConstraint(
             "status <> 'published' OR (published_at IS NOT NULL AND published_by IS NOT NULL)",
@@ -51,6 +71,17 @@ class ReportCard(BaseModel):
             "superseded_at IS NULL OR is_outdated = true",
             name="ck_report_cards_superseded_is_outdated",
         ),
+        CheckConstraint(
+            "teacher_comment_source IS NULL OR teacher_comment_source IN ('teacher_submission', 'admin_override')",
+            name="ck_report_cards_teacher_comment_source",
+        ),
+        CheckConstraint(
+            "teacher_comment_source <> 'admin_override' OR "
+            "(teacher_comment_override_reason IS NOT NULL "
+            "AND teacher_comment_override_admin_id IS NOT NULL "
+            "AND teacher_comment_override_at IS NOT NULL)",
+            name="ck_report_cards_admin_override_provenance",
+        ),
     )
 
     student_id: Mapped[uuid.UUID] = mapped_column(
@@ -58,10 +89,20 @@ class ReportCard(BaseModel):
         ForeignKey("students.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    class_id: Mapped[uuid.UUID] = mapped_column(
+    class_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("classes.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
+    )
+    academic_level_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_levels.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    academic_level_department_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("academic_level_departments.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     academic_session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -73,13 +114,41 @@ class ReportCard(BaseModel):
         ForeignKey("academic_terms.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    academic_level_name_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    class_name_snapshot: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    class_arm_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    department_name_snapshot: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    teacher_name_snapshot: Mapped[str | None] = mapped_column(String(210), nullable=True)
     total_score: Mapped[Decimal] = mapped_column(Numeric(7, 2), nullable=False)
     average_score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     position_out_of: Mapped[int | None] = mapped_column(Integer, nullable=True)
     class_teacher_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    teacher_comment_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    teacher_comment_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    teacher_comment_override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    teacher_comment_override_admin_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_admins.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    teacher_comment_override_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     principal_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    principal_comment_source_template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("comment_templates.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    replaces_report_card_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("report_cards.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     published_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

@@ -1,7 +1,16 @@
 import { API_BASE_URL, api, authSession } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberRecord,
+} from "./patchPayload";
 
 const clampLimit = (limit) => Math.min(Math.max(Number(limit) || 50, 1), 100);
+
+const membershipSnapshots = new Map();
+let myTeacherSnapshot = null;
 
 const normalizeTeacherMembershipStatus = (status) =>
   status === "ended" ? "inactive" : status;
@@ -59,7 +68,9 @@ const putJson = async (endpoint, payload, hasRetried = false) => {
 const subjectsFromAssignments = (assignments = []) => [
   ...new Map(
     assignments
-      .filter((item) => item.subject_id || item.subject_name || item.subject_code)
+      .filter(
+        (item) => item.subject_id || item.subject_name || item.subject_code,
+      )
       .map((item) => [
         item.subject_id || item.subject_name || item.subject_code,
         {
@@ -85,12 +96,21 @@ const normalizeTeacherMembership = (teacher) => {
     phone_number: teacher.phone_number ?? account.phone_number,
     qualification: teacher.qualification ?? account.qualification,
     specialization: teacher.specialization ?? account.specialization,
-    passport_photo_url: teacher.passport_photo_url ?? account.passport_photo_url,
+    passport_photo_url:
+      teacher.passport_photo_url ?? account.passport_photo_url,
     account_status: teacher.account_status ?? account.account_status,
     is_verified: teacher.is_verified ?? account.is_verified,
     is_active: teacher.is_active ?? account.is_active,
     profile_completed: teacher.profile_completed ?? account.profile_completed,
   };
+};
+
+const rememberMemberships = (response) => {
+  const items = Array.isArray(response) ? response : response?.items || [];
+  items.forEach((item) =>
+    rememberRecord(membershipSnapshots, normalizeTeacherMembership(item)),
+  );
+  return response;
 };
 
 export const teacherService = {
@@ -107,17 +127,23 @@ export const teacherService = {
     }),
 
   getInvitationContext: (token) =>
-    api.get(`/teachers/invitations/context?token=${encodeURIComponent(token)}`, {
-      auth: false,
-      clearAuthOnUnauthorized: false,
-      skipAuthRefresh: true,
-    }),
+    api.get(
+      `/teachers/invitations/context?token=${encodeURIComponent(token)}`,
+      {
+        auth: false,
+        clearAuthOnUnauthorized: false,
+        skipAuthRefresh: true,
+      },
+    ),
 
-  getTeachers: (options = {}) =>
-    api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
+  getTeachers: async (options = {}) => {
+    const response = await api.get(
+      `/teachers/memberships?${buildTeacherQuery(options)}`,
+    );
+    return rememberMemberships(response);
+  },
 
-  createInvitation: (payload) =>
-    api.post("/teachers/invitations", payload),
+  createInvitation: (payload) => api.post("/teachers/invitations", payload),
 
   listInvitations: (options = {}) =>
     api.get(`/teachers/invitations?${buildInvitationQuery(options)}`),
@@ -125,14 +151,36 @@ export const teacherService = {
   revokeInvitation: (invitationId) =>
     api.post(`/teachers/invitations/${invitationId}/revoke`),
 
-  listMemberships: (options = {}) =>
-    api.get(`/teachers/memberships?${buildTeacherQuery(options)}`),
+  listMemberships: async (options = {}) => {
+    const response = await api.get(
+      `/teachers/memberships?${buildTeacherQuery(options)}`,
+    );
+    return rememberMemberships(response);
+  },
 
-  getMembership: (membershipId) =>
-    api.get(`/teachers/memberships/${membershipId}`),
+  getMembership: async (membershipId) => {
+    const response = await api.get(`/teachers/memberships/${membershipId}`);
+    const normalized = normalizeTeacherMembership(response);
+    rememberRecord(membershipSnapshots, normalized);
+    return response;
+  },
 
-  updateMembership: (membershipId, payload) =>
-    api.patch(`/teachers/memberships/${membershipId}`, payload),
+  updateMembership: async (membershipId, payload) => {
+    const key = String(membershipId);
+    const current = membershipSnapshots.get(key);
+    const changes = buildChangedPatch(current, payload);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch(
+      `/teachers/memberships/${membershipId}`,
+      changes,
+    );
+    membershipSnapshots.set(
+      key,
+      mergePatchResult(current, changes, normalizeTeacherMembership(response)),
+    );
+    return response;
+  },
 
   suspendMembership: (membershipId, reason) =>
     api.post(`/teachers/memberships/${membershipId}/suspend`, { reason }),
@@ -140,7 +188,11 @@ export const teacherService = {
   getOffboardingImpact: (membershipId) =>
     api.get(`/teachers/memberships/${membershipId}/offboarding-impact`),
 
-  endMembership: (membershipId, reason, replacementTeacherMembershipId = null) =>
+  endMembership: (
+    membershipId,
+    reason,
+    replacementTeacherMembershipId = null,
+  ) =>
     api.post(`/teachers/memberships/${membershipId}/end`, {
       reason,
       replacement_teacher_membership_id: replacementTeacherMembershipId || null,
@@ -157,8 +209,13 @@ export const teacherService = {
       subject_ids: subjectIds,
     }),
 
-  getMyTeacher: async (requestOptions) =>
-    normalizeTeacherMembership(await api.get("/teachers/me", requestOptions)),
+  getMyTeacher: async (requestOptions) => {
+    const response = normalizeTeacherMembership(
+      await api.get("/teachers/me", requestOptions),
+    );
+    myTeacherSnapshot = response;
+    return response;
+  },
 
   getMySubjects: async (options = {}, requestOptions = {}) => {
     const { signal, ...queryOptions } = options;
@@ -174,7 +231,9 @@ export const teacherService = {
       const term = String(queryOptions.search).trim().toLowerCase();
       items = items.filter((item) =>
         [item.name, item.code].some((value) =>
-          String(value || "").toLowerCase().includes(term),
+          String(value || "")
+            .toLowerCase()
+            .includes(term),
         ),
       );
     }
@@ -187,7 +246,15 @@ export const teacherService = {
   },
 
   updateMyTeacherProfile: async (payload) => {
-    const response = await api.patch("/teachers/accounts/me/profile", payload);
+    const changes = buildChangedPatch(myTeacherSnapshot, payload);
+    if (!hasPatchChanges(changes)) return myTeacherSnapshot;
+
+    const response = await api.patch("/teachers/accounts/me/profile", changes);
+    myTeacherSnapshot = mergePatchResult(
+      myTeacherSnapshot,
+      changes,
+      normalizeTeacherMembership(response),
+    );
     clearDashboardMetricsCache();
     return response;
   },

@@ -18,6 +18,7 @@ from app.modules.student_academics.schemas import (
 class SessionClosureStartRequest(InputBase):
     confirmation: Literal["START_SESSION_CLOSING"]
     idempotency_key: str = Field(min_length=8, max_length=150)
+    allow_terminal_completion: bool = False
 
 
 class SessionClosureFinalizeRequest(InputBase):
@@ -34,6 +35,8 @@ class SessionClosureAuditResponse(OutputBase):
     dependency_counts: dict[str, int]
     blocker_messages: list[str]
     checked_items: list[str]
+    terminal_students: int = 0
+    requires_terminal_confirmation: bool = False
 
 
 class SessionClosureStartResponse(OutputBase):

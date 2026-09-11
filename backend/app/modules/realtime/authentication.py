@@ -1,0 +1,195 @@
+# ====================================== #
+#   modules/realtime/authentication.py   #
+# ====================================== #
+
+"""Authentication contracts for realtime WebSocket connections."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from uuid import UUID
+
+
+from app.modules.parents.models import Parent, ParentAccount
+from app.modules.students.models import Student
+from app.modules.superadmin.models import SuperAdmin
+from app.modules.teachers.models import Teacher, TeacherAccount
+from app.modules.tenant_admins.models import TenantAdmin
+
+from datetime import datetime, timezone
+
+from jose import jwt
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config.settings import settings
+from app.core.dependencies.route_guards import (
+    get_current_actor,
+    get_current_parent,
+    get_current_parent_account,
+    get_current_student,
+    get_current_superadmin,
+    get_current_teacher,
+    get_current_teacher_account,
+    get_current_tenant_admin,
+)
+from app.core.exceptions import UnauthorizedException
+
+
+@dataclass(frozen=True)
+class RealtimeIdentity:
+    """
+    Authenticated identity attached to one realtime connection.
+    """
+
+    actor_type: str
+    actor_id: UUID
+    tenant_id: UUID | None
+    token_expires_at: datetime
+
+
+def build_realtime_identity(
+    actor,
+    *,
+    token_expires_at: datetime,
+) -> RealtimeIdentity:
+    """
+    Convert an authenticated Weave actor into
+    a realtime connection identity.
+    """
+
+    if isinstance(actor, SuperAdmin):
+        return RealtimeIdentity(
+            actor_type="superadmin",
+            actor_id=actor.id,
+            tenant_id=None,
+            token_expires_at=token_expires_at,
+        )
+
+    if isinstance(actor, TenantAdmin):
+        return RealtimeIdentity(
+            actor_type="tenant_admin",
+            actor_id=actor.id,
+            tenant_id=actor.tenant_id,
+            token_expires_at=token_expires_at,
+        )
+
+    if isinstance(actor, Teacher):
+        return RealtimeIdentity(
+            actor_type="teacher",
+            actor_id=actor.id,
+            tenant_id=actor.tenant_id,
+            token_expires_at=token_expires_at,
+        )
+
+    if isinstance(actor, Parent):
+        return RealtimeIdentity(
+            actor_type="parent",
+            actor_id=actor.id,
+            tenant_id=actor.tenant_id,
+            token_expires_at=token_expires_at,
+        )
+
+    if isinstance(actor, Student):
+        return RealtimeIdentity(
+            actor_type="student",
+            actor_id=actor.id,
+            tenant_id=actor.tenant_id,
+            token_expires_at=token_expires_at,
+        )
+
+    if isinstance(actor, TeacherAccount):
+        return RealtimeIdentity(
+            actor_type="teacher_account",
+            actor_id=actor.id,
+            tenant_id=None,
+            token_expires_at=token_expires_at,
+        )
+
+    if isinstance(actor, ParentAccount):
+        return RealtimeIdentity(
+            actor_type="parent_account",
+            actor_id=actor.id,
+            tenant_id=None,
+            token_expires_at=token_expires_at,
+        )
+
+    raise ValueError(f"Unsupported realtime actor: {type(actor).__name__}")
+
+
+async def authenticate_realtime_access_token(
+    db: AsyncSession,
+    *,
+    access_token: str,
+) -> RealtimeIdentity:
+    """
+    Authenticate a WebSocket access token using Weave's
+    existing HTTP authentication/session infrastructure.
+    """
+
+    actor = await get_current_actor(
+        access_token,
+        db,
+    )
+
+    # Apply the same active-account and tenant checks
+    # used by protected HTTP routes.
+    if isinstance(actor, SuperAdmin):
+        actor = await get_current_superadmin(actor)
+
+    elif isinstance(actor, TenantAdmin):
+        actor = await get_current_tenant_admin(
+            actor,
+            db,
+        )
+
+    elif isinstance(actor, Teacher):
+        actor = await get_current_teacher(
+            actor,
+            db,
+        )
+
+    elif isinstance(actor, Parent):
+        actor = await get_current_parent(
+            actor,
+            db,
+        )
+
+    elif isinstance(actor, Student):
+        actor = await get_current_student(
+            actor,
+            db,
+        )
+
+    elif isinstance(actor, TeacherAccount):
+        actor = await get_current_teacher_account(
+            actor,
+        )
+
+    elif isinstance(actor, ParentAccount):
+        actor = await get_current_parent_account(
+            actor,
+        )
+
+    else:
+        raise UnauthorizedException("Unsupported realtime identity.")
+
+    payload = jwt.decode(
+        access_token,
+        settings.SECRET_KEY,
+        algorithms=[settings.ALGORITHM],
+    )
+
+    expires_at = payload.get("exp")
+
+    if expires_at is None:
+        raise UnauthorizedException("Access token is missing an expiration.")
+
+    token_expires_at = datetime.fromtimestamp(
+        expires_at,
+        tz=timezone.utc,
+    )
+
+    return build_realtime_identity(
+        actor,
+        token_expires_at=token_expires_at,
+    )

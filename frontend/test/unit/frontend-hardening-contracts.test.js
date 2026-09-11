@@ -10,13 +10,13 @@ const frontendRoot = path.resolve(__dirname, "../..");
 const readSource = (relativePath) =>
   readFile(path.join(frontendRoot, relativePath), "utf8");
 
-test("bulk import uses the shared authenticated transport and deduplicates polling", async () => {
+test("bulk import uses the shared authenticated transport and deduplicates REST reads", async () => {
   const source = await readSource("src/services/bulkImport.service.js");
 
   assert.match(source, /api\.postForm\(/);
   assert.match(source, /api\.getBlob\(/);
   assert.match(source, /inFlightJobRequests/);
-  assert.match(source, /ERROR_POLL_CACHE_MS/);
+  assert.match(source, /ERROR_RESPONSE_CACHE_MS/);
   assert.doesNotMatch(source, /\bfetch\s*\(/);
 });
 
@@ -28,79 +28,26 @@ test("subscription guards do not treat missing entitlements as confirmed access"
   assert.match(source, /allowed:\s*false,[\s\S]*We couldn't confirm your plan limits/);
 });
 
-test("subscription lifecycle prompt waits until grace and uses tenant-brand styling", async () => {
+test("subscription provider no longer mounts recurring-renewal prompts", async () => {
   const providerSource = await readSource("src/features/subscriptions/SubscriptionProvider.jsx");
-  const promptSource = await readSource("src/features/subscriptions/SubscriptionLifecyclePrompt.jsx");
-  const modalSource = await readSource("src/components/ui/Modal.jsx");
-
-  assert.match(providerSource, /<SubscriptionLifecyclePrompt/);
-  assert.match(
-    providerSource,
-    /const statusCode =\s*visibleCurrentSubscription\?\.status \|\|\s*visibleEntitlements\?\.subscription_status/,
-  );
-  assert.match(promptSource, /const PROMPTABLE_STATUSES = new Set\(\[\s*"grace_period",\s*"expired",\s*"cancelled",\s*\]\)/);
-  assert.doesNotMatch(promptSource, /PROMPTABLE_STATUSES[\s\S]{0,120}"past_due"/);
-  assert.match(promptSource, /title: "Subscription paused"/);
-  assert.match(promptSource, /description=\{content\.description\}/);
-  assert.match(promptSource, /border-primary\/20 bg-primary-subtle\/50/);
-  assert.match(promptSource, /bg-primary\/10 text-primary/);
-  assert.match(promptSource, /<Icon className="h-5 w-5"/);
-  assert.match(promptSource, /navigate\("\/admin\/billing\/plans"\)/);
-  assert.match(promptSource, /placement="center"/);
-  assert.match(promptSource, /sessionStorage/);
-  assert.match(modalSource, /items-center justify-center/);
-  assert.match(modalSource, /window\.visualViewport/);
+  assert.doesNotMatch(providerSource, /SubscriptionLifecyclePrompt/);
+  assert.doesNotMatch(providerSource, /grace_period|non_renewing|cancel_at_period_end/);
 });
 
-test("registration checkout prompt is exclusive to a resolved trialing subscription", async () => {
+test("registration onboarding never initializes payment", async () => {
   const source = await readSource("src/components/layout/DashboardLayout.jsx");
-
-  assert.match(source, /const subscriptionStateResolved = Boolean\(currentSubscription \|\| entitlements\)/);
-  assert.match(
-    source,
-    /const registrationCheckoutEligible = Boolean\([\s\S]*subscriptionStateResolved && activeSubscriptionStatus === "trialing"[\s\S]*\);/,
-  );
-  assert.match(
-    source,
-    /const registrationCheckoutOpen = Boolean\([\s\S]*onboardingModalEnabled &&[\s\S]*registrationCheckoutEligible &&[\s\S]*registrationCheckoutPlanCode &&[\s\S]*!registrationCheckoutSatisfied/,
-  );
+  assert.doesNotMatch(source, /registrationCheckout|initializePaidCurrentTermCheckout|Paystack/);
 });
 
-test("simulation lab exposes scheduled downgrade timeline controls", async () => {
+test("simulation lab exposes term entitlement lifecycle scenarios", async () => {
   const source = await readSource("src/pages/superadmin/SuperadminSimulationPage.jsx");
-
-  assert.match(source, /downgrade_effective_in_days/);
-  assert.match(source, /downgrade_due_now/);
-  assert.match(source, /state\.plan_change/);
-  assert.match(source, /Effective date/);
-  assert.match(source, /downgrade awaiting payment/);
-  assert.match(source, /downgrade blocked/);
-});
-
-test("simulation lab exposes a one-step enter-grace lifecycle action", async () => {
-  const source = await readSource("src/pages/superadmin/SuperadminSimulationPage.jsx");
-
-  assert.match(source, /const ENTER_GRACE_SCENARIO = "enter_grace_period"/);
-  assert.match(source, /label: "Enter grace period now"/);
-  assert.match(source, /scenario: "period_ended"/);
-  assert.match(source, /reconcileSubscription\(normalizedTenantId\)/);
-  assert.match(source, /currentState\.status === "active"/);
-  assert.match(source, /currentState\.status !== "past_due"/);
-  assert.match(source, /result\.state\.status !== "grace_period"/);
-  assert.match(source, /Subscription entered grace period\./);
-});
-
-test("simulation lifecycle validation errors are not presented as network failures", async () => {
-  const source = await readSource("src/pages/superadmin/SuperadminSimulationPage.jsx");
-
-  assert.match(source, /class SimulationLifecycleError extends Error/);
-  assert.match(source, /throw new SimulationLifecycleError\(/);
-  assert.match(source, /error instanceof SimulationLifecycleError/);
-  assert.match(source, /Reset the simulation first\./);
-  assert.match(
-    source,
-    /getSimulationErrorMessage\(error, "Unable to apply the subscription simulation\."\)/,
-  );
+  assert.match(source, /activate_free/);
+  assert.match(source, /payment_success/);
+  assert.match(source, /wrong_amount/);
+  assert.match(source, /upgrade_to_professional/);
+  assert.match(source, /closed_active_reconciliation/);
+  assert.match(source, /safety_cap_expired/);
+  assert.doesNotMatch(source, /downgrade_due_now|grace_period|current_period_end/);
 });
 
 test("modal traps keyboard focus and restores the previously focused element", async () => {
@@ -135,7 +82,7 @@ test("invitation feedback avoids transport and queue terminology", async () => {
 test("student creation copy describes outcomes instead of implementation details", async () => {
   const source = await readSource("src/pages/admin/StudentCreatePage.jsx");
 
-  assert.match(source, /admission number and first-login code are created automatically/i);
+  assert.match(source, /admission number and first-login code are created\s+automatically/i);
   assert.match(source, /Parent invitations are on their way\./);
   assert.doesNotMatch(source, /generated by the backend/i);
   assert.doesNotMatch(source, /invitations queued/i);

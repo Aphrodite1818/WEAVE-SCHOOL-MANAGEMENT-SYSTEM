@@ -22,6 +22,23 @@ test("subscription pricing is hydrated from the public backend catalogue", async
   assert.match(main, /applyPublicPricingCatalogue/);
 });
 
+test("pricing surfaces show three paid cards and keep Free outside checkout cards", async () => {
+  const landing = await read("src/pages/public/LandingPage.jsx");
+  const pricing = await read("src/pages/public/PricingPage.jsx");
+  const desktopPlans = await read("src/pages/admin/SubscriptionOptionsPage.jsx");
+  const mobilePlans = await read(
+    "src/pages/admin/ResponsiveSubscriptionOptionsPage.jsx",
+  );
+
+  assert.match(landing, /plan\.planCode !== "free"/);
+  assert.match(pricing, /plan\.planCode !== "free"/);
+  assert.match(desktopPlans, /option\.plan_code !== "free"/);
+  assert.match(mobilePlans, /option\.plan_code !== "free"/);
+  assert.match(desktopPlans, /freeOption\?\.eligible/);
+  assert.match(desktopPlans, /Continue with Free/);
+  assert.match(mobilePlans, /Continue on Free/);
+});
+
 test("iOS PWA nav and billing dock fixes do not target Android", async () => {
   const css = await read("src/styles/mobilePlatformFixes.css");
   assert.match(css, /data-pwa-platform="ios"/);

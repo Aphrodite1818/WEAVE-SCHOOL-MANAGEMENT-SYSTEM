@@ -1,62 +1,57 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.exceptions import ConflictException
 from app.modules.student_academics.models import TeacherAssignment
-from app.modules.student_academics.schemas import (
-    TeacherAssignmentDelete,
-    TeacherAssignmentEnd,
-    TeacherAssignmentReassign,
-)
+from app.modules.student_academics.router import open_academic_term
+from app.modules.student_academics.schemas import AcademicTermOpenRequest, TeacherAssignmentEnd
 from app.modules.student_academics.service import StudentAcademicService
+from app.modules.teachers.models import TeacherMembershipStatus
+from app.modules.teachers.offboarding_service import (
+    TeacherOffboardingRequest,
+    TeacherOffboardingService,
+)
 
 
-def _assignment(*, active: bool = True, effective_to: date | None = None) -> TeacherAssignment:
+@pytest.fixture(autouse=True)
+def _allow_academic_writes_for_assignment_unit_tests():
+    with patch(
+        "app.modules.student_academics.service.ensure_academic_write_window",
+        new=AsyncMock(),
+    ):
+        yield
+
+
+def _assignment() -> TeacherAssignment:
     now = datetime.now(timezone.utc)
     return TeacherAssignment(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
-        class_subject_id=uuid.uuid4(),
+        class_id=uuid.uuid4(),
+        curriculum_subject_id=uuid.uuid4(),
         teacher_membership_id=uuid.uuid4(),
-        is_active=active,
         effective_from=date(2026, 1, 10),
-        effective_to=effective_to,
+        effective_to=None,
         created_at=now,
         updated_at=now,
     )
 
 
-@pytest.mark.asyncio
-async def test_end_historical_assignment_missing_effective_to_requires_repair() -> None:
-    assignment = _assignment(active=False, effective_to=None)
-    db = AsyncMock()
-
-    with patch(
-        "app.modules.student_academics.service.StudentAcademicRepository.get_teacher_assignment_by_id",
-        new=AsyncMock(return_value=assignment),
-    ):
-        with pytest.raises(ConflictException, match="requires administrative repair"):
-            await StudentAcademicService.end_teacher_assignment(
-                db,
-                assignment.tenant_id,
-                assignment.id,
-                TeacherAssignmentEnd(effective_to=date(2026, 1, 20)),
-            )
-
-    db.commit.assert_not_called()
+def _assignment_result(assignments: list[TeacherAssignment]) -> MagicMock:
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = assignments
+    return result
 
 
 @pytest.mark.asyncio
-async def test_end_active_assignment_allows_same_day_end_date() -> None:
-    assignment = _assignment(active=True, effective_to=None)
+async def test_end_assignment_preserves_history() -> None:
+    assignment = _assignment()
     db = AsyncMock()
-
     with (
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.get_teacher_assignment_by_id",
@@ -67,8 +62,12 @@ async def test_end_active_assignment_allows_same_day_end_date() -> None:
             new=AsyncMock(return_value=assignment),
         ),
         patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_class_subject_by_id",
-            new=AsyncMock(return_value=None),
+            "app.modules.student_academics.service.StudentAcademicService._teacher_assignment_term_context",
+            new=AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._ensure_backdated_assignment_change_safe",
+            new=AsyncMock(),
         ),
         patch(
             "app.modules.student_academics.service.StudentAcademicService._record_teacher_assignment_audit",
@@ -83,207 +82,259 @@ async def test_end_active_assignment_allows_same_day_end_date() -> None:
             db,
             assignment.tenant_id,
             assignment.id,
-            TeacherAssignmentEnd(effective_to=assignment.effective_from),
+            TeacherAssignmentEnd(
+                academic_term_id=uuid.uuid4(),
+                effective_to=assignment.effective_from,
+                reason="end assignment",
+            ),
         )
-
     assert assignment.is_active is False
     assert assignment.effective_to == assignment.effective_from
     db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_dependency_preview_reports_structured_counts_and_capabilities() -> None:
-    assignment = _assignment(active=False, effective_to=date(2026, 1, 20))
+async def test_historical_assignment_context_can_load_inactive_curriculum_subject() -> None:
+    tenant_id = uuid.uuid4()
+    curriculum_subject = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        curriculum_id=uuid.uuid4(),
+        is_active=False,
+    )
+    curriculum = SimpleNamespace(
+        id=curriculum_subject.curriculum_id,
+        tenant_id=tenant_id,
+    )
+    result = MagicMock()
+    result.first.return_value = (curriculum_subject, curriculum)
+    db = SimpleNamespace(execute=AsyncMock(return_value=result))
 
-    with (
-        patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_teacher_assignment_by_id",
-            new=AsyncMock(return_value=assignment),
-        ),
-        patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.count_teacher_assignment_dependencies",
-            new=AsyncMock(
-                return_value={
-                    "student_results": 2,
-                    "report_card_references": 1,
-                    "other_academic_records": 0,
-                }
-            ),
-        ),
-        patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_later_teacher_assignments",
-            new=AsyncMock(return_value=[_assignment(active=True)]),
-        ),
-    ):
-        preview = await StudentAcademicService.teacher_assignment_dependency_preview(
-            AsyncMock(),
-            assignment.tenant_id,
-            assignment.id,
+    (
+        loaded_subject,
+        loaded_curriculum,
+    ) = await StudentAcademicService._load_curriculum_subject_context(
+        db,
+        tenant_id=tenant_id,
+        curriculum_subject_id=curriculum_subject.id,
+        require_active=False,
+    )
+
+    assert loaded_subject is curriculum_subject
+    assert loaded_curriculum is curriculum
+    statement = db.execute.await_args.args[0]
+    assert "curriculum_subjects.is_active" not in str(statement.whereclause)
+
+
+@pytest.mark.asyncio
+async def test_operational_assignment_context_requires_active_curriculum_subject() -> None:
+    tenant_id = uuid.uuid4()
+    result = MagicMock()
+    result.first.return_value = None
+    db = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+    with pytest.raises(Exception):
+        await StudentAcademicService._load_curriculum_subject_context(
+            db,
+            tenant_id=tenant_id,
+            curriculum_subject_id=uuid.uuid4(),
         )
 
-    assert preview.dependency_counts["student_results"] == 2
-    assert preview.dependency_counts["report_card_references"] == 1
-    assert preview.dependency_counts["later_assignment_history"] == 1
-    assert preview.can_end is False
-    assert preview.can_reassign is False
-    assert preview.can_delete is False
-    assert preview.blocker_messages
+    statement = db.execute.await_args.args[0]
+    assert "curriculum_subjects.is_active" in str(statement.whereclause)
 
 
 @pytest.mark.asyncio
-async def test_delete_assignment_returns_structured_dependency_payload_when_blocked() -> None:
-    assignment = _assignment(active=False, effective_to=date(2026, 1, 20))
-
-    with (
-        patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_teacher_assignment_by_id",
-            new=AsyncMock(return_value=assignment),
-        ),
-        patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.count_teacher_assignment_dependencies",
-            new=AsyncMock(
-                return_value={
-                    "student_results": 1,
-                    "report_card_references": 0,
-                    "other_academic_records": 0,
-                }
-            ),
-        ),
-        patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_later_teacher_assignments",
-            new=AsyncMock(return_value=[]),
-        ),
-    ):
-        with pytest.raises(ConflictException) as exc_info:
-            await StudentAcademicService.delete_teacher_assignment(
-                AsyncMock(),
-                assignment.tenant_id,
-                assignment.id,
-                TeacherAssignmentDelete(confirmation="DELETE_TEACHER_ASSIGNMENT"),
-            )
-
-    assert exc_info.value.payload["dependency_counts"]["student_results"] == 1
-    assert exc_info.value.payload["blocker_messages"]
-
-
-@pytest.mark.asyncio
-async def test_list_teacher_assignments_builds_response_from_joined_records() -> None:
-    assignment = _assignment(active=True)
-    record = {
-        "assignment": assignment,
-        "class_id": uuid.uuid4(),
-        "class_name": "JSS 1",
-        "class_arm": "A",
-        "subject_id": uuid.uuid4(),
-        "subject_name": "Mathematics",
-        "subject_code": "MTH",
-        "teacher_name": "Ada Lovelace",
-        "teacher_staff_id": "T-001",
-    }
+async def test_open_academic_term_uses_canonical_academic_service() -> None:
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    term_id = uuid.uuid4()
+    db = AsyncMock()
+    admin = SimpleNamespace(tenant_id=tenant_id, id=admin_id)
+    expected = SimpleNamespace(id=term_id)
 
     with patch(
-        "app.modules.student_academics.service.StudentAcademicRepository.list_teacher_assignment_rows",
-        new=AsyncMock(return_value=([record], 1)),
-    ):
-        items, total = await StudentAcademicService.list_teacher_assignment_responses(
-            AsyncMock(),
-            assignment.tenant_id,
-            status="active",
-            search="Ada",
-            skip=0,
-            limit=25,
+        "app.modules.student_academics.router.StudentAcademicService.open_academic_term",
+        new=AsyncMock(return_value=expected),
+    ) as open_term:
+        response = await open_academic_term(
+            term_id,
+            AcademicTermOpenRequest(confirmation="OPEN_ACADEMIC_TERM"),
+            db,
+            admin,
         )
 
-    assert total == 1
-    assert items[0].teacher_name == "Ada Lovelace"
-    assert items[0].class_name == "JSS1"
-    assert items[0].subject_code == "MTH"
+    assert response is expected
+    open_term.assert_awaited_once_with(db, tenant_id, term_id, admin_id)
 
 
 @pytest.mark.asyncio
-async def test_reassign_teacher_allows_same_day_replacement() -> None:
-    current = _assignment(active=True)
-    replacement_teacher_id = uuid.uuid4()
-    replacement = _assignment(active=True)
-    db = AsyncMock()
-    class_subject = SimpleNamespace(
-        id=current.class_subject_id,
+async def test_teacher_offboarding_ends_current_assignment_by_date() -> None:
+    today = date.today()
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    membership_id = uuid.uuid4()
+    actor = SimpleNamespace(tenant_id=tenant_id, id=admin_id)
+    membership = SimpleNamespace(id=membership_id)
+    assignment = TeacherAssignment(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
         class_id=uuid.uuid4(),
-        subject_id=uuid.uuid4(),
-        is_active=True,
-        archived_at=None,
+        curriculum_subject_id=uuid.uuid4(),
+        teacher_membership_id=membership_id,
+        effective_from=today - timedelta(days=30),
+        effective_to=None,
     )
-    classroom = SimpleNamespace(is_active=True, archived_at=None)
-    subject = SimpleNamespace(is_active=True, archived_at=None)
-
-    async def create_assignment(_, assignment):
-        replacement.teacher_membership_id = assignment.teacher_membership_id
-        replacement.class_subject_id = assignment.class_subject_id
-        replacement.effective_from = assignment.effective_from
-        replacement.effective_to = assignment.effective_to
-        return replacement
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _assignment_result([assignment]),
+                MagicMock(),
+            ]
+        )
+    )
+    expected = SimpleNamespace(id=membership_id)
 
     with (
         patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_teacher_assignment_by_id",
-            new=AsyncMock(return_value=current),
-        ),
-        patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_class_subject_by_id",
-            new=AsyncMock(return_value=class_subject),
-        ),
-        patch(
-            "app.modules.student_academics.service.ClassRoomRepository.get_by_id",
-            new=AsyncMock(return_value=classroom),
-        ),
-        patch(
-            "app.modules.student_academics.service.SubjectRepository.get_subject_by_id",
-            new=AsyncMock(return_value=subject),
-        ),
-        patch(
-            "app.modules.student_academics.service.StudentAcademicService._validate_teacher_capability",
+            "app.modules.teachers.offboarding_service.ensure_academic_write_window",
             new=AsyncMock(),
         ),
         patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_active_teacher_assignment_for_class_subject",
-            new=AsyncMock(return_value=current),
+            "app.modules.teachers.offboarding_service.TeacherMembershipRepository.get_by_id",
+            new=AsyncMock(return_value=membership),
         ),
         patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.get_later_teacher_assignments",
-            new=AsyncMock(return_value=[]),
-        ),
+            "app.modules.teachers.offboarding_service.StudentAcademicRepository.save_teacher_assignment",
+            new=AsyncMock(return_value=assignment),
+        ) as save_assignment,
         patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.save_teacher_assignment",
-            new=AsyncMock(return_value=current),
-        ),
+            "app.modules.teachers.offboarding_service.StudentAcademicRepository.delete_teacher_assignment",
+            new=AsyncMock(),
+        ) as delete_assignment,
         patch(
-            "app.modules.student_academics.service.StudentAcademicRepository.create_teacher_assignment",
-            new=AsyncMock(side_effect=create_assignment),
-        ),
+            "app.modules.teachers.offboarding_service.TeacherOffboardingService._create_replacement_assignment",
+            new=AsyncMock(),
+        ) as create_replacement,
         patch(
-            "app.modules.student_academics.service.StudentAcademicService._ensure_compatibility_assignment",
+            "app.modules.teachers.offboarding_service.StudentAcademicService._record_teacher_assignment_audit",
+            new=AsyncMock(),
+        ) as record_audit,
+        patch(
+            "app.modules.teachers.offboarding_service.TeacherMembershipService.end_membership",
+            new=AsyncMock(return_value=expected),
+        ) as end_membership,
+    ):
+        response = await TeacherOffboardingService.end_membership_and_release_responsibilities(
+            db,
+            actor=actor,
+            membership_id=membership_id,
+            payload=TeacherOffboardingRequest(reason="Teacher left the school"),
+        )
+
+    assert response is expected
+    assert assignment.effective_to == today
+    save_assignment.assert_awaited_once_with(db, assignment)
+    delete_assignment.assert_not_awaited()
+    create_replacement.assert_not_awaited()
+    record_audit.assert_awaited_once()
+    end_membership.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_teacher_offboarding_transfers_scheduled_assignment_temporally() -> None:
+    today = date.today()
+    tenant_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    membership_id = uuid.uuid4()
+    replacement_id = uuid.uuid4()
+    actor = SimpleNamespace(tenant_id=tenant_id, id=admin_id)
+    membership = SimpleNamespace(id=membership_id)
+    replacement_membership = SimpleNamespace(
+        id=replacement_id,
+        status=TeacherMembershipStatus.ACTIVE,
+    )
+    scheduled = TeacherAssignment(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        class_id=uuid.uuid4(),
+        curriculum_subject_id=uuid.uuid4(),
+        teacher_membership_id=membership_id,
+        effective_from=today + timedelta(days=10),
+        effective_to=today + timedelta(days=40),
+    )
+    replacement_assignment = TeacherAssignment(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        class_id=scheduled.class_id,
+        curriculum_subject_id=scheduled.curriculum_subject_id,
+        teacher_membership_id=replacement_id,
+        effective_from=scheduled.effective_from,
+        effective_to=scheduled.effective_to,
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _assignment_result([scheduled]),
+                MagicMock(),
+            ]
+        )
+    )
+    expected = SimpleNamespace(id=membership_id)
+
+    with (
+        patch(
+            "app.modules.teachers.offboarding_service.ensure_academic_write_window",
             new=AsyncMock(),
         ),
         patch(
-            "app.modules.student_academics.service.StudentAcademicService._record_teacher_assignment_audit",
+            "app.modules.teachers.offboarding_service.TeacherMembershipRepository.get_by_id",
+            new=AsyncMock(side_effect=[membership, replacement_membership]),
+        ),
+        patch(
+            "app.modules.teachers.offboarding_service.StudentAcademicService._validate_teacher_capability",
             new=AsyncMock(),
         ),
         patch(
-            "app.modules.student_academics.service.StudentAcademicService._build_teacher_assignment_response",
-            new=AsyncMock(return_value=SimpleNamespace(id=replacement.id)),
+            "app.modules.teachers.offboarding_service.StudentAcademicRepository.delete_teacher_assignment",
+            new=AsyncMock(),
+        ) as delete_assignment,
+        patch(
+            "app.modules.teachers.offboarding_service.StudentAcademicRepository.save_teacher_assignment",
+            new=AsyncMock(),
+        ) as save_assignment,
+        patch(
+            "app.modules.teachers.offboarding_service.TeacherOffboardingService._create_replacement_assignment",
+            new=AsyncMock(return_value=replacement_assignment),
+        ) as create_replacement,
+        patch(
+            "app.modules.teachers.offboarding_service.StudentAcademicService._record_teacher_assignment_audit",
+            new=AsyncMock(),
+        ) as record_audit,
+        patch(
+            "app.modules.teachers.offboarding_service.TeacherMembershipService.end_membership",
+            new=AsyncMock(return_value=expected),
         ),
     ):
-        await StudentAcademicService.reassign_teacher_assignment(
+        response = await TeacherOffboardingService.end_membership_and_release_responsibilities(
             db,
-            current.tenant_id,
-            current.id,
-            TeacherAssignmentReassign(
-                teacher_membership_id=replacement_teacher_id,
-                effective_from=current.effective_from,
+            actor=actor,
+            membership_id=membership_id,
+            payload=TeacherOffboardingRequest(
+                reason="Teacher left the school",
+                replacement_teacher_membership_id=replacement_id,
             ),
         )
 
-    assert current.is_active is False
-    assert current.effective_to == current.effective_from
-    assert replacement.teacher_membership_id == replacement_teacher_id
-    assert replacement.effective_from == current.effective_from
+    assert response is expected
+    delete_assignment.assert_awaited_once_with(db, scheduled)
+    save_assignment.assert_not_awaited()
+    create_replacement.assert_awaited_once_with(
+        db,
+        tenant_id=tenant_id,
+        source=scheduled,
+        replacement_teacher_membership_id=replacement_id,
+        effective_from=scheduled.effective_from,
+        effective_to=scheduled.effective_to,
+    )
+    record_audit.assert_awaited_once()

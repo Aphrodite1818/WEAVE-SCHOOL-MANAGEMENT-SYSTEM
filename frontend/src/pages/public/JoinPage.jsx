@@ -5,7 +5,7 @@ function JoinPage() {
   return (
     <AuthLayout
       title="Create your account"
-      description="Choose whether you are joining as a teacher or parent. School access is added after you accept an invitation."
+      description="Choose your role and enter your account details to get started."
       stepLabel="Teacher and parent registration"
       iconPosition="below"
     >

@@ -5,6 +5,7 @@ from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import BadRequestException, ConflictException
 from app.modules.student_academics.models import (
@@ -80,6 +81,14 @@ async def test_create_academic_term_is_always_draft() -> None:
             "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
             new=AsyncMock(),
         ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.specialization_readiness",
+            new=AsyncMock(return_value=({"classes_missing_department": 0}, [])),
+        ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.reconcile_teacher_assignments_for_term",
+            new=AsyncMock(return_value={"ended": 0, "deleted_scheduled": 0}),
+        ),
     ):
         created = await StudentAcademicService.create_academic_term(
             db=db,
@@ -92,6 +101,11 @@ async def test_create_academic_term_is_always_draft() -> None:
 
     assert created.status == AcademicTermStatus.DRAFT
     assert created.is_current is False
+
+
+def test_update_academic_term_rejects_explicit_null_name() -> None:
+    with pytest.raises(ValidationError):
+        AcademicTermUpdate(name=None)
 
 
 @pytest.mark.asyncio
@@ -119,7 +133,6 @@ async def test_update_academic_term_allows_explicit_nullable_dates_to_clear() ->
             tenant_id=tenant_id,
             term_id=term.id,
             payload=AcademicTermUpdate(
-                name=None,
                 start_date=None,
                 end_date=None,
             ),
@@ -215,12 +228,32 @@ async def test_open_academic_term_sets_current_only_for_draft_terms() -> None:
             ),
         ),
         patch(
+            "app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.ensure_open_eligible",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.mark_effective_for_open_term",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.subscriptions.cache.invalidate_tenant_subscription_cache",
+            new=AsyncMock(),
+        ),
+        patch(
             "app.modules.student_academics.service.StudentAcademicRepository.save_academic_term",
             new=AsyncMock(return_value=term),
         ),
         patch(
             "app.modules.student_academics.service.StudentAcademicRepository.add_academic_lifecycle_audit",
             new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.specialization_readiness",
+            new=AsyncMock(return_value=({"classes_missing_department": 0}, [])),
+        ),
+        patch(
+            "app.modules.student_academics.curriculum_v2_service.AcademicCurriculumService.reconcile_teacher_assignments_for_term",
+            new=AsyncMock(return_value={"ended": 0, "deleted_scheduled": 0}),
         ),
     ):
         opened = await StudentAcademicService.open_academic_term(
@@ -326,6 +359,10 @@ async def test_finalize_academic_term_closure_closes_and_archives_calendar() -> 
         patch(
             "app.modules.school_calendar.service.SchoolCalendarService.archive_term_calendar",
             new=archive_calendar,
+        ),
+        patch(
+            "app.modules.subscriptions.term_entitlement_service.TermPlanEntitlementService.close_for_term",
+            new=AsyncMock(),
         ),
     ):
         closed = await StudentAcademicService.finalize_academic_term_closure(

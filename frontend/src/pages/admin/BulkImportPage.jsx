@@ -25,6 +25,11 @@ import LoadingState from "../../components/shared/LoadingState";
 import { useToast } from "../../hooks/useToast";
 import { getErrorMessage } from "../../services/api";
 import { bulkImportService } from "../../services/bulkImport.service";
+import { realtimeClient } from "../../services/realtimeClient";
+import {
+  BULK_IMPORT_REALTIME_EVENTS,
+  matchesBulkImportEvent,
+} from "../../services/realtimeEventMatchers";
 import {
   HISTORY_NEXT_LABEL,
   getActualParentInvitationsQueued,
@@ -37,9 +42,20 @@ import {
 } from "./bulkImportPageLogic";
 
 const ACTIVE_IMPORT_JOB_STORAGE_KEY = "weave:active-import-job";
-const VALID_STEPS = new Set(["upload", "validate", "review", "process", "history"]);
+const VALID_STEPS = new Set([
+  "upload",
+  "validate",
+  "review",
+  "process",
+  "history",
+]);
 const ACTIVE_JOB_STATUSES = new Set(["pending", "processing"]);
-const TERMINAL_JOB_STATUSES = new Set(["completed", "partially_completed", "failed", "cancelled"]);
+const TERMINAL_JOB_STATUSES = new Set([
+  "completed",
+  "partially_completed",
+  "failed",
+  "cancelled",
+]);
 
 const stepOrder = ["upload", "validate", "review", "process"];
 const stepLabels = {
@@ -82,16 +98,23 @@ const errorSuggestions = {
   invalid_email: "Enter a valid email address.",
   class_not_found: "Use the name and optional arm of an existing class.",
   class_inactive: "Choose an active, non-archived class.",
-  invalid_parent_relationship: "Use father, mother, guardian, sponsor, or other.",
+  invalid_parent_relationship:
+    "Use father, mother, guardian, sponsor, or other.",
   duplicate_parent_email: "Use two different parent email addresses.",
-  parent_email_role_conflict: "Use an email that is not already registered under another role.",
+  parent_email_role_conflict:
+    "Use an email that is not already registered under another role.",
 };
 
 const formatDate = (value) => {
   if (!value) return "--";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--";
-  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 const formatBytes = (value) => {
@@ -109,23 +132,30 @@ const percent = (value, total) => {
 };
 
 const getFailedResultRows = (job) =>
-  getResultRows(job).filter((row) => String(row?.status || "").toLowerCase() === "failed" || row?.error_message);
+  getResultRows(job).filter(
+    (row) =>
+      String(row?.status || "").toLowerCase() === "failed" ||
+      row?.error_message,
+  );
 const inferErrorFieldName = (item) => {
   if (item?.field_name) return item.field_name;
-  const prefix = String(item?.error_message || "").split(":")[0]?.trim();
+  const prefix = String(item?.error_message || "")
+    .split(":")[0]
+    ?.trim();
   return /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/i.test(prefix) ? prefix : null;
 };
 const isStudentJob = (job) => String(job?.resource_type || "") === "students";
-const isActiveJob = (job) => job?.id && ACTIVE_JOB_STATUSES.has(String(job.status || "").toLowerCase());
-const isTerminalJob = (job) => job?.id && TERMINAL_JOB_STATUSES.has(String(job.status || "").toLowerCase());
-const canConfirmJob = (job) => (
-  isStudentJob(job)
-  && job?.metadata_json?.dry_run
-  && job?.metadata_json?.confirmation_required
-  && Number(job?.failed_rows || 0) === 0
-  && Number(job?.successful_rows || 0) > 0
-  && !job?.metadata_json?.confirmed_at
-);
+const isActiveJob = (job) =>
+  job?.id && ACTIVE_JOB_STATUSES.has(String(job.status || "").toLowerCase());
+const isTerminalJob = (job) =>
+  job?.id && TERMINAL_JOB_STATUSES.has(String(job.status || "").toLowerCase());
+const canConfirmJob = (job) =>
+  isStudentJob(job) &&
+  job?.metadata_json?.dry_run &&
+  job?.metadata_json?.confirmation_required &&
+  Number(job?.failed_rows || 0) === 0 &&
+  Number(job?.successful_rows || 0) > 0 &&
+  !job?.metadata_json?.confirmed_at;
 const canDeleteJob = (job) => job?.id && !isActiveJob(job);
 
 const routeForStep = (nextStep, jobId) => {
@@ -142,7 +172,8 @@ function StepHeader({ step, currentJob, onNavigate }) {
         {stepOrder.map((key, index) => {
           const complete = index < activeIndex;
           const active = index === activeIndex;
-          const canNavigate = key === "upload" || Boolean(routeForStep(key, currentJob?.id));
+          const canNavigate =
+            key === "upload" || Boolean(routeForStep(key, currentJob?.id));
           return (
             <button
               key={key}
@@ -151,14 +182,24 @@ function StepHeader({ step, currentJob, onNavigate }) {
               onClick={() => onNavigate(key)}
               className="flex min-h-12 min-w-0 items-center gap-2 rounded-xl p-2 text-left transition hover:bg-surface-muted/40 sm:gap-3"
             >
-              <span className={[
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ring-1 ring-inset",
-                complete ? "bg-success text-text-inverse ring-success" : active ? "bg-primary text-text-inverse ring-primary" : "bg-surface-muted text-text-muted ring-border",
-              ].join(" ")}
+              <span
+                className={[
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ring-1 ring-inset",
+                  complete
+                    ? "bg-success text-text-inverse ring-success"
+                    : active
+                      ? "bg-primary text-text-inverse ring-primary"
+                      : "bg-surface-muted text-text-muted ring-border",
+                ].join(" ")}
               >
                 {complete ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
               </span>
-              <span className={["line-clamp-2 text-xs font-semibold leading-tight sm:text-sm", canNavigate ? "text-text" : "text-text-muted"].join(" ")}>
+              <span
+                className={[
+                  "line-clamp-2 text-xs font-semibold leading-tight sm:text-sm",
+                  canNavigate ? "text-text" : "text-text-muted",
+                ].join(" ")}
+              >
                 {stepLabels[key]}
               </span>
             </button>
@@ -173,10 +214,15 @@ function MetricCard({ label, value, variant = "default" }) {
   return (
     <Card className="min-h-[5.75rem] p-3 sm:min-h-[7rem] sm:p-4">
       <p className="text-xs font-semibold uppercase text-text-muted">{label}</p>
-      <p className={[
-        "mt-1 text-xl font-bold sm:mt-2 sm:text-2xl",
-        variant === "success" ? "text-success" : variant === "error" ? "text-error" : "text-text",
-      ].join(" ")}
+      <p
+        className={[
+          "mt-1 text-xl font-bold sm:mt-2 sm:text-2xl",
+          variant === "success"
+            ? "text-success"
+            : variant === "error"
+              ? "text-error"
+              : "text-text",
+        ].join(" ")}
       >
         {value ?? 0}
       </p>
@@ -186,7 +232,11 @@ function MetricCard({ label, value, variant = "default" }) {
 
 function JobStatusBadge({ job }) {
   const status = String(job?.status || "pending").toLowerCase();
-  return <Badge variant={statusVariants[status] || "default"}>{statusLabels[status] || status}</Badge>;
+  return (
+    <Badge variant={statusVariants[status] || "default"}>
+      {statusLabels[status] || status}
+    </Badge>
+  );
 }
 
 function BulkImportPage() {
@@ -216,48 +266,64 @@ function BulkImportPage() {
   const [displayStep, setDisplayStep] = useState(step);
   const [transitionState, setTransitionState] = useState("entered");
 
-  const navigateSmooth = useCallback((to, options) => {
-    const doNavigate = () => navigate(to, options);
-    if (document.startViewTransition) {
-      document.startViewTransition(doNavigate);
-    } else {
-      doNavigate();
-    }
-    window.setTimeout(() => {
-      workspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
-  }, [navigate]);
+  const navigateSmooth = useCallback(
+    (to, options) => {
+      const doNavigate = () => navigate(to, options);
+      if (document.startViewTransition) {
+        document.startViewTransition(doNavigate);
+      } else {
+        doNavigate();
+      }
+      window.setTimeout(() => {
+        workspaceRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 80);
+    },
+    [navigate],
+  );
 
-  const go = useCallback((nextStep, nextJobId = currentJob?.id) => {
-    const nextRoute = routeForStep(nextStep, nextJobId);
-    if (nextRoute) navigateSmooth(nextRoute);
-  }, [currentJob?.id, navigateSmooth]);
+  const go = useCallback(
+    (nextStep, nextJobId = currentJob?.id) => {
+      const nextRoute = routeForStep(nextStep, nextJobId);
+      if (nextRoute) navigateSmooth(nextRoute);
+    },
+    [currentJob?.id, navigateSmooth],
+  );
 
-  const loadJob = useCallback(async (id) => {
-    const job = await bulkImportService.getJob(id);
+  const loadJob = useCallback(async (id, { force = false } = {}) => {
+    const job = await bulkImportService.getJob(id, { force });
     setCurrentJob(job);
     if (job?.id) {
       window.sessionStorage.setItem(ACTIVE_IMPORT_JOB_STORAGE_KEY, job.id);
-      const errorResponse = await bulkImportService.getErrors(job.id).catch(() => ({ items: [] }));
+      const errorResponse = await bulkImportService
+        .getErrors(job.id, force ? { force: true } : {})
+        .catch(() => ({ items: [] }));
       setErrors(Array.isArray(errorResponse?.items) ? errorResponse.items : []);
     }
     return job;
   }, []);
 
-  const loadJobs = useCallback(({ skip, status }) => loadImportHistoryPage({
-    listJobs: bulkImportService.listJobs,
-    skip,
-    status,
-    setJobs,
-    setJobsTotal,
-    setHistorySkip,
-    setHistoryLoading,
-  }), []);
+  const loadJobs = useCallback(
+    ({ skip, status }) =>
+      loadImportHistoryPage({
+        listJobs: bulkImportService.listJobs,
+        skip,
+        status,
+        setJobs,
+        setJobsTotal,
+        setHistorySkip,
+        setHistoryLoading,
+      }),
+    [],
+  );
 
   const refresh = useCallback(async () => {
     try {
       if (step === "history") return;
-      const targetJobId = jobId || window.sessionStorage.getItem(ACTIVE_IMPORT_JOB_STORAGE_KEY);
+      const targetJobId =
+        jobId || window.sessionStorage.getItem(ACTIVE_IMPORT_JOB_STORAGE_KEY);
       if (targetJobId) {
         await loadJob(targetJobId);
       }
@@ -281,7 +347,8 @@ function BulkImportPage() {
 
     let mounted = true;
     loadJobs({ skip: historySkip, status: historyStatus }).catch((error) => {
-      if (mounted) showError(getErrorMessage(error, "Could not load import history."));
+      if (mounted)
+        showError(getErrorMessage(error, "Could not load import history."));
     });
 
     return () => {
@@ -311,13 +378,27 @@ function BulkImportPage() {
   }, [displayStep, step]);
 
   useEffect(() => {
-    if (!isActiveJob(currentJob)) return undefined;
-    const timer = window.setInterval(() => {
-      loadJob(currentJob.id).catch((error) => {
+    const activeJobId = currentJob?.id;
+    if (!activeJobId) return undefined;
+
+    const reconcile = () => {
+      loadJob(activeJobId, { force: true }).catch((error) => {
         showError(getErrorMessage(error, "Could not refresh import progress."));
       });
-    }, 5000);
-    return () => window.clearInterval(timer);
+    };
+    const unsubscribers = BULK_IMPORT_REALTIME_EVENTS.map((eventType) =>
+      realtimeClient.subscribe(eventType, (message) => {
+        if (matchesBulkImportEvent(activeJobId, message)) reconcile();
+      }),
+    );
+    unsubscribers.push(
+      realtimeClient.subscribeConnection((state) => {
+        if (state.status === "reconnected" && isActiveJob(currentJob))
+          reconcile();
+      }),
+    );
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [currentJob, loadJob, showError]);
 
   useEffect(() => {
@@ -347,19 +428,28 @@ function BulkImportPage() {
           row_number: row.row_number,
           field_name: inferErrorFieldName(row),
           error_code: row.error_code || "row_failed",
-          error_message: row.error_message || currentJob?.error_message || "This row failed during import.",
+          error_message:
+            row.error_message ||
+            currentJob?.error_message ||
+            "This row failed during import.",
           normalized_row: row,
         }));
 
     if (!query) return displayErrors;
-    return displayErrors.filter((item) => [
-      item.row_number,
-      item.field_name,
-      item.error_code,
-      item.error_message,
-      item.normalized_row?.first_name,
-      item.normalized_row?.last_name,
-    ].some((value) => String(value || "").toLowerCase().includes(query)));
+    return displayErrors.filter((item) =>
+      [
+        item.row_number,
+        item.field_name,
+        item.error_code,
+        item.error_message,
+        item.normalized_row?.first_name,
+        item.normalized_row?.last_name,
+      ].some((value) =>
+        String(value || "")
+          .toLowerCase()
+          .includes(query),
+      ),
+    );
   }, [currentJob, errorSearch, errors]);
 
   const expectedParentInvitationCount = useMemo(
@@ -373,7 +463,11 @@ function BulkImportPage() {
   const filteredJobs = useMemo(() => {
     const query = historySearch.trim().toLowerCase();
     if (!query) return jobs;
-    return jobs.filter((job) => String(job.original_filename || "").toLowerCase().includes(query));
+    return jobs.filter((job) =>
+      String(job.original_filename || "")
+        .toLowerCase()
+        .includes(query),
+    );
   }, [historySearch, jobs]);
 
   const handleDownloadTemplate = async () => {
@@ -395,11 +489,17 @@ function BulkImportPage() {
       const job = await bulkImportService.dryRun(file);
       setCurrentJob(job);
       window.sessionStorage.setItem(ACTIVE_IMPORT_JOB_STORAGE_KEY, job.id);
-      const errorResponse = await bulkImportService.getErrors(job.id).catch(() => ({ items: [] }));
+      const errorResponse = await bulkImportService
+        .getErrors(job.id)
+        .catch(() => ({ items: [] }));
       setErrors(Array.isArray(errorResponse?.items) ? errorResponse.items : []);
       await loadJobs({ skip: historySkip, status: historyStatus });
       setValidationProgress(100);
-      showSuccess(Number(job.failed_rows || 0) ? "Validation finished with errors." : "Validation passed.");
+      showSuccess(
+        Number(job.failed_rows || 0)
+          ? "Validation finished with errors."
+          : "Validation passed.",
+      );
       navigateSmooth(`/admin/imports/validate/${job.id}`);
     } catch (error) {
       setCriticalImportError({
@@ -434,7 +534,11 @@ function BulkImportPage() {
     setBusy(format);
     try {
       await bulkImportService.downloadResult(currentJob.id, { format });
-      showSuccess(format === "slip" ? "Student access slips downloaded." : "Result spreadsheet downloaded.");
+      showSuccess(
+        format === "slip"
+          ? "Student access slips downloaded."
+          : "Result spreadsheet downloaded.",
+      );
     } catch (error) {
       showError(getErrorMessage(error, "Could not download the result."));
     } finally {
@@ -487,7 +591,11 @@ function BulkImportPage() {
 
   if (pageLoading) {
     return (
-      <DashboardLayout role="admin" title="Import Students" description="Download the official template, upload it for validation, then continue step by step.">
+      <DashboardLayout
+        role="admin"
+        title="Import Students"
+        description="Download the official template, upload it for validation, then continue step by step."
+      >
         <LoadingState label="Loading import workspace..." />
       </DashboardLayout>
     );
@@ -497,20 +605,40 @@ function BulkImportPage() {
     <Card className="p-3 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-text">Start With The Official Template</h2>
+          <h2 className="text-lg font-semibold text-text">
+            Start With The Official Template
+          </h2>
           <p className="mt-1 max-w-2xl text-sm text-text-muted">
-            Download the backend-generated XLSX file, keep the headers unchanged, then upload the completed student sheet.
+            Download the backend-generated XLSX file, keep the headers
+            unchanged, then upload the completed student sheet.
           </p>
         </div>
-        <Button className="w-full sm:w-auto" onClick={handleDownloadTemplate} disabled={Boolean(busy)}>
-          {busy === "template" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        <Button
+          className="w-full sm:w-auto"
+          onClick={handleDownloadTemplate}
+          disabled={Boolean(busy)}
+        >
+          {busy === "template" ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
           Download student template
         </Button>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">Required: first name, last name, date of birth, and class name. Class arm is optional for classes without an arm.</div>
-        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">One or two parent or guardian emails can be supplied with matching relationship fields.</div>
-        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">Validation checks the template signature, version, headers, classes, dates, emails, and duplicates.</div>
+        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">
+          Required: first name, last name, date of birth, and class name. Class
+          arm is optional for classes without an arm.
+        </div>
+        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">
+          One or two parent or guardian emails can be supplied with matching
+          relationship fields.
+        </div>
+        <div className="rounded-lg border border-border bg-surface-muted/40 p-3 text-sm text-text-muted">
+          Validation checks the template signature, version, headers, classes,
+          dates, emails, and duplicates.
+        </div>
       </div>
       <div
         className="mt-4 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-surface-muted/30 p-4 text-center focus-within:ring-2 focus-within:ring-primary sm:mt-5 sm:min-h-48 sm:p-6"
@@ -520,12 +648,17 @@ function BulkImportPage() {
         role="button"
         tabIndex={0}
         onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") fileInputRef.current?.click();
+          if (event.key === "Enter" || event.key === " ")
+            fileInputRef.current?.click();
         }}
       >
         <UploadCloud className="h-9 w-9 text-primary" />
-        <p className="mt-3 text-sm font-semibold text-text">{file ? file.name : "Drop the completed XLSX file here"}</p>
-        <p className="mt-1 text-xs text-text-muted">{file ? formatBytes(file.size) : "or choose a file from your device"}</p>
+        <p className="mt-3 text-sm font-semibold text-text">
+          {file ? file.name : "Drop the completed XLSX file here"}
+        </p>
+        <p className="mt-1 text-xs text-text-muted">
+          {file ? formatBytes(file.size) : "or choose a file from your device"}
+        </p>
         <input
           ref={fileInputRef}
           type="file"
@@ -536,10 +669,16 @@ function BulkImportPage() {
         />
       </div>
       {busy === "validate" ? (
-        <div className="mt-4 rounded-2xl border border-primary/20 bg-primary-soft/35 px-4 py-4" role="status" aria-live="polite">
+        <div
+          className="mt-4 rounded-2xl border border-primary/20 bg-primary-soft/35 px-4 py-4"
+          role="status"
+          aria-live="polite"
+        >
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="font-semibold text-text">Validating file</span>
-            <span className="font-bold text-primary">{validationProgress}%</span>
+            <span className="font-bold text-primary">
+              {validationProgress}%
+            </span>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface">
             <div
@@ -548,16 +687,31 @@ function BulkImportPage() {
             />
           </div>
           <p className="mt-2 text-xs leading-5 text-text-muted">
-            Checking the template, rows, classes, dates, parent emails, and duplicate records.
+            Checking the template, rows, classes, dates, parent emails, and
+            duplicate records.
           </p>
         </div>
       ) : null}
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
-        <Button variant="outline" onClick={() => go("history")}><History className="h-4 w-4" /> View history</Button>
+        <Button variant="outline" onClick={() => go("history")}>
+          <History className="h-4 w-4" /> View history
+        </Button>
         <div className="flex flex-col gap-2 sm:flex-row">
-          {file && <Button variant="ghost" onClick={() => setFile(null)} disabled={Boolean(busy)}><X className="h-4 w-4" /> Remove file</Button>}
+          {file && (
+            <Button
+              variant="ghost"
+              onClick={() => setFile(null)}
+              disabled={Boolean(busy)}
+            >
+              <X className="h-4 w-4" /> Remove file
+            </Button>
+          )}
           <Button onClick={handleValidate} disabled={!file || Boolean(busy)}>
-            {busy === "validate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            {busy === "validate" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4" />
+            )}
             {busy === "validate" ? "Validating..." : "Validate file"}
           </Button>
         </div>
@@ -566,29 +720,54 @@ function BulkImportPage() {
   );
 
   const renderValidation = () => {
-    if (!currentJob) return <EmptyState title="No validation job selected" description="Upload a file first, or choose a job from history." />;
+    if (!currentJob)
+      return (
+        <EmptyState
+          title="No validation job selected"
+          description="Upload a file first, or choose a job from history."
+        />
+      );
     const hasErrors = Number(currentJob.failed_rows || 0) > 0;
     return (
       <div className="space-y-5">
         <Card className="p-3 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-text">Validation Result</h2>
-              <p className="mt-1 text-sm text-text-muted">{currentJob.original_filename}</p>
+              <h2 className="text-lg font-semibold text-text">
+                Validation Result
+              </h2>
+              <p className="mt-1 text-sm text-text-muted">
+                {currentJob.original_filename}
+              </p>
             </div>
             <JobStatusBadge job={currentJob} />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
             <MetricCard label="Total rows" value={currentJob.total_rows} />
-            <MetricCard label="Valid rows" value={currentJob.successful_rows} variant="success" />
-            <MetricCard label="Rows with errors" value={currentJob.failed_rows} variant="error" />
-            <MetricCard label="Warnings" value={currentJob.metadata_json?.warning_count || 0} />
+            <MetricCard
+              label="Valid rows"
+              value={currentJob.successful_rows}
+              variant="success"
+            />
+            <MetricCard
+              label="Rows with errors"
+              value={currentJob.failed_rows}
+              variant="error"
+            />
+            <MetricCard
+              label="Warnings"
+              value={currentJob.metadata_json?.warning_count || 0}
+            />
           </div>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
             {hasErrors ? (
-              <Button onClick={() => go("upload")}><UploadCloud className="h-4 w-4" /> Upload corrected file</Button>
+              <Button onClick={() => go("upload")}>
+                <UploadCloud className="h-4 w-4" /> Upload corrected file
+              </Button>
             ) : (
-              <Button onClick={() => go("review", currentJob.id)}>Continue to dry-run review</Button>
+              <Button onClick={() => go("review", currentJob.id)}>
+                Continue to dry-run review
+              </Button>
             )}
           </div>
         </Card>
@@ -618,15 +797,25 @@ function BulkImportPage() {
           />
         </label>
         {currentJob?.id && (
-          <Button variant="outline" onClick={handleDownloadErrors} disabled={Boolean(busy)}>
-            {busy === "errors" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <Button
+            variant="outline"
+            onClick={handleDownloadErrors}
+            disabled={Boolean(busy)}
+          >
+            {busy === "errors" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
             Download error report
           </Button>
         )}
       </div>
       {filteredErrors.length === 0 && (
         <div className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-text">
-          This job is marked as failed, but no row-level error details were returned. Refresh the page; if it stays this way, check the import job error message in the backend.
+          This job is marked as failed, but no row-level error details were
+          returned. Refresh the page; if it stays this way, check the import job
+          error message in the backend.
         </div>
       )}
       <div className="mt-4 max-h-[min(24rem,58dvh)] overflow-auto rounded-xl border border-border sm:max-h-[420px]">
@@ -644,12 +833,26 @@ function BulkImportPage() {
           <tbody className="divide-y divide-border">
             {filteredErrors.map((item) => (
               <tr key={item.id || `${item.row_number}-${item.error_code}`}>
-                <td className="py-3 pl-3 pr-4 font-semibold">{item.row_number}</td>
-                <td className="py-3 pr-4">{[item.normalized_row?.first_name, item.normalized_row?.last_name].filter(Boolean).join(" ") || "--"}</td>
+                <td className="py-3 pl-3 pr-4 font-semibold">
+                  {item.row_number}
+                </td>
+                <td className="py-3 pr-4">
+                  {[
+                    item.normalized_row?.first_name,
+                    item.normalized_row?.last_name,
+                  ]
+                    .filter(Boolean)
+                    .join(" ") || "--"}
+                </td>
                 <td className="py-3 pr-4">{item.field_name || "--"}</td>
-                <td className="py-3 pr-4 font-mono text-xs">{item.error_code || "--"}</td>
+                <td className="py-3 pr-4 font-mono text-xs">
+                  {item.error_code || "--"}
+                </td>
                 <td className="py-3 pr-4 text-error">{item.error_message}</td>
-                <td className="py-3 pr-4 text-text-muted">{errorSuggestions[item.error_code] || "Review this value and match the template instructions."}</td>
+                <td className="py-3 pr-4 text-text-muted">
+                  {errorSuggestions[item.error_code] ||
+                    "Review this value and match the template instructions."}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -659,25 +862,53 @@ function BulkImportPage() {
   );
 
   const renderReview = () => {
-    if (!currentJob) return <EmptyState title="No dry run selected" description="Validate a file before reviewing the import." />;
+    if (!currentJob)
+      return (
+        <EmptyState
+          title="No dry run selected"
+          description="Validate a file before reviewing the import."
+        />
+      );
     return (
       <Card className="p-3 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-text">Review Dry Run</h2>
-            <p className="mt-1 text-sm text-text-muted">No student records have been created yet. Confirm only if this summary is correct.</p>
+            <p className="mt-1 text-sm text-text-muted">
+              No student records have been created yet. Confirm only if this
+              summary is correct.
+            </p>
           </div>
           <JobStatusBadge job={currentJob} />
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-          <MetricCard label="Students to create" value={currentJob.successful_rows} variant="success" />
-          <MetricCard label="Rows blocked" value={currentJob.failed_rows} variant="error" />
-          <MetricCard label="Parent invitations expected" value={expectedParentInvitationCount} />
+          <MetricCard
+            label="Students to create"
+            value={currentJob.successful_rows}
+            variant="success"
+          />
+          <MetricCard
+            label="Rows blocked"
+            value={currentJob.failed_rows}
+            variant="error"
+          />
+          <MetricCard
+            label="Parent invitations expected"
+            value={expectedParentInvitationCount}
+          />
           <MetricCard label="Total rows" value={currentJob.total_rows} />
         </div>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-between">
-          <Button variant="outline" onClick={() => go("validate", currentJob.id)}>Back to validation</Button>
-          <Button onClick={() => setConfirmOpen(true)} disabled={!canConfirmJob(currentJob) || Boolean(busy)}>
+          <Button
+            variant="outline"
+            onClick={() => go("validate", currentJob.id)}
+          >
+            Back to validation
+          </Button>
+          <Button
+            onClick={() => setConfirmOpen(true)}
+            disabled={!canConfirmJob(currentJob) || Boolean(busy)}
+          >
             Confirm and process {currentJob.successful_rows || 0} students
           </Button>
         </div>
@@ -686,7 +917,13 @@ function BulkImportPage() {
   };
 
   const renderProcess = () => {
-    if (!currentJob) return <EmptyState title="No processing job selected" description="Confirm a validated job to see progress and downloads." />;
+    if (!currentJob)
+      return (
+        <EmptyState
+          title="No processing job selected"
+          description="Confirm a validated job to see progress and downloads."
+        />
+      );
     const failedRows = Number(currentJob.failed_rows || 0);
     const hasFailures = failedRows > 0;
     const terminal = isTerminalJob(currentJob);
@@ -695,8 +932,12 @@ function BulkImportPage() {
         <Card className="p-3 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-text">Processing and Results</h2>
-              <p className="mt-1 text-sm text-text-muted">{currentJob.original_filename}</p>
+              <h2 className="text-lg font-semibold text-text">
+                Processing and Results
+              </h2>
+              <p className="mt-1 text-sm text-text-muted">
+                {currentJob.original_filename}
+              </p>
             </div>
             <JobStatusBadge job={currentJob} />
           </div>
@@ -710,46 +951,92 @@ function BulkImportPage() {
                     : `${failedRows} row${failedRows === 1 ? "" : "s"} failed during import.`}
                 </p>
                 <p className="mt-1 text-text-muted">
-                  Review the row details below, fix the spreadsheet data, then upload a corrected file.
+                  Review the row details below, fix the spreadsheet data, then
+                  upload a corrected file.
                 </p>
               </div>
             </div>
           )}
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-surface-muted">
-            <div className="h-full rounded-full bg-primary" style={{ width: `${percent(currentJob.processed_rows, currentJob.total_rows)}%` }} />
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{
+                width: `${percent(currentJob.processed_rows, currentJob.total_rows)}%`,
+              }}
+            />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
             <MetricCard label="Processed" value={currentJob.processed_rows} />
-            <MetricCard label="Created" value={currentJob.successful_rows} variant="success" />
-            <MetricCard label="Failed" value={currentJob.failed_rows} variant="error" />
-            <MetricCard label="Parent emails queued" value={actualParentInvitationsQueued} />
+            <MetricCard
+              label="Created"
+              value={currentJob.successful_rows}
+              variant="success"
+            />
+            <MetricCard
+              label="Failed"
+              value={currentJob.failed_rows}
+              variant="error"
+            />
+            <MetricCard
+              label="Parent emails queued"
+              value={actualParentInvitationsQueued}
+            />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-text-muted sm:gap-3 sm:text-sm lg:grid-cols-4">
             <span>Created: {formatDate(currentJob.created_at)}</span>
-            <span>Started: {formatDate(currentJob.started_at || currentJob.metadata_json?.queued_at)}</span>
+            <span>
+              Started:{" "}
+              {formatDate(
+                currentJob.started_at || currentJob.metadata_json?.queued_at,
+              )}
+            </span>
             <span>Completed: {formatDate(currentJob.completed_at)}</span>
             <span>Updated: {formatDate(currentJob.updated_at)}</span>
           </div>
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => go("upload")}><UploadCloud className="h-4 w-4" /> Start another import</Button>
+            <Button variant="outline" onClick={() => go("upload")}>
+              <UploadCloud className="h-4 w-4" /> Start another import
+            </Button>
             {terminal && (
               <>
-                <Button variant="outline" onClick={() => handleDownloadResult("spreadsheet")} disabled={Boolean(busy)}>
-                  {busy === "spreadsheet" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                <Button
+                  variant="outline"
+                  onClick={() => handleDownloadResult("spreadsheet")}
+                  disabled={Boolean(busy)}
+                >
+                  {busy === "spreadsheet" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
                   Download result spreadsheet
                 </Button>
-                <Button variant="outline" onClick={() => handleDownloadResult("slip")} disabled={Boolean(busy) || Number(currentJob.successful_rows || 0) === 0}>
-                  {busy === "slip" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                <Button
+                  variant="outline"
+                  onClick={() => handleDownloadResult("slip")}
+                  disabled={
+                    Boolean(busy) ||
+                    Number(currentJob.successful_rows || 0) === 0
+                  }
+                >
+                  {busy === "slip" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Printer className="h-4 w-4" />
+                  )}
                   Download student access slips
                 </Button>
               </>
             )}
           </div>
         </Card>
-        {terminal && hasFailures && renderErrors({
-          title: "Import Failures",
-          description: "These rows were not created. The messages below come from the backend import job result.",
-        })}
+        {terminal &&
+          hasFailures &&
+          renderErrors({
+            title: "Import Failures",
+            description:
+              "These rows were not created. The messages below come from the backend import job result.",
+          })}
       </div>
     );
   };
@@ -759,9 +1046,14 @@ function BulkImportPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-text">Job History</h2>
-          <p className="mt-1 text-sm text-text-muted">{jobsTotal} import job{jobsTotal === 1 ? "" : "s"} match the selected status.</p>
+          <p className="mt-1 text-sm text-text-muted">
+            {jobsTotal} import job{jobsTotal === 1 ? "" : "s"} match the
+            selected status.
+          </p>
         </div>
-        <Button className="w-full sm:w-auto" onClick={() => go("upload")}><UploadCloud className="h-4 w-4" /> New student import</Button>
+        <Button className="w-full sm:w-auto" onClick={() => go("upload")}>
+          <UploadCloud className="h-4 w-4" /> New student import
+        </Button>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px]">
         <label className="relative block">
@@ -785,7 +1077,9 @@ function BulkImportPage() {
           aria-label="Filter import status"
         >
           {historyStatusOptions.map((option) => (
-            <option key={option.value || "all"} value={option.value}>{option.label}</option>
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
           ))}
         </select>
       </div>
@@ -796,23 +1090,60 @@ function BulkImportPage() {
         </div>
       )}
       <div className="mt-4 grid max-h-[min(28rem,58dvh)] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-[560px] sm:gap-3 lg:grid-cols-2 xl:grid-cols-1">
-        {jobs.length === 0 && !historyLoading && <EmptyState title="No imports found" description="Student import jobs will appear here after validation." />}
+        {jobs.length === 0 && !historyLoading && (
+          <EmptyState
+            title="No imports found"
+            description="Student import jobs will appear here after validation."
+          />
+        )}
         {jobs.length > 0 && filteredJobs.length === 0 && (
-          <EmptyState title="No matching filenames" description="Clear the search or load another page of history." />
+          <EmptyState
+            title="No matching filenames"
+            description="Clear the search or load another page of history."
+          />
         )}
         {filteredJobs.map((job) => (
-          <div key={job.id} className="rounded-xl border border-border bg-surface p-3">
+          <div
+            key={job.id}
+            className="rounded-xl border border-border bg-surface p-3"
+          >
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <button type="button" onClick={() => openHistoryJob(job.id)} className="min-w-0 text-left">
-                <p className="truncate text-sm font-semibold text-text">{job.original_filename}</p>
-                <p className="mt-1 text-xs text-text-muted">{formatDate(job.created_at)} · {job.total_rows || 0} rows · {job.successful_rows || 0} successful · {job.failed_rows || 0} failed</p>
-                {!isStudentJob(job) && <p className="mt-1 text-xs font-semibold text-warning">Historical import type - new imports are no longer supported.</p>}
+              <button
+                type="button"
+                onClick={() => openHistoryJob(job.id)}
+                className="min-w-0 text-left"
+              >
+                <p className="truncate text-sm font-semibold text-text">
+                  {job.original_filename}
+                </p>
+                <p className="mt-1 text-xs text-text-muted">
+                  {formatDate(job.created_at)} · {job.total_rows || 0} rows ·{" "}
+                  {job.successful_rows || 0} successful · {job.failed_rows || 0}{" "}
+                  failed
+                </p>
+                {!isStudentJob(job) && (
+                  <p className="mt-1 text-xs font-semibold text-warning">
+                    Historical import type - new imports are no longer
+                    supported.
+                  </p>
+                )}
               </button>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <JobStatusBadge job={job} />
-                <Button variant="outline" size="sm" onClick={() => openHistoryJob(job.id)}>View</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openHistoryJob(job.id)}
+                >
+                  View
+                </Button>
                 {canDeleteJob(job) && (
-                  <Button variant="danger" size="sm" onClick={() => setDeleteJob(job)} aria-label={`Delete ${job.original_filename}`}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setDeleteJob(job)}
+                    aria-label={`Delete ${job.original_filename}`}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
@@ -822,13 +1153,20 @@ function BulkImportPage() {
         ))}
       </div>
       <div className="mt-4 flex flex-col gap-2 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between">
-        <span>Showing {jobs.length ? historySkip + 1 : 0}-{historySkip + jobs.length} of {jobsTotal}</span>
+        <span>
+          Showing {jobs.length ? historySkip + 1 : 0}-
+          {historySkip + jobs.length} of {jobsTotal}
+        </span>
         <div className="grid grid-cols-2 gap-2 sm:flex">
           <Button
             variant="outline"
             size="sm"
             disabled={historySkip === 0 || historyLoading}
-            onClick={() => setHistorySkip(getPreviousHistoryRequest(historySkip, historyStatus).skip)}
+            onClick={() =>
+              setHistorySkip(
+                getPreviousHistoryRequest(historySkip, historyStatus).skip,
+              )
+            }
           >
             Previous
           </Button>
@@ -836,7 +1174,11 @@ function BulkImportPage() {
             variant="outline"
             size="sm"
             disabled={historySkip + jobs.length >= jobsTotal || historyLoading}
-            onClick={() => setHistorySkip(getNextHistoryRequest(historySkip, historyStatus).skip)}
+            onClick={() =>
+              setHistorySkip(
+                getNextHistoryRequest(historySkip, historyStatus).skip,
+              )
+            }
           >
             {HISTORY_NEXT_LABEL}
           </Button>
@@ -858,14 +1200,21 @@ function BulkImportPage() {
       role="admin"
       title="Import Students"
       description="Download the official template, validate the upload, review the dry run, then process in the background."
-      actions={(
-        <Button variant="outline" className="manual-refresh-action" onClick={handleRefresh} disabled={Boolean(busy)}>
+      actions={
+        <Button
+          variant="outline"
+          className="manual-refresh-action"
+          onClick={handleRefresh}
+          disabled={Boolean(busy)}
+        >
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
-      )}
+      }
     >
       <div ref={workspaceRef} className="space-y-4 scroll-mt-4 sm:space-y-5">
-        {step !== "history" && <StepHeader step={step} currentJob={currentJob} onNavigate={go} />}
+        {step !== "history" && (
+          <StepHeader step={step} currentJob={currentJob} onNavigate={go} />
+        )}
         <div
           key={displayStep}
           className={[
@@ -884,20 +1233,43 @@ function BulkImportPage() {
         title={`Process ${currentJob?.successful_rows || 0} students`}
         description="This queues the import for background processing. The uploaded file cannot be changed after confirmation."
         onClose={() => setConfirmOpen(false)}
-        footer={(
+        footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={Boolean(busy)}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={Boolean(busy)}
+            >
+              Cancel
+            </Button>
             <Button onClick={handleConfirm} disabled={Boolean(busy)}>
-              {busy === "confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {busy === "confirm" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
               Confirm and process {currentJob?.successful_rows || 0} students
             </Button>
           </div>
-        )}
+        }
       >
         <div className="space-y-3 text-sm text-text-muted">
-          <p>Students to create: <strong className="text-text">{currentJob?.successful_rows || 0}</strong></p>
-          <p>Parent invitation emails expected: <strong className="text-text">{expectedParentInvitationCount}</strong></p>
-          <p>Processing happens in the bulk-import worker. This page will poll until the job reaches a final status.</p>
+          <p>
+            Students to create:{" "}
+            <strong className="text-text">
+              {currentJob?.successful_rows || 0}
+            </strong>
+          </p>
+          <p>
+            Parent invitation emails expected:{" "}
+            <strong className="text-text">
+              {expectedParentInvitationCount}
+            </strong>
+          </p>
+          <p>
+            Processing happens in the bulk-import worker. This page updates when
+            persisted progress changes.
+          </p>
         </div>
       </Modal>
 
@@ -906,17 +1278,33 @@ function BulkImportPage() {
         title="Delete import history?"
         description="This removes the selected non-active job and its row-level history from this tenant view."
         onClose={() => setDeleteJob(null)}
-        footer={(
+        footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setDeleteJob(null)} disabled={Boolean(busy)}>Cancel</Button>
-            <Button variant="danger" onClick={handleDeleteJob} disabled={Boolean(busy)}>
-              {busy === "delete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            <Button
+              variant="outline"
+              onClick={() => setDeleteJob(null)}
+              disabled={Boolean(busy)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleDeleteJob}
+              disabled={Boolean(busy)}
+            >
+              {busy === "delete" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
               Delete history entry
             </Button>
           </div>
-        )}
+        }
       >
-        <p className="text-sm text-text-muted">{deleteJob?.original_filename}</p>
+        <p className="text-sm text-text-muted">
+          {deleteJob?.original_filename}
+        </p>
       </Modal>
 
       <Modal
@@ -925,9 +1313,12 @@ function BulkImportPage() {
         description={criticalImportError?.message || ""}
         onClose={() => setCriticalImportError(null)}
         placement="center"
-        footer={(
+        footer={
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setCriticalImportError(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setCriticalImportError(null)}
+            >
               Stay here
             </Button>
             <Button
@@ -941,14 +1332,17 @@ function BulkImportPage() {
               Upload another file
             </Button>
           </div>
-        )}
+        }
       >
         <div className="flex gap-3 rounded-2xl border border-error/30 bg-error-soft px-4 py-4 text-sm leading-6 text-error">
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
-            <p className="font-semibold">The file cannot continue in this import flow.</p>
+            <p className="font-semibold">
+              The file cannot continue in this import flow.
+            </p>
             <p className="mt-1 text-error/85">
-              Review the message above, then upload a workbook that has not already been imported.
+              Review the message above, then upload a workbook that has not
+              already been imported.
             </p>
           </div>
         </div>

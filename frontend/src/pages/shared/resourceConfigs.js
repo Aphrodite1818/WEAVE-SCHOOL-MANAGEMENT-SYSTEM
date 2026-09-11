@@ -1,13 +1,19 @@
 import React from "react";
 import Badge from "../../components/ui/Badge";
-import { classService } from "../../services/academicsService";
+import { armLabelService, classService } from "../../services/academicsService";
 import { parentService } from "../../services/parentService";
 import { studentService } from "../../services/studentService";
 import { subjectService } from "../../services/subject.service";
 import { teacherService } from "../../services/teacherService";
 import { displayName, fullName as actorFullName } from "../../utils/user";
 
-const studentStatuses = ["active", "withdrawn", "suspended", "graduated", "expelled"];
+const studentStatuses = [
+  "active",
+  "withdrawn",
+  "suspended",
+  "graduated",
+  "expelled",
+];
 
 const titleCase = (value) =>
   String(value || "")
@@ -21,7 +27,11 @@ const optionsFrom = (items, labelFn) =>
   }));
 
 const listItems = (result) =>
-  Array.isArray(result) ? result : Array.isArray(result?.items) ? result.items : [];
+  Array.isArray(result)
+    ? result
+    : Array.isArray(result?.items)
+      ? result.items
+      : [];
 
 const enumOptions = (values) =>
   values.map((value) => ({ value, label: titleCase(value) }));
@@ -29,7 +39,12 @@ const enumOptions = (values) =>
 const fullName = (item) => actorFullName(item) || item?.id || "Unknown";
 
 const className = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || item?.id || "Unknown class";
+  item?.display_name ||
+  [item?.academic_level_name, item?.department_name, item?.arm_label]
+    .filter(Boolean)
+    .join(" ") ||
+  item?.id ||
+  "Unknown class";
 
 const subjectName = (item) =>
   [item?.name, item?.code ? `(${item.code})` : ""].filter(Boolean).join(" ");
@@ -41,7 +56,9 @@ const byId = (items) =>
   }, {});
 
 const labelFromMap = (map, id, fallback = "-") =>
-  id && map[id] ? fullName(map[id]) || className(map[id]) || subjectName(map[id]) : fallback;
+  id && map[id]
+    ? fullName(map[id]) || className(map[id]) || subjectName(map[id])
+    : fallback;
 
 const optionalValue = (value, fallback = "Not provided") => value || fallback;
 
@@ -56,9 +73,8 @@ const formatDateValue = (value) => {
   });
 };
 
-const statusBadge = (value, variant = "default") => (
-  React.createElement(Badge, { variant }, titleCase(value || "unknown"))
-);
+const statusBadge = (value, variant = "default") =>
+  React.createElement(Badge, { variant }, titleCase(value || "unknown"));
 
 const compactPayload = (payload) =>
   Object.entries(payload).reduce((nextPayload, [key, value]) => {
@@ -66,9 +82,7 @@ const compactPayload = (payload) =>
     return nextPayload;
   }, {});
 
-const loadAcademicContext = async ({
-  role = "admin",
-} = {}) => {
+const loadAcademicContext = async ({ role = "admin" } = {}) => {
   const isTeacher = role === "teacher";
   const [classes, subjects, students] = await Promise.all([
     classService.getClasses({ limit: 100 }),
@@ -95,11 +109,16 @@ const loadAcademicContext = async ({
 };
 
 const loadClassContext = async () => {
-  const teachers = await teacherService.getTeachers({ limit: 100 });
+  const [teachers, armLabels] = await Promise.all([
+    teacherService.getTeachers({ limit: 100 }),
+    armLabelService.getArmLabels({ activeOnly: true }),
+  ]);
   const teacherItems = teachers?.items || [];
+  const armLabelItems = listItems(armLabels);
 
   return {
     teachers: teacherItems,
+    armLabels: armLabelItems,
     teacherById: byId(teacherItems),
   };
 };
@@ -108,7 +127,7 @@ const loadSubjectContext = async () => {
   const teachers = await teacherService.getTeachers({ limit: 100 });
 
   const teacherItems = (teachers?.items || []).filter(
-    (teacher) => teacher.status === "active"
+    (teacher) => teacher.status === "active",
   );
 
   return {
@@ -120,13 +139,18 @@ const loadSubjectContext = async () => {
 const classColumns = [
   { key: "name", label: "Class" },
   { key: "level", label: "Level", render: (item) => item.level || "-" },
-  { key: "arm", label: "Arm", render: (item) => item.arm || "-" },
+  { key: "arm_label", label: "Arm", render: (item) => item.arm_label || "-" },
 ];
 
 const classFields = (context) => [
   { name: "name", label: "Class name", required: true },
   { name: "level", label: "Level", placeholder: "Junior Secondary 1" },
-  { name: "arm", label: "Arm", placeholder: "A", required: true },
+  {
+    name: "arm_label_id",
+    label: "Arm",
+    type: "select",
+    options: optionsFrom(context.armLabels, (item) => item.label),
+  },
   {
     name: "teacher_id",
     label: "Class teacher",
@@ -138,12 +162,13 @@ const classFields = (context) => [
 export const getClassResourceConfig = ({ role, writable }) => ({
   singularLabel: "Class",
   pluralLabel: "Classes",
-  formHelp: "Classes are created by admins. Teachers can view the classes exposed by the API.",
+  formHelp:
+    "Classes are created by admins. Teachers can view the classes exposed by the API.",
   canCreate: writable,
   canUpdate: writable,
   canDelete: writable,
   loadContext: writable ? loadClassContext : undefined,
-  initialForm: { name: "", level: "", arm: "", teacher_id: "" },
+  initialForm: { name: "", level: "", arm_label_id: "", teacher_id: "" },
   fields: classFields,
   filters: [{ name: "search", label: "Search", placeholder: "Class name" }],
   columns: (context) => [
@@ -165,7 +190,7 @@ export const getClassResourceConfig = ({ role, writable }) => ({
   mapItemToForm: (item) => ({
     name: item.name || "",
     level: item.level || "",
-    arm: item.arm || "",
+    arm_label_id: item.arm_label_id || "",
     teacher_id: item.teacher_id || "",
   }),
   getItemLabel: (item) => className(item),
@@ -237,7 +262,8 @@ export const teacherSubjectResourceConfig = {
 export const subjectResourceConfig = {
   singularLabel: "Subject",
   pluralLabel: "Subjects",
-  formHelp: "Subjects define the academic catalog teachers and classes can be assigned to.",
+  formHelp:
+    "Subjects define the academic catalog teachers and classes can be assigned to.",
   canCreate: true,
   canUpdate: true,
   canDelete: true,
@@ -305,7 +331,8 @@ export const subjectResourceConfig = {
 export const teacherResourceConfig = {
   singularLabel: "Teacher profile",
   pluralLabel: "Teacher profiles",
-  formHelp: "Review teacher records and update staff details. Subject teaching assignments are managed in Academic Hub.",
+  formHelp:
+    "Review teacher records and update staff details. Subject teaching assignments are managed in Academic Hub.",
   canCreate: false,
   canUpdate: false,
   canDelete: false,
@@ -326,10 +353,26 @@ export const teacherResourceConfig = {
       label: "Teacher",
       render: (item) => displayName(item),
     },
-    { key: "email", label: "Email", render: (item) => optionalValue(item.email) },
-    { key: "staff_id", label: "Staff ID", render: (item) => item.staff_id || "-" },
-    { key: "qualification", label: "Qualification", render: (item) => item.qualification || "-" },
-    { key: "specialization", label: "Specialization", render: (item) => item.specialization || "-" },
+    {
+      key: "email",
+      label: "Email",
+      render: (item) => optionalValue(item.email),
+    },
+    {
+      key: "staff_id",
+      label: "Staff ID",
+      render: (item) => item.staff_id || "-",
+    },
+    {
+      key: "qualification",
+      label: "Qualification",
+      render: (item) => item.qualification || "-",
+    },
+    {
+      key: "specialization",
+      label: "Specialization",
+      render: (item) => item.specialization || "-",
+    },
   ],
   fetchItems: () => teacherService.getTeachers({ limit: 100 }),
   updateItem: undefined,
@@ -360,32 +403,53 @@ export const getStudentResourceConfig = ({ writable, role = "admin" }) => ({
   initialForm: {
     gender: "",
     date_of_birth: "",
-    arm: "",
   },
   initialFilters: {
     status: "active",
   },
   fields: () => [
-    { name: "gender", label: "Gender", type: "select", options: enumOptions(["male", "female"]) },
+    {
+      name: "gender",
+      label: "Gender",
+      type: "select",
+      options: enumOptions(["male", "female"]),
+    },
     { name: "date_of_birth", label: "Date of birth", type: "date" },
-    { name: "arm", label: "Arm" },
   ],
   filters: (context) => [
     { name: "search", label: "Search", placeholder: "Name or admission no." },
-    { name: "classId", label: "Class", type: "select", options: optionsFrom(context.classes, className) },
-    { name: "status", label: "Status", type: "select", options: enumOptions(studentStatuses) },
+    {
+      name: "classId",
+      label: "Class",
+      type: "select",
+      options: optionsFrom(context.classes, className),
+    },
+    {
+      name: "status",
+      label: "Status",
+      type: "select",
+      options: enumOptions(studentStatuses),
+    },
   ],
   columns: () => [
     { key: "name", label: "Full Name", render: (item) => displayName(item) },
-    { key: "admission_number", label: "Admission Number", render: (item) => optionalValue(item.admission_number, "Pending") },
-    { key: "admission_date", label: "Admission Date", render: (item) => formatDateValue(item.admission_date) },
+    {
+      key: "admission_number",
+      label: "Admission Number",
+      render: (item) => optionalValue(item.admission_number, "Pending"),
+    },
+    {
+      key: "admission_date",
+      label: "Admission Date",
+      render: (item) => formatDateValue(item.admission_date),
+    },
     {
       key: "password_reset_required",
       label: "Password Reset",
       render: (item) =>
         statusBadge(
           item.password_reset_required ? "required" : "completed",
-          item.password_reset_required ? "warning" : "success"
+          item.password_reset_required ? "warning" : "success",
         ),
     },
     {
@@ -394,17 +458,23 @@ export const getStudentResourceConfig = ({ writable, role = "admin" }) => ({
       render: (item) =>
         statusBadge(
           item.profile_status,
-          item.profile_status === "incomplete" ? "warning" : "success"
+          item.profile_status === "incomplete" ? "warning" : "success",
         ),
     },
     {
       key: "status",
       label: "Academic Status",
-      render: (item) => statusBadge(item.status, item.status === "active" ? "success" : "default"),
+      render: (item) =>
+        statusBadge(
+          item.status,
+          item.status === "active" ? "success" : "default",
+        ),
     },
   ],
   fetchItems: (filters) =>
-    (role === "teacher" ? studentService.getStudents : studentService.getAdminStudents)({
+    (role === "teacher"
+      ? studentService.getStudents
+      : studentService.getAdminStudents)({
       search: filters.search,
       classId: filters.classId,
       status: filters.status,
@@ -416,7 +486,6 @@ export const getStudentResourceConfig = ({ writable, role = "admin" }) => ({
   mapItemToForm: (item) => ({
     gender: item.gender || "",
     date_of_birth: item.date_of_birth || "",
-    arm: item.arm || "",
   }),
   getItemLabel: (item) => displayName(item),
 });
@@ -437,14 +506,34 @@ export const parentResourceConfig = {
   fields: [
     { name: "occupation", label: "Occupation" },
     { name: "address", label: "Address", type: "textarea" },
-    { name: "emergency_phone", label: "Emergency phone", placeholder: "+2348012345678" },
+    {
+      name: "emergency_phone",
+      label: "Emergency phone",
+      placeholder: "+2348012345678",
+    },
   ],
   columns: [
     { key: "name", label: "Full Name", render: (item) => displayName(item) },
-    { key: "email", label: "Email", render: (item) => optionalValue(item.email) },
-    { key: "phone_number", label: "Phone Number", render: (item) => optionalValue(item.phone_number) },
-    { key: "occupation", label: "Occupation", render: (item) => optionalValue(item.occupation) },
-    { key: "emergency_phone", label: "Emergency Phone", render: (item) => optionalValue(item.emergency_phone) },
+    {
+      key: "email",
+      label: "Email",
+      render: (item) => optionalValue(item.email),
+    },
+    {
+      key: "phone_number",
+      label: "Phone Number",
+      render: (item) => optionalValue(item.phone_number),
+    },
+    {
+      key: "occupation",
+      label: "Occupation",
+      render: (item) => optionalValue(item.occupation),
+    },
+    {
+      key: "emergency_phone",
+      label: "Emergency Phone",
+      render: (item) => optionalValue(item.emergency_phone),
+    },
   ],
   fetchItems: () => parentService.getParents({ limit: 100 }),
   updateItem: undefined,

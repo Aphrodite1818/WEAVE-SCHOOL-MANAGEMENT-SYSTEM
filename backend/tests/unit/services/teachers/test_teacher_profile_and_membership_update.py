@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.core.exceptions import BadRequestException
 from app.modules.teachers.models import (
     TeacherAccount,
     TeacherAccountStatus,
@@ -14,11 +15,11 @@ from app.modules.teachers.models import (
     TeacherMembership,
     TeacherMembershipStatus,
 )
+from app.modules.teachers.patch_service import TeacherPatchService
 from app.modules.teachers.schemas import (
     TeacherAccountProfileUpdateRequest,
     TeacherMembershipUpdateRequest,
 )
-from app.modules.teachers.service import TeacherAccountService, TeacherMembershipService
 from app.modules.teachers.service import TeacherInvitationService
 from app.modules.tenant_admins.models import TenantAdmin, TenantAdminStatus
 
@@ -89,97 +90,96 @@ def _invitation(tenant_id: uuid.UUID) -> TeacherInvitation:
 
 
 @pytest.mark.asyncio
-async def test_update_teacher_profile_ignores_explicit_null_values() -> None:
+async def test_teacher_profile_rejects_null_required_name() -> None:
     account = _account()
     db = AsyncMock()
 
-    with (
-        patch(
-            "app.modules.teachers.service.TeacherAccountRepository.get_by_id",
-            new=AsyncMock(return_value=account),
-        ),
-        patch(
-            "app.modules.teachers.service.TeacherAccountRepository.save",
-            new=AsyncMock(return_value=account),
-        ),
+    with patch(
+        "app.modules.teachers.patch_service.TeacherAccountRepository.get_by_id",
+        new=AsyncMock(return_value=account),
     ):
-        response = await TeacherAccountService.update_profile(
-            db=db,
-            account_id=account.id,
-            payload=TeacherAccountProfileUpdateRequest(
-                first_name=None,
-                last_name=None,
-                qualification=None,
-            ),
-        )
-
-    assert account.first_name == "Ada"
-    assert account.last_name == "Lovelace"
-    assert account.qualification == "B.Ed"
-    assert response.first_name == "Ada"
+        with pytest.raises(BadRequestException):
+            await TeacherPatchService.update_account_profile(
+                db=db,
+                account_id=account.id,
+                payload=TeacherAccountProfileUpdateRequest(first_name=None),
+            )
 
 
 @pytest.mark.asyncio
-async def test_update_teacher_profile_applies_explicit_values() -> None:
+async def test_teacher_profile_clears_explicit_nullable_field() -> None:
     account = _account()
     db = AsyncMock()
 
     with (
         patch(
-            "app.modules.teachers.service.TeacherAccountRepository.get_by_id",
+            "app.modules.teachers.patch_service.TeacherAccountRepository.get_by_id",
             new=AsyncMock(return_value=account),
         ),
         patch(
-            "app.modules.teachers.service.TeacherAccountRepository.save",
+            "app.modules.teachers.patch_service.TeacherAccountRepository.save",
             new=AsyncMock(return_value=account),
         ),
     ):
-        response = await TeacherAccountService.update_profile(
+        response = await TeacherPatchService.update_account_profile(
+            db=db,
+            account_id=account.id,
+            payload=TeacherAccountProfileUpdateRequest(qualification=None),
+        )
+
+    assert account.qualification is None
+    assert account.specialization == "Mathematics"
+    assert response.qualification is None
+
+
+@pytest.mark.asyncio
+async def test_teacher_profile_applies_only_explicit_values() -> None:
+    account = _account()
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.teachers.patch_service.TeacherAccountRepository.get_by_id",
+            new=AsyncMock(return_value=account),
+        ),
+        patch(
+            "app.modules.teachers.patch_service.TeacherAccountRepository.save",
+            new=AsyncMock(return_value=account),
+        ),
+    ):
+        response = await TeacherPatchService.update_account_profile(
             db=db,
             account_id=account.id,
             payload=TeacherAccountProfileUpdateRequest(specialization="Physics"),
         )
 
     assert account.specialization == "Physics"
+    assert account.qualification == "B.Ed"
     assert response.specialization == "Physics"
 
 
 @pytest.mark.asyncio
-async def test_update_teacher_membership_ignores_explicit_null_values() -> None:
+async def test_teacher_membership_rejects_null_boolean_preference() -> None:
     tenant_id = uuid.uuid4()
     account = _account()
     membership = _membership(tenant_id, account.id)
     db = AsyncMock()
 
-    with (
-        patch(
-            "app.modules.teachers.service.TeacherMembershipRepository.get_by_id",
-            new=AsyncMock(return_value=membership),
-        ),
-        patch(
-            "app.modules.teachers.service.TeacherMembershipRepository.save",
-            new=AsyncMock(return_value=membership),
-        ),
+    with patch(
+        "app.modules.teachers.patch_service.TeacherMembershipRepository.get_by_id",
+        new=AsyncMock(return_value=membership),
     ):
-        response = await TeacherMembershipService.update_membership(
-            db=db,
-            actor=_admin(tenant_id),
-            membership_id=membership.id,
-            payload=TeacherMembershipUpdateRequest(
-                job_title=None,
-                department=None,
-                receive_email_notifications=None,
-            ),
-        )
-
-    assert membership.job_title == "Teacher"
-    assert membership.department == "Science"
-    assert membership.receive_email_notifications is True
-    assert response.job_title == "Teacher"
+        with pytest.raises(BadRequestException):
+            await TeacherPatchService.update_membership(
+                db=db,
+                actor=_admin(tenant_id),
+                membership_id=membership.id,
+                payload=TeacherMembershipUpdateRequest(receive_email_notifications=None),
+            )
 
 
 @pytest.mark.asyncio
-async def test_update_teacher_membership_applies_explicit_values() -> None:
+async def test_teacher_membership_clears_nullable_employment_field() -> None:
     tenant_id = uuid.uuid4()
     account = _account()
     membership = _membership(tenant_id, account.id)
@@ -187,15 +187,44 @@ async def test_update_teacher_membership_applies_explicit_values() -> None:
 
     with (
         patch(
-            "app.modules.teachers.service.TeacherMembershipRepository.get_by_id",
+            "app.modules.teachers.patch_service.TeacherMembershipRepository.get_by_id",
             new=AsyncMock(return_value=membership),
         ),
         patch(
-            "app.modules.teachers.service.TeacherMembershipRepository.save",
+            "app.modules.teachers.patch_service.TeacherMembershipRepository.save",
             new=AsyncMock(return_value=membership),
         ),
     ):
-        response = await TeacherMembershipService.update_membership(
+        response = await TeacherPatchService.update_membership(
+            db=db,
+            actor=_admin(tenant_id),
+            membership_id=membership.id,
+            payload=TeacherMembershipUpdateRequest(department=None),
+        )
+
+    assert membership.department is None
+    assert membership.job_title == "Teacher"
+    assert response.department is None
+
+
+@pytest.mark.asyncio
+async def test_teacher_membership_applies_only_explicit_values() -> None:
+    tenant_id = uuid.uuid4()
+    account = _account()
+    membership = _membership(tenant_id, account.id)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.teachers.patch_service.TeacherMembershipRepository.get_by_id",
+            new=AsyncMock(return_value=membership),
+        ),
+        patch(
+            "app.modules.teachers.patch_service.TeacherMembershipRepository.save",
+            new=AsyncMock(return_value=membership),
+        ),
+    ):
+        response = await TeacherPatchService.update_membership(
             db=db,
             actor=_admin(tenant_id),
             membership_id=membership.id,
@@ -203,6 +232,7 @@ async def test_update_teacher_membership_applies_explicit_values() -> None:
         )
 
     assert membership.receive_push_notifications is False
+    assert membership.receive_email_notifications is True
     assert response.receive_push_notifications is False
 
 

@@ -11,6 +11,7 @@ on:
       - production-hardening
       - staging
       - master
+      - feat/workspace-welcome-tour
     paths:
       - "backend/**"
       - ".github/workflows/backend.yml"

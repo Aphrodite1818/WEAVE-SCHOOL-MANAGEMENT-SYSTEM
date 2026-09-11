@@ -6,6 +6,7 @@
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.config.logging import get_logger
 from app.config.sentry import capture_exception
@@ -19,6 +20,44 @@ from app.modules.superadmin.security_alert_service import (
 )
 
 logger = get_logger(__name__)
+
+_ACADEMIC_SESSION_INTEGRITY_CONFLICTS = {
+    "excl_academic_sessions_date_overlap": "Academic session dates cannot overlap another session.",
+    "uq_academic_sessions_current_per_tenant": (
+        "Close the current academic session before opening another."
+    ),
+    "uq_academic_session_tenant_name": "Academic session name already exists.",
+    "ck_academic_session_current_matches_status": (
+        "Academic session lifecycle state is inconsistent."
+    ),
+    "ck_academic_session_date_range": "Academic session end date must be after its start date.",
+    "ck_academic_session_operational_dates": (
+        "Open, closing, and closed academic sessions require complete dates."
+    ),
+}
+
+
+def _integrity_constraint_name(exc: IntegrityError) -> str | None:
+    """Best-effort extraction across psycopg/asyncpg SQLAlchemy adapters."""
+
+    original = getattr(exc, "orig", None)
+    candidates = [original, getattr(original, "__cause__", None)]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        constraint_name = getattr(candidate, "constraint_name", None)
+        if constraint_name:
+            return str(constraint_name)
+        diagnostics = getattr(candidate, "diag", None)
+        constraint_name = getattr(diagnostics, "constraint_name", None)
+        if constraint_name:
+            return str(constraint_name)
+
+    rendered = str(exc)
+    for constraint_name in _ACADEMIC_SESSION_INTEGRITY_CONFLICTS:
+        if constraint_name in rendered:
+            return constraint_name
+    return None
 
 
 def _request_context(
@@ -182,6 +221,43 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "detail": str(exc),
             },
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(
+        request: Request,
+        exc: IntegrityError,
+    ) -> JSONResponse:
+        """Translate known domain constraints without hiding unknown DB failures."""
+
+        constraint_name = _integrity_constraint_name(exc)
+        detail = _ACADEMIC_SESSION_INTEGRITY_CONFLICTS.get(constraint_name or "")
+        if detail is not None:
+            logger.warning(
+                "Academic session integrity conflict",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "constraint": constraint_name,
+                },
+            )
+            return JSONResponse(
+                status_code=409,
+                content={"detail": detail},
+            )
+
+        logger.error(
+            "Unhandled database integrity error",
+            exc_info=(type(exc), exc, exc.__traceback__),
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+            },
+        )
+        _capture_http_exception(request, exc, 500)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
         )
 
     @app.exception_handler(Exception)

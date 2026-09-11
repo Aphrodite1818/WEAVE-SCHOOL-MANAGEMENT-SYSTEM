@@ -30,6 +30,7 @@ from app.modules.student_academics.models import (  # noqa: E402
 from app.modules.student_academics.session_closure_service import (  # noqa: E402
     SessionClosureService,
 )
+from app.modules.realtime.publisher import RealtimePublisher  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -85,6 +86,7 @@ async def process_bulk_import_job(
                 await BulkImportLiveService._mark_job_failed(
                     db=failure_db,
                     import_job=failed_job,
+                    actor_id=parsed_actor_id,
                     error_message=str(exc),
                 )
         raise
@@ -172,6 +174,11 @@ async def process_session_progression_job(
                     priority="urgent",
                 )
             await failure_db.commit()
+            await RealtimePublisher.publish_deferred_after_commit(failure_db)
+            await SessionClosureService._publish_progression_event(
+                run=run,
+                event_type="academic_session.progression.failed",
+            )
         raise failure_exception
 
 

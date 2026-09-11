@@ -4,6 +4,12 @@ import test from "node:test";
 import { ROLE_GUIDES, guideForRole } from "./roleGuideConfig.js";
 
 const expectedRoles = ["admin", "teacher", "parent", "student"];
+const expectedStepCounts = {
+  admin: 3,
+  teacher: 4,
+  parent: 4,
+  student: 4,
+};
 
 test("every supported dashboard role has a valid page guide", () => {
   assert.deepEqual(Object.keys(ROLE_GUIDES).sort(), [...expectedRoles].sort());
@@ -15,18 +21,19 @@ test("every supported dashboard role has a valid page guide", () => {
     assert.equal(guide.route, `/${role}/getting-started`);
     assert.equal(guide.dashboardRoute, `/${role}/dashboard`);
 
-    const expectedStepCount = role === "admin" ? 9 : 4;
+    const expectedStepCount = expectedStepCounts[role];
     assert.equal(guide.steps.length, expectedStepCount);
-    assert.equal(new Set(guide.steps.map((step) => step.id)).size, expectedStepCount);
+    assert.equal(
+      new Set(guide.steps.map((step) => step.id)).size,
+      expectedStepCount,
+    );
 
     for (const step of guide.steps) {
       assert.ok(step.label);
       assert.ok(step.description);
       assert.ok(step.icon);
-      if (role !== "admin") {
-        assert.ok(step.actionLabel);
-        assert.ok(step.to.startsWith(`/${role}/`));
-      }
+      assert.ok(step.actionLabel);
+      assert.ok(step.to.startsWith(`/${role}/`));
     }
   }
 });
@@ -36,19 +43,23 @@ test("unknown roles do not receive a guide", () => {
   assert.equal(guideForRole(""), null);
 });
 
-test("tenant admin guide follows the backend lifecycle dependency order", () => {
+test("admin setup contains only the three initial school-year milestones", () => {
   assert.deepEqual(
     ROLE_GUIDES.admin.steps.map((step) => step.id),
-    [
-      "school_logo",
-      "session",
-      "term",
-      "calendar",
-      "structure",
-      "progression",
-      "session_open",
-      "calendar_active",
-      "term_open",
-    ],
+    ["session", "term", "calendar"],
   );
+  assert.equal(ROLE_GUIDES.admin.key, "tenant_admin_academic_setup_v3");
+  assert.ok(ROLE_GUIDES.admin.steps.every((step) => !step.optional && !step.feature));
+  assert.equal(
+    ROLE_GUIDES.admin.steps.some((step) => step.id === "start_term"),
+    false,
+  );
+});
+
+test("teacher guide exposes class-teacher comments without score-entry authority", () => {
+  assert.deepEqual(
+    ROLE_GUIDES.teacher.steps.map((step) => step.id),
+    ["classes", "comments", "attendance", "calendar"],
+  );
+  assert.equal(ROLE_GUIDES.teacher.steps[1].to, "/teacher/student-comments");
 });

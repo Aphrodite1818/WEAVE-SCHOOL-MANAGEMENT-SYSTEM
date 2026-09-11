@@ -129,11 +129,9 @@ function AccountRegistrationForm({
   return (
     <div>
       {allowRoleSwitch ? (
-        <div
-          className="grid grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-surface-muted/50 p-1"
-          role="tablist"
-          aria-label="Choose account type"
-        >
+        <fieldset>
+          <legend className="mb-2.5 text-sm font-medium text-text-soft">I’m joining as a</legend>
+          <div className="grid grid-cols-2 gap-3">
           {Object.entries(ROLE_CONFIG).map(([roleKey, roleConfig]) => {
             const Icon = roleConfig.icon;
             const selected = activeRole === roleKey;
@@ -141,14 +139,13 @@ function AccountRegistrationForm({
               <button
                 key={roleKey}
                 type="button"
-                role="tab"
-                aria-selected={selected}
+                aria-pressed={selected}
                 disabled={isSubmitting}
                 onClick={() => changeRole(roleKey)}
-                className={`flex min-h-12 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-60 ${
                   selected
-                    ? "bg-surface text-primary shadow-sm ring-1 ring-border/60"
-                    : "text-text-muted hover:bg-surface/60 hover:text-text"
+                    ? "border-primary bg-surface text-primary"
+                    : "border-border/70 bg-surface-muted/50 text-text-muted hover:bg-surface/60 hover:text-text"
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -156,7 +153,8 @@ function AccountRegistrationForm({
               </button>
             );
           })}
-        </div>
+          </div>
+        </fieldset>
       ) : null}
 
       {showHeading ? (
@@ -177,24 +175,26 @@ function AccountRegistrationForm({
         </div>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
         <Input
           label="Email address"
           type="email"
           name="email"
           autoComplete="email"
+          className="min-h-12"
           value={formData.email}
           onChange={handleChange}
           placeholder="name@example.com"
           required
           error={fieldErrors.email}
         />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-5">
           <Input
             label="Password"
             type="password"
             name="password"
             autoComplete="new-password"
+            className="min-h-12"
             value={formData.password}
             onChange={handleChange}
             placeholder="At least 8 characters"
@@ -207,6 +207,7 @@ function AccountRegistrationForm({
             type="password"
             name="confirmPassword"
             autoComplete="new-password"
+            className="min-h-12"
             value={formData.confirmPassword}
             onChange={handleChange}
             placeholder="Re-enter password"
@@ -216,17 +217,16 @@ function AccountRegistrationForm({
           />
         </div>
 
-        <div className="rounded-xl border border-border/70 bg-surface-muted/30 px-4 py-3 text-xs leading-5 text-text-muted">
-          Your account remains global. School access is added only after you accept an invitation from that school.
-        </div>
-
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
+        <Button type="submit" className="min-h-12 w-full" disabled={isSubmitting}>
           {isSubmitting ? "Creating account..." : config.submitLabel}
           <ArrowRight className="h-4 w-4" />
         </Button>
+        <p className="text-center text-xs leading-5 text-text-muted">
+          One account for your schools. School access is added after you accept an invitation.
+        </p>
       </form>
 
-      <p className="mt-5 text-center text-sm text-text-soft">
+      <p className="mt-6 border-t border-border/60 pt-5 text-center text-sm text-text-soft">
         Already have an account?{" "}
         <Link
           to={`/login${loginQuery}`}

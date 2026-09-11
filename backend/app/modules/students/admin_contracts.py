@@ -29,6 +29,8 @@ class StudentAdminContractService:
         limit: int = 50,
         search: str | None = None,
         class_id: UUID | None = None,
+        academic_level_id: UUID | None = None,
+        unassigned_class: bool = False,
         status: AcademicStatus | None = None,
         include_archived: bool = False,
     ) -> tuple[list[StudentDetailResponse], int]:
@@ -37,6 +39,8 @@ class StudentAdminContractService:
             actor.tenant_id,
             search=search,
             class_id=class_id,
+            academic_level_id=academic_level_id,
+            unassigned_class=unassigned_class,
             status=status,
             include_archived=include_archived,
             offset=skip,

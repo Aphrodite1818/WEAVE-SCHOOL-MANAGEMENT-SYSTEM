@@ -2,7 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 class InputBase(BaseModel):
@@ -35,7 +38,7 @@ def _clean_optional_string(value: str | None) -> str | None:
 
 
 class SubjectCreate(InputBase):
-    """Pydantic schema for the subjects domain."""
+    """Create a tenant-scoped subject catalogue entry."""
 
     name: str = Field(
         ...,
@@ -59,54 +62,44 @@ class SubjectCreate(InputBase):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        """Validate name."""
-
         cleaned_value = value.strip()
-
         if not cleaned_value:
             raise ValueError("name cannot be empty")
-
         return cleaned_value
 
     @field_validator("code", "description", mode="before")
     @classmethod
     def clean_optional_text_fields(cls, value: str | None) -> str | None:
-        """Normalize optional text fields."""
-
         return _clean_optional_string(value)
 
 
 class SubjectUpdate(InputBase):
-    """Pydantic schema for the subjects domain."""
+    """Partial subject update; identity changes are further guarded by the service."""
 
     name: str | None = Field(default=None, min_length=2, max_length=100)
-    code: str | None = Field(default=None, min_length=2, max_length=30)
+    code: str | None = Field(default=None, max_length=30)
     description: str | None = Field(default=None, max_length=500)
 
     @field_validator("name", mode="before")
     @classmethod
-    def clean_name(cls, value: str | None) -> str | None:
-        """Normalize name."""
-
-        cleaned_value = _clean_optional_string(value)
-
-        if cleaned_value is not None and len(cleaned_value) < 2:
+    def clean_name(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError(f"name {_PATCH_NULL_ERROR}")
+        cleaned_value = value.strip()
+        if len(cleaned_value) < 2:
             raise ValueError("name must be at least 2 characters long")
-
         return cleaned_value
 
     @field_validator("code", "description", mode="before")
     @classmethod
     def clean_optional_text_fields(cls, value: str | None) -> str | None:
-        """Normalize optional text fields."""
-
         return _clean_optional_string(value)
 
-
-class SubjectStatusUpdate(InputBase):
-    """Pydantic schema for the subjects domain."""
-
-    is_active: bool
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "SubjectUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one subject field must be provided")
+        return self
 
 
 class SubjectActivateRequest(InputBase):
@@ -140,7 +133,7 @@ class SubjectTeacherResponse(OutputBase):
 
 
 class SubjectResponse(OutputBase):
-    """Pydantic schema for the subjects domain."""
+    """Subject catalogue response."""
 
     id: uuid.UUID
     tenant_id: uuid.UUID
@@ -158,7 +151,5 @@ class SubjectResponse(OutputBase):
 
 
 class SubjectListResponse(OutputBase):
-    """Pydantic schema for the subjects domain."""
-
     items: list[SubjectResponse]
     total: int

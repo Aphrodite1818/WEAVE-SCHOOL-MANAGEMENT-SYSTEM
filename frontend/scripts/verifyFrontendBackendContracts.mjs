@@ -196,11 +196,15 @@ function parseIncludeRouters(source) {
     if (callBody === null) break;
 
     const routerMatch = callBody.match(/^\s*(\w+)/);
-    const prefixMatch = callBody.match(/\bprefix\s*=\s*["']([^"']*)["']/);
+    const prefixMatch = callBody.match(/\bprefix\s*=\s*f?["']([^"']*)["']/);
+    const variablePrefix = /\bprefix\s*=\s*API_V1_PREFIX\b/.test(callBody);
     if (routerMatch) {
+      const prefix = variablePrefix
+        ? API_PREFIX
+        : (prefixMatch?.[1] || "").replace("{API_V1_PREFIX}", API_PREFIX);
       registrations.push({
         alias: routerMatch[1],
-        prefix: prefixMatch?.[1] || "",
+        prefix,
       });
     }
 

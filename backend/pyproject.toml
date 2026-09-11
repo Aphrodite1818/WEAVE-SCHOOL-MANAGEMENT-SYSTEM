@@ -115,6 +115,10 @@ dependencies = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+cache_dir = ".pytest_cache"
+filterwarnings = [
+    "ignore:coroutine 'Connection\\._cancel' was never awaited:RuntimeWarning",
+]
 
 [tool.ruff]
 line-length = 100

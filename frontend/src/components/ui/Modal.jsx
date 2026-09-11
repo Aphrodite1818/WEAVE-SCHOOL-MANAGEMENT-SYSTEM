@@ -214,7 +214,12 @@ function Modal({
       data-modal-overlay="true"
       data-modal-placement={placement}
       data-modal-visual-viewport="true"
-      className="fixed inset-x-0 top-0 z-[100] flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-slate-950/35 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
+      className={cn(
+        "fixed inset-x-0 top-0 z-[100] flex h-[100dvh] min-h-0 justify-center overflow-hidden bg-slate-950/35",
+        placement === "bottom"
+          ? "items-end px-0 pb-0 pt-3 sm:items-center sm:px-4 sm:py-6"
+          : "items-center px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6",
+      )}
       style={visualViewportStyle}
       onClick={handleOverlayClick}
     >
@@ -226,6 +231,8 @@ function Modal({
         tabIndex={-1}
         className={cn(
           "flex min-h-0 max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-premium animate-fadein",
+          placement === "bottom" &&
+            "max-h-[86dvh] rounded-b-none border-b-0 shadow-none sm:max-h-full sm:rounded-2xl sm:border-b sm:shadow-premium",
           className,
         )}
         onClick={(event) => event.stopPropagation()}

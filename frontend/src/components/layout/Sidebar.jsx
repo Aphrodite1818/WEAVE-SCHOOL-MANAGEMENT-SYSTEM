@@ -2,7 +2,7 @@ import { HelpCircle, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
+import { isFeatureAvailable } from "../../features/navigation/featureAvailability";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { authSession } from "../../services/api";
@@ -21,23 +21,6 @@ function resolveWorkspaceLogo(user) {
     user?.logo_url ||
     null
   );
-}
-
-function shouldHideNavItem(item, subscription, runtimeConfig) {
-  if (item.runtimeFeature && runtimeConfig?.features?.[item.runtimeFeature] === false) {
-    return true;
-  }
-
-  if (!item.featureCode) return false;
-
-  const featureGuard = subscription.getFeatureGuard(item.featureCode);
-  const planCode = String(subscription.planCode || "").trim().toLowerCase();
-
-  if (item.featureCode === FEATURE_CODES.BULK_IMPORT && planCode === "free_trial") {
-    return true;
-  }
-
-  return featureGuard.allowed === false;
 }
 
 export default function SidebarContent({
@@ -61,13 +44,17 @@ export default function SidebarContent({
   const [failedWorkspaceLogo, setFailedWorkspaceLogo] = useState(null);
   const hasCustomWorkspaceLogo = Boolean(workspaceLogo) && failedWorkspaceLogo !== workspaceLogo;
   const workspaceLogoAlt = `${schoolName || "School"} logo`;
+  const availabilityContext = {
+    subscription,
+    runtimeFeatures: runtimeConfig?.features || {},
+    isAccountScope,
+  };
   const groups = (navGroups[role] || navGroups.admin)
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (isAccountScope && !item.accountScope) return false;
-        return !shouldHideNavItem(item, subscription, runtimeConfig);
-      }),
+      items: group.items.filter((item) =>
+        isFeatureAvailable(item, availabilityContext),
+      ),
     }))
     .filter((group) => group.items.length > 0);
   const navRef = useRef(null);
@@ -113,6 +100,7 @@ export default function SidebarContent({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
+        data-sidebar-brand="true"
         className={cn(
           "relative flex h-[4.5rem] shrink-0 items-center border-b border-border/60 transition-all duration-300",
           mobile && "h-[5rem]",
@@ -164,7 +152,7 @@ export default function SidebarContent({
       </div>
 
       {!collapsed && (
-        <div className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
+        <div data-sidebar-workspace="true" className="mx-3 mt-3 rounded-xl border border-border/60 bg-surface-muted/40 px-3 py-2.5">
           <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-sidebar-text/55">Workspace</p>
           <p className="mt-1 truncate text-[13px] font-semibold text-sidebar-text">
             {isAccountScope ? "Select a school" : schoolName || "School workspace"}
@@ -194,6 +182,7 @@ export default function SidebarContent({
                   <Link
                     key={`${group.label}-${item.label}`}
                     to={item.to}
+                    data-tour-target={item.to}
                     onClick={() => {
                       persistSidebarScroll();
                       onNavigate?.();
@@ -202,7 +191,7 @@ export default function SidebarContent({
                     className={cn(
                       "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
                       isActive
-                ? "bg-sidebar-active text-sidebar-active-text shadow-sm"
+                        ? "bg-sidebar-active text-sidebar-active-text shadow-sm"
                         : "text-sidebar-text/80 hover:bg-sidebar-active/10 hover:text-sidebar-text",
                       collapsed && "justify-center px-2"
                     )}

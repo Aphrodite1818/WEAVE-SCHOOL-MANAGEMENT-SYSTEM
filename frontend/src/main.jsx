@@ -4,6 +4,7 @@ import "./styles/mobileDashboard.css";
 import "./styles/mobileOverrides.css";
 import "./styles/brandAssets.css";
 import "./styles/notificationDropdown.css";
+import "./styles/messaging.css";
 import "./styles/studentDashboardCleanup.css";
 import "./styles/mobileDirectoryCards.css";
 import "./styles/pwaInteractions.css";
@@ -22,6 +23,7 @@ import {
   resetPublicPricingPlans,
 } from "./features/subscriptions/pricingCatalogueRuntime";
 import { installCookieCsrfFetchGuard } from "./services/installCookieCsrfFetchGuard";
+import { realtimeClient } from "./services/realtimeClient";
 import { subscriptionService } from "./services/subscriptionService";
 import {
   applyAccessibilityPreferences,
@@ -33,6 +35,7 @@ import { installThemeChromeSync } from "./utils/themeChromeSync";
 
 void initializeSentry();
 installCookieCsrfFetchGuard();
+realtimeClient.start();
 applyAccessibilityPreferences(getSavedAccessibilityPreferences());
 syncSystemThemePreference();
 installMobilePwaStability();

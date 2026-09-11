@@ -216,7 +216,7 @@ function ParentDashboardPage() {
             academicLabel={selectedChildAcademicLabel}
           />
 
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Linked children"
               value={linkedStudents}
@@ -293,7 +293,7 @@ function ParentDashboardPage() {
             description="Common parent workflows."
             actions={[
               { label: "Student linking", description: "Request or manage child access", to: "/parent/student-linking", icon: Link2, tone: "primary" },
-              { label: "Results", description: "View academic scores", to: "/parent/results", icon: BarChart3, tone: "success" },
+              { label: "Family insights", description: "Links and school updates", to: "/parent/analytics", icon: BarChart3, tone: "success" },
               { label: "Report cards", description: "Open published reports", to: "/parent/report-cards", icon: FileText, tone: "warning" },
               { label: "Inbox", description: "Notifications and updates", to: "/parent/inbox", icon: Bell, tone: "accent" },
             ]}

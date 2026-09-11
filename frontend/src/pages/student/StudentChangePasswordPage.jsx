@@ -6,7 +6,9 @@ import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Card from "../../components/ui/Card";
+import { queueInitialTour } from "../../features/guides/workspaceTourState";
 import { authSession, parseApiError } from "../../services/api";
+import { guideService } from "../../services/guideService";
 import { studentService } from "../../services/studentService";
 import { displayName } from "../../utils/user";
 
@@ -51,6 +53,15 @@ function StudentChangePasswordPage() {
         actor_type: currentUser?.actor_type || "student",
         password_reset_required: false,
       });
+
+      // Password establishment is the student's first-workspace boundary. The
+      // dashboard consumes this exactly once after any remaining legal/profile
+      // blockers have resolved.
+      try {
+        await queueInitialTour("student", true, guideService);
+      } catch {
+        // A guide-state outage must never undo a successful password change.
+      }
 
       navigate("/student/dashboard", { replace: true });
     } catch (err) {

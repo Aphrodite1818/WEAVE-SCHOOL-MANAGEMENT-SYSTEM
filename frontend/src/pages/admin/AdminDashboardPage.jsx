@@ -49,33 +49,34 @@ function AdminDashboardPage() {
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
   const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
-  const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
   const bulkImportGuard = getFeatureGuard(FEATURE_CODES.BULK_IMPORT);
   const canShowBulkImport = bulkImportGuard.allowed && String(planCode || "").toLowerCase() !== "free_trial";
 
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
+    let generation = 0;
 
     async function loadMetrics() {
+      const request = ++generation;
+      setError(null);
       try {
         const data = await getCachedDashboardBundle(ADMIN_DASHBOARD_CACHE_KEY, () =>
           dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
         );
-        if (!mounted || controller.signal.aborted) return;
+        if (!mounted || controller.signal.aborted || request !== generation) return;
         setAnalytics(data);
       } catch (err) {
-        if (!mounted || isAbortError(err)) return;
+        if (!mounted || isAbortError(err) || request !== generation) return;
         setError(getErrorMessage(err, "Failed to load dashboard analytics."));
       }
     }
 
     loadMetrics();
-    const handlePullRefresh = () => loadMetrics();
-    window.addEventListener("weave:pull-refresh", handlePullRefresh);
+    window.addEventListener("weave:dashboard-cache-invalidated", loadMetrics);
 
     return () => {
-      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
+      window.removeEventListener("weave:dashboard-cache-invalidated", loadMetrics);
       mounted = false;
       controller.abort();
     };
@@ -180,7 +181,7 @@ function AdminDashboardPage() {
             ]}
           />
 
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Students"
               value={totalStudents}
@@ -222,7 +223,7 @@ function AdminDashboardPage() {
               icon={BookOpen}
               tone="primary"
               primaryAction={{ to: "/admin/academic", label: "Open academic hub", icon: BookOpen }}
-              secondaryAction={{ to: "/admin/analytics", label: "Advanced analytics", icon: BarChart3, disabled: !advancedAnalyticsGuard.allowed }}
+              secondaryAction={{ to: "/admin/analytics", label: "Advanced analytics", icon: BarChart3 }}
             >
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Active session" value={cleanText(stats.active_academic_session, "Not set")} />

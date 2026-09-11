@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,6 +91,39 @@ class AssessmentRepository:
             .scalars()
             .all()
         )
+
+    @staticmethod
+    async def list_components_for_schemes(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        scheme_ids: set[uuid.UUID],
+    ) -> dict[uuid.UUID, list[AssessmentComponent]]:
+        """Load active components for many schemes in one tenant-scoped query."""
+        if not scheme_ids:
+            return {}
+
+        rows = list(
+            (
+                await db.execute(
+                    select(AssessmentComponent)
+                    .where(
+                        AssessmentComponent.tenant_id == tenant_id,
+                        AssessmentComponent.assessment_scheme_id.in_(scheme_ids),
+                        AssessmentComponent.is_active.is_(True),
+                    )
+                    .order_by(
+                        AssessmentComponent.assessment_scheme_id,
+                        AssessmentComponent.position.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        grouped: dict[uuid.UUID, list[AssessmentComponent]] = defaultdict(list)
+        for row in rows:
+            grouped[row.assessment_scheme_id].append(row)
+        return dict(grouped)
 
     @staticmethod
     async def get_component(

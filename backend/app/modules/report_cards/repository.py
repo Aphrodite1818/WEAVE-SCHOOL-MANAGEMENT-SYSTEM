@@ -1,14 +1,14 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.report_cards.models import (
     ReportCard,
+    ReportCardStatus,
     ReportCardSubjectComponent,
     ReportCardSubjectLine,
 )
-from app.modules.report_cards.models import ReportCardStatus
 
 
 class ReportCardRepository:
@@ -40,32 +40,76 @@ class ReportCardRepository:
         tenant_id: uuid.UUID,
         report_card_id: uuid.UUID,
     ) -> ReportCard | None:
-        result = await db.execute(
-            select(ReportCard).where(
-                ReportCard.tenant_id == tenant_id,
-                ReportCard.id == report_card_id,
+        return (
+            await db.execute(
+                select(ReportCard).where(
+                    ReportCard.tenant_id == tenant_id,
+                    ReportCard.id == report_card_id,
+                )
             )
-        )
-        return result.scalar_one_or_none()
+        ).scalar_one_or_none()
 
     @staticmethod
-    async def get_by_student_period(
+    async def get_current_draft(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         student_id: uuid.UUID,
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> ReportCard | None:
-        result = await db.execute(
-            select(ReportCard).where(
-                ReportCard.tenant_id == tenant_id,
-                ReportCard.student_id == student_id,
-                ReportCard.academic_session_id == academic_session_id,
-                ReportCard.academic_term_id == academic_term_id,
-                ReportCard.superseded_at.is_(None),
+        return (
+            await db.execute(
+                select(ReportCard).where(
+                    ReportCard.tenant_id == tenant_id,
+                    ReportCard.student_id == student_id,
+                    ReportCard.academic_session_id == academic_session_id,
+                    ReportCard.academic_term_id == academic_term_id,
+                    ReportCard.status == ReportCardStatus.DRAFT,
+                    ReportCard.superseded_at.is_(None),
+                )
             )
-        )
-        return result.scalar_one_or_none()
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def get_current_published(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        student_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> ReportCard | None:
+        return (
+            await db.execute(
+                select(ReportCard).where(
+                    ReportCard.tenant_id == tenant_id,
+                    ReportCard.student_id == student_id,
+                    ReportCard.academic_session_id == academic_session_id,
+                    ReportCard.academic_term_id == academic_term_id,
+                    ReportCard.status == ReportCardStatus.PUBLISHED,
+                    ReportCard.superseded_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def next_version(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        student_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> int:
+        value = (
+            await db.execute(
+                select(func.max(ReportCard.version)).where(
+                    ReportCard.tenant_id == tenant_id,
+                    ReportCard.student_id == student_id,
+                    ReportCard.academic_session_id == academic_session_id,
+                    ReportCard.academic_term_id == academic_term_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return int(value or 0) + 1
 
     @staticmethod
     async def list_cards(
@@ -82,10 +126,16 @@ class ReportCardRepository:
         is_outdated: bool | None = None,
         published_only: bool = False,
     ) -> tuple[list[ReportCard], int]:
-        filters = [
-            ReportCard.tenant_id == tenant_id,
-            ReportCard.superseded_at.is_(None),
-        ]
+        filters = [ReportCard.tenant_id == tenant_id]
+        if published_only:
+            filters.extend(
+                [
+                    ReportCard.status == ReportCardStatus.PUBLISHED,
+                    ReportCard.superseded_at.is_(None),
+                ]
+            )
+        elif status is not None:
+            filters.append(ReportCard.status == status)
         if student_id is not None:
             filters.append(ReportCard.student_id == student_id)
         if class_id is not None:
@@ -94,17 +144,13 @@ class ReportCardRepository:
             filters.append(ReportCard.academic_session_id == academic_session_id)
         if academic_term_id is not None:
             filters.append(ReportCard.academic_term_id == academic_term_id)
-        if status is not None:
-            filters.append(ReportCard.status == status)
         if is_outdated is not None:
             filters.append(ReportCard.is_outdated.is_(is_outdated))
-        if published_only:
-            filters.append(ReportCard.status == ReportCardStatus.PUBLISHED)
 
         total = (
             await db.execute(select(func.count()).select_from(ReportCard).where(*filters))
         ).scalar_one()
-        rows = (
+        rows = list(
             (
                 await db.execute(
                     select(ReportCard)
@@ -113,11 +159,9 @@ class ReportCardRepository:
                     .offset(skip)
                     .limit(limit)
                 )
-            )
-            .scalars()
-            .all()
+            ).scalars()
         )
-        return list(rows), int(total)
+        return rows, int(total)
 
     @staticmethod
     async def list_lines(
@@ -125,7 +169,7 @@ class ReportCardRepository:
         tenant_id: uuid.UUID,
         report_card_id: uuid.UUID,
     ) -> list[ReportCardSubjectLine]:
-        rows = (
+        return list(
             (
                 await db.execute(
                     select(ReportCardSubjectLine)
@@ -135,15 +179,14 @@ class ReportCardRepository:
                     )
                     .order_by(ReportCardSubjectLine.subject_name.asc())
                 )
-            )
-            .scalars()
-            .all()
+            ).scalars()
         )
-        return list(rows)
 
     @staticmethod
     async def list_line_components_batch(
-        db: AsyncSession, tenant_id: uuid.UUID, line_ids: list[uuid.UUID]
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        line_ids: list[uuid.UUID],
     ) -> dict[uuid.UUID, list[ReportCardSubjectComponent]]:
         if not line_ids:
             return {}
@@ -160,24 +203,60 @@ class ReportCardRepository:
                         ReportCardSubjectComponent.position.asc(),
                     )
                 )
-            )
-            .scalars()
-            .all()
+            ).scalars()
         )
-        components_by_line: dict[uuid.UUID, list[ReportCardSubjectComponent]] = {}
+        output: dict[uuid.UUID, list[ReportCardSubjectComponent]] = {}
         for row in rows:
-            components_by_line.setdefault(row.report_card_subject_line_id, []).append(row)
-        return components_by_line
+            output.setdefault(row.report_card_subject_line_id, []).append(row)
+        return output
 
     @staticmethod
-    async def list_active_cards_for_class_period(
+    async def list_current_drafts_for_class_period(
         db: AsyncSession,
         tenant_id: uuid.UUID,
         class_id: uuid.UUID,
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> list[ReportCard]:
-        rows = (
+        """Return one current ranking representative per student.
+
+        During correction/reissue a student may temporarily have both an official
+        published version and a replacement draft. Ranking must include that student
+        only once and use the replacement draft's new average, while published
+        positions themselves remain immutable. The historical method name is kept
+        because this repository call is the ranking source used by the service.
+        """
+
+        rows = list(
+            (
+                await db.execute(
+                    select(ReportCard).where(
+                        ReportCard.tenant_id == tenant_id,
+                        ReportCard.class_id == class_id,
+                        ReportCard.academic_session_id == academic_session_id,
+                        ReportCard.academic_term_id == academic_term_id,
+                        ReportCard.superseded_at.is_(None),
+                        ReportCard.status.in_([ReportCardStatus.DRAFT, ReportCardStatus.PUBLISHED]),
+                    )
+                )
+            ).scalars()
+        )
+        by_student: dict[uuid.UUID, ReportCard] = {}
+        for card in rows:
+            current = by_student.get(card.student_id)
+            if current is None or card.status == ReportCardStatus.DRAFT:
+                by_student[card.student_id] = card
+        return list(by_student.values())
+
+    @staticmethod
+    async def list_current_cards_for_class_period(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        class_id: uuid.UUID,
+        academic_session_id: uuid.UUID,
+        academic_term_id: uuid.UUID,
+    ) -> list[ReportCard]:
+        return list(
             (
                 await db.execute(
                     select(ReportCard).where(
@@ -188,11 +267,8 @@ class ReportCardRepository:
                         ReportCard.superseded_at.is_(None),
                     )
                 )
-            )
-            .scalars()
-            .all()
+            ).scalars()
         )
-        return list(rows)
 
     @staticmethod
     async def mark_outdated_for_student_period(
@@ -202,7 +278,7 @@ class ReportCardRepository:
         academic_session_id: uuid.UUID,
         academic_term_id: uuid.UUID,
     ) -> None:
-        rows = (
+        cards = list(
             (
                 await db.execute(
                     select(ReportCard).where(
@@ -213,38 +289,23 @@ class ReportCardRepository:
                         ReportCard.superseded_at.is_(None),
                     )
                 )
-            )
-            .scalars()
-            .all()
+            ).scalars()
         )
-        for card in rows:
+        for card in cards:
             card.is_outdated = True
-        await db.flush()
-
-    @staticmethod
-    async def delete_lines_for_card(
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        report_card_id: uuid.UUID,
-    ) -> None:
-        rows = (
-            (
-                await db.execute(
-                    select(ReportCardSubjectLine).where(
-                        ReportCardSubjectLine.tenant_id == tenant_id,
-                        ReportCardSubjectLine.report_card_id == report_card_id,
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for line in rows:
-            await db.delete(line)
+            db.add(card)
         await db.flush()
 
     @staticmethod
     async def save(db: AsyncSession, report_card: ReportCard) -> ReportCard:
+        # Published issuance snapshots are immutable. Ranking refreshes may include a
+        # published card as context, but they must never rewrite its stored rank.
+        if report_card.status == ReportCardStatus.PUBLISHED:
+            state = inspect(report_card)
+            for field in ("position", "position_out_of"):
+                history = state.attrs[field].history
+                if history.has_changes() and history.deleted:
+                    setattr(report_card, field, history.deleted[0])
         db.add(report_card)
         await db.flush()
         await db.refresh(report_card)

@@ -36,15 +36,24 @@ const REFRESH_BEFORE_EXPIRY_MS = 75 * 1000;
 
 let refreshPromise = null;
 let refreshTimerId = null;
+const authTokenListeners = new Set();
+
+const notifyAuthTokenListeners = (token) => {
+  for (const listener of [...authTokenListeners]) {
+    try {
+      listener(token);
+    } catch (error) {
+      console.error("Auth token listener failed", error);
+    }
+  }
+};
 
 export const isAbortError = (error) =>
   error?.name === "AbortError" ||
   error?.code === 20 ||
   error?.isAbortError === true ||
-  (
-    typeof error?.message === "string" &&
-    /abort|aborted|cancelled|canceled/i.test(error.message)
-  );
+  (typeof error?.message === "string" &&
+    /abort|aborted|cancelled|canceled/i.test(error.message));
 
 const normalizeDetail = (detail) => {
   if (!detail) return null;
@@ -166,7 +175,10 @@ const scheduleAccessTokenRefresh = (token) => {
 
   if (!expiresAt) return;
 
-  const refreshInMs = Math.max(expiresAt - Date.now() - REFRESH_BEFORE_EXPIRY_MS, 0);
+  const refreshInMs = Math.max(
+    expiresAt - Date.now() - REFRESH_BEFORE_EXPIRY_MS,
+    0,
+  );
 
   refreshTimerId = window.setTimeout(() => {
     refreshAccessToken().catch(handleRefreshFailure);
@@ -244,7 +256,7 @@ const getVerificationMetadata = (data = {}, headers = {}) => ({
   verificationRequired: normalizeBoolean(
     data?.verification_required ??
       headers["x-verification-required"] ??
-      headers["X-Verification-Required"]
+      headers["X-Verification-Required"],
   ),
   email: data?.email || headers["x-email"] || headers["X-Email"] || null,
   purpose:
@@ -260,7 +272,7 @@ const getVerificationMetadata = (data = {}, headers = {}) => ({
   resendOtpAvailable: normalizeBoolean(
     data?.resend_otp_available ??
       headers["x-resend-otp-available"] ??
-      headers["X-Resend-Otp-Available"]
+      headers["X-Resend-Otp-Available"],
   ),
 });
 
@@ -275,11 +287,17 @@ const getUserSafeMessage = (status, data, fallback, fieldErrors) => {
   }
 
   if (data?.security_block === true) {
-    return backendMessage || "Access from this network has been temporarily blocked for security reasons.";
+    return (
+      backendMessage ||
+      "Access from this network has been temporarily blocked for security reasons."
+    );
   }
 
   if (data?.maintenance_mode === true) {
-    return backendMessage || "Weave is temporarily in maintenance mode. Please try again later.";
+    return (
+      backendMessage ||
+      "Weave is temporarily in maintenance mode. Please try again later."
+    );
   }
 
   if (status >= 500) {
@@ -311,7 +329,9 @@ const persistMaintenanceState = (data = {}) => {
   };
 
   sessionStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(payload));
-  window.dispatchEvent(new CustomEvent(PLATFORM_MAINTENANCE_EVENT, { detail: payload }));
+  window.dispatchEvent(
+    new CustomEvent(PLATFORM_MAINTENANCE_EVENT, { detail: payload }),
+  );
 
   if (window.location.pathname !== "/maintenance") {
     window.dispatchEvent(
@@ -335,11 +355,15 @@ const persistSecurityBlockState = (data = {}) => {
   };
 
   sessionStorage.setItem(SECURITY_BLOCK_STORAGE_KEY, JSON.stringify(payload));
-  window.dispatchEvent(new CustomEvent(SECURITY_BLOCK_EVENT, { detail: payload }));
+  window.dispatchEvent(
+    new CustomEvent(SECURITY_BLOCK_EVENT, { detail: payload }),
+  );
 
   if (window.location.pathname !== "/network-blocked") {
     window.dispatchEvent(
-      new CustomEvent(APP_NAVIGATE_EVENT, { detail: { path: "/network-blocked" } }),
+      new CustomEvent(APP_NAVIGATE_EVENT, {
+        detail: { path: "/network-blocked" },
+      }),
     );
   }
 };
@@ -386,17 +410,28 @@ export const authSession = {
 
     if (!token) {
       sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+      notifyAuthTokenListeners(null);
       return;
     }
 
     sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
     scheduleAccessTokenRefresh(token);
+    notifyAuthTokenListeners(token);
   },
 
   clearToken: () => {
     clearRefreshTimer();
     sessionStorage.removeItem(ACCESS_TOKEN_KEY);
     removeStoredValue(LEGACY_TOKEN_KEY);
+    notifyAuthTokenListeners(null);
+  },
+
+  subscribeToken: (listener) => {
+    if (typeof listener !== "function") {
+      throw new TypeError("Auth token listener must be a function.");
+    }
+    authTokenListeners.add(listener);
+    return () => authTokenListeners.delete(listener);
   },
 
   getRememberPreference: getStoredRememberPreference,
@@ -467,6 +502,21 @@ export const parseApiError = (error, fallback) => {
     };
   }
 
+  if (!error?.response && error?.name !== "TypeError" && error?.message) {
+    return {
+      status: null,
+      message: error.message,
+      fieldErrors: {},
+      headers: {},
+      retryAfter: null,
+      isNetworkError: false,
+      isAbortError: false,
+      isMaintenanceMode: false,
+      isSecurityBlock: false,
+      technicalMessage: error.message,
+    };
+  }
+
   if (!error?.response) {
     return {
       status: null,
@@ -493,7 +543,8 @@ export const parseApiError = (error, fallback) => {
     message,
     fieldErrors,
     headers: safeHeaders,
-    retryAfter: safeHeaders["retry-after"] || safeHeaders["Retry-After"] || null,
+    retryAfter:
+      safeHeaders["retry-after"] || safeHeaders["Retry-After"] || null,
     isNetworkError: false,
     isAbortError: false,
     isMaintenanceMode: data?.maintenance_mode === true,
@@ -606,9 +657,11 @@ async function request(endpoint, options = {}, hasRetried = false) {
   } = options;
   const token = auth ? authSession.getToken() : null;
   const hasBody = restOptions.body !== undefined && restOptions.body !== null;
-  const isFormData = typeof FormData !== "undefined" && restOptions.body instanceof FormData;
+  const isFormData =
+    typeof FormData !== "undefined" && restOptions.body instanceof FormData;
   const method = restOptions.method || "GET";
-  const autoAbortController = !providedSignal && method === "GET" ? new AbortController() : null;
+  const autoAbortController =
+    !providedSignal && method === "GET" ? new AbortController() : null;
   const requestSignal = providedSignal || autoAbortController?.signal;
   const requestEndpoint = buildEndpointWithParams(endpoint, params);
 
@@ -633,17 +686,20 @@ async function request(endpoint, options = {}, hasRetried = false) {
   };
 
   if (autoAbortController) {
-    window.addEventListener(NAVIGATION_ABORT_EVENT, abortOnNavigation, { once: true });
+    window.addEventListener(NAVIGATION_ABORT_EVENT, abortOnNavigation, {
+      once: true,
+    });
   }
 
   try {
     const response = await fetch(`${API_BASE_URL}${requestEndpoint}`, config);
     const responseHeaders = Object.fromEntries(response.headers.entries());
-    const data = response.ok && responseType === "blob"
-      ? await response.blob()
-      : response.ok && responseType === "text"
-        ? await response.text()
-        : await response.json().catch(() => ({}));
+    const data =
+      response.ok && responseType === "blob"
+        ? await response.blob()
+        : response.ok && responseType === "text"
+          ? await response.text()
+          : await response.json().catch(() => ({}));
 
     if (!response.ok) {
       handleControlResponse(response, data);
@@ -673,6 +729,13 @@ async function request(endpoint, options = {}, hasRetried = false) {
       throw createApiError(response, data, responseHeaders);
     }
 
+    // Invalidate after the server confirms a write, including lifecycle actions.
+    if (
+      ["POST", "PATCH", "PUT", "DELETE"].includes(method) &&
+      /^\/(academic-levels|classes|subjects|tenant-admin\/(academics|setup-assistant))(\/|\?|$)/.test(endpoint)
+    ) {
+      window.dispatchEvent(new Event("weave:dashboard-cache-clear"));
+    }
     return data;
   } catch (error) {
     if (isAbortError(error)) {

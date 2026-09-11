@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.student_academics.academic_lock import acquire_academic_lifecycle_lock
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
@@ -24,6 +25,8 @@ class AcademicSessionLifecycleRepository:
         *,
         lock: bool = False,
     ) -> AcademicSession | None:
+        if lock:
+            await acquire_academic_lifecycle_lock(db, tenant_id=tenant_id)
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.id == session_id,
@@ -40,10 +43,12 @@ class AcademicSessionLifecycleRepository:
         *,
         lock: bool = False,
     ) -> AcademicSession | None:
+        if lock:
+            await acquire_academic_lifecycle_lock(db, tenant_id=tenant_id)
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.is_current.is_(True),
-            AcademicSession.status == AcademicSessionStatus.OPEN,
+            AcademicSession.status.in_({AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}),
         )
         if lock:
             query = query.with_for_update()
@@ -159,6 +164,32 @@ class StudentProgressionRunRepository:
 class StudentProgressionItemRepository:
     @staticmethod
     async def add(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
+        """Create or update the one logical progression item for a student/run."""
+        existing = await StudentProgressionItemRepository.get_by_run_and_student(
+            db,
+            item.progression_run_id,
+            item.student_id,
+            lock=True,
+        )
+        if existing is not None:
+            for field in (
+                "tenant_id",
+                "from_enrollment_id",
+                "to_enrollment_id",
+                "from_level_id",
+                "to_level_id",
+                "from_class_id",
+                "to_class_id",
+                "action",
+                "status",
+                "reason",
+                "processed_at",
+            ):
+                setattr(existing, field, getattr(item, field))
+            db.add(existing)
+            await db.flush()
+            return existing
+
         db.add(item)
         await db.flush()
         return item
@@ -208,6 +239,27 @@ class StudentProgressionItemRepository:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_latest_for_student(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> StudentProgressionItem | None:
+        query = (
+            select(StudentProgressionItem)
+            .where(
+                StudentProgressionItem.tenant_id == tenant_id,
+                StudentProgressionItem.student_id == student_id,
+            )
+            .order_by(StudentProgressionItem.created_at.desc())
+            .limit(1)
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
     async def save(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
         db.add(item)
         await db.flush()
@@ -231,5 +283,6 @@ class StudentProgressionRepository:
     add_item = StudentProgressionItemRepository.add
     add_items = StudentProgressionItemRepository.add_many
     get_item_by_run_and_student = StudentProgressionItemRepository.get_by_run_and_student
+    get_latest_item_for_student = StudentProgressionItemRepository.get_latest_for_student
     list_items_for_run = StudentProgressionItemRepository.list_for_run
     save_item = StudentProgressionItemRepository.save

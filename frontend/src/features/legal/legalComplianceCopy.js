@@ -1,10 +1,10 @@
-export const LEGAL_POLICY_VERSION = "weave-legal-compliance-v1";
+export const LEGAL_POLICY_VERSION = "weave-legal-compliance-v1.1";
 
 export const legalComplianceSections = [
   {
     title: "What Weave Is",
     body:
-      "Weave is a school management workspace for administrators, teachers, students, and parents. It supports school setup, student records, attendance, class and subject management, academic results, report cards, communications, subscriptions, and related operational workflows.",
+      "Weave is a school management workspace for administrators, teachers, students, and parents. It supports school setup, student records, class and subject management, academic results, report cards, communications, subscriptions, and related operational workflows.",
   },
   {
     title: "Data Weave Handles",
@@ -44,7 +44,23 @@ export const legalComplianceSections = [
   {
     title: "Billing And Platform Operations",
     body:
-      "Subscription and payment workflows may use third-party payment processors. Weave may record plan, entitlement, verification, and transaction metadata needed to keep the workspace active and enforce selected limits.",
+      "Paystack processes paid term-plan checkouts. Weave records transaction references, verified payment amounts and purchased term entitlements. A verified purchase for a draft term is scheduled; it does not replace the effective plan until that term becomes current and open. Academic readiness blockers do not erase the purchase or require another payment. Failed, abandoned or unverified transactions do not grant paid access.",
+  },
+  {
+    title: "Term Plans, Renewal And Payment Review",
+    body: "V1 plans are selected per academic term. Closing or expiring a term entitlement does not automatically purchase another term or authorize a new Paystack charge. Plan changes use the amounts and eligibility shown at checkout. There is no self-service refund or subscription-cancellation workflow in V1. Contact support with the transaction reference for a disputed or duplicate payment; a refund is not automatic, and statutory rights remain applicable.",
+  },
+  {
+    title: "Processors And Service Providers",
+    body: "Service providers may process data needed for hosted application services, database and media storage, email delivery, payment processing and configured error monitoring. Paystack processes payment information under its own privacy terms. Schools should review the data shared with these providers and any applicable cross-border transfer requirements.",
+  },
+  {
+    title: "Retention And Deletion",
+    body: "Deactivation or archiving restricts use of a record and does not erase its history. Academic records, teacher-assignment history, payment evidence and audit records may prevent permanent deletion through the application. V1 does not provide an automatic retention expiry or a complete tenant-erasure workflow. Contact the school administrator and Weave support for access, correction or deletion requests; applicable retention duties and the rights of others must be considered.",
+  },
+  {
+    title: "Nigerian Data Protection",
+    body: "Schools and Weave must meet their respective obligations under the Nigeria Data Protection Act 2023 and applicable NDPC guidance. Schools must establish a lawful basis, provide appropriate notices and obtain consent where required, including applicable protections for children. Individuals may exercise applicable rights of access, correction, objection and erasure and may complain to the Nigeria Data Protection Commission. These terms do not certify regulatory compliance or replace a school's own privacy notice.",
   },
   {
     title: "Acceptance",

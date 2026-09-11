@@ -4,10 +4,19 @@ export const termLabels = {
   third_term: "Third Term",
 };
 
-export const displayTerm = (value) => termLabels[value] || String(value || "Term").replaceAll("_", " ");
+export const displayTerm = (value) =>
+  termLabels[value] || String(value || "Term").replaceAll("_", " ");
 
 export const displayClass = (item) =>
-  [item?.name, item?.arm].filter(Boolean).join(" ") || "Class";
+  item?.display_name ||
+  [
+    item?.academic_level_name || item?.level_name || item?.class_name,
+    item?.department_name,
+    item?.arm_label || item?.class_arm,
+  ]
+    .filter(Boolean)
+    .join(" ") ||
+  "Class";
 
 export const displayPerson = (item) =>
   [item?.first_name, item?.last_name].filter(Boolean).join(" ") ||

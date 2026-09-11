@@ -89,12 +89,14 @@ def _full_name(row: dict[str, Any]) -> str:
 
 
 def _class_name(row: dict[str, Any]) -> str:
+    """Derive the human class label from the canonical level + arm result fields."""
+
     return (
         " ".join(
             part
             for part in (
-                str(row.get("class_name") or "").strip(),
-                str(row.get("class_arm") or "").strip(),
+                str(row.get("level") or "").strip(),
+                str(row.get("arm") or "").strip(),
             )
             if part
         )

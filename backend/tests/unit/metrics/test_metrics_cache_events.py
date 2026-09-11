@@ -99,7 +99,7 @@ def test_parent_notification_delivery_invalidates_parent_dashboard() -> None:
         tenant_id=tenant_id,
         recipient_actor_type=CommunicationActorType.PARENT,
         recipient_actor_id=parent_id,
-        source_type=NotificationSourceType.ANNOUNCEMENT,
+        source_type=NotificationSourceType.NOTICE,
         source_id=uuid.uuid4(),
         title="School update",
         preview="A school update is available.",

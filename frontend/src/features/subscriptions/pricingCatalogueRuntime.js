@@ -1,4 +1,3 @@
-
 import { LANDING_PRICING_PLANS } from "./subscriptionConfig";
 
 const CATALOGUE_STORAGE_KEY = "weave:public-pricing-catalogue";
@@ -34,13 +33,11 @@ const unavailableLimits = () => ({
   students: null,
   teachers: null,
   parents: null,
-  classes: null,
-  subjects: null,
 });
 
 export const resetPublicPricingPlans = () => {
   LANDING_PRICING_PLANS.forEach((plan) => {
-    plan.priceMonthly = null;
+    plan.pricePerTerm = null;
     plan.priceLabel = "Pricing unavailable";
     plan.features = [];
     plan.limits = unavailableLimits();
@@ -49,7 +46,10 @@ export const resetPublicPricingPlans = () => {
   document.documentElement.dataset.pricingCatalogueReady = "false";
 };
 
-export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) => {
+export const applyPublicPricingCatalogue = (
+  catalogue,
+  { persist = true } = {},
+) => {
   const plans = Array.isArray(catalogue?.plans) ? catalogue.plans : [];
   if (!plans.length) return false;
 
@@ -60,15 +60,20 @@ export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) 
 
     const amount = Number(backendPlan.amount || 0);
     const prefix = presentation.planCode === "enterprise" ? "From " : "";
-    const suffix = presentation.planCode === "free_trial" ? "" : "/mo";
-    presentation.priceMonthly = amount;
+    const suffix = presentation.planCode === "free" ? "" : " per academic term";
+    presentation.pricePerTerm = amount;
     presentation.priceLabel = `${prefix}${formatCurrency(
       amount,
       backendPlan.currency || catalogue.currency || "NGN",
     )}${suffix}`;
     presentation.features = Object.entries(backendPlan.features || {})
-      .filter(([feature, enabled]) => enabled === true && !NON_PUBLIC_FEATURES.has(feature))
-      .map(([feature]) => FEATURE_LABELS[feature] || feature.replaceAll("_", " "));
+      .filter(
+        ([feature, enabled]) =>
+          enabled === true && !NON_PUBLIC_FEATURES.has(feature),
+      )
+      .map(
+        ([feature]) => FEATURE_LABELS[feature] || feature.replaceAll("_", " "),
+      );
     presentation.limits = {
       ...unavailableLimits(),
       ...(backendPlan.limits || {}),
@@ -79,7 +84,10 @@ export const applyPublicPricingCatalogue = (catalogue, { persist = true } = {}) 
   document.documentElement.dataset.pricingCatalogueReady = "true";
   if (persist) {
     try {
-      window.sessionStorage.setItem(CATALOGUE_STORAGE_KEY, JSON.stringify(catalogue));
+      window.sessionStorage.setItem(
+        CATALOGUE_STORAGE_KEY,
+        JSON.stringify(catalogue),
+      );
     } catch {
       // Storage failure must not block pricing display.
     }
@@ -97,7 +105,9 @@ export const hydrateCachedPublicPricingCatalogue = () => {
     const cached = JSON.parse(
       window.sessionStorage.getItem(CATALOGUE_STORAGE_KEY) || "null",
     );
-    return cached ? applyPublicPricingCatalogue(cached, { persist: false }) : false;
+    return cached
+      ? applyPublicPricingCatalogue(cached, { persist: false })
+      : false;
   } catch {
     window.sessionStorage.removeItem(CATALOGUE_STORAGE_KEY);
     return false;

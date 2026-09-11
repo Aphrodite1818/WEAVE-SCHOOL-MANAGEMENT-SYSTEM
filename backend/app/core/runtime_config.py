@@ -12,8 +12,8 @@ router = APIRouter(prefix="/runtime-config", tags=["Runtime Config"])
 
 class RuntimeFeatureFlags(BaseModel):
     attendance: bool
-    messaging: bool
-    announcements: bool = True
+    messaging: bool = True
+    notices: bool = True
     inbox: bool = True
     simulations: bool = False
 
@@ -33,7 +33,7 @@ async def get_runtime_config() -> RuntimeConfigResponse:
         production_like=production_like,
         features=RuntimeFeatureFlags(
             attendance=show_unreleased_features,
-            messaging=show_unreleased_features,
+            messaging=True,
             simulations=settings.ENV == EnvironmentType.STAGING,
         ),
     )

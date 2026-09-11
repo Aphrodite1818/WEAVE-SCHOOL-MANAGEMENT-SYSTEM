@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.settings import settings
 from app.core.cache.manager import CacheManager
 from app.modules.communications.enums import CommunicationActorType, NotificationStatus
-from app.modules.classes.models import ClassRoom
+from app.modules.classes.models import AcademicLevel, ArmLabel, ClassRoom
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
     student_dashboard_cache_key,
@@ -85,17 +85,13 @@ class MetricsService:
                     AcademicTerm.name.label("term_name"),
                     func.avg(ReportCard.average_score).label("average"),
                 )
-                .join(
-                    AcademicSession,
-                    AcademicSession.id == ReportCard.academic_session_id,
-                )
+                .join(AcademicSession, AcademicSession.id == ReportCard.academic_session_id)
                 .join(AcademicTerm, AcademicTerm.id == ReportCard.academic_term_id)
                 .where(ReportCard.tenant_id == tenant_id)
                 .group_by(AcademicSession.name, AcademicTerm.name)
                 .order_by(AcademicSession.name.asc(), AcademicTerm.name.asc())
             )
         ).all()
-
         if report_card_rows:
             return [
                 ChartPoint(
@@ -116,10 +112,7 @@ class MetricsService:
                     AcademicSession,
                     AcademicSession.id == StudentSubjectResult.academic_session_id,
                 )
-                .join(
-                    AcademicTerm,
-                    AcademicTerm.id == StudentSubjectResult.academic_term_id,
-                )
+                .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
@@ -141,17 +134,19 @@ class MetricsService:
         rows = (
             await db.execute(
                 select(
-                    ClassRoom.name,
-                    ClassRoom.arm,
+                    AcademicLevel.name,
+                    ArmLabel.label.label("arm"),
                     func.avg(StudentSubjectResult.total_score).label("average"),
                 )
                 .join(ClassRoom, ClassRoom.id == StudentSubjectResult.class_id)
+                .join(AcademicLevel, AcademicLevel.id == ClassRoom.academic_level_id)
+                .outerjoin(ArmLabel, ArmLabel.id == ClassRoom.arm_label_id)
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.status == AcademicResultStatus.SUBMITTED,
                 )
-                .group_by(ClassRoom.name, ClassRoom.arm)
-                .order_by(ClassRoom.name.asc(), ClassRoom.arm.asc())
+                .group_by(AcademicLevel.name, ArmLabel.label)
+                .order_by(AcademicLevel.name.asc(), ArmLabel.label.asc())
             )
         ).all()
         return [
@@ -283,10 +278,7 @@ class MetricsService:
                     AcademicSession,
                     AcademicSession.id == StudentSubjectResult.academic_session_id,
                 )
-                .join(
-                    AcademicTerm,
-                    AcademicTerm.id == StudentSubjectResult.academic_term_id,
-                )
+                .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.teacher_membership_id == teacher_id,
@@ -326,10 +318,7 @@ class MetricsService:
                     AcademicSession,
                     AcademicSession.id == StudentSubjectResult.academic_session_id,
                 )
-                .join(
-                    AcademicTerm,
-                    AcademicTerm.id == StudentSubjectResult.academic_term_id,
-                )
+                .join(AcademicTerm, AcademicTerm.id == StudentSubjectResult.academic_term_id)
                 .where(
                     StudentSubjectResult.tenant_id == tenant_id,
                     StudentSubjectResult.student_id == student_id,
@@ -407,11 +396,7 @@ class MetricsService:
             counts = await MetricsRepository.superadmin_counts(db)
             growth_rows = await MetricsRepository.tenant_growth(db)
             plan_counts = await MetricsRepository.subscription_plan_distribution(db)
-            unverified_tenants = max(
-                counts["total_tenants"] - counts["verified_tenants"],
-                0,
-            )
-
+            unverified_tenants = max(counts["total_tenants"] - counts["verified_tenants"], 0)
             return DashboardMetricsResponse(
                 stats={
                     "total_tenants": counts["total_tenants"],
@@ -444,8 +429,7 @@ class MetricsService:
             )
 
         return await MetricsService._cached_dashboard(
-            key=superadmin_dashboard_cache_key(),
-            fetcher=fetch_dashboard,
+            key=superadmin_dashboard_cache_key(), fetcher=fetch_dashboard
         )
 
     @staticmethod
@@ -456,7 +440,7 @@ class MetricsService:
             counts = await MetricsRepository.tenant_admin_counts(db, tenant_id)
             current_session = await MetricsRepository.current_academic_session(db, tenant_id)
             current_term = await MetricsRepository.current_academic_term(db, tenant_id)
-            category_rows = await MetricsRepository.announcement_category_counts(db, tenant_id)
+            category_rows = await MetricsRepository.notice_category_counts(db, tenant_id)
             class_rows = await MetricsRepository.class_population(db, tenant_id)
             grade_rows = await MetricsRepository.result_grade_counts(db, tenant_id)
             result_status_rows = await MetricsRepository.result_status_counts(db, tenant_id)
@@ -470,17 +454,12 @@ class MetricsService:
             result_completion_by_subject = await MetricsService._result_completion_by_subject(
                 db, tenant_id
             )
-
             result_status_counts = MetricsService._status_count_map(result_status_rows)
             result_rows_total = sum(result_status_counts.values())
             result_rows_submitted = result_status_counts.get(
                 AcademicResultStatus.SUBMITTED.value, 0
             )
-            incomplete_profiles = max(
-                counts["total_students"] - counts["complete_profiles"],
-                0,
-            )
-
+            incomplete_profiles = max(counts["total_students"] - counts["complete_profiles"], 0)
             return DashboardMetricsResponse(
                 stats={
                     "total_students": counts["total_students"],
@@ -492,8 +471,8 @@ class MetricsService:
                     "student_profiles_incomplete": incomplete_profiles,
                     "pending_teacher_accounts": counts["pending_teachers"],
                     "pending_parent_accounts": counts["pending_parents"],
-                    "active_academic_session": (current_session.name if current_session else None),
-                    "active_academic_term": (current_term.name.value if current_term else None),
+                    "active_academic_session": current_session.name if current_session else None,
+                    "active_academic_term": current_term.name.value if current_term else None,
                     "report_cards_generated": counts["report_cards_generated"],
                     "report_cards_published": counts["report_cards_published"],
                     "result_rows_total": result_rows_total,
@@ -521,7 +500,7 @@ class MetricsService:
                         ChartPoint(label="active_parents", value=counts["active_parents"]),
                         ChartPoint(label="pending_parents", value=counts["pending_parents"]),
                     ],
-                    "announcements_by_category": [
+                    "notices_by_category": [
                         ChartPoint(label=MetricsService._enum_label(row.label), value=row.value)
                         for row in category_rows
                     ],
@@ -531,8 +510,7 @@ class MetricsService:
                     ],
                     "grade_distribution": [
                         ChartPoint(
-                            label=MetricsService._label(row.label, "Ungraded"),
-                            value=row.value,
+                            label=MetricsService._label(row.label, "Ungraded"), value=row.value
                         )
                         for row in grade_rows
                     ],
@@ -553,8 +531,7 @@ class MetricsService:
             )
 
         return await MetricsService._cached_dashboard(
-            key=tenant_admin_dashboard_cache_key(tenant_id),
-            fetcher=fetch_dashboard,
+            key=tenant_admin_dashboard_cache_key(tenant_id), fetcher=fetch_dashboard
         )
 
     @staticmethod
@@ -563,56 +540,40 @@ class MetricsService:
     ) -> DashboardMetricsResponse:
         async def fetch_dashboard() -> DashboardMetricsResponse:
             class_rows = await MetricsRepository.teacher_class_sizes(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
             assignment_count = await MetricsRepository.active_teacher_assignment_count(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
             submitted_results = await MetricsRepository.submitted_result_count_for_teacher(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
             teacher_grade_rows = await MetricsRepository.teacher_grade_counts(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
-            own_announcement_ids = await MetricsRepository.teacher_announcement_ids(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+            own_notice_ids = await MetricsRepository.teacher_notice_ids(
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
-            read_count = await MetricsRepository.announcement_read_count(
+            read_count = await MetricsRepository.notice_read_count(
                 db,
                 tenant_id=tenant_id,
-                announcement_ids=own_announcement_ids,
+                notice_ids=own_notice_ids,
                 statuses=[NotificationStatus.READ, NotificationStatus.ACKNOWLEDGED],
             )
-            ack_count = await MetricsRepository.announcement_read_count(
+            ack_count = await MetricsRepository.notice_read_count(
                 db,
                 tenant_id=tenant_id,
-                announcement_ids=own_announcement_ids,
+                notice_ids=own_notice_ids,
                 statuses=[NotificationStatus.ACKNOWLEDGED],
             )
-            category_rows = await MetricsRepository.teacher_announcement_category_counts(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+            category_rows = await MetricsRepository.teacher_notice_category_counts(
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
             result_status_distribution = await MetricsService._teacher_result_status_counts(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
             performance_trend = await MetricsService._teacher_performance_trend(
-                db,
-                tenant_id=tenant_id,
-                teacher_id=teacher_id,
+                db, tenant_id=tenant_id, teacher_id=teacher_id
             )
             status_counts = {
                 item.label: int(item.value or 0) for item in result_status_distribution
@@ -620,12 +581,11 @@ class MetricsService:
             result_rows_total = sum(status_counts.values())
             result_rows_submitted = status_counts.get(AcademicResultStatus.SUBMITTED.value, 0)
             result_rows_draft = status_counts.get(AcademicResultStatus.DRAFT.value, 0)
-
             return DashboardMetricsResponse(
                 stats={
                     "total_classes": len(class_rows),
                     "assigned_subjects": assignment_count,
-                    "total_announcements": len(own_announcement_ids),
+                    "total_notices": len(own_notice_ids),
                     "results_submitted": submitted_results,
                     "results_published": submitted_results,
                     "result_rows_total": result_rows_total,
@@ -641,18 +601,17 @@ class MetricsService:
                         ChartPoint(label=f"{row.name} {row.arm or ''}".strip(), value=row.value)
                         for row in class_rows
                     ],
-                    "announcement_read_vs_acknowledged": [
+                    "notice_read_vs_acknowledged": [
                         ChartPoint(label="read", value=read_count),
                         ChartPoint(label="acknowledged", value=ack_count),
                     ],
-                    "announcement_category_breakdown": [
+                    "notice_category_breakdown": [
                         ChartPoint(label=MetricsService._enum_label(row.label), value=row.value)
                         for row in category_rows
                     ],
                     "grade_distribution": [
                         ChartPoint(
-                            label=MetricsService._label(row.label, "Ungraded"),
-                            value=row.value,
+                            label=MetricsService._label(row.label, "Ungraded"), value=row.value
                         )
                         for row in teacher_grade_rows
                     ],
@@ -663,12 +622,11 @@ class MetricsService:
             )
 
         return await MetricsService._cached_dashboard(
-            key=teacher_dashboard_cache_key(tenant_id, teacher_id),
-            fetcher=fetch_dashboard,
+            key=teacher_dashboard_cache_key(tenant_id, teacher_id), fetcher=fetch_dashboard
         )
 
     @staticmethod
-    async def _personal_announcement_metrics(
+    async def _personal_notice_metrics(
         feed_total: int,
         read_count: int,
         category_counts: dict[str, int],
@@ -684,21 +642,18 @@ class MetricsService:
         return DashboardMetricsResponse(
             stats=stats,
             charts={
-                "announcement_read_vs_unread": [
+                "notice_read_vs_unread": [
                     ChartPoint(label="read", value=read_count),
                     ChartPoint(label="unread", value=max(feed_total - read_count, 0)),
                 ],
-                "announcement_category_breakdown": [
+                "notice_category_breakdown": [
                     ChartPoint(label=label, value=value) for label, value in category_counts.items()
                 ],
             },
         )
 
     @staticmethod
-    async def parent_dashboard(
-        db: AsyncSession,
-        parent: Parent,
-    ) -> DashboardMetricsResponse:
+    async def parent_dashboard(db: AsyncSession, parent: Parent) -> DashboardMetricsResponse:
         async def fetch_dashboard() -> DashboardMetricsResponse:
             (
                 feed_total,
@@ -714,7 +669,7 @@ class MetricsService:
                 MetricsService._enum_label(row.label): row.value for row in category_rows
             }
             link_counts = await MetricsService._parent_link_counts(db, parent)
-            return await MetricsService._personal_announcement_metrics(
+            return await MetricsService._personal_notice_metrics(
                 feed_total=feed_total,
                 read_count=read_count,
                 category_counts=category_counts,
@@ -727,10 +682,7 @@ class MetricsService:
         )
 
     @staticmethod
-    async def student_dashboard(
-        db: AsyncSession,
-        student: Student,
-    ) -> DashboardMetricsResponse:
+    async def student_dashboard(db: AsyncSession, student: Student) -> DashboardMetricsResponse:
         async def fetch_dashboard() -> DashboardMetricsResponse:
             (
                 feed_total,
@@ -746,11 +698,8 @@ class MetricsService:
                 MetricsService._enum_label(row.label): row.value for row in category_rows
             }
             academic_stats, academic_charts = await MetricsService._student_result_metrics(
-                db,
-                tenant_id=student.tenant_id,
-                student_id=student.id,
+                db, tenant_id=student.tenant_id, student_id=student.id
             )
-
             return DashboardMetricsResponse(
                 stats={
                     "feed_total": feed_total,
@@ -760,11 +709,11 @@ class MetricsService:
                 },
                 charts={
                     **academic_charts,
-                    "announcement_read_vs_unread": [
+                    "notice_read_vs_unread": [
                         ChartPoint(label="read", value=read_count),
                         ChartPoint(label="unread", value=max(feed_total - read_count, 0)),
                     ],
-                    "announcement_category_breakdown": [
+                    "notice_category_breakdown": [
                         ChartPoint(label=label, value=value)
                         for label, value in category_counts.items()
                     ],

@@ -1,3 +1,5 @@
+import { useSubscription } from "../subscriptions/useSubscription";
+import { visibleGuideSteps } from "./guideStepVisibility";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
@@ -6,17 +8,6 @@ import { hasGuideExitSuppression } from "./guideNavigation";
 import { guideForRole } from "./roleGuideConfig";
 
 export const GUIDE_STATE_CHANGED_EVENT = "weave:guide-state-changed";
-
-const ATTENDANCE_HIDDEN_DESCRIPTIONS = {
-  parent: "Learn where to find linked children, report cards, and school dates.",
-  student: "A short introduction to subjects, report cards, and school dates.",
-};
-
-const ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS = {
-  teacher: {
-    classes: "Confirm your class and subject assignments before entering scores.",
-  },
-};
 
 const hasOwn = (value, key) =>
   Boolean(value) && Object.prototype.hasOwnProperty.call(value, key);
@@ -29,27 +20,32 @@ export function useRoleGuide({
   allowSkippedCurrentStep = false,
 } = {}) {
   const normalizedRole = String(role || "").toLowerCase();
+  const subscription = useSubscription();
+  const entitledFeatures = subscription?.entitlements?.features;
   const baseConfig = guideForRole(normalizedRole);
   const runtimeConfig = useRuntimeConfig();
-  const attendanceEnabled = runtimeConfig?.features?.attendance !== false;
+  const runtimeFeatures = runtimeConfig?.features || {};
   const config = useMemo(() => {
-    if (!baseConfig || attendanceEnabled) return baseConfig;
-
-    const stepDescriptionOverrides =
-      ATTENDANCE_HIDDEN_STEP_DESCRIPTIONS[normalizedRole] || {};
+    if (!baseConfig) return baseConfig;
 
     return {
       ...baseConfig,
-      description:
-        ATTENDANCE_HIDDEN_DESCRIPTIONS[normalizedRole] || baseConfig.description,
-      steps: baseConfig.steps
-        .filter((step) => step.id !== "attendance")
-        .map((step) => ({
-          ...step,
-          description: stepDescriptionOverrides[step.id] || step.description,
-        })),
+      steps: visibleGuideSteps(baseConfig.steps, {
+        runtimeFeatures,
+        features: entitledFeatures,
+        subscription,
+        completionMap,
+        role: normalizedRole,
+      }),
     };
-  }, [attendanceEnabled, baseConfig, normalizedRole]);
+  }, [
+    baseConfig,
+    normalizedRole,
+    entitledFeatures,
+    subscription,
+    completionMap,
+    runtimeFeatures,
+  ]);
   const [guideState, setGuideState] = useState(null);
   const [loading, setLoading] = useState(Boolean(config && enabled));
   const stateVersionRef = useRef(0);
@@ -138,12 +134,14 @@ export function useRoleGuide({
         ...step,
         complete: hasOwn(completionMap, step.id)
           ? Boolean(completionMap[step.id])
-          : guideState?.status === "completed" ||
-            (storedIndex >= 0 && baseIndex >= 0 && baseIndex < storedIndex),
+          : normalizedRole === "admin"
+            ? false
+            : guideState?.status === "completed" ||
+              (storedIndex >= 0 && baseIndex >= 0 && baseIndex < storedIndex),
         skipped: skipped.has(step.id),
       };
     });
-  }, [baseConfig, completionMap, config, guideState]);
+  }, [baseConfig, completionMap, config, guideState, normalizedRole]);
 
   const firstPendingIndex = useMemo(() => {
     const index = steps.findIndex((step) => !step.complete && !step.skipped);
@@ -179,7 +177,13 @@ export function useRoleGuide({
     ? Math.round((resolvedCount / steps.length) * 100)
     : 0;
   const allResolved =
-    steps.length > 0 && steps.every((step) => step.complete || step.skipped);
+    steps.length > 0 &&
+    steps
+      .filter((step) => !step.optional)
+      .every(
+        (step) =>
+          step.complete || (normalizedRole !== "admin" && step.skipped),
+      );
   const syncPending = Boolean(guideState?.sync_pending);
 
   useEffect(() => {

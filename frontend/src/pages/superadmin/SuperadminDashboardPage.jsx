@@ -164,7 +164,7 @@ function SuperadminDashboardPage() {
             ]}
           />
 
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Platform mode"
               value={lockdownEnabled ? "Locked" : "Normal"}

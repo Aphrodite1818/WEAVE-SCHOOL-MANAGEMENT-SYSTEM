@@ -5,6 +5,8 @@ const DEFAULT_CONFIG = {
   production_like: false,
   features: {
     attendance: false,
+    geofencing: false,
+    ai_assistant: false,
     messaging: false,
     announcements: true,
     inbox: true,

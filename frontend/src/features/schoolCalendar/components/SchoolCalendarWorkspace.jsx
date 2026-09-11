@@ -96,7 +96,7 @@ export const buildDayUpdatePayload = (dayForm, selectedCalendarId) => {
   };
 };
 
-function SchoolCalendarWorkspace({ activeTab = "manage" }) {
+function SchoolCalendarWorkspace({ activeTab = "manage", onSaved, setupTermId }) {
   const { showSuccess, showError } = useToast();
   const [sessions, setSessions] = useState([]);
   const [terms, setTerms] = useState([]);
@@ -182,10 +182,10 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
           throw err;
         }),
       ]);
-      const sessionItems = asItems(sessionResponse);
-      const termItems = asItems(termResponse);
-      const calendarItems = asItems(calendarResponse);
-      const currentSession = sessionItems.find((item) => item.is_current) || sessionItems.find((item) => item.status === "open") || null;
+      const termItems = setupTermId ? asItems(termResponse).filter((item) => item.id === setupTermId) : asItems(termResponse);
+      const sessionItems = setupTermId ? asItems(sessionResponse).filter((item) => item.id === termItems[0]?.academic_session_id) : asItems(sessionResponse);
+      const calendarItems = setupTermId ? asItems(calendarResponse).filter((item) => item.academic_term_id === setupTermId) : asItems(calendarResponse);
+      const currentSession = sessionItems.find((item) => item.is_current) || sessionItems.find((item) => item.status === "open") || (setupTermId ? sessionItems[0] : null) || null;
       const validTerms = termItems.filter((item) => !currentSession || item.academic_session_id === currentSession.id);
       const currentTerm = validTerms.find((item) => item.is_current) || validTerms.find((item) => item.status !== "closed") || validTerms[0] || null;
       const currentCalendar = calendarItems.find((item) => item.academic_term_id === currentTerm?.id) || null;
@@ -218,7 +218,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setupTermId]);
 
   const loadCalendarDetails = useCallback(async () => {
     if (!selectedCalendarId) {
@@ -288,6 +288,7 @@ function SchoolCalendarWorkspace({ activeTab = "manage" }) {
       if (successMessage) showSuccess(successMessage);
       await load();
       await loadCalendarDetails();
+      await onSaved?.();
     } catch (err) {
       showError(getErrorMessage(err, "We couldn't complete that calendar update."));
     } finally {

@@ -1,14 +1,15 @@
 export const PLAN_DISPLAY_NAMES = {
-  free_trial: "Free Trial",
+  free: "Free",
+  free_trial: "Free",
   plus: "Plus",
   professional: "Professional",
   enterprise: "Enterprise",
 };
 
-export const PLAN_ORDER = ["free_trial", "plus", "professional", "enterprise"];
+export const PLAN_ORDER = ["free", "plus", "professional", "enterprise"];
 
 export const BILLING_INTERVAL_LABELS = {
-  monthly: "Monthly",
+  term: "Per academic term",
 };
 
 export const FEATURE_CODES = {
@@ -21,139 +22,116 @@ export const FEATURE_CODES = {
   ADVANCED_ANALYTICS: "advanced_analytics",
   AI_ASSISTANT: "ai_assistant",
   BULK_IMPORT: "bulk_import",
+  BULK_ACADEMIC_OPERATIONS: "bulk_academic_operations",
   TENANT_BRANDING: "tenant_branding",
+  CBT_PAIRING: "cbt_pairing",
 };
 
 export const RESOURCE_CODES = {
   STUDENTS: "students",
   TEACHERS: "teachers",
   PARENTS: "parents",
-  CLASSES: "classes",
-  SUBJECTS: "subjects",
+  CBT_SERVERS: "cbt_servers",
 };
 
 export const SUBSCRIPTION_STATUS_META = {
   trialing: {
-    label: "Trial Active",
-    message: "Your 30-day free trial is active.",
-    badgeVariant: "info",
+    label: "Free",
+    message: "Your school is using the permanent Free plan.",
+    badgeVariant: "default",
   },
   active: {
     label: "Active",
-    message: "Your monthly subscription is active.",
+    message: "Your current academic term plan is active.",
     badgeVariant: "success",
   },
-  non_renewing: {
-    label: "Cancels at Period End",
-    message: "Your subscription remains active until the end of the current billing period.",
-    badgeVariant: "warning",
-  },
-  past_due: {
-    label: "Payment Issue",
-    message: "We could not process your latest payment.",
-    badgeVariant: "error",
-  },
-  grace_period: {
-    label: "Grace Period",
-    message: "Your subscription is in grace period. Update billing before read-only restrictions begin.",
-    badgeVariant: "warning",
-  },
   expired: {
-    label: "Read-only",
-    message: "Your subscription has expired. Billing remains available, but write actions are restricted.",
-    badgeVariant: "error",
-  },
-  cancelled: {
-    label: "Cancelled",
-    message: "Your subscription has been cancelled.",
+    label: "Free",
+    message: "Your school can continue on the permanent Free plan.",
     badgeVariant: "default",
   },
 };
 
 export const BILLING_INTERVAL_OPTIONS = [
-  { value: "monthly", label: "Monthly" },
+  { value: "term", label: "Per academic term" },
 ];
 
 export const LANDING_PRICING_PLANS = [
   {
-    planCode: "free_trial",
-    name: "Free Trial",
-    bestFor: "Best for exploring Weave",
-    description: "Experience the core Weave workflow and see how a connected school workspace fits your operations before subscribing.",
-    priceMonthly: null,
-    priceLabel: "Pricing unavailable",
+    planCode: "free",
+    name: "Free",
+    bestFor: "Best for smaller school operations",
+    description:
+      "Use Weave permanently with core school workflows and deliberately limited capacity.",
+    pricePerTerm: 0,
+    priceLabel: "₦0",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Start Free Trial",
+    ctaLabel: "Get started",
   },
   {
     planCode: "plus",
     name: "Plus",
     bestFor: "Best for smaller schools",
-    description: "A complete starting point for schools ready to organise students, staff, academic records, portals, and everyday administration in one place.",
-    priceMonthly: null,
+    description:
+      "More capacity and operational tools for schools ready to run broader day-to-day workflows in Weave.",
+    pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Choose Plus",
+    ctaLabel: "Get started",
   },
   {
     planCode: "professional",
     name: "Professional",
     bestFor: "Best for growing schools",
-    description: "Greater capacity for established schools managing more students, teachers, classes, records, and operational complexity.",
-    priceMonthly: null,
+    description:
+      "Greater capacity plus premium operational capabilities for established schools.",
+    pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Choose Professional",
+    ctaLabel: "Get started",
     highlighted: true,
   },
   {
     planCode: "enterprise",
     name: "Enterprise",
     bestFor: "Best for larger schools",
-    description: "Designed for large school operations that need maximum capacity, flexible resource limits, and priority support readiness.",
-    priceMonthly: null,
+    description:
+      "Maximum capacity and premium capabilities for large school operations.",
+    pricePerTerm: null,
     priceLabel: "Pricing unavailable",
     features: [],
     limits: {},
     checkoutEnabled: false,
-    ctaLabel: "Choose Enterprise",
+    ctaLabel: "Get started",
   },
 ];
 
-const SUBSCRIPTION_SELECTION_STORAGE_KEY = "weave_subscription_selection";
-const REGISTRATION_CHECKOUT_STORAGE_KEY = "weave_registration_checkout_intent";
-const REGISTRATION_CHECKOUT_REDIRECT_KEY = "weave_registration_checkout_redirect";
-
-const ATTENTION_STATUSES = new Set([
-  "past_due",
-  "grace_period",
-  "expired",
-  "cancelled",
-]);
+const ATTENTION_STATUSES = new Set();
 
 const canonicalPlanCode = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
-  return PLAN_DISPLAY_NAMES[normalized] ? normalized : "free_trial";
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "free_trial") return "free";
+  return PLAN_ORDER.includes(normalized) ? normalized : "free";
 };
 
-const canonicalBillingInterval = () => "monthly";
-
 export const formatPlanName = (planCode) =>
-  PLAN_DISPLAY_NAMES[canonicalPlanCode(planCode)] || "Free Trial";
+  PLAN_DISPLAY_NAMES[canonicalPlanCode(planCode)] || "Free";
 
 export const formatBillingInterval = () =>
-  BILLING_INTERVAL_LABELS.monthly || "Monthly";
+  BILLING_INTERVAL_LABELS.term || "Per academic term";
 
 export const getSubscriptionStatusMeta = (status) =>
   SUBSCRIPTION_STATUS_META[String(status || "").toLowerCase()] || {
-    label: "Unknown",
-    message: "We could not determine your current subscription state.",
+    label: "Active",
+    message: "Your school can use Weave within its current plan limits.",
     badgeVariant: "default",
   };
 
@@ -174,8 +152,11 @@ export const formatDateTime = (value, options = {}) => {
   });
 };
 
-export const formatLimitValue = (value) =>
-  value === null || value === undefined ? "Unlimited" : String(value);
+export const formatLimitValue = (value) => {
+  if (value === null) return "Unlimited";
+  if (value === undefined) return "—";
+  return String(value);
+};
 
 export const formatUsageValue = (usage) => {
   if (!usage) return "--";
@@ -183,145 +164,3 @@ export const formatUsageValue = (usage) => {
   return `${usage.used} / ${usage.limit ?? 0}`;
 };
 
-export const buildRegistrationHref = (planCode) => {
-  const nextPlanCode = canonicalPlanCode(planCode);
-  const params = new URLSearchParams({ plan: nextPlanCode });
-
-  if (nextPlanCode !== "free_trial") {
-    params.set("billing", "monthly");
-  }
-
-  return `/register?${params.toString()}`;
-};
-
-export const saveSelectedSubscriptionPlan = ({
-  planCode,
-  billingInterval = "monthly",
-} = {}) => {
-  if (typeof window === "undefined") return;
-
-  const payload = {
-    planCode: canonicalPlanCode(planCode),
-    billingInterval: canonicalBillingInterval(billingInterval),
-  };
-
-  window.sessionStorage.setItem(
-    SUBSCRIPTION_SELECTION_STORAGE_KEY,
-    JSON.stringify(payload)
-  );
-};
-
-export const getSelectedSubscriptionPlan = () => {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const rawValue = window.sessionStorage.getItem(
-      SUBSCRIPTION_SELECTION_STORAGE_KEY
-    );
-
-    if (!rawValue) return null;
-
-    const parsed = JSON.parse(rawValue);
-
-    return {
-      planCode: canonicalPlanCode(parsed?.planCode),
-      billingInterval: "monthly",
-    };
-  } catch {
-    return null;
-  }
-};
-
-export const clearSelectedSubscriptionPlan = () => {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(SUBSCRIPTION_SELECTION_STORAGE_KEY);
-};
-
-export const saveRegistrationCheckoutIntent = ({
-  planCode,
-  billingInterval = "monthly",
-} = {}) => {
-  if (typeof window === "undefined") return;
-
-  const nextPlanCode = canonicalPlanCode(planCode);
-  if (nextPlanCode === "free_trial") {
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
-    return;
-  }
-
-  window.sessionStorage.setItem(
-    REGISTRATION_CHECKOUT_STORAGE_KEY,
-    JSON.stringify({
-      planCode: nextPlanCode,
-      billingInterval: canonicalBillingInterval(billingInterval),
-    }),
-  );
-};
-
-export const getRegistrationCheckoutIntent = (user = {}) => {
-  const tenantFlags = user?.tenant?.feature_flags || user?.feature_flags || {};
-  const tenantPlanCode = canonicalPlanCode(
-    tenantFlags.registration_selected_plan_code ||
-      tenantFlags.selected_plan_code ||
-      tenantFlags.registration_plan_code,
-  );
-  const tenantBillingInterval =
-    tenantFlags.registration_billing_interval || "monthly";
-
-  if (tenantPlanCode !== "free_trial") {
-    return {
-      planCode: tenantPlanCode,
-      billingInterval: canonicalBillingInterval(tenantBillingInterval),
-      source: "tenant",
-    };
-  }
-
-  if (typeof window === "undefined") return null;
-
-  try {
-    const parsed = JSON.parse(
-      window.sessionStorage.getItem(REGISTRATION_CHECKOUT_STORAGE_KEY) || "null",
-    );
-    const planCode = canonicalPlanCode(parsed?.planCode);
-    if (planCode === "free_trial") return null;
-    return {
-      planCode,
-      billingInterval: canonicalBillingInterval(parsed?.billingInterval),
-      source: "session",
-    };
-  } catch {
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
-    return null;
-  }
-};
-
-export const clearRegistrationCheckoutIntent = () => {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_STORAGE_KEY);
-};
-
-export const markRegistrationCheckoutRedirect = (intent) => {
-  if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(
-    REGISTRATION_CHECKOUT_REDIRECT_KEY,
-    JSON.stringify({
-      planCode: canonicalPlanCode(intent?.planCode),
-      createdAt: new Date().toISOString(),
-    }),
-  );
-};
-
-export const consumeRegistrationCheckoutRedirect = () => {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const parsed = JSON.parse(
-      window.sessionStorage.getItem(REGISTRATION_CHECKOUT_REDIRECT_KEY) || "null",
-    );
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_REDIRECT_KEY);
-    return parsed;
-  } catch {
-    window.sessionStorage.removeItem(REGISTRATION_CHECKOUT_REDIRECT_KEY);
-    return null;
-  }
-};

@@ -19,7 +19,13 @@ from app.modules.parents.models import Parent
 from app.modules.students.models import Student
 from app.modules.teachers.models import Teacher
 from app.modules.tenant_admins.models import TenantAdmin
-from app.tenant_management.models import Tenant
+from app.tenant_management.institution_transition import (
+    InstitutionTypeTransitionPreview,
+    InstitutionTypeTransitionRequest,
+    InstitutionTypeTransitionResult,
+    InstitutionTypeTransitionService,
+)
+from app.tenant_management.models import InstitutionType, Tenant
 from app.tenant_management.registration_service import TenantRegistrationService
 from app.tenant_management.schemas import (
     TenantManagementResponse,
@@ -72,6 +78,46 @@ async def register_tenant(
         )
 
     return result
+
+
+@router.get(
+    "/{tenant_id}/institution-type-transition",
+    response_model=InstitutionTypeTransitionPreview,
+    status_code=status.HTTP_200_OK,
+    summary="Preview a safe institution type transition",
+)
+async def preview_institution_type_transition(
+    tenant_id: uuid.UUID,
+    institution_type: Annotated[InstitutionType, Query()],
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> InstitutionTypeTransitionPreview:
+    verify_tenant_admin_owns_tenant(current_admin, tenant_id)
+    return await InstitutionTypeTransitionService.preview(
+        db,
+        tenant_id=tenant_id,
+        requested_type=institution_type,
+    )
+
+
+@router.post(
+    "/{tenant_id}/institution-type-transition",
+    response_model=InstitutionTypeTransitionResult,
+    status_code=status.HTTP_200_OK,
+    summary="Apply a safe institution type transition",
+)
+async def apply_institution_type_transition(
+    tenant_id: uuid.UUID,
+    payload: InstitutionTypeTransitionRequest,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+) -> InstitutionTypeTransitionResult:
+    verify_tenant_admin_owns_tenant(current_admin, tenant_id)
+    return await InstitutionTypeTransitionService.apply(
+        db,
+        tenant_id=tenant_id,
+        payload=payload,
+    )
 
 
 @router.get(
