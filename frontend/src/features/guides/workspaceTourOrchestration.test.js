@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { didCompleteInitialOnboarding } from "../../components/layout/onboardingOrchestration.js";
 import {
   canAutoShowTour,
   queueInitialTour,
@@ -97,6 +98,41 @@ test("explicit requeue never reopens terminal workspace tours", async () => {
   }
 });
 
+test("first-run onboarding completion is an explicit required-to-complete transition", () => {
+  assert.equal(
+    didCompleteInitialOnboarding({
+      profileMode: "onboarding",
+      wasRequired: true,
+      nextStatus: { onboarding_required: false },
+    }),
+    true,
+  );
+  assert.equal(
+    didCompleteInitialOnboarding({
+      profileMode: "edit",
+      wasRequired: true,
+      nextStatus: { onboarding_required: false },
+    }),
+    false,
+  );
+  assert.equal(
+    didCompleteInitialOnboarding({
+      profileMode: "onboarding",
+      wasRequired: false,
+      nextStatus: { onboarding_required: false },
+    }),
+    false,
+  );
+  assert.equal(
+    didCompleteInitialOnboarding({
+      profileMode: "onboarding",
+      wasRequired: true,
+      nextStatus: { onboarding_required: true },
+    }),
+    false,
+  );
+});
+
 test("only a durably queued welcome is eligible for automatic display", () => {
   assert.equal(
     canAutoShowTour({
@@ -126,9 +162,15 @@ test("first-entry actor boundaries queue the workspace tour before guided setup"
   const teacherRoutes = readSource("routes", "teacherRoutes.jsx");
   const parentRoutes = readSource("routes", "parentRoutes.jsx");
 
+  assert.match(onboardingGate, /onboardingWasRequiredRef/);
+  assert.match(onboardingGate, /didCompleteInitialOnboarding/);
   assert.match(
     onboardingGate,
-    /queueInitialTour\(\s*normalizedRole,\s*completedInitialOnboarding,\s*guideService,/,
+    /queueInitialTour\(\s*normalizedRole,\s*true,\s*guideService,\s*\{ requeueNonTerminal: true \},\s*\)/,
+  );
+  assert.doesNotMatch(
+    onboardingGate,
+    /profileMode === "onboarding" && onboardingState\.required && !required/,
   );
   assert.doesNotMatch(onboardingGate, /normalizedRole !== "admin"/);
   assert.doesNotMatch(adminGettingStartedRoute, /queueInitialTour/);
