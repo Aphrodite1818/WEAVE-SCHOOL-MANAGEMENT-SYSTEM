@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { queueInitialTour } from "../../features/guides/workspaceTourState";
 import { authSession } from "../../services/api";
 import { guideService } from "../../services/guideService";
 import { onboardingService } from "../../services/onboardingService";
+import { didCompleteInitialOnboarding } from "./onboardingOrchestration";
 
 const DASHBOARD_ROUTE_BY_ROLE = {
   admin: "/admin/dashboard",
@@ -36,6 +37,7 @@ export default function useOnboardingGate({ role, enabled = true }) {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileMode, setProfileMode] = useState("onboarding");
   const [preparingWelcome, setPreparingWelcome] = useState(false);
+  const onboardingWasRequiredRef = useRef(false);
   const [onboardingState, setOnboardingState] = useState({
     loading: true,
     required: false,
@@ -58,6 +60,7 @@ export default function useOnboardingGate({ role, enabled = true }) {
         if (!mounted) return;
 
         const required = Boolean(status?.onboarding_required);
+        if (required) onboardingWasRequiredRef.current = true;
         setOnboardingState({
           loading: false,
           required,
@@ -86,22 +89,27 @@ export default function useOnboardingGate({ role, enabled = true }) {
 
   const handleProfileStateResolved = ({ completed, status }) => {
     const required = !completed;
+    if (required) onboardingWasRequiredRef.current = true;
     setOnboardingState({ loading: false, required, status: status || null });
     if (!required) setProfileModalOpen(false);
   };
 
   const handleProfileSaved = async (status) => {
     const required = Boolean(status?.onboarding_required);
-    const completedInitialOnboarding =
-      profileMode === "onboarding" && onboardingState.required && !required;
+    const completedInitialOnboarding = didCompleteInitialOnboarding({
+      profileMode,
+      wasRequired: onboardingWasRequiredRef.current,
+      nextStatus: status,
+    });
 
     if (completedInitialOnboarding) {
       setPreparingWelcome(true);
       try {
         await queueInitialTour(
           normalizedRole,
-          completedInitialOnboarding,
+          true,
           guideService,
+          { requeueNonTerminal: true },
         );
       } catch {
         // An unavailable tour must not block a successfully saved profile.
@@ -114,6 +122,7 @@ export default function useOnboardingGate({ role, enabled = true }) {
     if (!required) setProfileModalOpen(false);
 
     if (completedInitialOnboarding) {
+      onboardingWasRequiredRef.current = false;
       const nextRoute = postOnboardingRoute(normalizedRole);
       if (nextRoute) {
         navigate(nextRoute, { replace: true });
