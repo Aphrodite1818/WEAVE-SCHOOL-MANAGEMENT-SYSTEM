@@ -845,7 +845,7 @@ export default function MessagesPage() {
               <button
                 type="button"
                 onClick={() => setSidebarRole("all")}
-                className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === "all" ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
+                className={`weave-message-role-filter rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === "all" ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
               >
                 All
               </button>
@@ -854,7 +854,7 @@ export default function MessagesPage() {
                   key={actorType}
                   type="button"
                   onClick={() => setSidebarRole(actorType)}
-                  className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === actorType ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
+                  className={`weave-message-role-filter rounded-full px-2.5 py-1 text-[11px] font-bold transition ${sidebarRole === actorType ? "bg-primary text-primary-foreground" : "bg-surface-muted text-text-muted hover:text-text"}`}
                 >
                   {roleLabel(actorType)}
                 </button>

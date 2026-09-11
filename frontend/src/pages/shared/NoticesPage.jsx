@@ -3,6 +3,7 @@ import { Check, Megaphone } from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import Button from "../../components/ui/Button";
+import Badge from "../../components/ui/Badge";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
 import { authSession, getErrorMessage } from "../../services/api";
@@ -111,12 +112,12 @@ export default function NoticesPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="font-bold text-text">{item.title}</h2>
-                        <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-bold text-text-muted">{item.category}</span>
+                        <Badge>{item.category}</Badge>
                         {item.priority !== "normal" ? (
-                          <span className="rounded-full bg-primary-soft px-2 py-0.5 text-xs font-bold text-primary">{item.priority}</span>
+                          <Badge variant="primary">{item.priority}</Badge>
                         ) : null}
                         {unread ? (
-                          <span className="rounded-full bg-primary-soft px-2 py-0.5 text-xs font-bold text-primary">Unread</span>
+                          <Badge variant="primary">Unread</Badge>
                         ) : null}
                       </div>
                       <p className="mt-2 whitespace-pre-wrap text-sm text-text-muted">{item.body}</p>

@@ -62,6 +62,12 @@ test("mobile dashboard KPIs retain the established two-column contract", async (
   );
 });
 
+test("shared actor dashboard pills retain intrinsic width without wrapping", async () => {
+  const primitives = await read("src/components/dashboard/DashboardPrimitives.jsx");
+
+  assert.match(primitives, /inline-flex shrink-0 items-center whitespace-nowrap rounded-full/);
+});
+
 test("mobile workspace tour collision checks the full target rectangle", async () => {
   const tour = await read("src/components/guides/WorkspaceTour.jsx");
 

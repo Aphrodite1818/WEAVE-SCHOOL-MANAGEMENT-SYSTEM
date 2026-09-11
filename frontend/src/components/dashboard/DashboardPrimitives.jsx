@@ -249,7 +249,7 @@ export function DashboardMetricCard({
         {badge ? (
           <span
             className={cn(
-              "rounded-full px-2 py-1 text-[10px] font-bold sm:px-2.5 sm:text-[11px]",
+              "inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-bold leading-none sm:px-2.5 sm:text-[11px]",
               toneStyle.badge,
             )}
           >
@@ -466,7 +466,7 @@ export function DashboardListItem({
             {title}
           </p>
           {meta ? (
-            <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-semibold text-text-muted">
+            <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-surface-muted px-2 py-1 text-[10px] font-semibold leading-none text-text-muted">
               {meta}
             </span>
           ) : null}

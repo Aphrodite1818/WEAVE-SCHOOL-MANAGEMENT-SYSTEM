@@ -48,6 +48,15 @@
   overflow-wrap: anywhere;
 }
 
+.weave-message-role-filter {
+  flex: 0 0 auto;
+  min-width: max-content;
+  min-height: 1.75rem;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  line-height: 1rem;
+}
+
 .weave-chat-header h2,
 .weave-chat-header p {
   white-space: normal;

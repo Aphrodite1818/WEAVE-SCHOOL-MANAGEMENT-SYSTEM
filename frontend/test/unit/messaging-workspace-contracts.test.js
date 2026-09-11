@@ -73,6 +73,24 @@ test("messages workspace exposes animated bubbles without call controls", async 
   assert.doesNotMatch(page, /PhoneCall|Video|Start call|Video call/);
 });
 
+test("message role filters and inbox unread badges cannot shrink or wrap", async () => {
+  const [messages, inbox, notices, noticeManagement, styles] = await Promise.all([
+    readSource("src/pages/shared/MessagesPage.jsx"),
+    readSource("src/pages/shared/CommunicationInboxPage.jsx"),
+    readSource("src/pages/shared/NoticesPage.jsx"),
+    readSource("src/pages/shared/NoticeManagementPage.jsx"),
+    readSource("src/styles/messaging.css"),
+  ]);
+
+  assert.match(messages, /weave-message-role-filter/);
+  assert.match(styles, /\.weave-message-role-filter\s*\{[\s\S]*?flex:\s*0 0 auto/);
+  assert.match(styles, /\.weave-message-role-filter\s*\{[\s\S]*?min-width:\s*max-content/);
+  assert.match(styles, /\.weave-message-role-filter\s*\{[\s\S]*?white-space:\s*nowrap/);
+  assert.match(inbox, /<Badge variant="primary" className="px-2 py-1 text-\[11px\]">\s*Unread/);
+  assert.match(notices, /<Badge variant="primary">Unread<\/Badge>/);
+  assert.match(noticeManagement, /<Badge>\{item\.status\}<\/Badge>/);
+});
+
 test("communication navigation uses notices and exposes received notice routes", async () => {
   const [nav, studentRoutes, parentRoutes] = await Promise.all([
     readSource("src/components/layout/navConfig.js"),
