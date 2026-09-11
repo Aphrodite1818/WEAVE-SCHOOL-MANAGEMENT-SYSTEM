@@ -19,11 +19,18 @@ pip-log.txt
 
 # Test and coverage
 .pytest_cache/
+.pytest-cache-*/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.hypothesis/
 .tox/
 .nox/
 htmlcov/
 .coverage
+.coverage.*
 coverage.xml
+coverage/
 
 # Virtual environments
 .venv/
@@ -50,13 +57,32 @@ frontend/.env.*
 Thumbs.db
 
 # Database files
+*.sqlite
 *.sqlite3
 *.db
+*.db-journal
 
 # Runtime logs
 *.log
 *.log.*
+*.pid
 backend/logs/
+
+# Certificates and private keys
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Local tool and temporary output
+.codex-uv-cache/
+.uv-cache*/
+.tmp-*/
+.tmp_*/
+*.tmp
+*.bak
+*.orig
+*.rej
 
 # Generated maintenance reports and credentials
 backend/migration_report.json
@@ -75,3 +101,11 @@ frontend/dist-*/
 
 # Frontend test runner caches
 frontend/.vite-test-cache-*/
+frontend/.vite/
+frontend/coverage/
+
+# Package-manager debug output
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

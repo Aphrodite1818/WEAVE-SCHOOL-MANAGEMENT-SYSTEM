@@ -10,6 +10,7 @@ from enum import Enum as PyEnum
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    DDL,
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
@@ -18,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -128,6 +130,74 @@ class CommentTemplate(BaseModel):
             "status",
         ),
     )
+
+
+event.listen(
+    CommentTemplate.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE OR REPLACE FUNCTION public.enforce_comment_template_range_overlap()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+            owner_key text;
+        BEGIN
+            IF NEW.status = 'archived' THEN
+                RETURN NEW;
+            END IF;
+
+            owner_key := NEW.tenant_id::text || ':' || NEW.owner_type::text || ':' ||
+                COALESCE(NEW.tenant_admin_id::text, NEW.teacher_membership_id::text, 'none');
+            PERFORM pg_advisory_xact_lock(hashtextextended(owner_key, 0));
+
+            IF EXISTS (
+                SELECT 1
+                FROM public.comment_templates existing
+                WHERE existing.tenant_id = NEW.tenant_id
+                  AND existing.owner_type = NEW.owner_type
+                  AND existing.status <> 'archived'
+                  AND existing.id <> NEW.id
+                  AND (
+                    (NEW.owner_type = 'tenant_admin'
+                     AND existing.tenant_admin_id = NEW.tenant_admin_id)
+                    OR
+                    (NEW.owner_type = 'teacher'
+                     AND existing.teacher_membership_id = NEW.teacher_membership_id)
+                  )
+                  AND NEW.minimum_score <= existing.maximum_score
+                  AND NEW.maximum_score >= existing.minimum_score
+                  AND NOT (
+                    NEW.minimum_score = existing.minimum_score
+                    AND NEW.maximum_score = existing.maximum_score
+                  )
+            ) THEN
+                RAISE EXCEPTION 'Comment performance ranges cannot overlap'
+                    USING ERRCODE = '23514',
+                          CONSTRAINT = 'ck_comment_templates_no_distinct_range_overlap';
+            END IF;
+
+            RETURN NEW;
+        END;
+        $$
+        """
+    ).execute_if(dialect="postgresql"),
+)
+event.listen(
+    CommentTemplate.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER trg_comment_templates_no_distinct_range_overlap
+        BEFORE INSERT OR UPDATE OF tenant_id, owner_type, tenant_admin_id,
+            teacher_membership_id, minimum_score, maximum_score, status
+        ON public.comment_templates
+        FOR EACH ROW
+        EXECUTE FUNCTION public.enforce_comment_template_range_overlap()
+        """
+    ).execute_if(dialect="postgresql"),
+)
 
 
 class StudentTermTeacherComment(BaseModel):

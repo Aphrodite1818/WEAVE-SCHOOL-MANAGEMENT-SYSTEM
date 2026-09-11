@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 import app.models  # noqa: F401
 from app.config.database import AsyncSessionLocal, engine
+from app.config.database_bootstrap import bootstrap_database
 from app.config.logging import get_logger, resolve_log_level
 from app.config.sentry import flush_sentry, initialize_sentry
 from app.config.settings import settings
@@ -161,6 +162,7 @@ def _prepare_academic_routers() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _ = app
     logger.info("Starting Weave API")
+    await bootstrap_database(engine)
     await connect_redis()
     async with AsyncSessionLocal() as db:
         async with db.begin():

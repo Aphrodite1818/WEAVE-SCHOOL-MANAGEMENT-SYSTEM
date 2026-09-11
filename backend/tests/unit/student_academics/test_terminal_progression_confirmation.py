@@ -43,6 +43,7 @@ async def test_terminal_student_cannot_be_graduated_without_confirmation(monkeyp
         student_id=student_id,
         academic_level_id=level_id,
         class_id=None,
+        exit_outcome=None,
     )
     student = SimpleNamespace(
         id=student_id,
