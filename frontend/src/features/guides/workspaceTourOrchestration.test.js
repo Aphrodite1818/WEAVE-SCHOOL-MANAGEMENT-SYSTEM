@@ -178,14 +178,15 @@ test("first-entry actor boundaries queue the workspace tour before guided setup"
   assert.match(studentPassword, /queueInitialTour\("student", true, guideService\)/);
   assert.match(tourHook, /pathname !== `\/\$\{role\}\/dashboard`/);
   assert.match(tourHook, /TOUR_QUEUED_EVENT/);
+  assert.match(tourHook, /const queuedWelcomeRef = useRef\(null\)/);
   assert.doesNotMatch(teacherRoutes, /\/teacher\/schools[\s\S]{0,180}onboardingModalEnabled=\{false\}/);
   assert.doesNotMatch(parentRoutes, /\/parent\/schools[\s\S]{0,180}onboardingModalEnabled=\{false\}/);
 });
 
 test("automatic welcome opens before persistence and becomes resumable", () => {
   const tourHook = readSource("features", "guides", "useWorkspaceTour.js");
-  const start = tourHook.indexOf("if (canAutoShowTour(nextState)");
-  const end = tourHook.indexOf("if (\n      role !== \"teacher\"", start);
+  const start = tourHook.indexOf("const presentInitialWelcome = useCallback(");
+  const end = tourHook.indexOf("const checkWelcome = useCallback", start);
   const welcomeClaim = tourHook.slice(start, end);
   const openAt = welcomeClaim.indexOf("setOpen(true)");
   const persistedAt = welcomeClaim.indexOf("current_step: pausedTourStep(-1)");
@@ -198,6 +199,26 @@ test("automatic welcome opens before persistence and becomes resumable", () => {
     tourHook,
     /useEffect\(\(\) => \{\s*if \(!enabled \|\| !key\) return;\s*refreshState\(\)\.catch/,
   );
+});
+
+test("a queued first-run welcome is consumed directly in the current dashboard session", () => {
+  const tourHook = readSource("features", "guides", "useWorkspaceTour.js");
+  const queuedHandlerStart = tourHook.indexOf("const queued = (event) => {");
+  const queuedHandlerEnd = tourHook.indexOf("const changed = (event) => {", queuedHandlerStart);
+  const queuedHandler = tourHook.slice(queuedHandlerStart, queuedHandlerEnd);
+
+  assert.ok(queuedHandlerStart >= 0 && queuedHandlerEnd > queuedHandlerStart);
+  assert.match(queuedHandler, /queuedWelcomeRef\.current = canAutoShowTour\(queuedState\)/);
+  assert.match(queuedHandler, /setQueueVersion/);
+
+  const directConsumeStart = tourHook.indexOf("const queuedState = queuedWelcomeRef.current;");
+  const directConsumeEnd = tourHook.indexOf("useEffect(() => {\n    if (!pendingRequest", directConsumeStart);
+  const directConsume = tourHook.slice(directConsumeStart, directConsumeEnd);
+
+  assert.ok(directConsumeStart >= 0 && directConsumeEnd > directConsumeStart);
+  assert.match(directConsume, /if \(!canAutoShowTour\(queuedState\)\) return/);
+  assert.match(directConsume, /presentInitialWelcome\(queuedState\)/);
+  assert.doesNotMatch(directConsume, /refreshState\(/);
 });
 
 test("unknown onboarding status remains fail-closed", () => {
