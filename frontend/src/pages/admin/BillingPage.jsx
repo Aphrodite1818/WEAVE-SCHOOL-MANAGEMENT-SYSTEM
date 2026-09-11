@@ -156,7 +156,7 @@ function BillingPage() {
         {!loading ? (
           <>
             <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-              <Card className="dashboard-welcome-blue border-0 p-5 shadow-premium sm:p-7">
+              <Card className="brand-strip-card dashboard-welcome-blue border-0 p-5 shadow-premium sm:p-7">
                 <div className="flex h-full flex-col justify-between gap-7">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">

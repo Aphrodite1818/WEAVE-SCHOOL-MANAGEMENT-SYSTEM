@@ -39,14 +39,36 @@ test("pricing surfaces show three paid cards and keep Free outside checkout card
   assert.match(mobilePlans, /Continue on Free/);
 });
 
-test("iOS PWA nav and billing dock fixes do not target Android", async () => {
+test("iOS and Android PWA nav positions are platform-specific", async () => {
   const css = await read("src/styles/mobilePlatformFixes.css");
   assert.match(css, /data-pwa-platform="ios"/);
-  assert.match(css, /bottom: -0\.35rem/);
+  assert.match(css, /bottom: -0\.65rem/);
+  assert.match(css, /data-pwa-platform="android"/);
+  assert.match(css, /bottom: -0\.3rem/);
   assert.match(css, /data-mobile-billing-action/);
   assert.match(css, /position: fixed/);
   assert.match(css, /safe-area-inset-top/);
-  assert.doesNotMatch(css, /data-pwa-platform="android"[\s\S]*bottom:/);
+});
+
+test("dark payment and dashboard hero cards keep brand colour as a strip only", async () => {
+  const [themeCss, primitives, billingPage, mobilePlans, desktopPlans, publicCard] = await Promise.all([
+    read("src/index.css"),
+    read("src/components/dashboard/DashboardPrimitives.jsx"),
+    read("src/pages/admin/BillingPage.jsx"),
+    read("src/pages/admin/ResponsiveSubscriptionOptionsPage.jsx"),
+    read("src/pages/admin/SubscriptionOptionsPage.jsx"),
+    read("src/components/subscriptions/PublicPricingCard.jsx"),
+  ]);
+
+  assert.match(primitives, /brand-strip-card dashboard-welcome-blue/);
+  assert.match(billingPage, /brand-strip-card dashboard-welcome-blue/);
+  assert.match(mobilePlans, /payment-plan-card-selected brand-strip-card/);
+  assert.match(desktopPlans, /payment-plan-card-selected brand-strip-card/);
+  assert.match(publicCard, /payment-plan-card-selected brand-strip-card/);
+  assert.match(themeCss, /:root\[data-theme="dark"\] \.brand-strip-card::before[\s\S]*?background:\s*rgb\(var\(--color-primary\)\)/);
+  assert.match(themeCss, /:root\[data-theme="dark"\] \.dashboard-welcome-blue,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/);
+  assert.match(themeCss, /:root\[data-theme="dark"\] \.payment-plan-card-selected,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/);
+  assert.doesNotMatch(themeCss, /dashboard-welcome-blue[\s\S]{0,220}box-shadow:\s*inset 0 3px 0/);
 });
 
 test("theme chrome follows the resolved application theme", async () => {

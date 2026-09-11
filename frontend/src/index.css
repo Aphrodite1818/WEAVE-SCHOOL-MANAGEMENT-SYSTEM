@@ -254,6 +254,11 @@
     @apply w-full min-w-0 rounded-[1.25rem] border border-border/70 bg-surface shadow-sm sm:rounded-[1.35rem] sm:shadow-premium;
   }
 
+  .brand-strip-card {
+    position: relative;
+    overflow: hidden;
+  }
+
   .dashboard-welcome-blue,
   .dashboard-welcome-student {
     --weave-icon-primary: rgb(var(--color-on-primary));
@@ -268,9 +273,19 @@
     --weave-icon-primary: rgb(var(--color-on-primary));
     --weave-icon-accent: rgb(var(--color-accent));
     border: 1px solid rgb(var(--color-border) / 0.7);
-    background-color: rgb(var(--color-surface-muted));
-    background-image: none;
-    box-shadow: inset 0 3px 0 rgb(var(--color-primary));
+    background: rgb(var(--color-surface-raised)) !important;
+    box-shadow: 0 10px 28px rgb(2 6 23 / 0.18);
+  }
+
+  :root[data-theme="dark"] .brand-strip-card::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    z-index: 1;
+    height: 0.28rem;
+    background: rgb(var(--color-primary));
+    pointer-events: none;
   }
 
   :root[data-theme="dark"] .dashboard-welcome-blue [class*="text-white"],
@@ -282,6 +297,19 @@
   :root[data-theme="dark"] .dashboard-welcome-student [class*="bg-white"] {
     border-color: rgb(var(--color-border));
     background: rgb(var(--color-surface));
+  }
+
+  :root[data-theme="dark"] .payment-plan-card {
+    background: rgb(var(--color-surface)) !important;
+  }
+
+  :root[data-theme="dark"] .payment-plan-card-selected,
+  :root[data-theme="dark"] .payment-plan-card[aria-pressed="true"] {
+    border-color: rgb(var(--color-primary) / 0.55) !important;
+    background: rgb(var(--color-surface-raised)) !important;
+    box-shadow:
+      inset 0 0 0 1px rgb(147 197 253 / 0.1),
+      0 10px 28px rgb(2 6 23 / 0.16);
   }
 
   .tenant-school-name-sidebar {

@@ -151,6 +151,9 @@ function AdminDashboardPage() {
   return (
     <DashboardLayout role="admin">
       <section className="admin-dashboard-header page-header">
+        <div className="min-w-0">
+          <h1 className="page-title">{firstName}'s Dashboard</h1>
+        </div>
         <div className="page-header-actions">
           <Link to="/admin/students/create">
             <Button>
@@ -158,9 +161,6 @@ function AdminDashboardPage() {
               Create student
             </Button>
           </Link>
-        </div>
-        <div className="min-w-0">
-          <h1 className="page-title">{firstName}'s Dashboard</h1>
         </div>
       </section>
       {error ? (

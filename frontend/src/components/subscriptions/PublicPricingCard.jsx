@@ -27,9 +27,9 @@ function PublicPricingCard({ plan, selected = false, id, className = "" }) {
   return (
     <article
       id={id}
-      className={`flex h-full scroll-mt-28 flex-col rounded-3xl border bg-surface p-6 shadow-soft-card transition hover:border-primary/25 sm:p-8 ${
+      className={`payment-plan-card flex h-full scroll-mt-28 flex-col rounded-3xl border bg-surface p-6 shadow-soft-card transition hover:border-primary/25 sm:p-8 ${
         selected || plan.highlighted
-          ? "border-primary/35 ring-1 ring-primary/10"
+          ? "payment-plan-card-selected brand-strip-card border-primary/35 ring-1 ring-primary/10"
           : "border-border/70"
       } ${className}`}
     >

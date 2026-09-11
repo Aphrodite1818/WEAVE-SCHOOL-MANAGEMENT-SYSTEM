@@ -281,9 +281,9 @@ function SubscriptionOptionsPage() {
                 return (
                   <Card
                     key={option.plan_code}
-                    className={`flex flex-col border-border/70 p-0 shadow-soft-card ${
+                    className={`payment-plan-card flex flex-col border-border/70 p-0 shadow-soft-card ${
                       selectedAtRegistration || isCurrent
-                        ? "ring-2 ring-primary/15"
+                        ? "payment-plan-card-selected brand-strip-card ring-2 ring-primary/15"
                         : ""
                     }`}
                   >

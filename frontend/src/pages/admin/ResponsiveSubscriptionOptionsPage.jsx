@@ -326,9 +326,9 @@ function MobileSubscriptionOptionsPage() {
                     type="button"
                     aria-pressed={selected}
                     onClick={() => setActivePlanCode(option.plan_code)}
-                    className={`min-h-36 rounded-2xl border px-4 py-4 text-left transition ${
+                    className={`payment-plan-card min-h-36 rounded-2xl border px-4 py-4 text-left transition ${
                       selected
-                        ? "border-primary/60 bg-primary-subtle/40 ring-1 ring-primary/10"
+                        ? "payment-plan-card-selected brand-strip-card border-primary/60 bg-primary-subtle/40 ring-1 ring-primary/10"
                         : "border-border/70 bg-surface"
                     }`}
                   >

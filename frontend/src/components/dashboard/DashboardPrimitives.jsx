@@ -105,7 +105,7 @@ export function DashboardWelcomePanel({
       className={cn(
         "dashboard-welcome-panel overflow-hidden rounded-2xl border border-border/70 bg-surface p-3.5 shadow-sm sm:p-6",
         isBlueHero &&
-          "dashboard-welcome-blue border-0 bg-gradient-to-br from-primary to-primary/90 px-4 py-5 shadow-md sm:px-7 sm:py-7 lg:px-8",
+          "brand-strip-card dashboard-welcome-blue border-0 bg-gradient-to-br from-primary to-primary/90 px-4 py-5 shadow-md sm:px-7 sm:py-7 lg:px-8",
         className,
       )}
     >

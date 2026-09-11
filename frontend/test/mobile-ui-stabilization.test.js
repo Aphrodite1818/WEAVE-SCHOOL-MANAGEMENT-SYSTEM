@@ -49,7 +49,10 @@ test("shared mobile actions and dialogs expose comfortable touch layouts", async
   assert.match(dashboardCss, /#dashboard-content \.page-header-actions \{[\s\S]*?width:\s*auto/);
   assert.match(dashboardCss, /#dashboard-content \.page-header-actions > \*,[\s\S]*?#dashboard-content \.page-header-actions \.btn-base \{[\s\S]*?width:\s*auto/);
   assert.match(dashboardCss, /#dashboard-content \.admin-dashboard-header \{[\s\S]*?display:\s*grid/);
+  assert.match(dashboardCss, /#dashboard-content \.admin-dashboard-header > \.min-w-0 \{[\s\S]*?order:\s*2/);
   assert.match(dashboardCss, /#dashboard-content \.admin-dashboard-header \.page-header-actions \{[\s\S]*?justify-self:\s*end/);
+  assert.match(dashboardCss, /#dashboard-content \.admin-dashboard-header \.page-header-actions \{[\s\S]*?order:\s*1/);
+  assert.ok(adminDashboard.indexOf("page-title") < adminDashboard.indexOf("page-header-actions"));
   assert.match(primitives, /dashboard-section-action/);
   assert.match(pageHeader, /className="page-header/);
   assert.match(pageHeader, /className="page-header-actions"/);
