@@ -96,8 +96,8 @@ async def test_reconciliation_ends_started_assignment_at_transition_boundary_min
     )
 
     with patch(
-        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_class_subjects",
-        new=AsyncMock(return_value=[]),
+        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_classes_subjects",
+        new=AsyncMock(return_value={assignment.class_id: []}),
     ):
         result = await AcademicCurriculumService.reconcile_teacher_assignments_for_term(
             db,
@@ -129,8 +129,8 @@ async def test_reconciliation_blocks_ineligible_scheduled_assignment_without_mut
     )
 
     with patch(
-        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_class_subjects",
-        new=AsyncMock(return_value=[]),
+        "app.modules.student_academics.curriculum_v2_service.CurriculumResolutionService.resolve_classes_subjects",
+        new=AsyncMock(return_value={assignment.class_id: []}),
     ):
         with pytest.raises(ConflictException) as exc_info:
             await AcademicCurriculumService.reconcile_teacher_assignments_for_term(

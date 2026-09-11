@@ -50,13 +50,16 @@ async def test_subject_availability_keeps_partial_coverage_and_marks_full_covera
             ]
         )
     )
-
-    async def resolved_subjects(_db, *, class_id, **_kwargs):
-        assert class_id in {first_class.id, second_class.id}
-        return [
+    resolved = {
+        first_class.id: [
             SimpleNamespace(curriculum_subject_id=partial_subject_id),
             SimpleNamespace(curriculum_subject_id=covered_subject_id),
-        ]
+        ],
+        second_class.id: [
+            SimpleNamespace(curriculum_subject_id=partial_subject_id),
+            SimpleNamespace(curriculum_subject_id=covered_subject_id),
+        ],
+    }
 
     with (
         patch.object(
@@ -64,11 +67,10 @@ async def test_subject_availability_keeps_partial_coverage_and_marks_full_covera
             "_curriculum",
             new=AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())),
         ),
-        patch.object(AcademicCurriculumService, "_term", new=AsyncMock()),
         patch(
             "app.modules.student_academics.curriculum_v2_service."
-            "CurriculumResolutionService.resolve_class_subjects",
-            new=AsyncMock(side_effect=resolved_subjects),
+            "CurriculumResolutionService.resolve_classes_subjects",
+            new=AsyncMock(return_value=resolved),
         ) as resolve_subjects,
     ):
         response = await AcademicCurriculumService.teacher_assignment_subject_availability(
@@ -85,4 +87,5 @@ async def test_subject_availability_keeps_partial_coverage_and_marks_full_covera
     assert availability[covered_subject_id].unassigned_class_count == 0
     assert availability[no_eligible_classes_subject_id].eligible_class_count == 0
     assert availability[no_eligible_classes_subject_id].unassigned_class_count == 0
-    assert resolve_subjects.await_count == 2
+    resolve_subjects.assert_awaited_once()
+    assert resolve_subjects.await_args.kwargs["class_ids"] == {first_class.id, second_class.id}
