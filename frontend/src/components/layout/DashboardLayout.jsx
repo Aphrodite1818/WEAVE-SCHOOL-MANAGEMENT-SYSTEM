@@ -211,7 +211,6 @@ function DashboardShellFrame({
       onboardingModalEnabled &&
       hasValidSchoolContext &&
       !legalBlocksProgression &&
-      (!setupEnabled || !schoolSetup.loading) &&
       !onboardingState.loading &&
       !onboardingState.required &&
       !preparingWelcome &&
