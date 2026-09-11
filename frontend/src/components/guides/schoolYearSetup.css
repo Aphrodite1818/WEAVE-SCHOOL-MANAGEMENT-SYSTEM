@@ -1,9 +1,24 @@
-.school-year-form > div { padding: 28px; }
-.school-year-form form, .school-year-form fieldset { display: flex; flex-direction: column; gap: 24px; }
-.school-year-form fieldset > * { margin-top: 0 !important; }
-.school-year-form fieldset > .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-.school-year-setup button, .school-year-form button { background-image: none; }
+.school-year-form > div {
+  padding: 28px;
+}
+.school-year-form form,
+.school-year-form fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.school-year-form fieldset > * {
+  margin-top: 0 !important;
+}
+.school-year-form fieldset > .grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
 @media (max-width: 479px) {
-  .school-year-form > div { padding: 20px; }
-  .school-year-form fieldset > .grid { grid-template-columns: minmax(0, 1fr); }
+  .school-year-form > div {
+    padding: 20px;
+  }
+  .school-year-form fieldset > .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
