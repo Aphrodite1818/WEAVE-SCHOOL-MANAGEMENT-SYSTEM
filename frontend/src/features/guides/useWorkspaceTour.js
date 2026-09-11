@@ -57,6 +57,7 @@ export default function useWorkspaceTour({
   const [focusRoutes, setFocusRoutes] = useState(null);
   const [upgradeQueue, setUpgradeQueue] = useState(null);
   const claimed = useRef(false);
+  const queuedWelcomeRef = useRef(null);
   const key = tourKeyForRole(role);
 
   const acceptState = useCallback(
@@ -92,6 +93,7 @@ export default function useWorkspaceTour({
 
   useEffect(() => {
     claimed.current = false;
+    queuedWelcomeRef.current = null;
     setOpen(false);
     setResumeIndex(-1);
     setFocusTo(null);
@@ -102,6 +104,29 @@ export default function useWorkspaceTour({
     setUpgradeQueue(null);
     setState(null);
   }, [identityKey, key]);
+
+  const presentInitialWelcome = useCallback(
+    async (nextState) => {
+      if (!canAutoShowTour(nextState) || claimed.current) return false;
+
+      claimed.current = true;
+      queuedWelcomeRef.current = null;
+      setInitialWelcome(true);
+      setResumeIndex(-1);
+      setOpen(true);
+
+      // Claim the already-confirmed welcome before persisting its resumable
+      // state. This keeps the live onboarding handoff deterministic even if a
+      // concurrent guide read is stale or deduplicated.
+      await saveState({
+        status: "in_progress",
+        current_step: pausedTourStep(-1),
+        remind_after: null,
+      });
+      return true;
+    },
+    [saveState],
+  );
 
   const checkWelcome = useCallback(async () => {
     if (
@@ -114,22 +139,7 @@ export default function useWorkspaceTour({
     }
 
     const nextState = await refreshState();
-    if (canAutoShowTour(nextState) && !claimed.current) {
-      claimed.current = true;
-      setInitialWelcome(true);
-      setResumeIndex(-1);
-      setOpen(true);
-
-      // The overlay is claimed before persistence. Once a welcome has been
-      // presented, persist it as resumable rather than as a dead-end "seen"
-      // state so an interrupted first run always leaves a dashboard reminder.
-      await saveState({
-        status: "in_progress",
-        current_step: pausedTourStep(-1),
-        remind_after: null,
-      });
-      return;
-    }
+    if (await presentInitialWelcome(nextState)) return;
 
     if (
       role !== "teacher" ||
@@ -164,9 +174,9 @@ export default function useWorkspaceTour({
     hasClassTeacherDuties,
     key,
     pathname,
+    presentInitialWelcome,
     refreshState,
     role,
-    saveState,
   ]);
 
   useEffect(() => {
@@ -198,7 +208,11 @@ export default function useWorkspaceTour({
   useEffect(() => {
     const queued = (event) => {
       if (!key || event.detail?.role !== role) return;
-      if (event.detail?.state) setState(event.detail.state);
+      const queuedState = event.detail?.state || null;
+      queuedWelcomeRef.current = canAutoShowTour(queuedState)
+        ? queuedState
+        : null;
+      if (queuedState) setState(queuedState);
       setQueueVersion((value) => value + 1);
     };
     const changed = (event) => {
@@ -215,6 +229,28 @@ export default function useWorkspaceTour({
       window.removeEventListener("online", online);
     };
   }, [key, role]);
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      !key ||
+      pathname !== `/${role}/dashboard` ||
+      claimed.current
+    ) {
+      return;
+    }
+
+    const queuedState = queuedWelcomeRef.current;
+    if (!canAutoShowTour(queuedState)) return;
+
+    let cancelled = false;
+    Promise.resolve(presentInitialWelcome(queuedState)).catch(() => {
+      if (!cancelled) claimed.current = false;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, key, pathname, presentInitialWelcome, queueVersion, role]);
 
   useEffect(() => {
     if (!pendingRequest || pendingRequest.destination !== location.pathname)
