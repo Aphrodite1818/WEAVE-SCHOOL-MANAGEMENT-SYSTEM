@@ -50,7 +50,7 @@ test("completed or dismissed users are never automatically requeued", async () =
   }
 });
 
-test("admin setup completion can recover a non-terminal premature welcome state", async () => {
+test("non-terminal guide state can still be explicitly requeued when a caller opts in", async () => {
   const updates = [];
   const service = {
     getState: async () => ({
@@ -77,7 +77,7 @@ test("admin setup completion can recover a non-terminal premature welcome state"
   ]);
 });
 
-test("admin setup completion does not reopen terminal workspace tours", async () => {
+test("explicit requeue never reopens terminal workspace tours", async () => {
   for (const status of ["completed", "dismissed"]) {
     let writes = 0;
     const service = {
@@ -117,7 +117,7 @@ test("only a durably queued welcome is eligible for automatic display", () => {
   assert.equal(canAutoShowTour({ status: "not_started", sync_pending: false }), false);
 });
 
-test("all first-entry actor boundaries queue or consume the workspace tour", () => {
+test("first-entry actor boundaries queue the workspace tour before guided setup", () => {
   const onboardingGate = readSource("components", "layout", "useOnboardingGate.js");
   const adminGettingStartedRoute = readSource("routes", "AdminGettingStartedRoute.jsx");
   const invitation = readSource("pages", "public", "InvitationAcceptancePage.jsx");
@@ -126,14 +126,46 @@ test("all first-entry actor boundaries queue or consume the workspace tour", () 
   const teacherRoutes = readSource("routes", "teacherRoutes.jsx");
   const parentRoutes = readSource("routes", "parentRoutes.jsx");
 
-  assert.match(onboardingGate, /completedInitialOnboarding && normalizedRole !== "admin"/);
-  assert.match(adminGettingStartedRoute, /queueInitialTour\("admin", true, guideService, \{\s*requeueNonTerminal: true,/);
+  assert.match(
+    onboardingGate,
+    /queueInitialTour\(\s*normalizedRole,\s*completedInitialOnboarding,\s*guideService,/,
+  );
+  assert.doesNotMatch(onboardingGate, /normalizedRole !== "admin"/);
+  assert.doesNotMatch(adminGettingStartedRoute, /queueInitialTour/);
   assert.match(invitation, /queueInitialTour\(role, true, guideService\)/);
   assert.match(studentPassword, /queueInitialTour\("student", true, guideService\)/);
   assert.match(tourHook, /pathname !== `\/\$\{role\}\/dashboard`/);
   assert.match(tourHook, /TOUR_QUEUED_EVENT/);
   assert.doesNotMatch(teacherRoutes, /\/teacher\/schools[\s\S]{0,180}onboardingModalEnabled=\{false\}/);
   assert.doesNotMatch(parentRoutes, /\/parent\/schools[\s\S]{0,180}onboardingModalEnabled=\{false\}/);
+});
+
+test("automatic welcome opens before persistence and becomes resumable", () => {
+  const tourHook = readSource("features", "guides", "useWorkspaceTour.js");
+  const start = tourHook.indexOf("if (canAutoShowTour(nextState)");
+  const end = tourHook.indexOf("if (\n      role !== \"teacher\"", start);
+  const welcomeClaim = tourHook.slice(start, end);
+  const openAt = welcomeClaim.indexOf("setOpen(true)");
+  const persistedAt = welcomeClaim.indexOf("current_step: pausedTourStep(-1)");
+
+  assert.ok(start >= 0 && end > start);
+  assert.ok(openAt >= 0);
+  assert.ok(persistedAt > openAt);
+  assert.doesNotMatch(welcomeClaim, /TOUR_SEEN_STEP/);
+  assert.doesNotMatch(
+    tourHook,
+    /useEffect\(\(\) => \{\s*if \(!enabled \|\| !key\) return;\s*refreshState\(\)\.catch/,
+  );
+});
+
+test("unknown onboarding status remains fail-closed", () => {
+  const onboardingGate = readSource("components", "layout", "useOnboardingGate.js");
+  const catchAt = onboardingGate.indexOf("} catch {");
+  const failureBlock = onboardingGate.slice(catchAt, catchAt + 420);
+
+  assert.ok(catchAt >= 0);
+  assert.match(failureBlock, /loading: true/);
+  assert.doesNotMatch(failureBlock, /loading: false/);
 });
 
 test("superadmin never receives a workspace tour key", () => {
