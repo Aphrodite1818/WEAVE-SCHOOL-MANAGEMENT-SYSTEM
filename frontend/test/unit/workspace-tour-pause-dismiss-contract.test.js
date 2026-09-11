@@ -67,7 +67,18 @@ test("only the initial welcome offers school setup; replay and resume are tour-o
     shellSource,
     /onSetup=\{[\s\S]*tour\.initialWelcome && schoolSetupIncomplete/,
   );
-  assert.match(shellSource, /!setupEnabled \|\| !schoolSetup\.loading/);
+
+  const tourBlock = shellSource.slice(
+    shellSource.indexOf("const tour = useWorkspaceTour({"),
+    shellSource.indexOf("const showGettingStartedBanner"),
+  );
+  const setupBannerBlock = shellSource.slice(
+    shellSource.indexOf("const showGettingStartedBanner"),
+    shellSource.indexOf("const showWorkspaceTourReminder"),
+  );
+  assert.doesNotMatch(tourBlock, /schoolSetup\.loading|setupEnabled/);
+  assert.match(setupBannerBlock, /!schoolSetup\.loading/);
+  assert.match(setupBannerBlock, /!tour\.open/);
 });
 
 test("finish later leaves a record-based reminder regardless of tour or guide dismissal", () => {
