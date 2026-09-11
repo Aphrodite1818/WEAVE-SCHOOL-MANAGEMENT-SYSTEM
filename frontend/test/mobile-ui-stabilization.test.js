@@ -61,3 +61,12 @@ test("mobile dashboard KPIs retain the established two-column contract", async (
     /#dashboard-content \.stat-grid,\s*#dashboard-content \.dashboard-kpi-grid \{\s*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/,
   );
 });
+
+test("mobile workspace tour collision checks the full target rectangle", async () => {
+  const tour = await read("src/components/guides/WorkspaceTour.jsx");
+
+  assert.match(tour, /left < targetBox\.left \+ targetBox\.width/);
+  assert.match(tour, /right > targetBox\.left/);
+  assert.match(tour, /candidate\.top < targetBox\.top \+ targetBox\.height/);
+  assert.match(tour, /bottom > targetBox\.top/);
+});
