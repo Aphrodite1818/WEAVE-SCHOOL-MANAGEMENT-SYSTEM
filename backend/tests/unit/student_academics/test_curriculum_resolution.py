@@ -39,9 +39,9 @@ async def test_pre_specialization_includes_general_science_and_arts() -> None:
     general_id, science_id, arts_id = uuid4(), uuid4(), uuid4()
     science_department_id, arts_department_id = uuid4(), uuid4()
     subjects = [
-        (_subject(general_id), SimpleNamespace()),
-        (_subject(science_id), SimpleNamespace()),
-        (_subject(arts_id), SimpleNamespace()),
+        (_subject(general_id), level_id),
+        (_subject(science_id), level_id),
+        (_subject(arts_id), level_id),
     ]
     links = [
         SimpleNamespace(
@@ -51,18 +51,18 @@ async def test_pre_specialization_includes_general_science_and_arts() -> None:
             curriculum_subject_id=arts_id, academic_level_department_id=arts_department_id
         ),
     ]
+    classroom = SimpleNamespace(id=class_id, academic_level_id=level_id)
+    level = SimpleNamespace(
+        id=level_id,
+        status=AcademicLevelStatus.ACTIVE,
+        specialization_required_from_term_position=2,
+    )
     db = SimpleNamespace(
         execute=AsyncMock(
             side_effect=[
-                _scalar(SimpleNamespace(id=class_id, academic_level_id=level_id)),
+                _scalars([classroom]),
                 _scalar(SimpleNamespace(id=term_id, name=AcademicTermName.FIRST_TERM)),
-                _scalar(
-                    SimpleNamespace(
-                        id=level_id,
-                        status=AcademicLevelStatus.ACTIVE,
-                        specialization_required_from_term_position=2,
-                    )
-                ),
+                _scalars([level]),
                 _rows(subjects),
                 _scalars(links),
             ]
@@ -76,6 +76,7 @@ async def test_pre_specialization_includes_general_science_and_arts() -> None:
     assert {item.curriculum_subject_id for item in resolved} == {general_id, science_id, arts_id}
     assert next(item for item in resolved if item.curriculum_subject_id == general_id).is_general
     assert all(item.academic_level_department_id is None for item in resolved)
+    assert db.execute.await_count == 5
 
 
 @pytest.mark.asyncio
@@ -84,9 +85,9 @@ async def test_post_specialization_includes_general_and_matching_department_only
     general_id, science_id, arts_id = uuid4(), uuid4(), uuid4()
     science_department_id, arts_department_id = uuid4(), uuid4()
     subjects = [
-        (_subject(general_id), SimpleNamespace()),
-        (_subject(science_id), SimpleNamespace()),
-        (_subject(arts_id), SimpleNamespace()),
+        (_subject(general_id), level_id),
+        (_subject(science_id), level_id),
+        (_subject(arts_id), level_id),
     ]
     links = [
         SimpleNamespace(
@@ -96,27 +97,19 @@ async def test_post_specialization_includes_general_and_matching_department_only
             curriculum_subject_id=arts_id, academic_level_department_id=arts_department_id
         ),
     ]
-    exact = MagicMock()
-    exact.first.return_value = (
-        SimpleNamespace(academic_level_department_id=science_department_id),
-        SimpleNamespace(
-            id=science_department_id, academic_level_id=level_id, is_active=True, archived_at=None
-        ),
-        SimpleNamespace(is_active=True, archived_at=None),
+    classroom = SimpleNamespace(id=class_id, academic_level_id=level_id)
+    level = SimpleNamespace(
+        id=level_id,
+        status=AcademicLevelStatus.ACTIVE,
+        specialization_required_from_term_position=2,
     )
     db = SimpleNamespace(
         execute=AsyncMock(
             side_effect=[
-                _scalar(SimpleNamespace(id=class_id, academic_level_id=level_id)),
+                _scalars([classroom]),
                 _scalar(SimpleNamespace(id=term_id, name=AcademicTermName.SECOND_TERM)),
-                _scalar(
-                    SimpleNamespace(
-                        id=level_id,
-                        status=AcademicLevelStatus.ACTIVE,
-                        specialization_required_from_term_position=2,
-                    )
-                ),
-                exact,
+                _scalars([level]),
+                _rows([(class_id, science_department_id, level_id)]),
                 _rows(subjects),
                 _scalars(links),
             ]
@@ -133,3 +126,50 @@ async def test_post_specialization_includes_general_and_matching_department_only
     assert "class_term_department_assignments.academic_term_id" in str(
         db.execute.await_args_list[3].args[0]
     )
+    assert db.execute.await_count == 6
+
+
+@pytest.mark.asyncio
+async def test_bulk_resolution_query_count_is_constant_across_many_classes() -> None:
+    tenant_id, level_id, term_id = uuid4(), uuid4(), uuid4()
+    class_ids = [uuid4() for _ in range(50)]
+    classrooms = [
+        SimpleNamespace(id=class_id, academic_level_id=level_id) for class_id in class_ids
+    ]
+    level = SimpleNamespace(
+        id=level_id,
+        status=AcademicLevelStatus.ACTIVE,
+        specialization_required_from_term_position=2,
+    )
+    general = _subject(uuid4())
+    scoped = _subject(uuid4())
+    department_id = uuid4()
+    db = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _scalars(classrooms),
+                _scalar(SimpleNamespace(id=term_id, name=AcademicTermName.FIRST_TERM)),
+                _scalars([level]),
+                _rows([(general, level_id), (scoped, level_id)]),
+                _scalars(
+                    [
+                        SimpleNamespace(
+                            curriculum_subject_id=scoped.id,
+                            academic_level_department_id=department_id,
+                        )
+                    ]
+                ),
+            ]
+        )
+    )
+
+    resolved = await CurriculumResolutionService.resolve_classes_subjects(
+        db,
+        tenant_id=tenant_id,
+        class_ids=class_ids,
+        academic_term_id=term_id,
+    )
+
+    assert set(resolved) == set(class_ids)
+    assert all(len(subjects) == 2 for subjects in resolved.values())
+    assert db.execute.await_count == 5
