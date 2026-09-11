@@ -327,7 +327,6 @@ class StudentReturnEnrollmentRequest(StudentLifecycleReasonRequest):
     effective_date: date = Field(default_factory=date.today)
 
 
-
 class StudentPromotionHoldUpdateRequest(InputBase):
     """Set or remove an individual progression hold."""
 

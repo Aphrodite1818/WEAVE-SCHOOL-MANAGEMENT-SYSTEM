@@ -1700,7 +1700,9 @@ class StudentAcademicService:
         if has_dependencies:
             blockers.append("Historical results or report-card lines reference this assignment.")
         if assignment.state == TeacherAssignmentState.SCHEDULED:
-            blockers.append("This assignment has not started yet. Edit or cancel the schedule instead.")
+            blockers.append(
+                "This assignment has not started yet. Edit or cancel the schedule instead."
+            )
         elif assignment.state == TeacherAssignmentState.ENDED:
             blockers.append("This assignment has already ended.")
         return TeacherAssignmentDependencyPreview(
@@ -1772,11 +1774,14 @@ class StudentAcademicService:
                 )
             )
             successor = StudentAcademicService._adjacent_scheduled_successor(assignment, history)
-            if successor is not None and not await StudentAcademicService._is_scheduled_takeover_relation(
-                db,
-                tenant_id=tenant_id,
-                successor=successor,
-                predecessor=assignment,
+            if (
+                successor is not None
+                and not await StudentAcademicService._is_scheduled_takeover_relation(
+                    db,
+                    tenant_id=tenant_id,
+                    successor=successor,
+                    predecessor=assignment,
+                )
             ):
                 successor = None
             if successor is None or effective_to >= planned_end:
@@ -2053,11 +2058,14 @@ class StudentAcademicService:
             lock=True,
         )
         predecessor = StudentAcademicService._adjacent_predecessor(assignment, history)
-        if predecessor is not None and not await StudentAcademicService._is_scheduled_takeover_relation(
-            db,
-            tenant_id=tenant_id,
-            successor=assignment,
-            predecessor=predecessor,
+        if (
+            predecessor is not None
+            and not await StudentAcademicService._is_scheduled_takeover_relation(
+                db,
+                tenant_id=tenant_id,
+                successor=assignment,
+                predecessor=predecessor,
+            )
         ):
             predecessor = None
         if (
@@ -2214,11 +2222,14 @@ class StudentAcademicService:
             lock=True,
         )
         predecessor = StudentAcademicService._adjacent_predecessor(assignment, history)
-        if predecessor is not None and not await StudentAcademicService._is_scheduled_takeover_relation(
-            db,
-            tenant_id=tenant_id,
-            successor=assignment,
-            predecessor=predecessor,
+        if (
+            predecessor is not None
+            and not await StudentAcademicService._is_scheduled_takeover_relation(
+                db,
+                tenant_id=tenant_id,
+                successor=assignment,
+                predecessor=predecessor,
+            )
         ):
             predecessor = None
         try:
@@ -2298,14 +2309,18 @@ class StudentAcademicService:
         origins_by_successor: dict[uuid.UUID, list[TeacherAssignmentLifecycleAudit]] = {}
         if takeover_ids:
             origin_rows = (
-                await db.execute(
-                    select(TeacherAssignmentLifecycleAudit).where(
-                        TeacherAssignmentLifecycleAudit.tenant_id == tenant_id,
-                        TeacherAssignmentLifecycleAudit.action == "teacher_reassigned",
-                        TeacherAssignmentLifecycleAudit.assignment_id.in_(takeover_ids),
+                (
+                    await db.execute(
+                        select(TeacherAssignmentLifecycleAudit).where(
+                            TeacherAssignmentLifecycleAudit.tenant_id == tenant_id,
+                            TeacherAssignmentLifecycleAudit.action == "teacher_reassigned",
+                            TeacherAssignmentLifecycleAudit.assignment_id.in_(takeover_ids),
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for origin in origin_rows:
                 if origin.assignment_id is not None:
                     origins_by_successor.setdefault(origin.assignment_id, []).append(origin)
@@ -2315,8 +2330,7 @@ class StudentAcademicService:
             if takeover is not None:
                 valid_origin = any(
                     origin.class_id == takeover.get("class_id")
-                    and origin.curriculum_subject_id
-                    == takeover.get("curriculum_subject_id")
+                    and origin.curriculum_subject_id == takeover.get("curriculum_subject_id")
                     for origin in origins_by_successor.get(takeover["id"], [])
                 )
                 if not valid_origin:

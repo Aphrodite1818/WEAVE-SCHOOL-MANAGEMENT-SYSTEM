@@ -439,7 +439,9 @@ class AcademicProgressionService:
         if existing is not None and existing.status != StudentProgressionItemStatus.BLOCKED:
             return existing
         if existing is not None and existing.from_enrollment_id not in {None, enrollment.id}:
-            raise ConflictException("Progression manifest enrollment does not match the frozen target.")
+            raise ConflictException(
+                "Progression manifest enrollment does not match the frozen target."
+            )
 
         student = None
         if context is not None:
@@ -467,7 +469,11 @@ class AcademicProgressionService:
                 f"({enrollment.exit_outcome.value})."
             )
             item.processed_at = _utc_now()
-            return await StudentProgressionRepository.save_item(db, item) if existing else await StudentProgressionRepository.add_item(db, item)
+            return (
+                await StudentProgressionRepository.save_item(db, item)
+                if existing
+                else await StudentProgressionRepository.add_item(db, item)
+            )
 
         if student.is_archived or student.promotion_hold or student.status != AcademicStatus.ACTIVE:
             item = existing or StudentProgressionItem(
@@ -482,7 +488,11 @@ class AcademicProgressionService:
             item.status = StudentProgressionItemStatus.CANCELLED
             item.reason = "Student is archived, on promotion hold, or not active."
             item.processed_at = _utc_now()
-            return await StudentProgressionRepository.save_item(db, item) if existing else await StudentProgressionRepository.add_item(db, item)
+            return (
+                await StudentProgressionRepository.save_item(db, item)
+                if existing
+                else await StudentProgressionRepository.add_item(db, item)
+            )
 
         level = None
         if context is not None:
@@ -539,7 +549,11 @@ class AcademicProgressionService:
             item.status = StudentProgressionItemStatus.COMPLETED
             item.reason = "Final configured level completed with administrator confirmation."
             item.processed_at = _utc_now()
-            return await StudentProgressionRepository.save_item(db, item) if existing else await StudentProgressionRepository.add_item(db, item)
+            return (
+                await StudentProgressionRepository.save_item(db, item)
+                if existing
+                else await StudentProgressionRepository.add_item(db, item)
+            )
 
         enrollment.exit_outcome = StudentEnrollmentOutcome.PROMOTED
         enrollment.exit_reason = "Academic session completed"

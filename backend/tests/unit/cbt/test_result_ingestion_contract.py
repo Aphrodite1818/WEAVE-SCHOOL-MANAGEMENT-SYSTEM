@@ -94,7 +94,9 @@ def test_request_hash_is_score_order_independent() -> None:
         ],
     )
 
-    assert CBTResultIngestionService._request_hash(first) == CBTResultIngestionService._request_hash(second)
+    assert CBTResultIngestionService._request_hash(
+        first
+    ) == CBTResultIngestionService._request_hash(second)
 
 
 def test_request_hash_changes_when_score_changes() -> None:
@@ -108,7 +110,9 @@ def test_request_hash_changes_when_score_changes() -> None:
         }
     )
 
-    assert CBTResultIngestionService._request_hash(payload) != CBTResultIngestionService._request_hash(changed)
+    assert CBTResultIngestionService._request_hash(
+        payload
+    ) != CBTResultIngestionService._request_hash(changed)
 
 
 def test_bulk_request_rejects_duplicate_student() -> None:

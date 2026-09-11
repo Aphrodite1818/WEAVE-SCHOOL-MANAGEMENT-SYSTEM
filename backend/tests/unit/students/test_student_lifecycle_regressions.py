@@ -717,7 +717,9 @@ async def test_backdated_terminal_exit_rejects_preserved_evidence(monkeypatch, a
 
 
 @pytest.mark.asyncio
-async def test_same_day_class_correction_mutates_segment_without_fake_history(monkeypatch, actor, db):
+async def test_same_day_class_correction_mutates_segment_without_fake_history(
+    monkeypatch, actor, db
+):
     from app.modules.students.enrollment_schemas import StudentClassReassignmentRequest
     from app.modules.students.placement_service import StudentPlacementService
 

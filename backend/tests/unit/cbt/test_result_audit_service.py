@@ -14,13 +14,16 @@ from app.modules.cbt.results.audit_service import (
 
 
 def test_exam_display_label_uses_human_academic_context() -> None:
-    assert _exam_display_label(
-        subject_name="Mathematics",
-        component_name="Examination",
-        level_name="SS2",
-        term_name="first_term",
-        exam_date=date(2026, 9, 8),
-    ) == "Mathematics · Examination · SS2 · First Term · 08 Sep 2026"
+    assert (
+        _exam_display_label(
+            subject_name="Mathematics",
+            component_name="Examination",
+            level_name="SS2",
+            term_name="first_term",
+            exam_date=date(2026, 9, 8),
+        )
+        == "Mathematics · Examination · SS2 · First Term · 08 Sep 2026"
+    )
 
 
 @pytest.mark.asyncio

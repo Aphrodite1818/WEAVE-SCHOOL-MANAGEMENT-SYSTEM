@@ -129,7 +129,11 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         )
         expected_action = StudentLifecycleService.TERMINAL_ACTIONS[status]
         if audit is None or audit.action != expected_action:
-            return False, "The terminal action is historical and must use a formal return flow.", audit
+            return (
+                False,
+                "The terminal action is historical and must use a formal return flow.",
+                audit,
+            )
         created_at = audit.created_at
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
@@ -155,7 +159,11 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
             after,
             ("ended_on", "exit_outcome", "exit_reason", "ended_by_admin_id"),
         ):
-            return False, "The enrollment changed after this exit and cannot be safely undone.", audit
+            return (
+                False,
+                "The enrollment changed after this exit and cannot be safely undone.",
+                audit,
+            )
 
         activity = await StudentEnrollmentEvidenceService.student_activity_counts_after(
             db,
@@ -937,19 +945,25 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
                 f"A new return enrollment must begin after that enrollment. If the {noun} "
                 f"was made by mistake, use Undo {noun} instead."
             )
-        if await StudentEnrollmentRepository.get_current(
-            db,
-            actor.tenant_id,
-            student_id,
-            lock=True,
-        ) is not None:
+        if (
+            await StudentEnrollmentRepository.get_current(
+                db,
+                actor.tenant_id,
+                student_id,
+                lock=True,
+            )
+            is not None
+        ):
             raise ConflictException("Student already has a current enrollment.")
-        if await StudentEnrollmentRepository.get_upcoming(
-            db,
-            actor.tenant_id,
-            student_id,
-            lock=True,
-        ) is not None:
+        if (
+            await StudentEnrollmentRepository.get_upcoming(
+                db,
+                actor.tenant_id,
+                student_id,
+                lock=True,
+            )
+            is not None
+        ):
             raise ConflictException("Student already has an upcoming enrollment.")
 
         session = await AcademicSessionLifecycleRepository.get_by_id(
@@ -963,7 +977,9 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
             or not session.is_current
             or session.status != AcademicSessionStatus.OPEN
         ):
-            raise ConflictException("A return enrollment requires the current open academic session.")
+            raise ConflictException(
+                "A return enrollment requires the current open academic session."
+            )
         if session.start_date is not None and payload.effective_date < session.start_date:
             raise BadRequestException(
                 "Return enrollment effective date cannot be before the current session starts."
@@ -982,7 +998,9 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         if classroom is None or not classroom.is_active or classroom.archived_at is not None:
             raise NotFoundException("Target class not found or inactive.")
         if classroom.academic_level_id != payload.target_academic_level_id:
-            raise BadRequestException("Target class does not belong to the selected academic level.")
+            raise BadRequestException(
+                "Target class does not belong to the selected academic level."
+            )
 
         history = await StudentEnrollmentRepository.list_for_student(
             db,
@@ -1049,14 +1067,15 @@ class StudentLifecycleService(LegacyStudentLifecycleService):
         affected_links = 0
         recalculations = 0
         if activates_now:
-            affected_links, recalculations = (
-                await StudentLifecycleService._restore_parent_links_after_return(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    student=student,
-                    previous_status=expected_status,
-                    terminal_audit=terminal_audit,
-                )
+            (
+                affected_links,
+                recalculations,
+            ) = await StudentLifecycleService._restore_parent_links_after_return(
+                db,
+                tenant_id=actor.tenant_id,
+                student=student,
+                previous_status=expected_status,
+                terminal_audit=terminal_audit,
             )
 
         await StudentLifecycleService._record_lifecycle_audit(

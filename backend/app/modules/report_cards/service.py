@@ -389,9 +389,9 @@ class ReportCardService:
         )
         if possible <= 0:
             return None
-        return (
-            (Decimal(str(result.total_score)) / possible) * Decimal("100")
-        ).quantize(PERCENT_QUANTUM, rounding=ROUND_HALF_UP)
+        return ((Decimal(str(result.total_score)) / possible) * Decimal("100")).quantize(
+            PERCENT_QUANTUM, rounding=ROUND_HALF_UP
+        )
 
     @staticmethod
     async def _create_card_from_results(
@@ -524,7 +524,9 @@ class ReportCardService:
             grade = result.grade
             remark = result.remark
             if grade is None:
-                subject_percentage = ReportCardService._subject_percentage(result, result_components)
+                subject_percentage = ReportCardService._subject_percentage(
+                    result, result_components
+                )
                 if subject_percentage is not None:
                     scale = await StudentAcademicRepository.find_grade_for_score(
                         db=db,
@@ -956,7 +958,9 @@ class ReportCardService:
         if card.status != ReportCardStatus.DRAFT or card.superseded_at is not None:
             raise BadRequestException("Only the current draft can be published.")
         if card.is_outdated:
-            raise BadRequestException("Outdated report cards must be regenerated before publication.")
+            raise BadRequestException(
+                "Outdated report cards must be regenerated before publication."
+            )
 
         expected, ready_results, _ = await ReportCardService._ready_results(
             db,

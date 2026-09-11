@@ -62,7 +62,9 @@ class ReportReadinessService:
                     Decimal(str(percentage_raw)) if percentage_raw is not None else None
                 ),
                 grading_scale_id=(uuid.UUID(str(scale_raw)) if scale_raw else None),
-                overall_grade=(str(cached.get("overall_grade")) if cached.get("overall_grade") else None),
+                overall_grade=(
+                    str(cached.get("overall_grade")) if cached.get("overall_grade") else None
+                ),
             )
 
         expected = await CurriculumResolutionService.resolve_student_curriculum(
@@ -177,7 +179,9 @@ class ReportReadinessService:
                     else None
                 ),
                 "grading_scale_id": (
-                    str(snapshot.grading_scale_id) if snapshot.grading_scale_id is not None else None
+                    str(snapshot.grading_scale_id)
+                    if snapshot.grading_scale_id is not None
+                    else None
                 ),
                 "overall_grade": snapshot.overall_grade,
             },

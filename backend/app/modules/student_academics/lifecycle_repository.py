@@ -300,9 +300,7 @@ class StudentProgressionItemRepository:
         number of candidates cannot be proven, nothing is guessed or mutated.
         """
 
-        items = await StudentProgressionItemRepository.list_for_run(
-            db, run.tenant_id, run.id
-        )
+        items = await StudentProgressionItemRepository.list_for_run(db, run.tenant_id, run.id)
         missing_count = max(run.total_students - len(items), 0)
         if missing_count == 0 or run.created_at is None:
             return items
@@ -322,11 +320,7 @@ class StudentProgressionItemRepository:
         if existing_student_ids:
             query = query.where(StudentEnrollment.student_id.not_in(existing_student_ids))
         candidates = list(
-            (
-                await db.execute(
-                    query.order_by(StudentEnrollment.student_id.asc()).with_for_update()
-                )
-            )
+            (await db.execute(query.order_by(StudentEnrollment.student_id.asc()).with_for_update()))
             .scalars()
             .all()
         )
@@ -353,9 +347,7 @@ class StudentProgressionItemRepository:
                 for enrollment in candidates
             ],
         )
-        return await StudentProgressionItemRepository.list_for_run(
-            db, run.tenant_id, run.id
-        )
+        return await StudentProgressionItemRepository.list_for_run(db, run.tenant_id, run.id)
 
     @staticmethod
     async def get_latest_for_student(

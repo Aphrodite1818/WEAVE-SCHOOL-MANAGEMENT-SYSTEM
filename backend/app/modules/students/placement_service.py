@@ -407,12 +407,15 @@ class StudentPlacementService:
         )
         if current is None or current.academic_session_id != session.id:
             raise ConflictException("Student has no current enrollment for this session.")
-        if await StudentEnrollmentRepository.get_upcoming(
-            db,
-            tenant_id,
-            student.id,
-            lock=True,
-        ) is not None:
+        if (
+            await StudentEnrollmentRepository.get_upcoming(
+                db,
+                tenant_id,
+                student.id,
+                lock=True,
+            )
+            is not None
+        ):
             raise ConflictException(
                 "Student already has an upcoming enrollment. Edit or cancel it first.",
                 payload={"code": "UPCOMING_ENROLLMENT_EXISTS"},
@@ -503,12 +506,15 @@ class StudentPlacementService:
         )
         if current is None or current.academic_session_id != session.id:
             raise ConflictException("Student has no current enrollment for this session.")
-        if await StudentEnrollmentRepository.get_upcoming(
-            db,
-            tenant_id,
-            student.id,
-            lock=True,
-        ) is not None:
+        if (
+            await StudentEnrollmentRepository.get_upcoming(
+                db,
+                tenant_id,
+                student.id,
+                lock=True,
+            )
+            is not None
+        ):
             raise ConflictException(
                 "Student already has an upcoming enrollment. Edit or cancel it first.",
                 payload={"code": "UPCOMING_ENROLLMENT_EXISTS"},

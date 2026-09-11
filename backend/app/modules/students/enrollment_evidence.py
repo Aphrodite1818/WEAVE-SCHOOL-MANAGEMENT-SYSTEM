@@ -133,9 +133,7 @@ class StudentEnrollmentEvidenceService:
         cbt_results = int(
             (
                 await db.execute(
-                    select(func.count())
-                    .select_from(CBTResultIngestionItem)
-                    .where(*cbt_filters)
+                    select(func.count()).select_from(CBTResultIngestionItem).where(*cbt_filters)
                 )
             ).scalar_one()
             or 0
@@ -160,17 +158,23 @@ class StudentEnrollmentEvidenceService:
         """Count protected student activity recorded after a lifecycle event."""
 
         queries = {
-            "attendance": select(func.count()).select_from(StudentAttendanceRecord).where(
+            "attendance": select(func.count())
+            .select_from(StudentAttendanceRecord)
+            .where(
                 StudentAttendanceRecord.tenant_id == tenant_id,
                 StudentAttendanceRecord.student_id == student_id,
                 StudentAttendanceRecord.created_at > after,
             ),
-            "results": select(func.count()).select_from(StudentSubjectResult).where(
+            "results": select(func.count())
+            .select_from(StudentSubjectResult)
+            .where(
                 StudentSubjectResult.tenant_id == tenant_id,
                 StudentSubjectResult.student_id == student_id,
                 StudentSubjectResult.created_at > after,
             ),
-            "report_cards": select(func.count()).select_from(ReportCard).where(
+            "report_cards": select(func.count())
+            .select_from(ReportCard)
+            .where(
                 ReportCard.tenant_id == tenant_id,
                 ReportCard.student_id == student_id,
                 ReportCard.created_at > after,
@@ -182,12 +186,16 @@ class StudentEnrollmentEvidenceService:
                 StudentTermTeacherComment.student_id == student_id,
                 StudentTermTeacherComment.created_at > after,
             ),
-            "cbt_results": select(func.count()).select_from(CBTResultIngestionItem).where(
+            "cbt_results": select(func.count())
+            .select_from(CBTResultIngestionItem)
+            .where(
                 CBTResultIngestionItem.tenant_id == tenant_id,
                 CBTResultIngestionItem.submitted_student_id == student_id,
                 CBTResultIngestionItem.created_at > after,
             ),
-            "progression": select(func.count()).select_from(StudentProgressionItem).where(
+            "progression": select(func.count())
+            .select_from(StudentProgressionItem)
+            .where(
                 StudentProgressionItem.tenant_id == tenant_id,
                 StudentProgressionItem.student_id == student_id,
                 StudentProgressionItem.created_at > after,

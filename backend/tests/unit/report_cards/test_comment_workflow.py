@@ -75,7 +75,9 @@ async def test_subject_teacher_cannot_use_class_teacher_comment_capability(monke
 
 
 @pytest.mark.asyncio
-async def test_teacher_comment_http_boundary_rejects_work_before_results_are_ready(monkeypatch) -> None:
+async def test_teacher_comment_http_boundary_rejects_work_before_results_are_ready(
+    monkeypatch,
+) -> None:
     teacher = TeacherMembership(id=uuid4(), tenant_id=uuid4())
     monkeypatch.setattr(
         ReportCommentService,

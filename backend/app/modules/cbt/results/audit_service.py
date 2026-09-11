@@ -73,11 +73,7 @@ class CBTResultIngestionAuditService:
         created_from: datetime | None,
         created_to: datetime | None,
     ) -> None:
-        if (
-            created_from is not None
-            and created_to is not None
-            and created_from > created_to
-        ):
+        if created_from is not None and created_to is not None and created_from > created_to:
             raise BadRequestException("created_from cannot be after created_to.")
 
     @staticmethod
@@ -96,14 +92,10 @@ class CBTResultIngestionAuditService:
         term_pairs = {(batch.tenant_id, batch.academic_term_id) for batch in batches}
         level_pairs = {(batch.tenant_id, batch.academic_level_id) for batch in batches}
         subject_pairs = {(batch.tenant_id, batch.curriculum_subject_id) for batch in batches}
-        component_pairs = {
-            (batch.tenant_id, batch.assessment_component_id) for batch in batches
-        }
+        component_pairs = {(batch.tenant_id, batch.assessment_component_id) for batch in batches}
 
         tenant_rows = (
-            await db.execute(
-                select(Tenant.id, Tenant.school_name).where(Tenant.id.in_(tenant_ids))
-            )
+            await db.execute(select(Tenant.id, Tenant.school_name).where(Tenant.id.in_(tenant_ids)))
         ).all()
         tenant_names = {tenant_id: name for tenant_id, name in tenant_rows}
 
@@ -114,9 +106,7 @@ class CBTResultIngestionAuditService:
                 )
             )
         ).all()
-        server_names = {
-            (tenant_id, row_id): name for tenant_id, row_id, name in server_rows
-        }
+        server_names = {(tenant_id, row_id): name for tenant_id, row_id, name in server_rows}
 
         session_rows = (
             await db.execute(
@@ -124,16 +114,10 @@ class CBTResultIngestionAuditService:
                     AcademicSession.tenant_id,
                     AcademicSession.id,
                     AcademicSession.name,
-                ).where(
-                    tuple_(AcademicSession.tenant_id, AcademicSession.id).in_(
-                        session_pairs
-                    )
-                )
+                ).where(tuple_(AcademicSession.tenant_id, AcademicSession.id).in_(session_pairs))
             )
         ).all()
-        session_names = {
-            (tenant_id, row_id): name for tenant_id, row_id, name in session_rows
-        }
+        session_names = {(tenant_id, row_id): name for tenant_id, row_id, name in session_rows}
 
         term_rows = (
             await db.execute(
@@ -143,8 +127,7 @@ class CBTResultIngestionAuditService:
             )
         ).all()
         term_names = {
-            (tenant_id, row_id): _enum_label(name)
-            for tenant_id, row_id, name in term_rows
+            (tenant_id, row_id): _enum_label(name) for tenant_id, row_id, name in term_rows
         }
 
         level_rows = (
@@ -154,9 +137,7 @@ class CBTResultIngestionAuditService:
                 )
             )
         ).all()
-        level_names = {
-            (tenant_id, row_id): name for tenant_id, row_id, name in level_rows
-        }
+        level_names = {(tenant_id, row_id): name for tenant_id, row_id, name in level_rows}
 
         subject_rows = (
             await db.execute(
@@ -168,16 +149,10 @@ class CBTResultIngestionAuditService:
                         Subject.tenant_id == CurriculumSubject.tenant_id,
                     ),
                 )
-                .where(
-                    tuple_(CurriculumSubject.tenant_id, CurriculumSubject.id).in_(
-                        subject_pairs
-                    )
-                )
+                .where(tuple_(CurriculumSubject.tenant_id, CurriculumSubject.id).in_(subject_pairs))
             )
         ).all()
-        subject_names = {
-            (tenant_id, row_id): name for tenant_id, row_id, name in subject_rows
-        }
+        subject_names = {(tenant_id, row_id): name for tenant_id, row_id, name in subject_rows}
 
         component_rows = (
             await db.execute(
@@ -192,10 +167,7 @@ class CBTResultIngestionAuditService:
                 )
             )
         ).all()
-        component_names = {
-            (tenant_id, row_id): name
-            for tenant_id, row_id, name in component_rows
-        }
+        component_names = {(tenant_id, row_id): name for tenant_id, row_id, name in component_rows}
 
         responses: list[CBTResultIngestionBatchResponse] = []
         for batch in batches:
@@ -204,16 +176,12 @@ class CBTResultIngestionAuditService:
             term_name = term_names.get((tenant_id, batch.academic_term_id))
             level_name = level_names.get((tenant_id, batch.academic_level_id))
             subject_name = subject_names.get((tenant_id, batch.curriculum_subject_id))
-            component_name = component_names.get(
-                (tenant_id, batch.assessment_component_id)
-            )
+            component_name = component_names.get((tenant_id, batch.assessment_component_id))
             responses.append(
                 CBTResultIngestionBatchResponse.model_validate(batch).model_copy(
                     update={
                         "tenant_name": tenant_names.get(tenant_id),
-                        "server_name": server_names.get(
-                            (tenant_id, batch.cbt_server_id)
-                        ),
+                        "server_name": server_names.get((tenant_id, batch.cbt_server_id)),
                         "academic_session_name": session_name,
                         "academic_term_name": term_name,
                         "academic_level_name": level_name,
@@ -269,9 +237,7 @@ class CBTResultIngestionAuditService:
             if identity is not None:
                 first_name, last_name, admission_number = identity
                 display_name = " ".join(
-                    part.strip()
-                    for part in (first_name or "", last_name or "")
-                    if part.strip()
+                    part.strip() for part in (first_name or "", last_name or "") if part.strip()
                 )
                 student_name = display_name or admission_number
 
@@ -307,10 +273,8 @@ class CBTResultIngestionAuditService:
                 .outerjoin(
                     CurriculumSubject,
                     and_(
-                        CurriculumSubject.id
-                        == CBTResultIngestionBatch.curriculum_subject_id,
-                        CurriculumSubject.tenant_id
-                        == CBTResultIngestionBatch.tenant_id,
+                        CurriculumSubject.id == CBTResultIngestionBatch.curriculum_subject_id,
+                        CurriculumSubject.tenant_id == CBTResultIngestionBatch.tenant_id,
                     ),
                 )
                 .outerjoin(
@@ -323,10 +287,8 @@ class CBTResultIngestionAuditService:
                 .outerjoin(
                     AssessmentComponent,
                     and_(
-                        AssessmentComponent.id
-                        == CBTResultIngestionBatch.assessment_component_id,
-                        AssessmentComponent.tenant_id
-                        == CBTResultIngestionBatch.tenant_id,
+                        AssessmentComponent.id == CBTResultIngestionBatch.assessment_component_id,
+                        AssessmentComponent.tenant_id == CBTResultIngestionBatch.tenant_id,
                     ),
                 )
                 .outerjoin(
@@ -392,11 +354,7 @@ class CBTResultIngestionAuditService:
             return [
                 CBTResultAuditFilterOption(
                     id=row_id,
-                    label=(
-                        _enum_label(label)
-                        if hasattr(label, "value")
-                        else str(label)
-                    ),
+                    label=(_enum_label(label) if hasattr(label, "value") else str(label)),
                 )
                 for row_id, label in rows
             ]
@@ -438,10 +396,8 @@ class CBTResultIngestionAuditService:
                 .join(
                     CBTResultIngestionBatch,
                     and_(
-                        CBTResultIngestionBatch.curriculum_subject_id
-                        == CurriculumSubject.id,
-                        CBTResultIngestionBatch.tenant_id
-                        == CurriculumSubject.tenant_id,
+                        CBTResultIngestionBatch.curriculum_subject_id == CurriculumSubject.id,
+                        CBTResultIngestionBatch.tenant_id == CurriculumSubject.tenant_id,
                     ),
                 )
                 .join(
@@ -457,8 +413,7 @@ class CBTResultIngestionAuditService:
             )
         ).all()
         subjects = [
-            CBTResultAuditFilterOption(id=row_id, label=name)
-            for row_id, name in subject_rows
+            CBTResultAuditFilterOption(id=row_id, label=name) for row_id, name in subject_rows
         ]
 
         return CBTResultAuditFilterOptionsResponse(

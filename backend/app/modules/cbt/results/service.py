@@ -14,11 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictException
 from app.modules.cbt.auth.schemas import AuthenticatedCBTServer
-from app.modules.cbt.results.models import (
-    CBTResultIngestionBatch,
-    CBTResultIngestionItem
-)
-from app.modules.cbt.enums import(
+from app.modules.cbt.results.models import CBTResultIngestionBatch, CBTResultIngestionItem
+from app.modules.cbt.enums import (
     CBTResultIngestionOutcome,
     CBTResultIngestionStatus,
 )
@@ -112,9 +109,7 @@ class CBTResultIngestionService:
             (
                 {
                     "student_id": str(item.student_id),
-                    "score": (
-                        f"{item.score.quantize(_SCORE_QUANTUM):.2f}"
-                    ),
+                    "score": (f"{item.score.quantize(_SCORE_QUANTUM):.2f}"),
                 }
                 for item in payload.scores
             ),
@@ -124,21 +119,11 @@ class CBTResultIngestionService:
         canonical_payload = {
             "batch_id": str(payload.batch_id),
             "source_exam_id": str(payload.source_exam_id),
-            "academic_session_id": str(
-                payload.academic_session_id
-            ),
-            "academic_term_id": str(
-                payload.academic_term_id
-            ),
-            "academic_level_id": str(
-                payload.academic_level_id
-            ),
-            "curriculum_subject_id": str(
-                payload.curriculum_subject_id
-            ),
-            "assessment_component_id": str(
-                payload.assessment_component_id
-            ),
+            "academic_session_id": str(payload.academic_session_id),
+            "academic_term_id": str(payload.academic_term_id),
+            "academic_level_id": str(payload.academic_level_id),
+            "curriculum_subject_id": str(payload.curriculum_subject_id),
+            "assessment_component_id": str(payload.assessment_component_id),
             "exam_date": payload.exam_date.isoformat(),
             "scores": scores,
         }
@@ -159,13 +144,8 @@ class CBTResultIngestionService:
     ) -> CBTResultBulkResponse:
         """Rebuild the acknowledgement for an idempotent replay."""
 
-        if (
-            batch.status not in cls._REPLAYABLE_STATUSES
-            or batch.processed_at is None
-        ):
-            raise ConflictException(
-                "This CBT result batch has not reached a replayable state."
-            )
+        if batch.status not in cls._REPLAYABLE_STATUSES or batch.processed_at is None:
+            raise ConflictException("This CBT result batch has not reached a replayable state.")
 
         items, _ = await CBTResultIngestionRepository.list_items(
             db,
@@ -180,14 +160,10 @@ class CBTResultIngestionService:
             CBTResultBulkError(
                 student_id=item.submitted_student_id,
                 code=item.error_code or "REJECTED",
-                detail=(
-                    item.error_detail
-                    or "The CBT result score was rejected."
-                ),
+                detail=(item.error_detail or "The CBT result score was rejected."),
             )
             for item in items
-            if item.outcome
-            == CBTResultIngestionOutcome.REJECTED
+            if item.outcome == CBTResultIngestionOutcome.REJECTED
         ]
 
         return CBTResultBulkResponse(
@@ -215,8 +191,7 @@ class CBTResultIngestionService:
 
         if batch.request_hash != request_hash:
             raise ConflictException(
-                "This CBT batch_id has already been used "
-                "with a different payload."
+                "This CBT batch_id has already been used with a different payload."
             )
 
         if batch.status in cls._REPLAYABLE_STATUSES:
@@ -226,9 +201,7 @@ class CBTResultIngestionService:
             )
 
         if batch.status == CBTResultIngestionStatus.PROCESSING:
-            raise ConflictException(
-                "This CBT result batch is already being processed."
-            )
+            raise ConflictException("This CBT result batch is already being processed.")
 
         raise ConflictException(
             "A previous attempt using this CBT batch_id failed. "
@@ -258,13 +231,10 @@ class CBTResultIngestionService:
         CBT owns exam eligibility.
         """
 
-        session = (
-            await StudentAcademicRepository
-            .get_academic_session_by_id(
-                db,
-                tenant_id,
-                payload.academic_session_id,
-            )
+        session = await StudentAcademicRepository.get_academic_session_by_id(
+            db,
+            tenant_id,
+            payload.academic_session_id,
         )
 
         term = await StudentAcademicRepository.get_term_by_id(
@@ -276,8 +246,7 @@ class CBTResultIngestionService:
         if (
             session is None
             or term is None
-            or term.academic_session_id
-            != payload.academic_session_id
+            or term.academic_session_id != payload.academic_session_id
         ):
             return None, (
                 "INVALID_ACADEMIC_PERIOD",
@@ -293,8 +262,7 @@ class CBTResultIngestionService:
         ):
             return None, (
                 "ACADEMIC_PERIOD_NOT_WRITABLE",
-                "CBT results can only modify the current "
-                "open session and term.",
+                "CBT results can only modify the current open session and term.",
             )
 
         if payload.exam_date > date.today():
@@ -303,24 +271,16 @@ class CBTResultIngestionService:
                 "The exam date cannot be in the future.",
             )
 
-        if (
-            session.start_date is not None
-            and payload.exam_date < session.start_date
-        ) or (
-            session.end_date is not None
-            and payload.exam_date > session.end_date
+        if (session.start_date is not None and payload.exam_date < session.start_date) or (
+            session.end_date is not None and payload.exam_date > session.end_date
         ):
             return None, (
                 "EXAM_DATE_OUTSIDE_SESSION",
                 "The exam date falls outside the academic session.",
             )
 
-        if (
-            term.start_date is not None
-            and payload.exam_date < term.start_date
-        ) or (
-            term.end_date is not None
-            and payload.exam_date > term.end_date
+        if (term.start_date is not None and payload.exam_date < term.start_date) or (
+            term.end_date is not None and payload.exam_date > term.end_date
         ):
             return None, (
                 "EXAM_DATE_OUTSIDE_TERM",
@@ -351,12 +311,10 @@ class CBTResultIngestionService:
         # - department resolution;
         # - current applicability;
         # - is_active check.
-        curriculum_subject = (
-            await CurriculumSubjectRepository.get_by_id(
-                db,
-                tenant_id,
-                payload.curriculum_subject_id,
-            )
+        curriculum_subject = await CurriculumSubjectRepository.get_by_id(
+            db,
+            tenant_id,
+            payload.curriculum_subject_id,
         )
 
         if curriculum_subject is None:
@@ -374,8 +332,7 @@ class CBTResultIngestionService:
         if component is None or not component.is_active:
             return None, (
                 "INVALID_ASSESSMENT_COMPONENT",
-                "The submitted assessment component "
-                "is invalid or inactive.",
+                "The submitted assessment component is invalid or inactive.",
             )
 
         scheme = await AssessmentRepository.get_scheme(
@@ -384,14 +341,10 @@ class CBTResultIngestionService:
             component.assessment_scheme_id,
         )
 
-        if (
-            scheme is None
-            or scheme.status != AssessmentSchemeStatus.ACTIVE
-        ):
+        if scheme is None or scheme.status != AssessmentSchemeStatus.ACTIVE:
             return None, (
                 "INVALID_ASSESSMENT_SCHEME",
-                "The assessment component does not belong "
-                "to the active assessment scheme.",
+                "The assessment component does not belong to the active assessment scheme.",
             )
 
         components = await AssessmentRepository.list_components(
@@ -401,21 +354,14 @@ class CBTResultIngestionService:
         )
 
         maximum_total = sum(
-            (
-                item.maximum_score
-                for item in components
-            ),
+            (item.maximum_score for item in components),
             Decimal("0"),
         )
 
-        if (
-            not components
-            or maximum_total != Decimal("100")
-        ):
+        if not components or maximum_total != Decimal("100"):
             return None, (
                 "INVALID_ASSESSMENT_SCHEME",
-                "The active assessment scheme must contain "
-                "active components totalling 100.",
+                "The active assessment scheme must contain active components totalling 100.",
             )
 
         return (
@@ -540,22 +486,17 @@ class CBTResultIngestionService:
         if not results:
             return
 
-        component_rows = (
-            await StudentAcademicRepository
-            .list_result_component_scores_batch(
-                db,
-                tenant_id,
-                results,
-            )
+        component_rows = await StudentAcademicRepository.list_result_component_scores_batch(
+            db,
+            tenant_id,
+            results,
         )
 
-        grading_scales, _ = (
-            await StudentAcademicRepository.list_grading_scales(
-                db,
-                tenant_id,
-                limit=1000,
-                active_only=True,
-            )
+        grading_scales, _ = await StudentAcademicRepository.list_grading_scales(
+            db,
+            tenant_id,
+            limit=1000,
+            active_only=True,
         )
 
         for result in results:
@@ -565,21 +506,11 @@ class CBTResultIngestionService:
             )
 
             total = sum(
-                (
-                    score.score
-                    for _component, score in rows
-                    if score is not None
-                ),
+                (score.score for _component, score in rows if score is not None),
                 Decimal("0"),
             )
 
-            complete = (
-                bool(rows)
-                and all(
-                    score is not None
-                    for _component, score in rows
-                )
-            )
+            complete = bool(rows) and all(score is not None for _component, score in rows)
 
             result.total_score = total
 
@@ -665,14 +596,11 @@ class CBTResultIngestionService:
         # Idempotency lookup
         # --------------------------------------------------------------
 
-        existing_batch = (
-            await CBTResultIngestionRepository
-            .get_by_client_batch_id(
-                db,
-                tenant_id=tenant_id,
-                cbt_server_id=server.server_id,
-                batch_id=payload.batch_id,
-            )
+        existing_batch = await CBTResultIngestionRepository.get_by_client_batch_id(
+            db,
+            tenant_id=tenant_id,
+            cbt_server_id=server.server_id,
+            batch_id=payload.batch_id,
         )
 
         if existing_batch is not None:
@@ -697,9 +625,7 @@ class CBTResultIngestionService:
             academic_term_id=payload.academic_term_id,
             academic_level_id=payload.academic_level_id,
             curriculum_subject_id=payload.curriculum_subject_id,
-            assessment_component_id=(
-                payload.assessment_component_id
-            ),
+            assessment_component_id=(payload.assessment_component_id),
             exam_date=payload.exam_date,
             status=CBTResultIngestionStatus.PROCESSING,
             received_count=len(payload.scores),
@@ -722,14 +648,11 @@ class CBTResultIngestionService:
             # tenant/server/batch_id race.
             await db.rollback()
 
-            winner = (
-                await CBTResultIngestionRepository
-                .get_by_client_batch_id(
-                    db,
-                    tenant_id=tenant_id,
-                    cbt_server_id=server.server_id,
-                    batch_id=payload.batch_id,
-                )
+            winner = await CBTResultIngestionRepository.get_by_client_batch_id(
+                db,
+                tenant_id=tenant_id,
+                cbt_server_id=server.server_id,
+                batch_id=payload.batch_id,
             )
 
             if winner is not None:
@@ -739,9 +662,7 @@ class CBTResultIngestionService:
                     request_hash=request_hash,
                 )
 
-            raise ConflictException(
-                "Concurrent CBT batch creation detected."
-            ) from exc
+            raise ConflictException("Concurrent CBT batch creation detected.") from exc
 
         try:
             # ----------------------------------------------------------
@@ -770,12 +691,10 @@ class CBTResultIngestionService:
             # Shared context
             # ----------------------------------------------------------
 
-            context, context_error = (
-                await cls._load_shared_context(
-                    db,
-                    tenant_id=tenant_id,
-                    payload=payload,
-                )
+            context, context_error = await cls._load_shared_context(
+                db,
+                tenant_id=tenant_id,
+                payload=payload,
             )
 
             if context_error is not None:
@@ -795,9 +714,7 @@ class CBTResultIngestionService:
             # In-memory processing state
             # ----------------------------------------------------------
 
-            audit_items: list[
-                CBTResultIngestionItem
-            ] = []
+            audit_items: list[CBTResultIngestionItem] = []
 
             errors_by_student: dict[
                 UUID,
@@ -828,27 +745,19 @@ class CBTResultIngestionService:
                         tenant_id=tenant_id,
                         ingestion_batch_id=batch.id,
                         submitted_student_id=student_id,
-                        resolved_teacher_assignment_id=(
-                            resolved_teacher_assignment_id
-                        ),
+                        resolved_teacher_assignment_id=(resolved_teacher_assignment_id),
                         incoming_score=incoming_score,
                         previous_score=previous_score,
                         resulting_score=resulting_score,
-                        student_subject_result_id=(
-                            student_subject_result_id
-                        ),
-                        outcome=(
-                            CBTResultIngestionOutcome.REJECTED
-                        ),
+                        student_subject_result_id=(student_subject_result_id),
+                        outcome=(CBTResultIngestionOutcome.REJECTED),
                         error_code=code,
                         error_detail=detail,
                         processed_at=processed_at,
                     )
                 )
 
-                errors_by_student[
-                    student_id
-                ] = CBTResultBulkError(
+                errors_by_student[student_id] = CBTResultBulkError(
                     student_id=student_id,
                     code=code,
                     detail=detail,
@@ -856,10 +765,7 @@ class CBTResultIngestionService:
 
                 finished_students.add(student_id)
 
-            submitted_student_ids = {
-                item.student_id
-                for item in payload.scores
-            }
+            submitted_student_ids = {item.student_id for item in payload.scores}
 
             # ----------------------------------------------------------
             # 1. Resolve tenant-owned students
@@ -877,16 +783,13 @@ class CBTResultIngestionService:
             # 2. Resolve historical placement on exam_date
             # ----------------------------------------------------------
 
-            enrollments = (
-                await StudentEnrollmentRepository
-                .get_for_students_on_date(
-                    db,
-                    tenant_id,
-                    known_student_ids,
-                    payload.academic_session_id,
-                    payload.exam_date,
-                    lock=True,
-                )
+            enrollments = await StudentEnrollmentRepository.get_for_students_on_date(
+                db,
+                tenant_id,
+                known_student_ids,
+                payload.academic_session_id,
+                payload.exam_date,
+                lock=True,
             )
 
             for item in payload.scores:
@@ -895,16 +798,11 @@ class CBTResultIngestionService:
                         student_id=item.student_id,
                         incoming_score=item.score,
                         code="STUDENT_NOT_FOUND",
-                        detail=(
-                            "The submitted student does not "
-                            "exist within this tenant."
-                        ),
+                        detail=("The submitted student does not exist within this tenant."),
                     )
                     continue
 
-                enrollment = enrollments.get(
-                    item.student_id
-                )
+                enrollment = enrollments.get(item.student_id)
 
                 if enrollment is None:
                     reject(
@@ -912,8 +810,7 @@ class CBTResultIngestionService:
                         incoming_score=item.score,
                         code="ENROLLMENT_NOT_FOUND",
                         detail=(
-                            "The student had no authoritative "
-                            "enrollment covering the exam date."
+                            "The student had no authoritative enrollment covering the exam date."
                         ),
                     )
                     continue
@@ -922,10 +819,7 @@ class CBTResultIngestionService:
                 #
                 # It merely proves the CBT batch's claimed level agrees
                 # with the student's historical placement.
-                if (
-                    enrollment.academic_level_id
-                    != payload.academic_level_id
-                ):
+                if enrollment.academic_level_id != payload.academic_level_id:
                     reject(
                         student_id=item.student_id,
                         incoming_score=item.score,
@@ -943,10 +837,7 @@ class CBTResultIngestionService:
                         student_id=item.student_id,
                         incoming_score=item.score,
                         code="CLASS_NOT_FOUND",
-                        detail=(
-                            "The student's exam-date enrollment "
-                            "does not contain a class."
-                        ),
+                        detail=("The student's exam-date enrollment does not contain a class."),
                     )
 
             # ----------------------------------------------------------
@@ -976,8 +867,7 @@ class CBTResultIngestionService:
             }
 
             assignments = (
-                await StudentAcademicRepository
-                .get_teacher_assignments_for_classes_on_date(
+                await StudentAcademicRepository.get_teacher_assignments_for_classes_on_date(
                     db,
                     tenant_id,
                     remaining_class_ids,
@@ -993,9 +883,7 @@ class CBTResultIngestionService:
 
                 enrollment = enrollments[item.student_id]
 
-                assignment = assignments.get(
-                    enrollment.class_id
-                )
+                assignment = assignments.get(enrollment.class_id)
 
                 if assignment is None:
                     reject(
@@ -1003,22 +891,16 @@ class CBTResultIngestionService:
                         incoming_score=item.score,
                         code="TEACHER_ASSIGNMENT_NOT_FOUND",
                         detail=(
-                            "No teacher assignment covered this "
-                            "class and subject on the exam date."
+                            "No teacher assignment covered this class and subject on the exam date."
                         ),
                     )
                     continue
 
-                if (
-                    item.score
-                    > context.component.maximum_score
-                ):
+                if item.score > context.component.maximum_score:
                     reject(
                         student_id=item.student_id,
                         incoming_score=item.score,
-                        resolved_teacher_assignment_id=(
-                            assignment.id
-                        ),
+                        resolved_teacher_assignment_id=(assignment.id),
                         code="SCORE_EXCEEDS_COMPONENT_MAXIMUM",
                         detail=(
                             f"{context.component.name} score "
@@ -1037,37 +919,28 @@ class CBTResultIngestionService:
             # 4. Lock/load existing canonical result parents
             # ----------------------------------------------------------
 
-            existing_results = (
-                await StudentAcademicRepository
-                .get_results_by_scope_batch(
-                    db,
-                    tenant_id,
-                    candidate_student_ids,
-                    payload.curriculum_subject_id,
-                    payload.academic_session_id,
-                    payload.academic_term_id,
-                    lock=True,
-                )
+            existing_results = await StudentAcademicRepository.get_results_by_scope_batch(
+                db,
+                tenant_id,
+                candidate_student_ids,
+                payload.curriculum_subject_id,
+                payload.academic_session_id,
+                payload.academic_term_id,
+                lock=True,
             )
 
-            existing_result_ids = {
-                result.id
-                for result in existing_results.values()
-            }
+            existing_result_ids = {result.id for result in existing_results.values()}
 
             # ----------------------------------------------------------
             # 5. Lock/load target component scores
             # ----------------------------------------------------------
 
-            existing_component_scores = (
-                await StudentAcademicRepository
-                .get_component_scores_batch(
-                    db,
-                    tenant_id,
-                    existing_result_ids,
-                    payload.assessment_component_id,
-                    lock=True,
-                )
+            existing_component_scores = await StudentAcademicRepository.get_component_scores_batch(
+                db,
+                tenant_id,
+                existing_result_ids,
+                payload.assessment_component_id,
+                lock=True,
             )
 
             apply_existing: set[UUID] = set()
@@ -1083,29 +956,19 @@ class CBTResultIngestionService:
 
                 enrollment = enrollments[item.student_id]
 
-                assignment = assignments[
-                    enrollment.class_id
-                ]
+                assignment = assignments[enrollment.class_id]
 
-                result = existing_results.get(
-                    item.student_id
-                )
+                result = existing_results.get(item.student_id)
 
                 # No canonical result yet.
                 if result is None:
                     create_new.add(item.student_id)
                     continue
 
-                previous_component = (
-                    existing_component_scores.get(
-                        result.id
-                    )
-                )
+                previous_component = existing_component_scores.get(result.id)
 
                 previous_score = (
-                    previous_component.score
-                    if previous_component is not None
-                    else None
+                    previous_component.score if previous_component is not None else None
                 )
 
                 # CBT only writes DRAFT canonical state.
@@ -1113,40 +976,29 @@ class CBTResultIngestionService:
                     reject(
                         student_id=item.student_id,
                         incoming_score=item.score,
-                        resolved_teacher_assignment_id=(
-                            assignment.id
-                        ),
+                        resolved_teacher_assignment_id=(assignment.id),
                         student_subject_result_id=result.id,
                         previous_score=previous_score,
                         resulting_score=previous_score,
                         code="RESULT_NOT_DRAFT",
                         detail=(
-                            "CBT cannot modify a submitted, "
-                            "approved or locked canonical result."
+                            "CBT cannot modify a submitted, approved or locked canonical result."
                         ),
                     )
                     continue
 
                 # Existing parent result must use the same scheme as
                 # the CBT component being ingested.
-                if (
-                    result.assessment_scheme_id
-                    != context.scheme.id
-                ):
+                if result.assessment_scheme_id != context.scheme.id:
                     reject(
                         student_id=item.student_id,
                         incoming_score=item.score,
-                        resolved_teacher_assignment_id=(
-                            assignment.id
-                        ),
+                        resolved_teacher_assignment_id=(assignment.id),
                         student_subject_result_id=result.id,
                         previous_score=previous_score,
                         resulting_score=previous_score,
                         code="ASSESSMENT_SCHEME_CONFLICT",
-                        detail=(
-                            "The canonical result belongs to "
-                            "a different assessment scheme."
-                        ),
+                        detail=("The canonical result belongs to a different assessment scheme."),
                     )
                     continue
 
@@ -1157,43 +1009,26 @@ class CBTResultIngestionService:
                 if previous_component is not None:
                     # Exact duplicate = idempotent at score level.
                     if previous_component.score == item.score:
-                        processed_at = datetime.now(
-                            timezone.utc
-                        )
+                        processed_at = datetime.now(timezone.utc)
 
                         audit_items.append(
                             CBTResultIngestionItem(
                                 tenant_id=tenant_id,
                                 ingestion_batch_id=batch.id,
-                                submitted_student_id=(
-                                    item.student_id
-                                ),
-                                resolved_teacher_assignment_id=(
-                                    assignment.id
-                                ),
+                                submitted_student_id=(item.student_id),
+                                resolved_teacher_assignment_id=(assignment.id),
                                 incoming_score=item.score,
-                                previous_score=(
-                                    previous_component.score
-                                ),
-                                resulting_score=(
-                                    previous_component.score
-                                ),
-                                student_subject_result_id=(
-                                    result.id
-                                ),
-                                outcome=(
-                                    CBTResultIngestionOutcome
-                                    .UNCHANGED
-                                ),
+                                previous_score=(previous_component.score),
+                                resulting_score=(previous_component.score),
+                                student_subject_result_id=(result.id),
+                                outcome=(CBTResultIngestionOutcome.UNCHANGED),
                                 error_code=None,
                                 error_detail=None,
                                 processed_at=processed_at,
                             )
                         )
 
-                        finished_students.add(
-                            item.student_id
-                        )
+                        finished_students.add(item.student_id)
 
                     # Different existing canonical value:
                     # ADMINISTRATIVE/CANONICAL DECISION WINS.
@@ -1201,18 +1036,10 @@ class CBTResultIngestionService:
                         reject(
                             student_id=item.student_id,
                             incoming_score=item.score,
-                            resolved_teacher_assignment_id=(
-                                assignment.id
-                            ),
-                            student_subject_result_id=(
-                                result.id
-                            ),
-                            previous_score=(
-                                previous_component.score
-                            ),
-                            resulting_score=(
-                                previous_component.score
-                            ),
+                            resolved_teacher_assignment_id=(assignment.id),
+                            student_subject_result_id=(result.id),
+                            previous_score=(previous_component.score),
+                            resulting_score=(previous_component.score),
                             code="SCORE_CONFLICT",
                             detail=(
                                 "A different canonical Weave "
@@ -1230,9 +1057,7 @@ class CBTResultIngestionService:
             # 7. Create missing StudentSubjectResult parents
             # ----------------------------------------------------------
 
-            new_results: list[
-                StudentSubjectResult
-            ] = []
+            new_results: list[StudentSubjectResult] = []
 
             for item in payload.scores:
                 if item.student_id not in create_new:
@@ -1240,9 +1065,7 @@ class CBTResultIngestionService:
 
                 enrollment = enrollments[item.student_id]
 
-                assignment = assignments[
-                    enrollment.class_id
-                ]
+                assignment = assignments[enrollment.class_id]
 
                 new_results.append(
                     StudentSubjectResult(
@@ -1250,20 +1073,12 @@ class CBTResultIngestionService:
                         student_id=item.student_id,
                         class_id=enrollment.class_id,
                         subject_id=context.subject_id,
-                        teacher_membership_id=(
-                            assignment.teacher_membership_id
-                        ),
-                        curriculum_subject_id=(
-                            payload.curriculum_subject_id
-                        ),
+                        teacher_membership_id=(assignment.teacher_membership_id),
+                        curriculum_subject_id=(payload.curriculum_subject_id),
                         teacher_assignment_id=assignment.id,
                         student_enrollment_id=enrollment.id,
-                        academic_session_id=(
-                            payload.academic_session_id
-                        ),
-                        academic_term_id=(
-                            payload.academic_term_id
-                        ),
+                        academic_session_id=(payload.academic_session_id),
+                        academic_term_id=(payload.academic_term_id),
                         grading_scale_id=None,
                         assessment_scheme_id=context.scheme.id,
                         total_score=Decimal("0"),
@@ -1280,10 +1095,7 @@ class CBTResultIngestionService:
                 new_results,
             )
 
-            new_results_by_student = {
-                result.student_id: result
-                for result in new_results
-            }
+            new_results_by_student = {result.student_id: result for result in new_results}
 
             all_results = {
                 **existing_results,
@@ -1294,19 +1106,11 @@ class CBTResultIngestionService:
             # 8. Insert only genuinely missing component scores
             # ----------------------------------------------------------
 
-            applied_student_ids = (
-                apply_existing
-                | create_new
-            )
+            applied_student_ids = apply_existing | create_new
 
-            score_by_student = {
-                item.student_id: item
-                for item in payload.scores
-            }
+            score_by_student = {item.student_id: item for item in payload.scores}
 
-            new_component_scores: list[
-                StudentAssessmentScore
-            ] = []
+            new_component_scores: list[StudentAssessmentScore] = []
 
             for student_id in applied_student_ids:
                 result = all_results[student_id]
@@ -1316,9 +1120,7 @@ class CBTResultIngestionService:
                     StudentAssessmentScore(
                         tenant_id=tenant_id,
                         student_subject_result_id=result.id,
-                        assessment_component_id=(
-                            payload.assessment_component_id
-                        ),
+                        assessment_component_id=(payload.assessment_component_id),
                         score=incoming.score,
                     )
                 )
@@ -1332,10 +1134,7 @@ class CBTResultIngestionService:
             # 9. Recompute affected result totals / grades
             # ----------------------------------------------------------
 
-            changed_results = [
-                all_results[student_id]
-                for student_id in applied_student_ids
-            ]
+            changed_results = [all_results[student_id] for student_id in applied_student_ids]
 
             await cls._recompute_results(
                 db,
@@ -1356,9 +1155,7 @@ class CBTResultIngestionService:
                 incoming = score_by_student[student_id]
                 enrollment = enrollments[student_id]
 
-                assignment = assignments[
-                    enrollment.class_id
-                ]
+                assignment = assignments[enrollment.class_id]
 
                 result = all_results[student_id]
 
@@ -1367,21 +1164,15 @@ class CBTResultIngestionService:
                         tenant_id=tenant_id,
                         ingestion_batch_id=batch.id,
                         submitted_student_id=student_id,
-                        resolved_teacher_assignment_id=(
-                            assignment.id
-                        ),
+                        resolved_teacher_assignment_id=(assignment.id),
                         incoming_score=incoming.score,
                         previous_score=None,
                         resulting_score=incoming.score,
                         student_subject_result_id=result.id,
-                        outcome=(
-                            CBTResultIngestionOutcome.APPLIED
-                        ),
+                        outcome=(CBTResultIngestionOutcome.APPLIED),
                         error_code=None,
                         error_detail=None,
-                        processed_at=datetime.now(
-                            timezone.utc
-                        ),
+                        processed_at=datetime.now(timezone.utc),
                     )
                 )
 
@@ -1397,21 +1188,15 @@ class CBTResultIngestionService:
             )
 
             applied_count = sum(
-                item.outcome
-                == CBTResultIngestionOutcome.APPLIED
-                for item in audit_items
+                item.outcome == CBTResultIngestionOutcome.APPLIED for item in audit_items
             )
 
             unchanged_count = sum(
-                item.outcome
-                == CBTResultIngestionOutcome.UNCHANGED
-                for item in audit_items
+                item.outcome == CBTResultIngestionOutcome.UNCHANGED for item in audit_items
             )
 
             rejected_count = sum(
-                item.outcome
-                == CBTResultIngestionOutcome.REJECTED
-                for item in audit_items
+                item.outcome == CBTResultIngestionOutcome.REJECTED for item in audit_items
             )
 
             processed_at = datetime.now(timezone.utc)
@@ -1421,20 +1206,13 @@ class CBTResultIngestionService:
             # ----------------------------------------------------------
 
             if rejected_count == len(payload.scores):
-                batch.status = (
-                    CBTResultIngestionStatus.REJECTED
-                )
+                batch.status = CBTResultIngestionStatus.REJECTED
 
             elif rejected_count:
-                batch.status = (
-                    CBTResultIngestionStatus
-                    .COMPLETED_WITH_REJECTIONS
-                )
+                batch.status = CBTResultIngestionStatus.COMPLETED_WITH_REJECTIONS
 
             else:
-                batch.status = (
-                    CBTResultIngestionStatus.COMPLETED
-                )
+                batch.status = CBTResultIngestionStatus.COMPLETED
 
             batch.applied_count = applied_count
             batch.unchanged_count = unchanged_count
@@ -1474,8 +1252,7 @@ class CBTResultIngestionService:
             await db.rollback()
 
             raise ConflictException(
-                "Concurrent modification of CBT academic "
-                "results detected. Retry the batch."
+                "Concurrent modification of CBT academic results detected. Retry the batch."
             ) from exc
 
         except Exception:

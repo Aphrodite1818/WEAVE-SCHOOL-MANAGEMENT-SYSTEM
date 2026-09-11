@@ -340,9 +340,7 @@ class StudentEnrollment(BaseModel):
     @is_current.expression
     def is_current(cls):
         today = func.current_date()
-        return (cls.started_on <= today) & (
-            cls.ended_on.is_(None) | (cls.ended_on >= today)
-        )
+        return (cls.started_on <= today) & (cls.ended_on.is_(None) | (cls.ended_on >= today))
 
     __table_args__ = (
         CheckConstraint(

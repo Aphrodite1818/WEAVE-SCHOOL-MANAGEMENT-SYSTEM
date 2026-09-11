@@ -78,7 +78,6 @@ class PlacementImpactPreviewRequest(EnrollmentInput):
     effective_date: date
 
 
-
 class StudentUpcomingEnrollmentUpdateRequest(EnrollmentInput):
     """Edit a placement segment before it becomes effective."""
 

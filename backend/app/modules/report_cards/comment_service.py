@@ -309,7 +309,10 @@ class ReportCommentService:
         payload: CommentTemplateUpdate,
     ) -> CommentTemplateResponse:
         owner_type, owner_id = ReportCommentService._actor_owner(actor)
-        if isinstance(actor, TeacherMembership) and payload.status != CommentTemplateStatus.ARCHIVED:
+        if (
+            isinstance(actor, TeacherMembership)
+            and payload.status != CommentTemplateStatus.ARCHIVED
+        ):
             await ReportCommentService._require_class_teacher_capability(db, actor)
 
         template = await ReportCommentService._owned_template(
@@ -610,7 +613,11 @@ class ReportCommentService:
         if classroom.teacher_membership_id != teacher.id:
             raise ForbiddenException("Only the student's explicit class teacher can comment.")
 
-        ready, performance_percentage, grading_scale = await ReportCommentService._academic_readiness(
+        (
+            ready,
+            performance_percentage,
+            grading_scale,
+        ) = await ReportCommentService._academic_readiness(
             db,
             tenant_id=teacher.tenant_id,
             student_id=student_id,
@@ -711,7 +718,11 @@ class ReportCommentService:
             )
             if student is None:
                 continue
-            ready, performance_percentage, grading_scale = await ReportCommentService._academic_readiness(
+            (
+                ready,
+                performance_percentage,
+                grading_scale,
+            ) = await ReportCommentService._academic_readiness(
                 db,
                 tenant_id=teacher.tenant_id,
                 student_id=student.id,
@@ -946,7 +957,11 @@ class ReportCommentService:
             raise BadRequestException(
                 "Teacher comment is missing or needs review; an explicit admin override is required."
             )
-        ready, performance_percentage, grading_scale = await ReportCommentService._academic_readiness(
+        (
+            ready,
+            performance_percentage,
+            grading_scale,
+        ) = await ReportCommentService._academic_readiness(
             db,
             tenant_id=tenant_id,
             student_id=student_id,

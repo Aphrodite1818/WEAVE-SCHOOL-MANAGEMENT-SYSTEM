@@ -110,9 +110,7 @@ async def test_open_due_return_enrollment_still_materializes_active_state(monkey
     )
 
     db = SimpleNamespace(
-        execute=AsyncMock(
-            return_value=SimpleNamespace(scalar_one_or_none=lambda: None)
-        ),
+        execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None)),
         commit=AsyncMock(),
         refresh=AsyncMock(),
     )

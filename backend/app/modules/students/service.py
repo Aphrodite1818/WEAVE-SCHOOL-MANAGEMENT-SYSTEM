@@ -258,9 +258,7 @@ class StudentService:
             )
             upcoming_response = StudentEnrollmentDetailResponse(
                 **StudentEnrollmentResponse.model_validate(upcoming).model_dump(),
-                class_name=(
-                    upcoming_classroom.academic_level_name if upcoming_classroom else None
-                ),
+                class_name=(upcoming_classroom.academic_level_name if upcoming_classroom else None),
                 class_arm=upcoming_classroom.arm if upcoming_classroom else None,
                 academic_level_name=upcoming_level.name if upcoming_level else None,
                 academic_session_name=upcoming_session.name if upcoming_session else None,
@@ -1149,9 +1147,7 @@ class StudentLifecycleService:
                             "after": {
                                 "status": membership.status.value,
                                 "ended_at": (
-                                    membership.ended_at.isoformat()
-                                    if membership.ended_at
-                                    else None
+                                    membership.ended_at.isoformat() if membership.ended_at else None
                                 ),
                                 "end_reason": membership.end_reason,
                             },
@@ -1168,9 +1164,7 @@ class StudentLifecycleService:
                         "is_active": student.is_active,
                         "account_status": student.account_status.value,
                         "graduation_date": (
-                            student.graduation_date.isoformat()
-                            if student.graduation_date
-                            else None
+                            student.graduation_date.isoformat() if student.graduation_date else None
                         ),
                     },
                     "parent_links": link_snapshots,

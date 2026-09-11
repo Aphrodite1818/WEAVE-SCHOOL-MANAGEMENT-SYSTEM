@@ -42,9 +42,7 @@ class CBTResultIngestionRepository:
         "outcome": CBTResultIngestionItem.outcome,
         "error_code": CBTResultIngestionItem.error_code,
         "student_subject_result_id": CBTResultIngestionItem.student_subject_result_id,
-        "resolved_teacher_assignment_id": (
-            CBTResultIngestionItem.resolved_teacher_assignment_id
-        ),
+        "resolved_teacher_assignment_id": (CBTResultIngestionItem.resolved_teacher_assignment_id),
     }
 
     @staticmethod
@@ -99,11 +97,7 @@ class CBTResultIngestionRepository:
             conditions.append(CBTResultIngestionBatch.tenant_id == tenant_id)
 
         query = select(CBTResultIngestionBatch).where(*conditions)
-        count_query = (
-            select(func.count())
-            .select_from(CBTResultIngestionBatch)
-            .where(*conditions)
-        )
+        count_query = select(func.count()).select_from(CBTResultIngestionBatch).where(*conditions)
         query = cls._apply_filters(
             query,
             allowed_filters=cls._BATCH_FILTERS,
@@ -155,11 +149,7 @@ class CBTResultIngestionRepository:
             conditions.append(CBTResultIngestionItem.tenant_id == tenant_id)
 
         query = select(CBTResultIngestionItem).where(*conditions)
-        count_query = (
-            select(func.count())
-            .select_from(CBTResultIngestionItem)
-            .where(*conditions)
-        )
+        count_query = select(func.count()).select_from(CBTResultIngestionItem).where(*conditions)
         query = cls._apply_filters(
             query,
             allowed_filters=cls._ITEM_FILTERS,
@@ -201,9 +191,7 @@ class CBTResultIngestionRepository:
         batch_record_id: UUID,
         tenant_id: UUID | None,
     ) -> CBTResultIngestionBatch | None:
-        query = select(CBTResultIngestionBatch).where(
-            CBTResultIngestionBatch.id == batch_record_id
-        )
+        query = select(CBTResultIngestionBatch).where(CBTResultIngestionBatch.id == batch_record_id)
         if tenant_id is not None:
             query = query.where(CBTResultIngestionBatch.tenant_id == tenant_id)
         result = await db.execute(query)

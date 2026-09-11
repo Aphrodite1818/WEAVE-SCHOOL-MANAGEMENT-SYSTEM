@@ -61,9 +61,7 @@ def _batch_filters(
     exam_date: date | None,
     ingestion_status: CBTResultIngestionStatus | None,
 ) -> dict[str, object]:
-    normalized_reference = (
-        ingestion_reference.strip().upper() if ingestion_reference else None
-    )
+    normalized_reference = ingestion_reference.strip().upper() if ingestion_reference else None
     return {
         "batch_id": batch_id,
         "ingestion_reference": normalized_reference,
