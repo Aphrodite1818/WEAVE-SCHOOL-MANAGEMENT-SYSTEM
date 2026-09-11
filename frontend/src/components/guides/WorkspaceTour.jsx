@@ -46,6 +46,17 @@ export default function WorkspaceTour({
   const isAccountScope =
     ["parent_account", "teacher_account"].includes(actorType) &&
     !user?.tenant_id;
+  const subscriptionReady =
+    !subscription?.isTenantAdmin ||
+    Boolean(subscription?.entitlements) ||
+    Boolean(subscription?.errors?.entitlements);
+  const manifestKey = [
+    role,
+    dedicated ? "dedicated" : "standard",
+    dedicatedKind || "",
+    focusTo || "",
+    ...(focusRoutes || []),
+  ].join("|");
   const configuredItems = useMemo(() => {
     const availableItems = filterAvailableItems(
       (navGroups[role] || []).flatMap((group) => group.items),
@@ -71,6 +82,7 @@ export default function WorkspaceTour({
       {
         ...settingsItem,
         to: focusTo,
+        tourTarget: settingsItem.to,
         label: focusTo.endsWith("/branding")
           ? "School branding"
           : settingsItem.label,
@@ -96,6 +108,7 @@ export default function WorkspaceTour({
   const headingRef = useRef(null);
   const actionLock = useRef(false);
   const restoredIndex = useRef(false);
+  const manifestKeyRef = useRef(null);
   const step = steps[index];
   const welcome = index < 0;
   const last = index === steps.length - 1;
@@ -103,27 +116,46 @@ export default function WorkspaceTour({
   const visibleRoutes = steps.map((item) => item.to);
 
   useLayoutEffect(() => {
+    if (!subscriptionReady) return;
+    if (manifestKeyRef.current === manifestKey && steps.length) return;
+
     const rendered = new Set(
       Array.from(document.querySelectorAll("[data-tour-target]"))
         .filter((node) => node.getBoundingClientRect().width > 0)
         .map((node) => node.dataset.tourTarget),
     );
-    setSteps(
-      configuredItems
-        .filter((item) => rendered.has(item.to))
-        .map((item) =>
-          tourContentForItem(role, item, { dedicated, dedicatedKind }),
-        ),
-    );
-  }, [configuredItems, dedicated, dedicatedKind, role]);
+    const nextSteps = configuredItems
+      .filter((item) => rendered.has(item.tourTarget || item.to))
+      .map((item) => ({
+        ...tourContentForItem(role, item, { dedicated, dedicatedKind }),
+        targetTo: item.tourTarget || item.to,
+      }));
+
+    if (!nextSteps.length) return;
+
+    manifestKeyRef.current = manifestKey;
+    restoredIndex.current = false;
+    setSteps(nextSteps);
+    setIndex(-1);
+  }, [
+    configuredItems,
+    dedicated,
+    dedicatedKind,
+    manifestKey,
+    role,
+    steps.length,
+    subscriptionReady,
+  ]);
 
   useEffect(() => {
     if (restoredIndex.current || !steps.length) return;
     restoredIndex.current = true;
     if (Number.isInteger(initialIndex) && initialIndex >= 0) {
       setIndex(Math.min(initialIndex, steps.length - 1));
+    } else if (dedicated) {
+      setIndex(0);
     }
-  }, [initialIndex, steps.length]);
+  }, [dedicated, initialIndex, steps.length]);
 
   useEffect(() => {
     const previousFocus = document.activeElement;
@@ -155,7 +187,7 @@ export default function WorkspaceTour({
       step &&
       Array.from(document.querySelectorAll("[data-tour-target]")).find(
         (node) =>
-          node.dataset.tourTarget === step.to &&
+          node.dataset.tourTarget === (step.targetTo || step.to) &&
           node.getBoundingClientRect().width > 0,
       );
     const target = getTarget();
