@@ -131,9 +131,13 @@ test("dedicated upgrade tours explain newly unlocked plan features", () => {
   }
 });
 
-test("tour uses visible sidebar targets and restores keyboard access on exit", () => {
+test("tour freezes a ready visible manifest and restores keyboard access on exit", () => {
   const source = readFileSync(new URL("../../components/guides/WorkspaceTour.jsx", import.meta.url), "utf8");
-  assert.match(source, /rendered\.has\(item\.to\)/);
+  assert.match(source, /const subscriptionReady =/);
+  assert.match(source, /manifestKeyRef\.current === manifestKey && steps\.length/);
+  assert.match(source, /rendered\.has\(item\.tourTarget \|\| item\.to\)/);
+  assert.match(source, /targetTo: item\.tourTarget \|\| item\.to/);
+  assert.match(source, /node\.dataset\.tourTarget === \(step\.targetTo \|\| step\.to\)/);
   assert.match(source, /getBoundingClientRect\(\)\.width > 0/);
   assert.match(source, /role="dialog"\s+aria-modal="true"/);
   assert.match(source, /node\.inert = true/);
@@ -141,4 +145,10 @@ test("tour uses visible sidebar targets and restores keyboard access on exit", (
   assert.match(source, /event\.key === "Escape"/);
   assert.match(source, /event\.key !== "Tab"/);
   assert.match(source, /previousFocus\.focus/);
+});
+
+test("settings upgrade tours keep the sidebar anchor while presenting the focused route", () => {
+  const source = readFileSync(new URL("../../components/guides/WorkspaceTour.jsx", import.meta.url), "utf8");
+  assert.match(source, /tourTarget: settingsItem\.to/);
+  assert.match(source, /to: focusTo/);
 });
