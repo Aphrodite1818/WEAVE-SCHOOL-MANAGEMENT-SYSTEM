@@ -19,6 +19,7 @@ import { getErrorMessage, parseApiError } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { subjectService } from "../../services/subject.service";
 import { subscriptionService } from "../../services/subscriptionService";
+import { termOpenPreflightBlocker } from "../../services/termOpenPreflight";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 import {
   CheckboxControl,
@@ -248,6 +249,7 @@ function AcademicSetupWorkspace({
   const [saving, setSaving] = useState("");
   const [openingSessionId, setOpeningSessionId] = useState("");
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [checkingTermId, setCheckingTermId] = useState("");
   const [cancelClosureReason, setCancelClosureReason] = useState("");
   const [termPlanPrompt, setTermPlanPrompt] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -290,7 +292,8 @@ function AcademicSetupWorkspace({
           academicService.listGradingScales({ limit: 100 }),
           subjectService.getSubjects({
             skip:
-              domain === "subjects" ? (subjectPage - 1) * SUBJECT_PAGE_SIZE : 0,
+              domain === "subjects" ? (subjectPage - 1) * SUBJECT_PAGE_SIZE
+                : 0,
             limit: domain === "subjects" ? SUBJECT_PAGE_SIZE : 100,
             includeArchived: domain === "subjects",
             search: domain === "subjects" ? subjectSearch : undefined,
@@ -461,6 +464,57 @@ function AcademicSetupWorkspace({
       setSaving("");
       setPendingConfirmation(null);
     }
+  };
+
+  const prepareTermTransition = async (item, transition) => {
+    const isOpen = transition === "open";
+    const isStart = transition === "start-closing";
+
+    if (isOpen) {
+      setCheckingTermId(item.id);
+      try {
+        const [dependencyPreview, currentTerms] = await Promise.all([
+          academicService.getTermDependencies(item.id),
+          academicService.listTerms({ is_current: true, limit: 100 }),
+        ]);
+        const blocker = termOpenPreflightBlocker({
+          currentTerms,
+          targetTermId: item.id,
+          dependencyPreview,
+        });
+        if (blocker) {
+          showError(blocker);
+          return;
+        }
+      } catch (err) {
+        showError(getErrorMessage(err, "Could not check whether this term is ready to open."));
+        return;
+      } finally {
+        setCheckingTermId("");
+      }
+    }
+
+    setPendingConfirmation({
+      type: "term-transition",
+      item,
+      transition,
+      title: `${isOpen ? "Open" : isStart ? "Start closing" : "Finalize"} academic term`,
+      description: `${termLabel(item.name)} - ${
+        sessions.find((session) => session.id === item.academic_session_id)?.name ||
+        "Unknown session"
+      }`,
+      confirmationText: isOpen
+        ? CONFIRM_OPEN_TERM
+        : isStart
+          ? CONFIRM_START_TERM_CLOSING
+          : CONFIRM_FINALIZE_TERM_CLOSE,
+      confirmLabel: isOpen
+        ? "Open term"
+        : isStart
+          ? "Start closing"
+          : "Finalize close",
+      variant: isOpen ? "primary" : "danger",
+    });
   };
 
   const transitionTerm = async (item, transition) => {
@@ -1162,7 +1216,9 @@ function AcademicSetupWorkspace({
                         type="button"
                         size="small"
                         variant="outline"
-                        disabled={saving === item.id}
+                        disabled={
+                          saving === item.id || checkingTermId === item.id
+                        }
                         onClick={() => {
                           const transition =
                             item.status === "draft"
@@ -1170,39 +1226,16 @@ function AcademicSetupWorkspace({
                               : item.status === "open"
                                 ? "start-closing"
                                 : "finalize-close";
-                          const isOpen = transition === "open";
-                          const isStart = transition === "start-closing";
-                          setPendingConfirmation({
-                            type: "term-transition",
-                            item,
-                            transition,
-                            title: `${isOpen ? "Open" : isStart ? "Start closing" : "Finalize"} academic term`,
-                            description: `${termLabel(item.name)} - ${
-                              sessions.find(
-                                (session) =>
-                                  session.id === item.academic_session_id,
-                              )?.name || "Unknown session"
-                            }`,
-                            confirmationText: isOpen
-                              ? CONFIRM_OPEN_TERM
-                              : isStart
-                                ? CONFIRM_START_TERM_CLOSING
-                                : CONFIRM_FINALIZE_TERM_CLOSE,
-                            confirmLabel: isOpen
-                              ? "Open term"
-                              : isStart
-                                ? "Start closing"
-                                : "Finalize close",
-                            variant: isOpen ? "primary" : "danger",
-                          });
+                          prepareTermTransition(item, transition);
                         }}
                       >
-                        {item.status === "draft"
-                          ? "Open"
-                          : item.status === "open"
-                            ? "Start Closing"
-                            : "Finalize"}{" "}
-                        {termLabel(item.name)}
+                        {item.status === "draft" && checkingTermId === item.id
+                          ? "Checking..."
+                          : item.status === "draft"
+                            ? `Open ${termLabel(item.name)}`
+                            : item.status === "open"
+                              ? `Start Closing ${termLabel(item.name)}`
+                              : `Finalize ${termLabel(item.name)}`}
                       </Button>
                     ) : null}
                     {item.status === "closing" ? (
@@ -1292,7 +1325,7 @@ function AcademicSetupWorkspace({
         open={Boolean(termPlanPrompt)}
         onClose={() => setTermPlanPrompt(null)}
         title={`Choose a plan for ${termLabel(termPlanPrompt?.term?.name || "this term")}`}
-        description="A term plan must be active before this term can open. Free opens immediately; paid plans continue through Paystack and the term opens after verification."
+        description="This term passed the opening pre-check and now needs an operating plan. A payment made from this flow belongs only to this term, and Weave re-checks opening safety before activating it."
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-border bg-surface-muted/30 p-4">
