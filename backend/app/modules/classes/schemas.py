@@ -236,12 +236,14 @@ class ClassRoomCreate(InputBase):
     academic_level_id: uuid.UUID
     arm_label_id: uuid.UUID
     teacher_membership_id: uuid.UUID | None = None
+    current_term_department_id: uuid.UUID | None = None
 
 
 class ClassRoomUpdate(InputBase):
     academic_level_id: uuid.UUID | None = None
     arm_label_id: uuid.UUID | None = None
     teacher_membership_id: uuid.UUID | None = None
+    current_term_department_id: uuid.UUID | None = None
 
     @field_validator("academic_level_id", "arm_label_id", mode="before")
     @classmethod
@@ -263,6 +265,7 @@ class ClassRoomArchiveRequest(InputBase):
 
 class ClassRoomActivateRequest(InputBase):
     confirmation: Literal["ACTIVATE_CLASSROOM"]
+    current_term_department_id: uuid.UUID | None = None
 
 
 class ClassRoomDeactivateRequest(InputBase):
