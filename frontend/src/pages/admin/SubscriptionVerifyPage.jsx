@@ -93,7 +93,7 @@ function SubscriptionVerifyPage() {
             ? openedTerm
               ? "Payment verified and the academic term is now open."
               : `${openTermError} Return to the term workflow to resolve it; your payment is already recorded.`
-            : `Payment verified. ${entitlement?.plan_code || "Your plan"} was purchased for the selected academic term. Feature access follows the current open term; a purchase for a draft term is scheduled until that term opens.`,
+            : `Payment verified. ${entitlement?.plan_code || "Your plan"} is now assigned to the selected academic term.`,
         );
       } catch (error) {
         if (!mounted) return;
