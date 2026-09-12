@@ -112,10 +112,8 @@ function DashboardShellFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const role = getRole(user, roleProp);
-  const {
-    loading: classDutyAccessLoading,
-    hasClassTeacherDuties,
-  } = useTeacherClassDutyAccess();
+  const { loading: classDutyAccessLoading, hasClassTeacherDuties } =
+    useTeacherClassDutyAccess();
   const guidePageActive =
     role === "admin" && location.pathname.startsWith("/admin/getting-started");
   const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
@@ -139,6 +137,7 @@ function DashboardShellFrame({
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const shellRef = useRef(null);
   const mainRef = useRef(null);
+  const initialScrollRestoreRef = useRef(true);
   const pullStateRef = useRef({
     tracking: false,
     active: false,
@@ -295,8 +294,36 @@ function DashboardShellFrame({
   }, [academicHubActive, location.pathname]);
 
   useEffect(() => {
+    if (guidePageActive && initialScrollRestoreRef.current) return;
     scrollDashboardViewportToTop("auto");
-  }, [location.pathname]);
+  }, [guidePageActive, location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!guidePageActive) return undefined;
+
+    const locationKey = `${location.pathname}${location.search}`;
+    const target = shellRef.current;
+    if (!target) return undefined;
+
+    const storageKey = `weave:dashboard-scroll:${locationKey}`;
+    if (initialScrollRestoreRef.current) {
+      initialScrollRestoreRef.current = false;
+      const savedScrollTop = Number(window.sessionStorage.getItem(storageKey));
+      if (Number.isFinite(savedScrollTop) && savedScrollTop > 0) {
+        window.requestAnimationFrame(() => {
+          target.scrollTop = savedScrollTop;
+        });
+      }
+    }
+
+    const rememberScrollPosition = () => {
+      window.sessionStorage.setItem(storageKey, String(target.scrollTop));
+    };
+    target.addEventListener("scroll", rememberScrollPosition, {
+      passive: true,
+    });
+    return () => target.removeEventListener("scroll", rememberScrollPosition);
+  }, [guidePageActive, location.pathname, location.search]);
 
   useEffect(() => {
     scheduleThemeChromeSync();

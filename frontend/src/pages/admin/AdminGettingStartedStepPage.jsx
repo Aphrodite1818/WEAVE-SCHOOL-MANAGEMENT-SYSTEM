@@ -27,6 +27,7 @@ export default function AdminGettingStartedStepPage({ setup }) {
   const progress = schoolYearProgress(completion);
   const checking = setup.loading || Boolean(setup.error);
   const next = steps[index + 1];
+  const previous = steps[index - 1];
 
   if (!step) return <Navigate to="/admin/getting-started" replace />;
 
@@ -63,6 +64,7 @@ export default function AdminGettingStartedStepPage({ setup }) {
   };
 
   const complete = completion?.[step.id] === true;
+  const canGoBack = Boolean(previous && setup.data?.session_status !== "open");
   const needsSessionOpen =
     step.id === "term" &&
     setup.data?.completion?.term === true &&
@@ -76,20 +78,35 @@ export default function AdminGettingStartedStepPage({ setup }) {
           step.id === "calendar" ? "max-w-5xl" : "max-w-2xl"
         }`}
       >
-        <button
-          type="button"
-          className="mb-8 flex min-h-11 items-center gap-2 text-sm font-medium text-text-muted"
-          onClick={() => navigate("/admin/getting-started")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          School year setup
-        </button>
+        <div className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <button
+            type="button"
+            className="flex min-h-11 items-center gap-2 text-sm font-medium text-text-muted"
+            onClick={() => navigate("/admin/getting-started")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            School year setup
+          </button>
+          {canGoBack ? (
+            <button
+              type="button"
+              className="min-h-11 text-sm font-semibold text-primary underline-offset-4 hover:underline"
+              onClick={() => navigate(`/admin/getting-started/${previous.id}`)}
+            >
+              Back to {previous.shortLabel.toLowerCase()}
+            </button>
+          ) : null}
+        </div>
 
         <SchoolYearProgress
           completion={completion}
           current={step.id}
           disabled={checking}
-          onSelect={(item) => navigate(`/admin/getting-started/${item.id}`)}
+          onSelect={(item) => {
+            const targetIndex = steps.findIndex((candidate) => candidate.id === item.id);
+            if (targetIndex < index && !canGoBack) return;
+            navigate(`/admin/getting-started/${item.id}`);
+          }}
         />
 
         <h1 className="text-3xl font-semibold tracking-tight text-text">{step.label}</h1>
