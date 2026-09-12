@@ -25,6 +25,7 @@ from app.modules.classes.category_catalog import (
     category_definition,
     category_supports_departments,
 )
+from app.modules.classes.current_term_integrity import CurrentTermStructureIntegrity
 from app.modules.classes.models import (
     AcademicCategory,
     AcademicLevel,
@@ -794,6 +795,7 @@ class ClassRoomService:
             raise BadRequestException("Academic level must be active")
         if not arm or not arm.is_active or arm.archived_at:
             raise BadRequestException("Arm label must be active")
+        return level
 
     @staticmethod
     def _has_any_usage(dependencies: dict[str, int]) -> bool:
@@ -821,8 +823,14 @@ class ClassRoomService:
     async def create_classroom(db, actor: TenantAdmin, payload: ClassRoomCreate):
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
-        await ClassRoomService._validate_structure(
+        level = await ClassRoomService._validate_structure(
             db, actor.tenant_id, payload.academic_level_id, payload.arm_label_id
+        )
+        requirement = await CurrentTermStructureIntegrity.requirement_for_active_class(
+            db,
+            tenant_id=actor.tenant_id,
+            level=level,
+            requested_department_link_id=payload.current_term_department_id,
         )
         teacher = await ClassRoomService._validate_teacher(
             db,
@@ -846,6 +854,13 @@ class ClassRoomService:
             is_active=True,
         )
         await ClassRoomRepository.add(db, row)
+        CurrentTermStructureIntegrity.add_assignment(
+            db,
+            tenant_id=actor.tenant_id,
+            class_id=row.id,
+            admin_id=actor.id,
+            requirement=requirement,
+        )
         await db.commit()
         reloaded = await ClassRoomRepository.get_by_id(db, actor.tenant_id, row.id)
         return ClassRoomResponse.model_validate(reloaded or row)
@@ -926,12 +941,18 @@ class ClassRoomService:
             raise ConflictException("Archived classrooms cannot be updated")
 
         data = payload.model_dump(exclude_unset=True)
+        requested_department_id = data.pop("current_term_department_id", None)
         level_id = data.get("academic_level_id", row.academic_level_id)
         arm_id = data.get("arm_label_id", row.arm_label_id)
         structural_change = ("academic_level_id" in data and level_id != row.academic_level_id) or (
             "arm_label_id" in data and arm_id != row.arm_label_id
         )
+        if requested_department_id is not None and not structural_change:
+            raise BadRequestException(
+                "Current-term department can only be supplied when moving this class to a new level or arm."
+            )
 
+        requirement = None
         if structural_change:
             dependencies = await ClassRoomRepository.count_class_dependencies(
                 db, actor.tenant_id, row.id
@@ -941,12 +962,22 @@ class ClassRoomService:
                     "Classroom level and arm are locked after the class is first used.",
                     payload={"dependency_counts": dependencies},
                 )
-            await ClassRoomService._validate_structure(db, actor.tenant_id, level_id, arm_id)
+            level = await ClassRoomService._validate_structure(
+                db, actor.tenant_id, level_id, arm_id
+            )
             existing = await ClassRoomRepository.get_by_level_arm_label(
                 db, actor.tenant_id, level_id, arm_id
             )
             if existing and existing.id != row.id:
                 raise ConflictException("This class arm already exists for the level")
+            if row.is_active:
+                requirement = await CurrentTermStructureIntegrity.requirement_for_active_class(
+                    db,
+                    tenant_id=actor.tenant_id,
+                    level=level,
+                    class_id=row.id,
+                    requested_department_link_id=requested_department_id,
+                )
 
         validated_next_teacher = None
         if "teacher_membership_id" in data:
@@ -978,6 +1009,13 @@ class ClassRoomService:
         for key, value in data.items():
             setattr(row, key, value)
         await ClassRoomRepository.save(db, row)
+        CurrentTermStructureIntegrity.add_assignment(
+            db,
+            tenant_id=actor.tenant_id,
+            class_id=row.id,
+            admin_id=actor.id,
+            requirement=requirement,
+        )
         await db.commit()
         reloaded = await ClassRoomRepository.get_by_id(db, actor.tenant_id, row.id)
         return ClassRoomResponse.model_validate(reloaded or row)
@@ -1002,7 +1040,12 @@ class ClassRoomService:
         return ClassRoomResponse.model_validate(row)
 
     @staticmethod
-    async def activate_classroom(db, actor: TenantAdmin, class_id):
+    async def activate_classroom(
+        db,
+        actor: TenantAdmin,
+        class_id,
+        current_term_department_id: uuid.UUID | None = None,
+    ):
         AcademicLevelService._ensure_admin(actor)
         await ensure_academic_write_window(db, tenant_id=actor.tenant_id)
         row = await ClassRoomRepository.get_by_id(db, actor.tenant_id, class_id, lock=True)
@@ -1013,11 +1056,25 @@ class ClassRoomService:
         if row.is_active:
             return ClassRoomResponse.model_validate(row)
 
-        await ClassRoomService._validate_structure(
+        level = await ClassRoomService._validate_structure(
             db, actor.tenant_id, row.academic_level_id, row.arm_label_id
+        )
+        requirement = await CurrentTermStructureIntegrity.requirement_for_active_class(
+            db,
+            tenant_id=actor.tenant_id,
+            level=level,
+            class_id=row.id,
+            requested_department_link_id=current_term_department_id,
         )
         row.is_active = True
         await ClassRoomRepository.save(db, row)
+        CurrentTermStructureIntegrity.add_assignment(
+            db,
+            tenant_id=actor.tenant_id,
+            class_id=row.id,
+            admin_id=actor.id,
+            requirement=requirement,
+        )
         await db.commit()
         await db.refresh(row)
         return ClassRoomResponse.model_validate(row)
