@@ -49,6 +49,9 @@ const normalizeClassPayload = (payload = {}) => ({
           payload.teacher_membership_id || payload.teacher_id || null,
       }
     : {}),
+  ...(payload.current_term_department_id !== undefined
+    ? { current_term_department_id: payload.current_term_department_id || null }
+    : {}),
 });
 
 const patchRemembered = async ({ cache, id, payload, request }) => {
@@ -122,9 +125,12 @@ export const classService = {
       payload: normalizeClassPayload(payload),
       request: (changes) => api.patch(`/classes/${classId}`, changes),
     }),
-  activateClass: (classId) =>
+  activateClass: (classId, currentTermDepartmentId) =>
     api.post(`/classes/${classId}/activate`, {
       confirmation: "ACTIVATE_CLASSROOM",
+      ...(currentTermDepartmentId
+        ? { current_term_department_id: currentTermDepartmentId }
+        : {}),
     }),
   deactivateClass: (classId) =>
     api.post(`/classes/${classId}/deactivate`, {
