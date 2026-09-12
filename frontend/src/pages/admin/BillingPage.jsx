@@ -140,7 +140,7 @@ function BillingPage() {
     <DashboardLayout
       role="admin"
       title="Billing"
-      description="Current-term plan management and payment history."
+      description="Plan management for the active academic term and payment history."
     >
       <div className="space-y-5">
         {subscriptionErrors.currentSubscription ? (
@@ -209,7 +209,7 @@ function BillingPage() {
                 <p className="mt-2 text-sm leading-6 text-text-muted">
                   {currentTerm
                     ? "Upgrade by paying only the remaining difference, or move to a lower plan when current operational usage fits it."
-                    : "Choose Free or a paid plan when you open the next academic term from Academic Terms."}
+                    : "Choose Free or a paid plan only when the next academic term is ready to open from Academic Terms. If another term is still active, close it first."}
                 </p>
                 <div className="mt-6 grid gap-3">
                   {currentTerm ? (
@@ -279,7 +279,7 @@ function BillingPage() {
                   <div className="mt-5">
                     <EmptyState
                       title="No operational term"
-                      description="A plan purchased for a draft term is scheduled. Feature access follows the current open term; review Academic Terms for readiness blockers."
+                      description="Billing only manages the active term. When the next draft term is ready to open, Academic Terms runs its readiness checks before plan selection."
                     />
                   </div>
                 )}
@@ -325,7 +325,7 @@ function BillingPage() {
                   <div className="mt-5">
                     <EmptyState
                       title="No term plan history"
-                      description="Plan selections appear here after an academic term is opened."
+                      description="Plan selections appear here when a term receives a plan during opening or active-term management."
                     />
                   </div>
                 )}
