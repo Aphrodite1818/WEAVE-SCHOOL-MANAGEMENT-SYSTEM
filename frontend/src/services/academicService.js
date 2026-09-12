@@ -6,6 +6,7 @@ import {
   rememberById,
   rememberRecord,
 } from "./patchPayload";
+import { termOpenPreflightBlocker } from "./termOpenPreflight";
 
 const sessionsById = new Map();
 const termsById = new Map();
@@ -97,6 +98,19 @@ const reassignTeacherAssignment = async (assignmentId, payload) => {
   );
 };
 
+const preflightOpenTerm = async (termId) => {
+  const [dependencyPreview, currentTerms] = await Promise.all([
+    api.get(`/tenant-admin/academics/terms/${termId}/dependencies`),
+    api.get(`/tenant-admin/academics/terms${queryString({ is_current: true, limit: 100 })}`),
+  ]);
+  const blocker = termOpenPreflightBlocker({
+    currentTerms,
+    targetTermId: termId,
+    dependencyPreview,
+  });
+  if (blocker) throw new Error(blocker);
+};
+
 export const academicService = {
   getSetupReadiness: () => api.get("/tenant-admin/academics/setup-readiness"),
   listSessions: async (params) => {
@@ -154,10 +168,12 @@ export const academicService = {
       request: (changes) =>
         api.patch(`/tenant-admin/academics/terms/${termId}`, changes),
     }),
-  openTerm: (termId) =>
-    api.post(`/tenant-admin/academics/terms/${termId}/open`, {
+  openTerm: async (termId) => {
+    await preflightOpenTerm(termId);
+    return api.post(`/tenant-admin/academics/terms/${termId}/open`, {
       confirmation: "OPEN_ACADEMIC_TERM",
-    }),
+    });
+  },
   getTermDependencies: (termId) =>
     api.get(`/tenant-admin/academics/terms/${termId}/dependencies`),
   startTermClosing: (termId) =>
