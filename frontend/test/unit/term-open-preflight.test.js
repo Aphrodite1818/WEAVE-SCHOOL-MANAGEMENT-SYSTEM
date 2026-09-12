@@ -86,7 +86,7 @@ test("existing readiness blockers stop opening before the lifecycle request", ()
   );
 });
 
-test("openTerm runs the preflight before posting the open transition", () => {
+test("openTerm rechecks the preflight before posting the open transition", () => {
   const service = readSource("services", "academicService.js");
 
   assert.match(service, /const preflightOpenTerm = async \(termId\) =>/);
@@ -96,4 +96,22 @@ test("openTerm runs the preflight before posting the open transition", () => {
     service,
     /await preflightOpenTerm\(termId\);\s*return api\.post\(`\/tenant-admin\/academics\/terms\/\$\{termId\}\/open`/,
   );
+});
+
+test("academic hub checks a draft term before showing its opening confirmation", () => {
+  const workspace = readSource(
+    "features",
+    "academic-admin",
+    "AcademicSetupWorkspace.jsx",
+  );
+
+  assert.match(workspace, /const prepareTermTransition = async \(item, transition\) =>/);
+  assert.match(
+    workspace,
+    /academicService\.listTerms\(\{ is_current: true, limit: 100 \}\)/,
+  );
+  assert.match(workspace, /termOpenPreflightBlocker\(\{/);
+  assert.match(workspace, /showError\(blocker\);\s*return;/);
+  assert.match(workspace, /prepareTermTransition\(item, transition\);/);
+  assert.match(workspace, /checkingTermId === item\.id\s*\? "Checking\.\.\."/);
 });
