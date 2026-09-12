@@ -240,7 +240,7 @@ async def activate_classroom(
         db=db,
         actor=current_user,
         class_id=class_id,
-        current_term_department_id=payload.current_term_department_id,
+        current_term_department_id=getattr(payload, "current_term_department_id", None),
     )
 
 
