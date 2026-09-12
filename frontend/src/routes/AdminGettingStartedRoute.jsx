@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { adminSchoolYearCompletion } from "../features/guides/adminSchoolYearCompletion";
 import { leaveGuideRoute } from "../features/guides/guideNavigation";
@@ -11,7 +12,10 @@ import { getErrorMessage } from "../services/api";
 
 export default function AdminGettingStartedRoute() {
   const setup = useAdminSetupReadiness();
-  const completion = adminSchoolYearCompletion(setup.data);
+  const completion = useMemo(
+    () => adminSchoolYearCompletion(setup.data),
+    [setup.data],
+  );
   const guide = useRoleGuide({
     role: "admin",
     completionMap: setup.loading || setup.error ? null : completion,
