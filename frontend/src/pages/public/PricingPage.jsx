@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { HelpCircle, ShieldCheck } from "lucide-react";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 
 import WeaveIcon from "../../components/brand/WeaveIcon";
@@ -12,6 +12,7 @@ import {
   LANDING_PRICING_PLANS,
   formatLimitValue,
 } from "../../features/subscriptions/subscriptionConfig";
+import { usePublicPricingCatalogue } from "../../features/subscriptions/usePublicPricingCatalogue";
 
 const comparisonRows = [
   ["Students", (plan) => formatLimitValue(plan.limits.students)],
@@ -39,7 +40,10 @@ const comparisonRows = [
         ? "Included"
         : "—",
   ],
-  ["Support", (plan) => (plan.planCode === "enterprise" ? "Priority" : "Standard")],
+  [
+    "Support",
+    (plan) => (plan.planCode === "enterprise" ? "Priority" : "Standard"),
+  ],
 ];
 
 const faqs = [
@@ -62,6 +66,7 @@ const faqs = [
 ];
 
 function PricingPage() {
+  const pricingReady = usePublicPricingCatalogue();
   const paidPlans = LANDING_PRICING_PLANS.filter(
     (plan) => plan.planCode !== "free",
   );
@@ -96,10 +101,7 @@ function PricingPage() {
                       Compare plans
                     </Button>
                   </a>
-                  <Link
-                    to="/register"
-                    className="w-full sm:w-auto"
-                  >
+                  <Link to="/register" className="w-full sm:w-auto">
                     <Button
                       variant="outline"
                       size="large"
@@ -126,16 +128,18 @@ function PricingPage() {
                   </div>
                 </div>
                 <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                  {["Permanent Free", "Per-term paid plans", "No prepayment"].map(
-                    (item) => (
-                      <div
-                        key={item}
-                        className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold"
-                      >
-                        {item}
-                      </div>
-                    ),
-                  )}
+                  {[
+                    "Permanent Free",
+                    "Per-term paid plans",
+                    "No prepayment",
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-semibold"
+                    >
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </Card>
             </div>
@@ -163,6 +167,7 @@ function PricingPage() {
                   key={plan.planCode}
                   plan={plan}
                   selected={plan.highlighted}
+                  pricingReady={pricingReady}
                 />
               ))}
             </div>
@@ -189,7 +194,9 @@ function PricingPage() {
                         <span className="text-xs font-semibold text-text-muted md:hidden">
                           {plan.name}
                         </span>
-                        <span>{resolver(plan)}</span>
+                        <span>
+                          {pricingReady ? resolver(plan) : "Loading pricing..."}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -235,10 +242,7 @@ function PricingPage() {
               the school workspace when an operational term needs a paid plan or
               an existing term is upgraded.
             </p>
-            <Link
-              to="/register"
-              className="mt-8 inline-flex"
-            >
+            <Link to="/register" className="mt-8 inline-flex">
               <Button size="large">Get started</Button>
             </Link>
           </div>

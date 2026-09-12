@@ -1,4 +1,3 @@
-
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -7,8 +6,14 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("subscription pricing is hydrated from the public backend catalogue", async () => {
   const service = await read("src/services/subscriptionService.js");
-  const runtime = await read("src/features/subscriptions/pricingCatalogueRuntime.js");
+  const runtime = await read(
+    "src/features/subscriptions/pricingCatalogueRuntime.js",
+  );
   const main = await read("src/main.jsx");
+  const landing = await read("src/pages/public/LandingPage.jsx");
+  const pricingHook = await read(
+    "src/features/subscriptions/usePublicPricingCatalogue.js",
+  );
 
   assert.match(service, /getPublicPlans/);
   assert.match(service, /\/subscriptions\/plans/);
@@ -20,12 +25,17 @@ test("subscription pricing is hydrated from the public backend catalogue", async
   assert.match(runtime, /backendPlan\.limits/);
   assert.match(main, /subscriptionService[\s\S]*\.getPublicPlans/);
   assert.match(main, /applyPublicPricingCatalogue/);
+  assert.match(main, /settlePublicPricingCatalogue/);
+  assert.match(landing, /usePublicPricingCatalogue/);
+  assert.match(pricingHook, /CATALOGUE_CHANGED_EVENT/);
 });
 
 test("pricing surfaces show three paid cards and keep Free outside checkout cards", async () => {
   const landing = await read("src/pages/public/LandingPage.jsx");
   const pricing = await read("src/pages/public/PricingPage.jsx");
-  const desktopPlans = await read("src/pages/admin/SubscriptionOptionsPage.jsx");
+  const desktopPlans = await read(
+    "src/pages/admin/SubscriptionOptionsPage.jsx",
+  );
   const mobilePlans = await read(
     "src/pages/admin/ResponsiveSubscriptionOptionsPage.jsx",
   );
@@ -51,7 +61,14 @@ test("iOS and Android PWA nav positions are platform-specific", async () => {
 });
 
 test("dark payment and dashboard hero cards keep brand colour as a strip only", async () => {
-  const [themeCss, primitives, billingPage, mobilePlans, desktopPlans, publicCard] = await Promise.all([
+  const [
+    themeCss,
+    primitives,
+    billingPage,
+    mobilePlans,
+    desktopPlans,
+    publicCard,
+  ] = await Promise.all([
     read("src/index.css"),
     read("src/components/dashboard/DashboardPrimitives.jsx"),
     read("src/pages/admin/BillingPage.jsx"),
@@ -65,10 +82,22 @@ test("dark payment and dashboard hero cards keep brand colour as a strip only", 
   assert.match(mobilePlans, /payment-plan-card-selected brand-strip-card/);
   assert.match(desktopPlans, /payment-plan-card-selected brand-strip-card/);
   assert.match(publicCard, /payment-plan-card-selected brand-strip-card/);
-  assert.match(themeCss, /:root\[data-theme="dark"\] \.brand-strip-card::before[\s\S]*?background:\s*rgb\(var\(--color-primary\)\)/);
-  assert.match(themeCss, /:root\[data-theme="dark"\] \.dashboard-welcome-blue,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/);
-  assert.match(themeCss, /:root\[data-theme="dark"\] \.payment-plan-card-selected,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/);
-  assert.doesNotMatch(themeCss, /dashboard-welcome-blue[\s\S]{0,220}box-shadow:\s*inset 0 3px 0/);
+  assert.match(
+    themeCss,
+    /:root\[data-theme="dark"\] \.brand-strip-card::before[\s\S]*?background:\s*rgb\(var\(--color-primary\)\)/,
+  );
+  assert.match(
+    themeCss,
+    /:root\[data-theme="dark"\] \.dashboard-welcome-blue,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/,
+  );
+  assert.match(
+    themeCss,
+    /:root\[data-theme="dark"\] \.payment-plan-card-selected,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/,
+  );
+  assert.doesNotMatch(
+    themeCss,
+    /dashboard-welcome-blue[\s\S]{0,220}box-shadow:\s*inset 0 3px 0/,
+  );
 });
 
 test("theme chrome follows the resolved application theme", async () => {
@@ -94,7 +123,10 @@ test("mobile browser uses one authoritative theme-color while PWA stays isolated
   assert.match(runtime, /content: "light dark"/);
   assert.doesNotMatch(runtime, /oppositeTheme|not all/);
   assert.match(startup, /data-weave-theme/);
-  assert.match(startup, /colorSchemeMeta\.setAttribute\("content", "light dark"\)/);
+  assert.match(
+    startup,
+    /colorSchemeMeta\.setAttribute\("content", "light dark"\)/,
+  );
   assert.doesNotMatch(startup, /oppositeTheme|not all/);
   assert.match(preferences, /scheduleThemeChromeSync\(\)/);
   assert.doesNotMatch(preferences, /themeColorMeta/);

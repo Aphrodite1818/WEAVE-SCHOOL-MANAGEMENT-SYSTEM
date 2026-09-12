@@ -5,7 +5,10 @@ import process from "node:process";
 import test from "node:test";
 
 const source = fs.readFileSync(
-  path.resolve(process.cwd(), "src/features/schoolCalendar/components/SchoolCalendarEventsWorkspace.jsx"),
+  path.resolve(
+    process.cwd(),
+    "src/features/schoolCalendar/components/SchoolCalendarEventsWorkspace.jsx",
+  ),
   "utf8",
 );
 
@@ -33,5 +36,14 @@ test("uses exact datetime labels for specific-time events", () => {
 
 test("preserves the closed-day warning without reopening operational days", () => {
   assert.match(source, /Overlaps \{closedDays\.length\} closed calendar day/);
-  assert.match(source, /Saving this event will not reopen school or change attendance rules/);
+  assert.match(
+    source,
+    /Saving this event will not reopen school or change\s+attendance rules[.]/,
+  );
+});
+
+test("calendar validation errors use field-friendly minimum length language", () => {
+  assert.match(source, /getCalendarErrorMessage/);
+  assert.match(source, /Failed to save calendar event/);
+  assert.match(source, /Failed to cancel event/);
 });

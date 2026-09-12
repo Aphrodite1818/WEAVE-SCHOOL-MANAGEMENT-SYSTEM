@@ -5,8 +5,8 @@ import LoadingState from "../../../components/shared/LoadingState";
 import Button from "../../../components/ui/Button";
 import Input from "../../../components/ui/Input";
 import Modal from "../../../components/ui/Modal";
-import { getErrorMessage, isAbortError } from "../../../services/api";
 import { academicService } from "../../../services/academicService";
+import { getErrorMessage, isAbortError } from "../../../services/api";
 import {
   RecordList,
   SelectControl,
@@ -14,13 +14,15 @@ import {
   WorkspacePanel,
 } from "../../academic-admin/AcademicWorkspacePrimitives";
 import { schoolCalendarService } from "../api/schoolCalendarService";
+import { getCalendarErrorMessage } from "../utils/calendarErrorMessages";
 import {
   buildAllDayInterval,
   inclusiveDayCount,
   inclusiveEventDateRange,
 } from "../utils/eventDateUtils";
 
-const asItems = (response) => (Array.isArray(response?.items) ? response.items : []);
+const asItems = (response) =>
+  Array.isArray(response?.items) ? response.items : [];
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const titleCase = (value) =>
   String(value || "")
@@ -29,7 +31,9 @@ const titleCase = (value) =>
 const formatTermName = (term) =>
   String(term?.display_name || term?.name || "Term").replaceAll("_", " ");
 const calendarLabel = (calendar, sessions, terms) => {
-  const session = sessions.find((item) => item.id === calendar?.academic_session_id);
+  const session = sessions.find(
+    (item) => item.id === calendar?.academic_session_id,
+  );
   const term = terms.find((item) => item.id === calendar?.academic_term_id);
   return `${session?.name || "Selected session"} · ${formatTermName(term)} · ${titleCase(
     calendar?.status || "draft",
@@ -84,7 +88,8 @@ function SchoolCalendarEventsWorkspace() {
   );
 
   const isFullDay = form.timing_mode === "full_day";
-  const spansMultipleDays = isFullDay && form.full_day_duration === "multiple_days";
+  const spansMultipleDays =
+    isFullDay && form.full_day_duration === "multiple_days";
 
   const eventRange = useMemo(() => {
     if (form.timing_mode === "full_day") {
@@ -108,11 +113,12 @@ function SchoolCalendarEventsWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const [sessionResponse, termResponse, calendarResponse] = await Promise.all([
-        academicService.listSessions({ limit: 100 }),
-        academicService.listTerms({ limit: 100 }),
-        schoolCalendarService.listAdminCalendars({ limit: 100 }),
-      ]);
+      const [sessionResponse, termResponse, calendarResponse] =
+        await Promise.all([
+          academicService.listSessions({ limit: 100 }),
+          academicService.listTerms({ limit: 100 }),
+          schoolCalendarService.listAdminCalendars({ limit: 100 }),
+        ]);
       const sessionItems = asItems(sessionResponse);
       const termItems = asItems(termResponse);
       const calendarItems = asItems(calendarResponse);
@@ -120,7 +126,9 @@ function SchoolCalendarEventsWorkspace() {
         termItems.find((item) => item.is_current) ||
         termItems.find((item) => item.status !== "closed");
       const currentCalendar =
-        calendarItems.find((item) => item.academic_term_id === currentTerm?.id) ||
+        calendarItems.find(
+          (item) => item.academic_term_id === currentTerm?.id,
+        ) ||
         calendarItems[0] ||
         null;
       setSessions(sessionItems);
@@ -235,7 +243,11 @@ function SchoolCalendarEventsWorkspace() {
     setError("");
     setMessage("");
     if (!selectedCalendarId || !form.title.trim()) return;
-    if (!eventRange.start || !eventRange.end || eventRange.end < eventRange.start) {
+    if (
+      !eventRange.start ||
+      !eventRange.end ||
+      eventRange.end < eventRange.start
+    ) {
       setError("Event end must not be before its start.");
       return;
     }
@@ -257,7 +269,7 @@ function SchoolCalendarEventsWorkspace() {
       closeEditor();
       await loadEvents();
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to save calendar event."));
+      setError(getCalendarErrorMessage(err, "Failed to save calendar event."));
     } finally {
       setSaving("");
     }
@@ -303,12 +315,15 @@ function SchoolCalendarEventsWorkspace() {
     if (!cancelTarget || cancelReason.trim().length < 3) return;
     setSaving(cancelTarget);
     try {
-      await schoolCalendarService.cancelEvent(cancelTarget, cancelReason.trim());
+      await schoolCalendarService.cancelEvent(
+        cancelTarget,
+        cancelReason.trim(),
+      );
       setCancelTarget(null);
       setCancelReason("");
       await loadEvents();
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to cancel event."));
+      setError(getCalendarErrorMessage(err, "Failed to cancel event."));
     } finally {
       setSaving("");
     }
@@ -362,7 +377,11 @@ function SchoolCalendarEventsWorkspace() {
                   ]}
                 />
                 {!editorOpen ? (
-                  <Button type="button" onClick={startCreate} disabled={!selectedCalendarId}>
+                  <Button
+                    type="button"
+                    onClick={startCreate}
+                    disabled={!selectedCalendarId}
+                  >
                     <CalendarPlus className="h-4 w-4" />
                     Create event
                   </Button>
@@ -488,7 +507,10 @@ function SchoolCalendarEventsWorkspace() {
                     setForm((current) => ({ ...current, timing_mode: value }))
                   }
                   options={[
-                    { value: "specific_time", label: "Specific start and end time" },
+                    {
+                      value: "specific_time",
+                      label: "Specific start and end time",
+                    },
                     { value: "full_day", label: "Full-day event" },
                   ]}
                 />
@@ -583,7 +605,8 @@ function SchoolCalendarEventsWorkspace() {
 
                 {spanDays > 1 ? (
                   <p className="rounded-lg border border-border/70 bg-surface-muted/40 px-3 py-2 text-xs leading-5 text-text-muted">
-                    Covers {spanDays} calendar days, from {eventRange.start} through {eventRange.end}.
+                    Covers {spanDays} calendar days, from {eventRange.start}{" "}
+                    through {eventRange.end}.
                   </p>
                 ) : null}
 
@@ -594,7 +617,8 @@ function SchoolCalendarEventsWorkspace() {
                       {closedDays.length === 1 ? "" : "s"}.
                     </p>
                     <p className="mt-1">
-                      Saving this event will not reopen school or change attendance rules.
+                      Saving this event will not reopen school or change
+                      attendance rules.
                     </p>
                   </div>
                 ) : null}
@@ -612,7 +636,9 @@ function SchoolCalendarEventsWorkspace() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="submit"
-                    disabled={Boolean(saving) || !selectedCalendar || !form.title.trim()}
+                    disabled={
+                      Boolean(saving) || !selectedCalendar || !form.title.trim()
+                    }
                   >
                     {saving === "event"
                       ? "Saving..."
@@ -653,7 +679,9 @@ function SchoolCalendarEventsWorkspace() {
             <Button
               type="button"
               variant="danger"
-              disabled={cancelReason.trim().length < 3 || saving === cancelTarget}
+              disabled={
+                cancelReason.trim().length < 3 || saving === cancelTarget
+              }
               onClick={cancelEvent}
             >
               Cancel event
@@ -671,7 +699,9 @@ function Notice({ tone, message }) {
       ? "border-success/30 bg-success-soft text-success"
       : "border-error/30 bg-error-soft text-error";
   return (
-    <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${className}`}>
+    <div
+      className={`rounded-xl border px-4 py-3 text-sm font-medium ${className}`}
+    >
       {message}
     </div>
   );

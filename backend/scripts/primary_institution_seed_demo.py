@@ -3,17 +3,27 @@ Generates fake student data as an Excel (.xlsx) file, using the Faker library.
 
 Academic placement is expressed as two independent fields — level and
 arm — matching Weave's current student import contract. Full class
-display names like "JSS1 A" or "SS1 B" are NOT written anywhere; the
-import template expects level/arm as separate columns instead.
+display names like "PRIMARY1 A" are NOT written anywhere; the import
+template expects level/arm as separate columns instead.
 
 Columns (in this order):
 first_name, last_name, date_of_birth, gender, level, arm,
 state_of_origin, parent_email_1, parent_relationship_1, parent_email_2,
 parent_relationship_2
 
-Class / arm rules (from the school's actual data):
-- Levels: JSS1, JSS2, JSS3, SS1, SS2, SS3
-- Arms: A, B, C for every level (18 classes total)
+Class / arm rules (from the school's actual class list):
+- KG1     -> A only
+- KG2     -> A only
+- NURSERY1 -> A, B
+- NURSERY2 -> A, B
+- PRIMARY1 -> A, B, C
+- PRIMARY2 -> A, B, C
+- PRIMARY3 -> A, B, C
+- PRIMARY4 -> A, B, C
+- PRIMARY5 -> A, B          (the school's class list was cut off after
+                              "PRIMARY5 B" — if a PRIMARY5 C class also
+                              exists, just add "C" to its arm list below)
+  -> 19 classes total with the above; 20 if PRIMARY5 also has a C arm.
 
 Department is no longer part of the import contract, so this script
 does not generate or write a department column at all.
@@ -51,32 +61,40 @@ from openpyxl.styles import Font
 fake = Faker("en_NG")
 
 # ---- Config ----------------------------------------------------------
-NUM_ROWS = 1000  # how many fake students to generate
+NUM_ROWS = 30  # how many fake students to generate (must be >= number of classes)
 
 # IMPORTANT: on Windows, this must be a raw string (the r prefix below)
 # or forward slashes. Without it, backslash sequences like \U, \t, \n
 # get interpreted as escape codes and can crash the script or silently
 # mangle the path.
-OUTPUT_FILE = r"c:\Users\taiwo\Downloads\students_import_template (6).xlsx"
+OUTPUT_FILE = r"C:\Users\taiwo\Downloads\students_import_template (9).xlsx"
 
-# Arms available — A, B, C for every level.
+# Arms available per level. NOT uniform across levels — KG only has an
+# "A" stream, Nursery has A/B, Primary has A/B/C.
+# If PRIMARY5 actually has a C arm too, just add it here.
 ARMS_BY_LEVEL = {
-    "JSS1": ["A", "B", "C"],
-    "JSS2": ["A", "B", "C"],
-    "JSS3": ["A", "B", "C"],
-    "SS1": ["A", "B", "C"],
-    "SS2": ["A", "B", "C"],
-    "SS3": ["A", "B", "C"],
+    "KG1": ["A"],
+    "KG2": ["A"],
+    "NURSERY1": ["A", "B"],
+    "NURSERY2": ["A", "B"],
+    "PRIMARY1": ["A", "B", "C"],
+    "PRIMARY2": ["A", "B", "C"],
+    "PRIMARY3": ["A", "B", "C"],
+    "PRIMARY4": ["A", "B", "C"],
+    "PRIMARY5": ["A", "B"],
 }
 
 # Roughly the age (in years) a student in each level would be
 AGE_RANGE_BY_LEVEL = {
-    "JSS1": (10, 11),
-    "JSS2": (11, 12),
-    "JSS3": (12, 13),
-    "SS1": (13, 14),
-    "SS2": (14, 15),
-    "SS3": (15, 16),
+    "KG1": (4, 5),
+    "KG2": (5, 6),
+    "NURSERY1": (2, 3),
+    "NURSERY2": (3, 4),
+    "PRIMARY1": (6, 7),
+    "PRIMARY2": (7, 8),
+    "PRIMARY3": (8, 9),
+    "PRIMARY4": (9, 10),
+    "PRIMARY5": (10, 11),
 }
 
 # Nigerian states (Faker has no built-in "state" provider for en_NG)
@@ -178,7 +196,7 @@ def build_rows():
     class (level + arm), and no more than one parent email per student."""
     all_classes = [
         (level, arm) for level in ARMS_BY_LEVEL for arm in ARMS_BY_LEVEL[level]
-    ]  # 6 levels x 3 arms = 18 classes
+    ]
 
     if NUM_ROWS < len(all_classes):
         raise ValueError(
@@ -253,7 +271,7 @@ def main():
         for row_data in rows:
             ws.append([row_data[name] for name in FIELDNAMES])
 
-        widths = [14, 14, 14, 10, 8, 8, 16, 26, 20, 22, 20]
+        widths = [14, 14, 14, 10, 10, 6, 16, 26, 20, 22, 20]
         for col_idx, width in enumerate(widths, start=1):
             ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
 

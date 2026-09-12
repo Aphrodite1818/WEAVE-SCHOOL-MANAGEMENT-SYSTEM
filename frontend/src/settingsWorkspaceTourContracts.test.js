@@ -20,6 +20,19 @@ test("completed admin profile exposes institution type as read-only context", ()
   assert.match(source, /readOnly: true/);
 });
 
+test("profile completion keeps its mobile submit action outside the scrollable form body", () => {
+  const form = read("./components/shared/ProfileCompletionForm.jsx");
+  const shell = read("./components/layout/DashboardLayout.jsx");
+  const modal = read("./components/ui/Modal.jsx");
+
+  assert.match(form, /formId/);
+  assert.match(form, /showSubmitButton/);
+  assert.match(form, /onSubmitStateChange/);
+  assert.match(modal, /data-modal-footer/);
+  assert.match(shell, /form="profile-completion-form"/);
+  assert.match(shell, /showSubmitButton=\{false\}/);
+});
+
 test("settings page owns both institution-type navigation and workspace-tour replay", () => {
   const source = read("./pages/shared/RoleSettingsPage.jsx");
   assert.match(source, /\/admin\/settings\/institution-type/);

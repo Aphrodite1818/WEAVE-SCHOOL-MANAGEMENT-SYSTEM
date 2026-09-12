@@ -1,5 +1,3 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
@@ -10,15 +8,16 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 import previewImage from "../../assets/images/academic-workspace-preview.png";
 import Navbar from "../../components/layout/Navbar";
 import PublicPricingCard from "../../components/subscriptions/PublicPricingCard";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
-import {
-  LANDING_PRICING_PLANS,
-} from "../../features/subscriptions/subscriptionConfig";
+import { LANDING_PRICING_PLANS } from "../../features/subscriptions/subscriptionConfig";
+import { usePublicPricingCatalogue } from "../../features/subscriptions/usePublicPricingCatalogue";
 
 const features = [
   {
@@ -95,24 +94,31 @@ function LandingPage() {
   const location = useLocation();
   const pageRef = useRef(null);
   const [activePricingPlan, setActivePricingPlan] = useState("professional");
+  const pricingReady = usePublicPricingCatalogue();
   const paidPlans = LANDING_PRICING_PLANS.filter(
     (plan) => plan.planCode !== "free",
   );
 
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add("public-panel-reveal");
-        observer.unobserve(entry.target);
-      });
-    }, { threshold: 0.08 });
-    const sections = pageRef.current?.querySelectorAll("main > section:not(#home)") ?? [];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("public-panel-reveal");
+          observer.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.08 },
+    );
+    const sections =
+      pageRef.current?.querySelectorAll("main > section:not(#home)") ?? [];
     sections.forEach((section) => observer.observe(section));
     return () => {
       observer.disconnect();
-      sections.forEach((section) => section.classList.remove("public-panel-reveal"));
+      sections.forEach((section) =>
+        section.classList.remove("public-panel-reveal"),
+      );
     };
   }, []);
 
@@ -126,7 +132,10 @@ function LandingPage() {
   }, [location.hash]);
 
   return (
-    <div ref={pageRef} className="public-page-shell min-h-[100dvh] overflow-x-hidden bg-background text-text">
+    <div
+      ref={pageRef}
+      className="public-page-shell min-h-[100dvh] overflow-x-hidden bg-background text-text"
+    >
       <Navbar />
       <main>
         <section
@@ -142,20 +151,36 @@ function LandingPage() {
           <div className="section-container relative flex min-h-[calc(100dvh-4.4rem)] items-center py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:py-18 lg:py-24">
             <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:items-center">
               <div className="max-w-3xl">
-                <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl" aria-label="Run your school with clarity, control, and every role connected.">
-                  {"Run your school with clarity, control, and every role connected.".split(" ").map((word, index) => (
-                    <span key={`${word}-${index}`} aria-hidden="true">
-                      <span className="landing-headline-word" style={{ animationDelay: `${80 + index * 85}ms` }}>{word}</span>
-                      {index < 9 ? " " : null}
-                    </span>
-                  ))}
+                <h1
+                  className="text-balance text-4xl font-semibold leading-tight tracking-tight text-white sm:text-6xl lg:text-7xl"
+                  aria-label="Run your school with clarity, control, and every role connected."
+                >
+                  {"Run your school with clarity, control, and every role connected."
+                    .split(" ")
+                    .map((word, index) => (
+                      <span key={`${word}-${index}`} aria-hidden="true">
+                        <span
+                          className="landing-headline-word"
+                          style={{ animationDelay: `${80 + index * 85}ms` }}
+                        >
+                          {word}
+                        </span>
+                        {index < 9 ? " " : null}
+                      </span>
+                    ))}
                 </h1>
-                <p className="public-panel-reveal mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8" style={{ animationDelay: "350ms" }}>
-                  Weave brings student records, staff management, academic setup,
-                  results, report cards, family access, announcements, and school
-                  operations into one structured workspace.
+                <p
+                  className="public-panel-reveal mt-5 max-w-2xl text-base leading-7 text-slate-200 sm:text-lg sm:leading-8"
+                  style={{ animationDelay: "350ms" }}
+                >
+                  Weave brings student records, staff management, academic
+                  setup, results, report cards, family access, announcements,
+                  and school operations into one structured workspace.
                 </p>
-                <div className="public-panel-reveal mt-8 flex flex-col gap-3 sm:flex-row" style={{ animationDelay: "500ms" }}>
+                <div
+                  className="public-panel-reveal mt-8 flex flex-col gap-3 sm:flex-row"
+                  style={{ animationDelay: "500ms" }}
+                >
                   <Link to="/register">
                     <Button size="large" className="w-full sm:w-auto">
                       Get started free
@@ -176,7 +201,10 @@ function LandingPage() {
                 </p>
               </div>
 
-              <div className="public-panel-reveal rounded-[1.75rem] border border-white/10 bg-white/10 p-4 backdrop-blur-xl sm:p-5" style={{ animationDelay: "250ms" }}>
+              <div
+                className="public-panel-reveal rounded-[1.75rem] border border-white/10 bg-white/10 p-4 backdrop-blur-xl sm:p-5"
+                style={{ animationDelay: "250ms" }}
+              >
                 <div className="rounded-[1.45rem] border border-white/10 bg-slate-950/35 p-4">
                   <p className="text-sm font-semibold text-white">
                     Start free, then choose per term
@@ -209,7 +237,9 @@ function LandingPage() {
                         ) : null}
                       </div>
                       <p className="mt-1 text-xs uppercase tracking-wide text-slate-300">
-                        {formatLandingPrice(plan)}
+                        {pricingReady
+                          ? formatLandingPrice(plan)
+                          : "Loading pricing..."}
                       </p>
                     </Link>
                   ))}
@@ -243,7 +273,9 @@ function LandingPage() {
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                     <Icon className="h-5 w-5" />
                   </span>
-                  <h3 className="mt-5 text-lg font-semibold">{feature.title}</h3>
+                  <h3 className="mt-5 text-lg font-semibold">
+                    {feature.title}
+                  </h3>
                   <p className="mt-2 text-sm leading-6 text-text-muted">
                     {feature.description}
                   </p>
@@ -364,7 +396,8 @@ function LandingPage() {
                   </p>
                 </div>
                 <p className="mt-1 text-sm leading-6 text-text-muted">
-                  See exact limits, term billing rules, upgrades, and downgrades.
+                  See exact limits, term billing rules, upgrades, and
+                  downgrades.
                 </p>
               </div>
               <Link to="/pricing" className="w-full sm:w-auto">

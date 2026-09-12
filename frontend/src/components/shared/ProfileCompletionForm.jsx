@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, ImageOff } from "lucide-react";
-import Button from "../ui/Button";
-import Input from "../ui/Input";
-import PhoneNumberInput from "../ui/PhoneNumberInput";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useToast } from "../../hooks/useToast";
 import { parseApiError } from "../../services/api";
 import { clearDashboardMetricsCache } from "../../services/dashboard.service";
 import { onboardingService } from "../../services/onboardingService";
 import { getAvatarSrcFromRecord } from "../../utils/user";
-import { useToast } from "../../hooks/useToast";
+import Button from "../ui/Button";
+import Input from "../ui/Input";
+import PhoneNumberInput from "../ui/PhoneNumberInput";
 
 const ROLE_FORM_CONFIG = {
   admin: [
@@ -161,7 +161,9 @@ const buildFormData = (statusData, role) => {
 
 const readOnlyDisplayValue = (field, value) => {
   if (field.type === "select") {
-    return field.options?.find((option) => option.value === value)?.label || value;
+    return (
+      field.options?.find((option) => option.value === value)?.label || value
+    );
   }
   return value;
 };
@@ -299,12 +301,19 @@ function ProfileCompletionForm({
   submitLabel = "Save profile",
   onSaved,
   onProfileStateResolved,
+  onSubmitStateChange,
+  formId,
   initialStatusData = null,
   showMediaPreview = true,
   institutionTypeReadOnly = false,
+  showSubmitButton = true,
 }) {
   const normalizedRole = onboardingService.normalizeRole(role);
-  const callbacksRef = useRef({ onSaved, onProfileStateResolved });
+  const callbacksRef = useRef({
+    onSaved,
+    onProfileStateResolved,
+    onSubmitStateChange,
+  });
   const [statusData, setStatusData] = useState(initialStatusData);
   const [formData, setFormData] = useState(() =>
     buildFormData(initialStatusData, normalizedRole),
@@ -336,11 +345,26 @@ function ProfileCompletionForm({
         })),
       };
     });
-  }, [institutionTypeReadOnly, normalizedRole, statusData?.onboarding_required]);
+  }, [
+    institutionTypeReadOnly,
+    normalizedRole,
+    statusData?.onboarding_required,
+  ]);
 
   useEffect(() => {
-    callbacksRef.current = { onSaved, onProfileStateResolved };
-  }, [onSaved, onProfileStateResolved]);
+    callbacksRef.current = {
+      onSaved,
+      onProfileStateResolved,
+      onSubmitStateChange,
+    };
+  }, [onSaved, onProfileStateResolved, onSubmitStateChange]);
+
+  useEffect(() => {
+    callbacksRef.current.onSubmitStateChange?.({
+      disabled: isSubmitting || isLoading || !statusData,
+      label: isSubmitting ? "Saving..." : submitLabel,
+    });
+  }, [isLoading, isSubmitting, statusData, submitLabel]);
 
   useEffect(() => {
     if (!initialStatusData) return;
@@ -483,7 +507,7 @@ function ProfileCompletionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form id={formId} onSubmit={handleSubmit} className="space-y-5">
       {loadError && (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {loadError}
@@ -542,13 +566,15 @@ function ProfileCompletionForm({
         </div>
       ))}
 
-      <Button
-        type="submit"
-        className="w-full sm:w-auto"
-        disabled={isSubmitting || isLoading || !statusData}
-      >
-        {isSubmitting ? "Saving..." : submitLabel}
-      </Button>
+      {showSubmitButton ? (
+        <Button
+          type="submit"
+          className="w-full sm:w-auto"
+          disabled={isSubmitting || isLoading || !statusData}
+        >
+          {isSubmitting ? "Saving..." : submitLabel}
+        </Button>
+      ) : null}
     </form>
   );
 }

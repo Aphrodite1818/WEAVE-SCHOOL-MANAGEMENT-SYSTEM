@@ -1,7 +1,7 @@
 import { LANDING_PRICING_PLANS } from "./subscriptionConfig";
 
 const CATALOGUE_STORAGE_KEY = "weave:public-pricing-catalogue";
-const CATALOGUE_CHANGED_EVENT = "weave:pricing-catalogue-changed";
+export const CATALOGUE_CHANGED_EVENT = "weave:pricing-catalogue-changed";
 
 const FEATURE_LABELS = {
   student_management: "Student management",
@@ -44,6 +44,11 @@ export const resetPublicPricingPlans = () => {
     plan.checkoutEnabled = false;
   });
   document.documentElement.dataset.pricingCatalogueReady = "false";
+};
+
+export const settlePublicPricingCatalogue = () => {
+  document.documentElement.dataset.pricingCatalogueReady = "true";
+  window.dispatchEvent(new CustomEvent(CATALOGUE_CHANGED_EVENT));
 };
 
 export const applyPublicPricingCatalogue = (

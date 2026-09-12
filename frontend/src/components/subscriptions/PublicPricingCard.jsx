@@ -19,7 +19,13 @@ function formatPrice(plan) {
   return `₦${Number(plan.pricePerTerm).toLocaleString()}`;
 }
 
-function PublicPricingCard({ plan, selected = false, id, className = "" }) {
+function PublicPricingCard({
+  plan,
+  selected = false,
+  id,
+  className = "",
+  pricingReady = true,
+}) {
   const features = (plan.features || []).slice(0, 4);
   const price = formatPrice(plan);
   const compactPrice = /unavailable/i.test(price);
@@ -40,9 +46,7 @@ function PublicPricingCard({ plan, selected = false, id, className = "" }) {
           </h3>
           <p className="mt-2 text-sm text-text-muted">{plan.bestFor}</p>
         </div>
-        {plan.highlighted ? (
-          <Badge variant="primary">Popular</Badge>
-        ) : null}
+        {plan.highlighted ? <Badge variant="primary">Popular</Badge> : null}
       </div>
 
       <div className="mt-8">
@@ -51,7 +55,7 @@ function PublicPricingCard({ plan, selected = false, id, className = "" }) {
             compactPrice ? "text-2xl" : "text-4xl"
           }`}
         >
-          {price}
+          {pricingReady ? price : "Loading pricing..."}
         </p>
         <p className="mt-2 text-sm text-text-muted">Per academic term</p>
       </div>
@@ -60,10 +64,7 @@ function PublicPricingCard({ plan, selected = false, id, className = "" }) {
         {plan.description}
       </p>
 
-      <Link
-        to="/register"
-        className="mt-7 block"
-      >
+      <Link to="/register" className="mt-7 block">
         <Button className="min-h-12 w-full rounded-xl">Get Started</Button>
       </Link>
 

@@ -135,6 +135,10 @@ function DashboardShellFrame({
   const [pullDistance, setPullDistance] = useState(0);
   const [drawerSwipeDistance, setDrawerSwipeDistance] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [profileSubmitState, setProfileSubmitState] = useState({
+    disabled: true,
+    label: "Save profile",
+  });
   const shellRef = useRef(null);
   const mainRef = useRef(null);
   const initialScrollRestoreRef = useRef(true);
@@ -822,13 +826,26 @@ function DashboardShellFrame({
           }
           closeOnOverlay={!onboardingState.required}
           showClose={!onboardingState.required}
+          footer={
+            <Button
+              type="submit"
+              form="profile-completion-form"
+              className="w-full sm:w-auto"
+              disabled={profileSubmitState.disabled}
+            >
+              {profileSubmitState.label}
+            </Button>
+          }
         >
           <ProfileCompletionForm
             role={role}
             mode={profileMode}
+            formId="profile-completion-form"
+            showSubmitButton={false}
             initialStatusData={onboardingState.status}
             onProfileStateResolved={handleProfileStateResolved}
             onSaved={handleProfileSaved}
+            onSubmitStateChange={setProfileSubmitState}
           />
         </Modal>
       ) : null}
