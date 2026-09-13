@@ -19,9 +19,9 @@ import "./styles/mobileDashboard.css";
 import "./styles/mobileDirectoryCards.css";
 import "./styles/mobileOverrides.css";
 import "./styles/mobilePlatformFixes.css";
+import "./styles/pwaInteractions.css";
 import "./styles/mobilePwaStability.css";
 import "./styles/notificationDropdown.css";
-import "./styles/pwaInteractions.css";
 import "./styles/studentDashboardCleanup.css";
 import {
   applyAccessibilityPreferences,

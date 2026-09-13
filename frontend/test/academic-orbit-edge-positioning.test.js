@@ -33,11 +33,22 @@ test("academic orbit launcher supports pointer dragging and nearest-edge snappin
   );
 });
 
-test("academic orbit menu follows the selected edge without overflowing the viewport", () => {
+test("academic orbit reserves the installed PWA bottom navigation while positioning and dragging", () => {
+  assert.match(source, /getBottomNavObstruction/);
+  assert.match(source, /dataset\?\.standalonePwa !== "true"/);
+  assert.match(source, /data-mobile-bottom-nav="true"/);
+  assert.match(source, /getBoundingClientRect\(\)/);
+  assert.match(source, /bottomObstruction/);
+  assert.match(source, /getUsableViewportHeight/);
+  assert.match(source, /window\.ResizeObserver/);
+  assert.match(source, /orientationchange/);
+});
+
+test("academic orbit menu follows the selected edge without overflowing the usable viewport", () => {
   assert.match(source, /positionPreference\.edge === "right"/);
   assert.match(source, /positionPreference\.edge === "left"/);
   assert.match(source, /positionPreference\.edge === "top"/);
   assert.match(source, /viewport\.width - menuRect\.width - EDGE_GAP/);
-  assert.match(source, /viewport\.height - menuRect\.height - EDGE_GAP/);
+  assert.match(source, /usableHeight - menuRect\.height - EDGE_GAP/);
   assert.match(source, /visibility: menuStyle \? "visible" : "hidden"/);
 });
