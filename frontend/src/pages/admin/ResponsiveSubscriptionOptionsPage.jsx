@@ -12,6 +12,7 @@ import LoadingState from "../../components/shared/LoadingState";
 import Badge from "../../components/ui/Badge";
 import Button from "../../components/ui/Button";
 import Modal from "../../components/ui/Modal";
+import { savePendingUpgradeTour } from "../../features/guides/workspaceTourState";
 import {
   LANDING_PRICING_PLANS,
   formatLimitValue,
@@ -93,6 +94,7 @@ function MobileSubscriptionOptionsPage() {
 
   const [term, setTerm] = useState(null);
   const [planOptions, setPlanOptions] = useState(null);
+  const [planHistory, setPlanHistory] = useState([]);
   const [activePlanCode, setActivePlanCode] = useState(
     requestedPlanCode || "professional",
   );
@@ -148,11 +150,13 @@ function MobileSubscriptionOptionsPage() {
         );
       }
 
-      const options = await subscriptionService.getTermPlanOptions(
-        selectedTerm.id,
-      );
+      const [options, history] = await Promise.all([
+        subscriptionService.getTermPlanOptions(selectedTerm.id),
+        subscriptionService.getTermPlanHistory(),
+      ]);
       setTerm(selectedTerm);
       setPlanOptions(options);
+      setPlanHistory(Array.isArray(history) ? history : []);
       setActivePlanCode((current) => {
         if (requestedPlanCode) return requestedPlanCode;
         if (options?.current_plan && options.current_plan !== "free") {
@@ -178,7 +182,13 @@ function MobileSubscriptionOptionsPage() {
 
   const handlePlan = async (selectedOption = activeOption) => {
     const option = selectedOption;
-    if (checkoutLock.current || busyPlan || !term || !option || option.transition === "current") {
+    if (
+      checkoutLock.current ||
+      busyPlan ||
+      !term ||
+      !option ||
+      option.transition === "current"
+    ) {
       return;
     }
     if (!option.eligible) {
@@ -193,6 +203,11 @@ function MobileSubscriptionOptionsPage() {
     setError("");
 
     try {
+      const upgradeTour = subscriptionService.upgradeTourForPlan({
+        targetPlan: option.plan_code,
+        fromPlan: planOptions?.current_plan || "free",
+        history: planHistory,
+      });
       if (option.requires_payment || Number(option.amount_due_kobo || 0) > 0) {
         const checkout = await subscriptionService.initializeTermCheckout({
           academic_term_id: term.id,
@@ -204,6 +219,7 @@ function MobileSubscriptionOptionsPage() {
           origin,
           returnPath,
           postPaymentAction,
+          upgradeTour,
         });
         window.location.assign(
           subscriptionService.checkoutRedirectUrl(checkout),
@@ -227,6 +243,9 @@ function MobileSubscriptionOptionsPage() {
       }
 
       await refreshSubscriptionState({ silent: true });
+      if (upgradeTour) {
+        savePendingUpgradeTour({ ...upgradeTour, dedicated: true });
+      }
       navigate(returnPath, { replace: true });
     } catch (actionError) {
       checkoutLock.current = false;

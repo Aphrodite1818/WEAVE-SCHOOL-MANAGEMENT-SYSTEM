@@ -180,7 +180,7 @@ export default function useWorkspaceTour({
   ]);
 
   useEffect(() => {
-    if (!enabled || role !== "admin" || pathname !== "/admin/dashboard") return;
+    if (!enabled || role !== "admin" || !pathname.startsWith("/admin/")) return;
     const pending = consumePendingUpgradeTour();
     if (
       !pending ||
