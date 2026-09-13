@@ -39,9 +39,9 @@ test("academic mobile workspace reserves installed-PWA bottom navigation space",
     source,
     /html\[data-standalone-pwa="true"\] \[data-academic-workflow-navigator="true"\]/,
   );
-  assert.match(source, /6\.25rem \+ env\(safe-area-inset-bottom\)/);
+  assert.match(source, /bottom:\s*var\(--mobile-bottom-nav-clearance\)/);
   assert.match(source, /#dashboard-content/);
-  assert.match(source, /7\.5rem \+ env\(safe-area-inset-bottom\)/);
+  assert.match(source, /padding-bottom:\s*var\(--mobile-bottom-nav-clearance\)/);
 });
 
 test("the shared modal stays centered inside the live visual viewport", async () => {
