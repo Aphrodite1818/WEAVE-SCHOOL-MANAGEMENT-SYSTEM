@@ -19,9 +19,9 @@
     bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 
-  /* Installed PWA: reserve the fixed bottom navigation as well as the device safe area. */
+  /* Installed PWA: share the same reserved zone as dashboard content. */
   html[data-standalone-pwa="true"] [data-academic-workflow-navigator="true"] {
-    bottom: calc(6.25rem + env(safe-area-inset-bottom));
+    bottom: var(--mobile-bottom-nav-clearance);
   }
 
   html[data-standalone-pwa="true"] [data-academic-workflow-menu="true"] {
@@ -29,7 +29,7 @@
   }
 
   html[data-standalone-pwa="true"] #dashboard-content {
-    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom));
+    padding-bottom: var(--mobile-bottom-nav-clearance);
   }
 
   /* Admin PWA navigation: Academics, Inbox, Home, Calendar, Menu. */

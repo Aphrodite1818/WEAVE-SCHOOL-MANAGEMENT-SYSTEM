@@ -28,10 +28,37 @@ const DEFAULT_POSITION_PREFERENCE = { edge: "right", ratio: 1 };
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
-const getViewport = () => ({
-  width: typeof window === "undefined" ? 1280 : window.innerWidth,
-  height: typeof window === "undefined" ? 720 : window.innerHeight,
-});
+const getBottomNavObstruction = (viewportHeight) => {
+  if (
+    typeof document === "undefined" ||
+    document.documentElement?.dataset?.standalonePwa !== "true"
+  ) {
+    return 0;
+  }
+
+  const bottomNav = document.querySelector('[data-mobile-bottom-nav="true"]');
+  if (!bottomNav) return 0;
+
+  const rect = bottomNav.getBoundingClientRect();
+  return Math.max(0, viewportHeight - rect.top);
+};
+
+const getViewport = () => {
+  const width = typeof window === "undefined" ? 1280 : window.innerWidth;
+  const height = typeof window === "undefined" ? 720 : window.innerHeight;
+
+  return {
+    width,
+    height,
+    bottomObstruction: getBottomNavObstruction(height),
+  };
+};
+
+const getUsableViewportHeight = (viewport) =>
+  Math.max(
+    BUTTON_SIZE + EDGE_GAP * 2,
+    viewport.height - Math.max(0, viewport.bottomObstruction || 0),
+  );
 
 const readPositionPreference = () => {
   if (typeof window === "undefined") return DEFAULT_POSITION_PREFERENCE;
@@ -53,13 +80,14 @@ const readPositionPreference = () => {
 };
 
 const positionFromPreference = (preference, viewport) => {
+  const usableHeight = getUsableViewportHeight(viewport);
   const horizontalTravel = Math.max(
     0,
     viewport.width - BUTTON_SIZE - EDGE_GAP * 2,
   );
   const verticalTravel = Math.max(
     0,
-    viewport.height - BUTTON_SIZE - EDGE_GAP * 2,
+    usableHeight - BUTTON_SIZE - EDGE_GAP * 2,
   );
   const ratio = clamp(preference?.ratio ?? 1, 0, 1);
 
@@ -78,13 +106,14 @@ const positionFromPreference = (preference, viewport) => {
     y:
       preference?.edge === "top"
         ? EDGE_GAP
-        : Math.max(EDGE_GAP, viewport.height - BUTTON_SIZE - EDGE_GAP),
+        : Math.max(EDGE_GAP, usableHeight - BUTTON_SIZE - EDGE_GAP),
   };
 };
 
 const snapToNearestEdge = (position, viewport) => {
+  const usableHeight = getUsableViewportHeight(viewport);
   const maxX = Math.max(EDGE_GAP, viewport.width - BUTTON_SIZE - EDGE_GAP);
-  const maxY = Math.max(EDGE_GAP, viewport.height - BUTTON_SIZE - EDGE_GAP);
+  const maxY = Math.max(EDGE_GAP, usableHeight - BUTTON_SIZE - EDGE_GAP);
   const x = clamp(position.x, EDGE_GAP, maxX);
   const y = clamp(position.y, EDGE_GAP, maxY);
   const distances = [
@@ -162,16 +191,36 @@ export default function AcademicOrbitNavigator({
     };
   }, [workflows]);
 
-  useEffect(() => {
-    const handleResize = () => {
+  useLayoutEffect(() => {
+    const syncViewport = () => {
       setViewport(getViewport());
+    };
+    const handleResize = () => {
+      syncViewport();
       setDragPosition(null);
       setIsDragging(false);
       dragRef.current = null;
     };
 
+    syncViewport();
+
+    const bottomNav = document.querySelector('[data-mobile-bottom-nav="true"]');
+    const resizeObserver =
+      window.ResizeObserver && bottomNav
+        ? new window.ResizeObserver(syncViewport)
+        : null;
+    resizeObserver?.observe(bottomNav);
+
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+    window.addEventListener("pageshow", syncViewport);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+      window.removeEventListener("pageshow", syncViewport);
+    };
   }, []);
 
   useEffect(() => {
@@ -191,9 +240,10 @@ export default function AcademicOrbitNavigator({
       return;
     }
 
+    const usableHeight = getUsableViewportHeight(viewport);
     const menuRect = menuRef.current.getBoundingClientRect();
     const maxLeft = Math.max(EDGE_GAP, viewport.width - menuRect.width - EDGE_GAP);
-    const maxTop = Math.max(EDGE_GAP, viewport.height - menuRect.height - EDGE_GAP);
+    const maxTop = Math.max(EDGE_GAP, usableHeight - menuRect.height - EDGE_GAP);
     const buttonCenterX = settledPosition.x + BUTTON_SIZE / 2;
     const buttonCenterY = settledPosition.y + BUTTON_SIZE / 2;
     let left;
@@ -222,6 +272,7 @@ export default function AcademicOrbitNavigator({
     positionPreference.edge,
     settledPosition.x,
     settledPosition.y,
+    viewport.bottomObstruction,
     viewport.height,
     viewport.width,
   ]);
@@ -268,13 +319,14 @@ export default function AcademicOrbitNavigator({
         setIsDragging(true);
       }
 
+      const usableHeight = getUsableViewportHeight(viewport);
       const maxX = Math.max(
         EDGE_GAP,
         viewport.width - BUTTON_SIZE - EDGE_GAP,
       );
       const maxY = Math.max(
         EDGE_GAP,
-        viewport.height - BUTTON_SIZE - EDGE_GAP,
+        usableHeight - BUTTON_SIZE - EDGE_GAP,
       );
       const nextPosition = {
         x: clamp(drag.startX + deltaX, EDGE_GAP, maxX),
@@ -289,7 +341,7 @@ export default function AcademicOrbitNavigator({
       };
       setDragPosition(nextPosition);
     },
-    [viewport.height, viewport.width],
+    [viewport],
   );
 
   const finishPointerInteraction = useCallback(

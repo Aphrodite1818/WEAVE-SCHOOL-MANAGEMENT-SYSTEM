@@ -121,6 +121,32 @@ test("every actor dashboard uses the shared vertically scrollable viewport and n
   }
 });
 
+test("installed bottom navigation publishes its measured obstruction as shared clearance", async () => {
+  const [navSource, platformCss, interactionCss] = await Promise.all([
+    read("src/components/layout/BottomNav.jsx"),
+    read("src/styles/mobilePlatformFixes.css"),
+    read("src/styles/pwaInteractions.css"),
+  ]);
+
+  assert.match(navSource, /BOTTOM_NAV_CONTENT_GAP_PX/);
+  assert.match(navSource, /getBoundingClientRect\(\)/);
+  assert.match(navSource, /obstructionHeight/);
+  assert.match(navSource, /--mobile-bottom-nav-clearance/);
+  assert.match(navSource, /ResizeObserver/);
+  assert.match(
+    platformCss,
+    /data-mobile-billing-action="true"[\s\S]*?bottom:\s*var\(--mobile-bottom-nav-clearance\)\s*!important/,
+  );
+  assert.match(
+    platformCss,
+    /data-mobile-billing-page="true"[\s\S]*?padding-bottom:\s*calc\(var\(--mobile-bottom-nav-clearance\) \+ 9rem\)\s*!important/,
+  );
+  assert.match(
+    interactionCss,
+    /data-academic-workflow-navigator="true"[\s\S]*?bottom:\s*var\(--mobile-bottom-nav-clearance\)/,
+  );
+});
+
 test("all role guide pages own a full visible-height PWA scroll surface", async () => {
   const [css, shellSource, roleGuideSource, adminGuideSource] = await Promise.all([
     read("src/styles/mobilePwaStability.css"),
