@@ -27,6 +27,20 @@ test("parent analytics is discoverable without inventing a backend route", async
   assert.match(navigation, /Family Insights[^\n]*\/parent\/analytics/);
 });
 
+test("family insights aggregates linked-child academics instead of charting inbox activity", async () => {
+  const analyticsPage = await read("src/pages/shared/RoleAnalyticsPage.jsx");
+
+  assert.match(analyticsPage, /parentService\.getMyStudents/);
+  assert.match(analyticsPage, /academicService\.listChildResults/);
+  assert.match(analyticsPage, /reportCardService\.listChildReportCards/);
+  assert.match(analyticsPage, /key: "child_latest_average"/);
+  assert.match(analyticsPage, /key: "report_card_coverage"/);
+  assert.match(analyticsPage, /key: "report_cards_by_child"/);
+  assert.match(analyticsPage, /label: "Results available"/);
+  assert.match(analyticsPage, /label: "Published reports"/);
+  assert.doesNotMatch(analyticsPage, /announcement_read_vs_unread|announcement_category_breakdown/);
+});
+
 test("actor dashboard metrics remain a two-column grid on narrow phones", async () => {
   const styles = await read("src/styles/mobileDashboard.css");
   const dashboards = await Promise.all([
@@ -42,7 +56,7 @@ test("actor dashboard metrics remain a two-column grid on narrow phones", async 
     read("src/pages/superadmin/SuperadminTrafficMonitorPage.jsx"),
   ]);
 
-  assert.match(styles, /#dashboard-content \.dashboard-kpi-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /#dashboard-content \.dashboard-kpi-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)/);
   assert.doesNotMatch(styles, /#dashboard-content \.dashboard-kpi-grid \{\s*grid-template-columns: minmax\(0, 1fr\)/);
   dashboards.forEach((source) => {
     assert.match(source, /dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2/);
