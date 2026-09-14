@@ -22,9 +22,129 @@ import {
 } from "../../components/dashboard/DashboardPrimitives";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import LoadingState from "../../components/shared/LoadingState";
+import { academicService } from "../../services/academicService";
 import { getErrorMessage, isAbortError } from "../../services/api";
 import { dashboardService } from "../../services/dashboard.service";
-import { formatChartLabel } from "../../utils/academicDashboard";
+import { parentService } from "../../services/parentService";
+import { reportCardService } from "../../services/reportCardService";
+import { averageScore, formatChartLabel } from "../../utils/academicDashboard";
+import { displayName } from "../../utils/user";
+import { normalizeParentChildRecord } from "../parent/parentPageUtils";
+
+const asItems = (response) => (Array.isArray(response?.items) ? response.items : []);
+
+const latestPeriodAverage = (results = []) => {
+  if (!Array.isArray(results) || results.length === 0) return null;
+
+  const latest = results[0];
+  const samePeriod = results.filter((item) => {
+    if (latest?.academic_session_id && latest?.academic_term_id) {
+      return (
+        item?.academic_session_id === latest.academic_session_id
+        && item?.academic_term_id === latest.academic_term_id
+      );
+    }
+
+    return (
+      item?.academic_session_name === latest?.academic_session_name
+      && item?.academic_term_name === latest?.academic_term_name
+    );
+  });
+
+  return samePeriod.length > 0 ? averageScore(samePeriod) : null;
+};
+
+const parentChildLabel = (entry, index) => {
+  const { student } = normalizeParentChildRecord(entry);
+  return displayName(student) || `Child ${index + 1}`;
+};
+
+const loadParentFamilyInsights = async (requestOptions = {}) => {
+  const [childrenResponse, communicationMetrics] = await Promise.all([
+    parentService.getMyStudents(requestOptions),
+    dashboardService.getParentAnalytics(requestOptions),
+  ]);
+  const children = asItems(childrenResponse);
+
+  const childSummaries = await Promise.all(
+    children.map(async (entry, index) => {
+      const { student } = normalizeParentChildRecord(entry);
+      if (!student?.id) {
+        return {
+          label: parentChildLabel(entry, index),
+          results: [],
+          reportCards: [],
+          unavailable: true,
+        };
+      }
+
+      try {
+        const [resultResponse, reportCardResponse] = await Promise.all([
+          academicService.listChildResults(student.id, requestOptions),
+          reportCardService.listChildReportCards(student.id, {}, requestOptions),
+        ]);
+        return {
+          label: parentChildLabel(entry, index),
+          results: asItems(resultResponse),
+          reportCards: asItems(reportCardResponse),
+          unavailable: false,
+        };
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        return {
+          label: parentChildLabel(entry, index),
+          results: [],
+          reportCards: [],
+          unavailable: true,
+        };
+      }
+    }),
+  );
+
+  const childrenWithResults = childSummaries.filter((item) => item.results.length > 0).length;
+  const childrenWithReports = childSummaries.filter((item) => item.reportCards.length > 0).length;
+  const publishedReportCards = childSummaries.reduce(
+    (total, item) => total + item.reportCards.length,
+    0,
+  );
+  const unavailableChildren = childSummaries.filter((item) => item.unavailable).length;
+
+  const latestAverage = childSummaries.flatMap((item) => {
+    const reportAverage = Number(item.reportCards[0]?.average_score);
+    const fallbackAverage = latestPeriodAverage(item.results);
+    const value = Number.isFinite(reportAverage) ? reportAverage : fallbackAverage;
+    if (!Number.isFinite(Number(value))) return [];
+    return [{ label: item.label, value: Math.round(Number(value) * 10) / 10 }];
+  });
+
+  const reportCardsByChild = childSummaries.map((item) => ({
+    label: item.label,
+    value: item.reportCards.length,
+  }));
+
+  const communicationStats = communicationMetrics?.stats || {};
+  return {
+    stats: {
+      linked_students: children.length,
+      children_with_results: childrenWithResults,
+      children_with_published_reports: childrenWithReports,
+      published_report_cards: publishedReportCards,
+      unread_count: Number(communicationStats.unread_count) || 0,
+      primary_contacts: Number(communicationStats.primary_contacts) || 0,
+      unavailable_children: unavailableChildren,
+    },
+    charts: {
+      child_latest_average: latestAverage,
+      report_card_coverage: children.length > 0
+        ? [
+            { label: "Report available", value: childrenWithReports },
+            { label: "Awaiting report", value: Math.max(children.length - childrenWithReports, 0) },
+          ]
+        : [],
+      report_cards_by_child: reportCardsByChild,
+    },
+  };
+};
 
 const roleCopy = {
   admin: {
@@ -86,18 +206,42 @@ const roleCopy = {
   },
   parent: {
     title: "Family Insights",
-    description: "Linked-student access and school communication activity.",
-    load: dashboardService.getParentAnalytics,
-    insightLabel: "Family account overview",
+    description: "A family-wide view of linked children, academic availability, and items that may need your attention.",
+    load: loadParentFamilyInsights,
+    insightLabel: "Family overview",
+    featuredSectionTitle: "Family comparison",
+    featuredSectionDescription: "A simple side-by-side view across your linked children.",
+    supportingSectionTitle: "Family coverage",
+    supportingSectionDescription: "Report availability across the children linked to this school.",
     metricCards: [
-      { key: "linked_students", label: "Linked students", icon: GraduationCap, tone: "primary", description: "Students available in this school" },
-      { key: "primary_contacts", label: "Primary contacts", icon: Users, tone: "success", description: "Primary-contact relationships" },
-      { key: "unread_count", label: "Unread updates", icon: Bell, tone: "warning", description: "School notifications to review" },
-      { key: "feed_total", label: "All updates", icon: FileText, tone: "accent", description: "Notifications in your feed" },
+      { key: "linked_students", label: "Linked children", icon: GraduationCap, tone: "primary", description: "Children available in this school" },
+      { key: "children_with_results", label: "Results available", icon: CheckCircle2, tone: "success", description: "Children with finalized results" },
+      { key: "published_report_cards", label: "Published reports", icon: FileText, tone: "accent", description: "Report cards available across the family" },
+      { key: "unread_count", label: "School updates", icon: Bell, tone: "warning", description: "Unread items that may need attention" },
     ],
     charts: [
-      { kind: "donut", key: "announcement_read_vs_unread", title: "Notification status", description: "Read and unread school updates.", featured: true },
-      { kind: "bar", key: "announcement_category_breakdown", title: "Update categories", description: "School updates grouped by category." },
+      {
+        kind: "bar",
+        key: "child_latest_average",
+        title: "Latest academic average by child",
+        description: "Latest published report average, with finalized current-period results used when a report is not available yet.",
+        emptyMessage: "Academic averages will appear when finalized results or published reports are available.",
+        featured: true,
+      },
+      {
+        kind: "donut",
+        key: "report_card_coverage",
+        title: "Report availability",
+        description: "How many linked children currently have at least one published report card.",
+        emptyMessage: "Link a child to see family report availability.",
+      },
+      {
+        kind: "bar",
+        key: "report_cards_by_child",
+        title: "Published reports by child",
+        description: "Published report-card history available for each linked child.",
+        emptyMessage: "Published report cards will appear here after the school releases them.",
+      },
     ],
   },
 };
@@ -135,14 +279,47 @@ const getSnapshotInsight = (role, stats) => {
   if (role !== "parent") return null;
 
   const linkedStudents = Number(stats.linked_students) || 0;
+  const childrenWithResults = Number(stats.children_with_results) || 0;
+  const childrenWithReports = Number(stats.children_with_published_reports) || 0;
+  const publishedReports = Number(stats.published_report_cards) || 0;
   const unreadUpdates = Number(stats.unread_count) || 0;
+  const unavailableChildren = Number(stats.unavailable_children) || 0;
+
+  if (linkedStudents === 0) {
+    return {
+      eyebrow: "Family snapshot",
+      title: "Link a child to unlock family insights",
+      detail: "Once a student is linked, this page will summarize academic availability across your family.",
+      tone: "neutral",
+      icon: GraduationCap,
+    };
+  }
+
+  if (childrenWithResults === 0 && childrenWithReports === 0) {
+    return {
+      eyebrow: "Family snapshot",
+      title: `${linkedStudents} linked child${linkedStudents === 1 ? "" : "ren"} ready for updates`,
+      detail: "Finalized results and published report cards will appear here as the school releases them.",
+      tone: unavailableChildren > 0 ? "warning" : "neutral",
+      icon: GraduationCap,
+    };
+  }
+
+  const academicChildren = Math.max(childrenWithResults, childrenWithReports);
+  const reportCopy = `${publishedReports} published report card${publishedReports === 1 ? "" : "s"} available across your family.`;
+  const updateCopy = unreadUpdates > 0
+    ? ` ${unreadUpdates} unread school update${unreadUpdates === 1 ? "" : "s"} may need your attention.`
+    : " No unread school updates need attention right now.";
+  const availabilityCopy = unavailableChildren > 0
+    ? ` ${unavailableChildren} child summary could not be loaded and may be temporarily unavailable.`
+    : "";
+
   return {
-    title: `${linkedStudents} linked student${linkedStudents === 1 ? "" : "s"} in this school`,
-    detail: unreadUpdates > 0
-      ? `${unreadUpdates} school update${unreadUpdates === 1 ? "" : "s"} still need${unreadUpdates === 1 ? "s" : ""} your attention.`
-      : "There are no unread school updates waiting for you.",
-    tone: unreadUpdates > 0 ? "warning" : "success",
-    icon: unreadUpdates > 0 ? Bell : CheckCircle2,
+    eyebrow: "Family snapshot",
+    title: `${academicChildren} of ${linkedStudents} linked child${linkedStudents === 1 ? "" : "ren"} have academic records available`,
+    detail: `${reportCopy}${updateCopy}${availabilityCopy}`,
+    tone: unreadUpdates > 0 || unavailableChildren > 0 ? "warning" : "success",
+    icon: unreadUpdates > 0 || unavailableChildren > 0 ? Bell : CheckCircle2,
   };
 };
 
@@ -153,7 +330,7 @@ function renderChart(chart, charts) {
     title: chart.title,
     description: chart.description,
     data,
-    emptyMessage: "No finalized data is available for this chart yet.",
+    emptyMessage: chart.emptyMessage || "No finalized data is available for this chart yet.",
   };
 
   if (chart.kind === "donut") return <AnalyticsDonutChart {...commonProps} />;
@@ -176,7 +353,7 @@ function AnalyticsInsight({ insight }) {
           <Icon className="h-6 w-6" />
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-muted">Latest signal</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-text-muted">{insight.eyebrow || "Latest signal"}</p>
           <h2 className="mt-1 text-xl font-semibold leading-tight text-text sm:text-2xl">{insight.title}</h2>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">{insight.detail}</p>
         </div>
@@ -247,14 +424,22 @@ export default function RoleAnalyticsPage({ role = "admin" }) {
 
           {featuredChart ? (
             <section className="space-y-4">
-              <DashboardSectionHeader title="Primary trend" description="The strongest current signal from available records." showDescription />
+              <DashboardSectionHeader
+                title={copy.featuredSectionTitle || "Primary trend"}
+                description={copy.featuredSectionDescription || "The strongest current signal from available records."}
+                showDescription
+              />
               {renderChart(featuredChart, charts)}
             </section>
           ) : null}
 
           {supportingCharts.length ? (
             <section className="space-y-4">
-              <DashboardSectionHeader title="Detailed breakdowns" description="Role-specific comparisons from existing backend metrics." showDescription />
+              <DashboardSectionHeader
+                title={copy.supportingSectionTitle || "Detailed breakdowns"}
+                description={copy.supportingSectionDescription || "Role-specific comparisons from existing backend metrics."}
+                showDescription
+              />
               <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                 {supportingCharts.map((chart) => renderChart(chart, charts))}
               </div>
