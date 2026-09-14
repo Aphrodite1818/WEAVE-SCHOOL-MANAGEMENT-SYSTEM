@@ -29,10 +29,10 @@ def test_initial_baseline_contains_the_canonical_enrollment_outcomes() -> None:
         / "20260911_initial_schema_initial_production_schema.py"
     ).read_text(encoding="utf-8")
 
-    assert "revision: str = '20260911_initial_schema'" in migration
+    assert 'revision: str = "20260911_initial_schema"' in migration
     assert "down_revision: Union[str, Sequence[str], None] = None" in migration
-    assert "'class_placed'" in migration
-    assert "'level_reassigned'" in migration
+    assert '"class_placed"' in migration
+    assert '"level_reassigned"' in migration
 
 
 def test_comment_templates_use_performance_ranges_not_grade_mappings() -> None:
