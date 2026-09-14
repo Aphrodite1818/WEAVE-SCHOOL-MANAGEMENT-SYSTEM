@@ -194,9 +194,7 @@ def generate_row(level=None, arm=None, parent_email=None):
 def build_rows():
     """Generate NUM_ROWS rows, guaranteeing at least one parent email per
     class (level + arm), and no more than one parent email per student."""
-    all_classes = [
-        (level, arm) for level in ARMS_BY_LEVEL for arm in ARMS_BY_LEVEL[level]
-    ]
+    all_classes = [(level, arm) for level in ARMS_BY_LEVEL for arm in ARMS_BY_LEVEL[level]]
 
     if NUM_ROWS < len(all_classes):
         raise ValueError(
