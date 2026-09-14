@@ -13,35 +13,35 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '20260911_initial_schema'
+revision: str = "20260911_initial_schema"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 # Frozen wire values kept explicit for the CBT sync contract.
 CBT_SYNC_ENTITY_VALUES = (
-    'academic_level',
-    'department',
-    'arm_label',
-    'class',
-    'class_term_department',
-    'academic_session',
-    'academic_term',
-    'subject',
-    'curriculum',
-    'curriculum_subject',
-    'curriculum_subject_department',
-    'assessment_scheme',
-    'assessment_component',
-    'admin',
-    'teacher',
-    'teacher_assignment',
-    'student_enrollment',
+    "academic_level",
+    "department",
+    "arm_label",
+    "class",
+    "class_term_department",
+    "academic_session",
+    "academic_term",
+    "subject",
+    "curriculum",
+    "curriculum_subject",
+    "curriculum_subject_department",
+    "assessment_scheme",
+    "assessment_component",
+    "admin",
+    "teacher",
+    "teacher_assignment",
+    "student_enrollment",
 )
 
 STUDENT_ENROLLMENT_OUTCOME_VALUES = (
-    'class_placed',
-    'level_reassigned',
+    "class_placed",
+    "level_reassigned",
 )
 
 
