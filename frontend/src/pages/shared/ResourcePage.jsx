@@ -36,6 +36,47 @@ const cleanPayload = (payload) =>
     return nextPayload;
   }, {});
 
+const payloadValuesEqual = (left, right) => {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  if (
+    left &&
+    right &&
+    typeof left === "object" &&
+    typeof right === "object"
+  ) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  return false;
+};
+
+const buildPayload = (config, formData, editingItem, context) =>
+  config.buildPayload
+    ? config.buildPayload(formData, editingItem, context)
+    : cleanPayload(formData);
+
+const buildChangedPayload = (config, formData, editingItem, context) => {
+  const nextPayload = buildPayload(config, formData, editingItem, context);
+  if (!editingItem || !config.mapItemToForm) return nextPayload;
+
+  const originalForm = config.mapItemToForm(editingItem, context);
+  const originalPayload = buildPayload(
+    config,
+    originalForm,
+    editingItem,
+    context,
+  );
+
+  return Object.entries(nextPayload).reduce((changes, [key, value]) => {
+    if (!payloadValuesEqual(value, originalPayload[key])) {
+      changes[key] = value;
+    }
+    return changes;
+  }, {});
+};
+
 function FormControl({ field, value, error, onChange, onValueChange }) {
   const commonProps = {
     name: field.name,
@@ -266,9 +307,15 @@ function ResourcePage({ config }) {
     let submitSucceeded = false;
 
     try {
-      const payload = config.buildPayload
-        ? config.buildPayload(formData, editingItem, context)
-        : cleanPayload(formData);
+      const payload = editingItem
+        ? buildChangedPayload(config, formData, editingItem, context)
+        : buildPayload(config, formData, editingItem, context);
+
+      if (editingItem && Object.keys(payload).length === 0) {
+        showSuccess("No changes to save.");
+        resetForm();
+        return;
+      }
 
       if (editingItem) {
         const result = await config.updateItem(editingItem.id, payload);

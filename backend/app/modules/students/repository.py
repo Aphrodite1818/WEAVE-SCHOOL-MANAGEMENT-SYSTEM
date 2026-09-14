@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -81,6 +81,38 @@ class StudentRepository:
         )
 
     @staticmethod
+    async def get_by_ids(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_ids: set[UUID],
+    ) -> dict[UUID, Student]:
+        """
+        Load many tenant-owned students in one query.
+
+        Archived students are intentionally included because delayed CBT
+        ingestion may legitimately reference a student who was valid on the
+        historical exam date but was archived afterwards.
+        """
+
+        if not student_ids:
+            return {}
+
+        rows = list(
+            (
+                await db.execute(
+                    select(Student).where(
+                        Student.tenant_id == tenant_id,
+                        Student.id.in_(student_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        return {student.id: student for student in rows}
+
+    @staticmethod
     async def get_by_admission_number(
         db: AsyncSession,
         tenant_id: UUID,
@@ -121,6 +153,8 @@ class StudentRepository:
         *,
         search: str | None = None,
         class_id: UUID | None = None,
+        academic_level_id: UUID | None = None,
+        unassigned_class: bool = False,
         status: AcademicStatus | None = None,
         include_archived: bool = False,
         offset: int = 0,
@@ -131,6 +165,19 @@ class StudentRepository:
             filters.append(Student.is_archived.is_(False))
         if class_id is not None:
             filters.append(Student.class_id == class_id)
+        if unassigned_class:
+            filters.append(Student.class_id.is_(None))
+        if academic_level_id is not None:
+            filters.append(
+                exists(
+                    select(StudentEnrollment.id).where(
+                        StudentEnrollment.tenant_id == tenant_id,
+                        StudentEnrollment.student_id == Student.id,
+                        StudentEnrollment.academic_level_id == academic_level_id,
+                        StudentEnrollment.is_current.is_(True),
+                    )
+                )
+            )
         if status is not None:
             filters.append(Student.status == status)
         if search:
@@ -261,6 +308,65 @@ class StudentEnrollmentRepository:
         return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
+    async def get_authoritative_for_session(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        academic_session_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> StudentEnrollment | None:
+        """Load the single canonical student enrollment for an academic session."""
+
+        query = select(StudentEnrollment).where(
+            StudentEnrollment.tenant_id == tenant_id,
+            StudentEnrollment.student_id == student_id,
+            StudentEnrollment.academic_session_id == academic_session_id,
+            StudentEnrollment.is_current.is_(True),
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
+    async def get_for_students_on_date(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_ids: set[UUID],
+        academic_session_id: UUID,
+        effective_date: date,
+        *,
+        lock: bool = False,
+    ):
+        """
+        Load the authoritative enrollment segment for many students on one date.
+
+        This resolves historical class and level placement using the exam date,
+        rather than assuming the student's current placement is correct
+        """
+
+        if not student_ids:
+            return {}
+
+        query = select(StudentEnrollment).where(
+            StudentEnrollment.tenant_id == tenant_id,
+            StudentEnrollment.student_id.in_(student_ids),
+            StudentEnrollment.academic_session_id == academic_session_id,
+            StudentEnrollment.started_on <= effective_date,
+            or_(
+                StudentEnrollment.ended_on.is_(None),
+                StudentEnrollment.ended_on >= effective_date,
+            ),
+        )
+
+        if lock:
+            query = query.with_for_update()
+
+        rows = list((await db.execute(query)).scalars().all())
+
+        return {enrollment.student_id: enrollment for enrollment in rows}
+
+    @staticmethod
     async def list_for_student(
         db: AsyncSession,
         tenant_id: UUID,
@@ -278,6 +384,30 @@ class StudentEnrollmentRepository:
             )
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_upcoming(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> StudentEnrollment | None:
+        """Load the student's next never-effective placement segment."""
+
+        query = (
+            select(StudentEnrollment)
+            .where(
+                StudentEnrollment.tenant_id == tenant_id,
+                StudentEnrollment.student_id == student_id,
+                StudentEnrollment.started_on > func.current_date(),
+            )
+            .order_by(StudentEnrollment.started_on.asc(), StudentEnrollment.created_at.asc())
+            .limit(1)
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
 
     @staticmethod
     async def list_current_for_class_session(

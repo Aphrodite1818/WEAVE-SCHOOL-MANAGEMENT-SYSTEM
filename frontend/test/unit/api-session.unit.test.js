@@ -48,6 +48,21 @@ test("authSession keeps access tokens session-only and schedules proactive refre
   assert.equal(harness.window.__timers.size, 1);
 });
 
+test("authSession notifies realtime consumers when tokens rotate or clear", async () => {
+  installBrowserHarness();
+  const { authSession } = await importFreshApi();
+  const received = [];
+  const unsubscribe = authSession.subscribeToken((token) => received.push(token));
+  const token = createJwt({ exp: Math.floor(Date.now() / 1000) + 600 });
+
+  authSession.setToken(token);
+  authSession.clearToken();
+  unsubscribe();
+  authSession.setToken(token);
+
+  assert.deepEqual(received, [token, null]);
+});
+
 test("cookie-auth refresh and logout requests include the CSRF protection header", async () => {
   const calls = [];
   installBrowserHarness({

@@ -21,11 +21,11 @@ from app.core.queue.arq import (  # noqa: E402
 )
 from app.modules.attendance.repository import AttendanceRepository  # noqa: E402
 from app.modules.email_outbox.worker import process_email_outbox_batch  # noqa: E402
-from app.modules.subscriptions.plan_change_service import (  # noqa: E402
-    SubscriptionPlanChangeService,
-)
 from app.modules.subscriptions.service import (  # noqa: E402
     SubscriptionLifecycleService,
+)
+from app.modules.subscriptions.term_entitlement_service import (  # noqa: E402
+    TermPlanEntitlementService,
 )
 
 logger = get_logger(__name__)
@@ -69,16 +69,12 @@ async def poll_attendance_retention(ctx: dict[str, Any]) -> dict[str, int]:
 async def process_subscription_lifecycle_job(
     ctx: dict[str, Any],
 ) -> dict[str, int]:
-    """Advance expired billing periods and due scheduled downgrades."""
+    """Expire trials and reconcile impossible term-entitlement states."""
 
     async with AsyncSessionLocal() as db:
         lifecycle = await SubscriptionLifecycleService.sync_expired_subscriptions(db=db)
-        plan_changes = await SubscriptionPlanChangeService.sync_due_changes(db=db)
-        result = {
-            **lifecycle,
-            "plan_changes_awaiting_payment": plan_changes["awaiting_payment"],
-            "plan_changes_blocked": plan_changes["blocked"],
-        }
+        reconciliation = await TermPlanEntitlementService.reconcile(db)
+        result = {**lifecycle, **reconciliation}
 
     completed_at = datetime.now(timezone.utc).isoformat()
     redis = ctx.get("redis")

@@ -42,13 +42,13 @@ class Subject(BaseModel):
     teacher_links: Mapped[list["TeacherMembershipSubject"]] = relationship(
         "TeacherMembershipSubject",
         back_populates="subject",
-        cascade="all, delete-orphan",
+        cascade="save-update, merge",
+        passive_deletes=True,
     )
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
-
     archived_by_admin_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenant_admins.id", ondelete="SET NULL"),
@@ -65,8 +65,11 @@ class Subject(BaseModel):
         UniqueConstraint("tenant_id", "normalized_name", name="uq_subject_tenant_normalized_name"),
         UniqueConstraint("tenant_id", "normalized_code", name="uq_subject_tenant_normalized_code"),
         CheckConstraint(
-            "archived_at IS NULL OR is_active = false",
-            name="ck_subjects_archived_requires_inactive",
+            """
+            (archived_at IS NULL AND archived_by_admin_id IS NULL)
+            OR (archived_at IS NOT NULL AND is_active = false)
+            """,
+            name="ck_subjects_archive_metadata_consistency",
         ),
         Index(
             "ix_subjects_tenant_archived",

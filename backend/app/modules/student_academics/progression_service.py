@@ -1,23 +1,21 @@
-"""Idempotent academic-session closure and student progression workflow."""
+"""Level-only academic session progression."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timezone
+from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import (
-    BadRequestException,
-    ConflictException,
-    NotFoundException,
-)
+from app.core.exceptions import ConflictException, NotFoundException
 from app.modules.auth_identity.models import ActorType
 from app.modules.auth_identity.service import AuthIdentityService
-from app.modules.classes.models import ClassRoom
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.classes.category_catalog import categories_for
+from app.modules.classes.models import AcademicLevel, AcademicLevelStatus
+from app.modules.classes.repository import AcademicLevelRepository
 from app.modules.parents.repository import ParentMembershipRepository
 from app.modules.student_academics.lifecycle_repository import (
     AcademicSessionLifecycleRepository,
@@ -30,18 +28,12 @@ from app.modules.student_academics.models import (
     StudentProgressionItemAction,
     StudentProgressionItemStatus,
     StudentProgressionRun,
-    StudentProgressionRunStatus,
 )
+from app.modules.student_academics.schemas import AcademicSessionResponse
 from app.modules.student_academics.service import StudentAcademicService
-from app.modules.student_academics.schemas import (
-    AcademicSessionCloseResponse,
-    AcademicSessionResponse,
-    StudentProgressionItemResponse,
-    StudentProgressionRunDetailResponse,
-    StudentProgressionRunResponse,
-)
 from app.modules.students.models import (
     AcademicStatus,
+    Student,
     StudentAccountStatus,
     StudentEnrollment,
     StudentEnrollmentOutcome,
@@ -54,14 +46,18 @@ from app.modules.students.repository import (
 )
 from app.modules.students.service import StudentLifecycleService
 from app.modules.tenant_admins.models import TenantAdmin
+from app.tenant_management.repository import TenantRepository
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_PROGRESSION_CONTEXT_KEY = "academic_progression_context"
+
+
 class AcademicProgressionService:
-    """Open sessions and close them with one atomic progression run."""
+    """Resolve automatic progression from level category and position only."""
 
     @staticmethod
     async def open_session(
@@ -72,10 +68,7 @@ class AcademicProgressionService:
     ) -> AcademicSessionResponse:
         try:
             session = await AcademicSessionLifecycleRepository.get_by_id(
-                db,
-                actor.tenant_id,
-                session_id,
-                lock=True,
+                db, actor.tenant_id, session_id, lock=True
             )
             if session is None:
                 raise NotFoundException("Academic session not found.")
@@ -86,68 +79,141 @@ class AcademicProgressionService:
                 end_date=session.end_date,
                 require_complete=True,
             )
-            from app.modules.school_calendar.repository import SchoolCalendarRepository
-
-            if await SchoolCalendarRepository.get_configuration(db, actor.tenant_id) is None:
-                raise ConflictException(
-                    "Configure the school calendar before opening an academic session.",
-                    payload={
-                        "blocker_messages": [
-                            "School calendar configuration is required before session opening."
-                        ]
-                    },
-                )
             preview = await StudentAcademicService.academic_session_dependency_preview(
-                db,
-                actor.tenant_id,
-                session.id,
+                db, actor.tenant_id, session.id
             )
             if not preview.can_open:
                 StudentAcademicService._raise_dependency_conflict(
-                    "Academic session has blockers and cannot be opened.",
-                    preview,
+                    "Academic session has blockers and cannot be opened.", preview
                 )
-
             current = await AcademicSessionLifecycleRepository.get_current_open(
-                db,
-                actor.tenant_id,
-                lock=True,
+                db, actor.tenant_id, lock=True
             )
             if current is not None and current.id != session.id:
                 raise ConflictException(
                     "Close the current academic session before opening another."
                 )
-
             previous_status = session.status
             session.status = AcademicSessionStatus.OPEN
             session.is_current = True
             session.closing_started_at = None
             session.closed_at = None
             session.closed_by_admin_id = None
-            try:
-                await AcademicSessionLifecycleRepository.save(db, session)
-                await StudentAcademicService._record_academic_lifecycle(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    entity_type="session",
-                    entity_id=session.id,
-                    action="opened",
-                    previous_status=previous_status.value,
-                    new_status=session.status.value,
-                    acting_admin_id=actor.id,
-                )
-            except IntegrityError as exc:
-                await db.rollback()
-                raise ConflictException(
-                    "Close the current academic session before opening another."
-                ) from exc
+            await AcademicSessionLifecycleRepository.save(db, session)
+            await StudentAcademicService._record_academic_lifecycle(
+                db,
+                tenant_id=actor.tenant_id,
+                entity_type="session",
+                entity_id=session.id,
+                action="opened",
+                previous_status=previous_status.value,
+                new_status=session.status.value,
+                acting_admin_id=actor.id,
+            )
             await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise ConflictException(
+                "Close the current academic session before opening another."
+            ) from exc
         except Exception:
             await db.rollback()
             raise
-
         await db.refresh(session)
         return AcademicSessionResponse.model_validate(session)
+
+    @staticmethod
+    async def _prime_progression_context(
+        db: AsyncSession,
+        *,
+        run: StudentProgressionRun,
+        items: list[StudentProgressionItem],
+    ) -> None:
+        """Batch-lock immutable/shared progression reads once for the worker run."""
+
+        student_ids = {item.student_id for item in items}
+        level_ids = {item.from_level_id for item in items if item.from_level_id is not None}
+
+        students: dict[uuid.UUID, Student] = {}
+        if student_ids:
+            result = await db.execute(
+                select(Student)
+                .where(
+                    Student.tenant_id == run.tenant_id,
+                    Student.id.in_(student_ids),
+                )
+                .order_by(Student.id.asc())
+                .with_for_update()
+            )
+            students = {student.id: student for student in result.scalars().all()}
+
+        levels: dict[uuid.UUID, AcademicLevel] = {}
+        if level_ids:
+            result = await db.execute(
+                select(AcademicLevel)
+                .where(
+                    AcademicLevel.tenant_id == run.tenant_id,
+                    AcademicLevel.status == AcademicLevelStatus.ACTIVE,
+                )
+                .order_by(AcademicLevel.id.asc())
+                .with_for_update()
+            )
+            levels = {level.id: level for level in result.scalars().all()}
+
+        tenant = await TenantRepository.get_by_id(db, run.tenant_id)
+
+        target_session_start: date | None = None
+        if run.next_academic_session_id is not None:
+            result = await db.execute(
+                select(AcademicSession.start_date)
+                .where(
+                    AcademicSession.tenant_id == run.tenant_id,
+                    AcademicSession.id == run.next_academic_session_id,
+                )
+                .with_for_update()
+            )
+            target_session_start = result.scalar_one_or_none()
+
+        target_enrollments: dict[uuid.UUID, StudentEnrollment] = {}
+        if student_ids and target_session_start is not None:
+            result = await db.execute(
+                select(StudentEnrollment)
+                .where(
+                    StudentEnrollment.tenant_id == run.tenant_id,
+                    StudentEnrollment.student_id.in_(student_ids),
+                    StudentEnrollment.academic_session_id == run.next_academic_session_id,
+                    StudentEnrollment.started_on <= target_session_start,
+                    (
+                        StudentEnrollment.ended_on.is_(None)
+                        | (StudentEnrollment.ended_on >= target_session_start)
+                    ),
+                )
+                .order_by(
+                    StudentEnrollment.student_id.asc(),
+                    StudentEnrollment.started_on.desc(),
+                    StudentEnrollment.created_at.desc(),
+                )
+                .with_for_update()
+            )
+            for enrollment in result.scalars().all():
+                target_enrollments.setdefault(enrollment.student_id, enrollment)
+
+        contexts = db.info.setdefault(_PROGRESSION_CONTEXT_KEY, {})
+        contexts[run.id] = {
+            "items": {item.student_id: item for item in items},
+            "students": students,
+            "levels": levels,
+            "tenant": tenant,
+            "target_enrollments": target_enrollments,
+        }
+
+    @staticmethod
+    def _progression_context(db: AsyncSession, run_id: uuid.UUID) -> dict[str, Any] | None:
+        contexts = db.info.get(_PROGRESSION_CONTEXT_KEY)
+        if not isinstance(contexts, dict):
+            return None
+        context = contexts.get(run_id)
+        return context if isinstance(context, dict) else None
 
     @staticmethod
     async def _load_progression_enrollments(
@@ -156,87 +222,99 @@ class AcademicProgressionService:
         tenant_id: uuid.UUID,
         academic_session_id: uuid.UUID,
     ) -> list[StudentEnrollment]:
-        rows = (
-            (
-                await db.execute(
-                    select(StudentEnrollment)
-                    .where(
-                        StudentEnrollment.tenant_id == tenant_id,
-                        StudentEnrollment.academic_session_id == academic_session_id,
-                        StudentEnrollment.is_current.is_(True),
-                    )
-                    .order_by(StudentEnrollment.student_id)
-                    .with_for_update()
-                )
-            )
-            .scalars()
-            .all()
+        """Load the immutable enrollment manifest captured when closure started.
+
+        Never rediscover the worker population from live ``is_current`` state. A
+        withdrawal, reassignment, graduation, or other state change after closure
+        starts must still leave that frozen student explicitly accounted for.
+        """
+
+        run = await StudentProgressionRepository.get_run_by_session(
+            db,
+            tenant_id,
+            academic_session_id,
+            lock=True,
         )
-        return list(rows)
+        if run is None:
+            return []
+        items = await StudentProgressionRepository.reconcile_legacy_manifest(db, run)
+
+        result = await db.execute(
+            select(StudentEnrollment)
+            .join(
+                StudentProgressionItem,
+                StudentProgressionItem.from_enrollment_id == StudentEnrollment.id,
+            )
+            .join(
+                StudentProgressionRun,
+                StudentProgressionRun.id == StudentProgressionItem.progression_run_id,
+            )
+            .where(
+                StudentEnrollment.tenant_id == tenant_id,
+                StudentProgressionItem.tenant_id == tenant_id,
+                StudentProgressionRun.tenant_id == tenant_id,
+                StudentProgressionRun.academic_session_id == academic_session_id,
+            )
+            .order_by(StudentProgressionItem.student_id.asc())
+            .with_for_update()
+        )
+        enrollments = list(result.scalars().all())
+        await AcademicProgressionService._prime_progression_context(db, run=run, items=items)
+        return enrollments
 
     @staticmethod
-    async def _validate_class_graph(
+    async def resolve_next_level(
         db: AsyncSession,
         *,
         tenant_id: uuid.UUID,
-        enrollments: list[StudentEnrollment],
-    ) -> dict[uuid.UUID, ClassRoom]:
-        graph: dict[uuid.UUID, ClassRoom] = {}
-        for class_id in {row.class_id for row in enrollments}:
-            classroom = await ClassRoomRepository.get_by_id(
-                db,
-                tenant_id,
-                class_id,
-                lock=True,
+        current_level: AcademicLevel,
+        tenant: Any | None = None,
+        levels: list[AcademicLevel] | None = None,
+    ) -> AcademicLevel | None:
+        """Resolve the next academic level without inferring class placement."""
+
+        if tenant is None:
+            tenant = await TenantRepository.get_by_id(db, tenant_id)
+        if tenant is None or tenant.institution_type is None:
+            raise ConflictException("Institution type is required for academic progression.")
+
+        category_definitions = categories_for(tenant.institution_type)
+        allowed_categories = [definition.value for definition in category_definitions]
+        if current_level.category not in allowed_categories:
+            raise ConflictException("Current academic level category is invalid for this tenant.")
+
+        if levels is None:
+            levels = await AcademicLevelRepository.list_for_tenant(db, tenant_id, active_only=True)
+        same_category = [
+            level
+            for level in levels
+            if level.category == current_level.category and level.position > current_level.position
+        ]
+        if same_category:
+            return min(same_category, key=lambda level: level.position)
+
+        current_category_index = allowed_categories.index(current_level.category)
+        if current_category_index == len(allowed_categories) - 1:
+            return None
+
+        next_category = allowed_categories[current_category_index + 1]
+        candidates = [level for level in levels if level.category == next_category]
+        if not candidates:
+            raise ConflictException(
+                "Academic progression is incomplete: configure at least one active "
+                f"{next_category.value.replace('_', ' ').title()} level before closing the session."
             )
-            if classroom is None:
-                raise ConflictException(f"Enrollment references missing class {class_id}.")
-
-            if classroom.is_terminal:
-                if classroom.next_class_id is not None:
-                    raise ConflictException(
-                        f"Terminal class {classroom.name} cannot have a next class."
-                    )
-            else:
-                if classroom.next_class_id is None:
-                    raise ConflictException(
-                        f"Configure the next class for {classroom.name} before closure."
-                    )
-                next_class = await ClassRoomRepository.get_by_id(
-                    db,
-                    tenant_id,
-                    classroom.next_class_id,
-                    lock=True,
-                )
-                if (
-                    next_class is None
-                    or not next_class.is_active
-                    or next_class.archived_at is not None
-                ):
-                    raise ConflictException(
-                        f"The next class configured for {classroom.name} is unavailable."
-                    )
-                graph[next_class.id] = next_class
-
-            graph[classroom.id] = classroom
-
-        return graph
+        return min(candidates, key=lambda level: level.position)
 
     @staticmethod
     async def _downgrade_graduated_parent_access(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        student_id: uuid.UUID,
+        db: AsyncSession, *, tenant_id: uuid.UUID, student_id: uuid.UUID
     ) -> None:
         links = await StudentParentLinkRepository.list_for_student(
             db,
             tenant_id,
             student_id,
-            statuses=[
-                StudentParentLinkStatus.ACTIVE,
-                StudentParentLinkStatus.READ_ONLY,
-            ],
+            statuses=[StudentParentLinkStatus.ACTIVE, StudentParentLinkStatus.READ_ONLY],
             lock=True,
         )
         membership_ids: set[uuid.UUID] = set()
@@ -246,19 +324,97 @@ class AcademicProgressionService:
             link.end_reason = None
             await StudentParentLinkRepository.save(db, link)
             membership_ids.add(link.parent_membership_id)
-
         for membership_id in membership_ids:
             membership = await ParentMembershipRepository.get_by_id(
-                db,
-                membership_id,
-                tenant_id=tenant_id,
-                lock=True,
+                db, membership_id, tenant_id=tenant_id, lock=True
             )
             if membership is not None:
-                await StudentLifecycleService._recalculate_parent_membership(
-                    db,
-                    membership,
+                await StudentLifecycleService._recalculate_parent_membership(db, membership)
+
+    @staticmethod
+    async def _create_next_enrollment(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        student: Student,
+        item: StudentProgressionItem,
+        target_level: AcademicLevel,
+        next_session: AcademicSession,
+        created_by_admin_id: uuid.UUID | None,
+        existing_target: StudentEnrollment | None = None,
+        target_lookup_complete: bool = False,
+    ) -> StudentProgressionItem:
+        if next_session.status != AcademicSessionStatus.DRAFT:
+            raise ConflictException(
+                "The target academic session must remain draft during progression."
+            )
+        if next_session.start_date is None:
+            raise ConflictException("The target academic session is missing its start date.")
+
+        if not target_lookup_complete:
+            result = await db.execute(
+                select(StudentEnrollment)
+                .where(
+                    StudentEnrollment.tenant_id == tenant_id,
+                    StudentEnrollment.student_id == student.id,
+                    StudentEnrollment.academic_session_id == next_session.id,
+                    StudentEnrollment.started_on <= next_session.start_date,
+                    (
+                        StudentEnrollment.ended_on.is_(None)
+                        | (StudentEnrollment.ended_on >= next_session.start_date)
+                    ),
                 )
+                .order_by(
+                    StudentEnrollment.started_on.desc(),
+                    StudentEnrollment.created_at.desc(),
+                )
+                .limit(1)
+                .with_for_update()
+            )
+            existing_target = result.scalar_one_or_none()
+
+        if existing_target is not None and not (
+            existing_target.started_on <= next_session.start_date
+            and (
+                existing_target.ended_on is None
+                or existing_target.ended_on >= next_session.start_date
+            )
+        ):
+            existing_target = None
+
+        if existing_target is not None:
+            if existing_target.academic_level_id != target_level.id:
+                raise ConflictException(
+                    "Student already has a different enrollment in the target academic session."
+                )
+            item.to_enrollment_id = existing_target.id
+            item.to_level_id = target_level.id
+            item.to_class_id = existing_target.class_id
+            item.status = StudentProgressionItemStatus.COMPLETED
+            item.processed_at = _utc_now()
+            return await StudentProgressionRepository.save_item(db, item)
+
+        next_enrollment = await StudentEnrollmentRepository.add(
+            db,
+            StudentEnrollment(
+                tenant_id=tenant_id,
+                student_id=student.id,
+                academic_level_id=target_level.id,
+                class_id=None,
+                academic_session_id=next_session.id,
+                started_on=next_session.start_date,
+                entry_outcome=StudentEnrollmentOutcome.PROMOTED,
+                entry_reason="Automatic level progression",
+                created_by_admin_id=created_by_admin_id,
+            ),
+        )
+        item.to_enrollment_id = next_enrollment.id
+        item.to_level_id = target_level.id
+        item.to_class_id = None
+        item.status = StudentProgressionItemStatus.COMPLETED
+        item.reason = f"Progressed to {target_level.name}; class assignment is optional."
+        item.processed_at = _utc_now()
+        return await StudentProgressionRepository.save_item(db, item)
 
     @staticmethod
     async def _progress_student(
@@ -267,434 +423,174 @@ class AcademicProgressionService:
         actor: TenantAdmin,
         run: StudentProgressionRun,
         enrollment: StudentEnrollment,
-        classroom: ClassRoom,
-        graph: dict[uuid.UUID, ClassRoom],
         next_session: AcademicSession,
         effective_date: date,
+        allow_terminal_completion: bool = False,
     ) -> StudentProgressionItem:
-        student = await StudentRepository.get_by_id(
-            db,
-            actor.tenant_id,
-            enrollment.student_id,
-            lock=True,
-            include_archived=True,
-        )
+        context = AcademicProgressionService._progression_context(db, run.id)
+
+        existing = None
+        if context is not None:
+            existing = context["items"].get(enrollment.student_id)
+        if existing is None:
+            existing = await StudentProgressionRepository.get_item_by_run_and_student(
+                db, run.id, enrollment.student_id, lock=True
+            )
+        if existing is not None and existing.status != StudentProgressionItemStatus.BLOCKED:
+            return existing
+        if existing is not None and existing.from_enrollment_id not in {None, enrollment.id}:
+            raise ConflictException(
+                "Progression manifest enrollment does not match the frozen target."
+            )
+
+        student = None
+        if context is not None:
+            student = context["students"].get(enrollment.student_id)
+        if student is None:
+            student = await StudentRepository.get_by_id(
+                db, actor.tenant_id, enrollment.student_id, lock=True, include_archived=True
+            )
         if student is None:
             raise ConflictException(f"Enrollment {enrollment.id} references a missing student.")
 
-        if student.is_archived or student.promotion_hold or student.status != AcademicStatus.ACTIVE:
-            return await StudentProgressionRepository.add_item(
-                db,
-                StudentProgressionItem(
-                    tenant_id=actor.tenant_id,
-                    progression_run_id=run.id,
-                    student_id=student.id,
-                    from_enrollment_id=enrollment.id,
-                    from_class_id=classroom.id,
-                    to_class_id=None,
-                    action=StudentProgressionItemAction.SKIP,
-                    status=StudentProgressionItemStatus.SKIPPED,
-                    reason="Student is archived, on promotion hold, or not active.",
-                    processed_at=_utc_now(),
-                ),
+        if enrollment.exit_outcome is not None:
+            item = existing or StudentProgressionItem(
+                tenant_id=actor.tenant_id,
+                progression_run_id=run.id,
+                student_id=student.id,
+            )
+            item.from_enrollment_id = enrollment.id
+            item.from_level_id = enrollment.academic_level_id
+            item.from_class_id = enrollment.class_id
+            item.action = StudentProgressionItemAction.SKIP
+            item.status = StudentProgressionItemStatus.CANCELLED
+            item.reason = (
+                "Frozen enrollment changed before progression was applied "
+                f"({enrollment.exit_outcome.value})."
+            )
+            item.processed_at = _utc_now()
+            return (
+                await StudentProgressionRepository.save_item(db, item)
+                if existing
+                else await StudentProgressionRepository.add_item(db, item)
             )
 
-        enrollment.is_current = False
+        if student.is_archived or student.promotion_hold or student.status != AcademicStatus.ACTIVE:
+            item = existing or StudentProgressionItem(
+                tenant_id=actor.tenant_id,
+                progression_run_id=run.id,
+                student_id=student.id,
+            )
+            item.from_enrollment_id = enrollment.id
+            item.from_level_id = enrollment.academic_level_id
+            item.from_class_id = enrollment.class_id
+            item.action = StudentProgressionItemAction.SKIP
+            item.status = StudentProgressionItemStatus.CANCELLED
+            item.reason = "Student is archived, on promotion hold, or not active."
+            item.processed_at = _utc_now()
+            return (
+                await StudentProgressionRepository.save_item(db, item)
+                if existing
+                else await StudentProgressionRepository.add_item(db, item)
+            )
+
+        level = None
+        if context is not None:
+            level = context["levels"].get(enrollment.academic_level_id)
+        if level is None:
+            level = await AcademicLevelRepository.get_by_id(
+                db, actor.tenant_id, enrollment.academic_level_id, lock=True
+            )
+        if level is None or level.status != AcademicLevelStatus.ACTIVE:
+            raise ConflictException("Enrollment academic level is missing or inactive.")
+
+        target_level = await AcademicProgressionService.resolve_next_level(
+            db,
+            tenant_id=actor.tenant_id,
+            current_level=level,
+            tenant=context["tenant"] if context is not None else None,
+            levels=list(context["levels"].values()) if context is not None else None,
+        )
+
+        if target_level is None and not allow_terminal_completion:
+            raise ConflictException(
+                "Terminal academic completion requires explicit administrator confirmation."
+            )
+
         enrollment.ended_on = effective_date
-        enrollment.changed_by_admin_id = actor.id
+        enrollment.ended_by_admin_id = actor.id
 
-        if classroom.is_terminal:
-            enrollment.outcome = StudentEnrollmentOutcome.GRADUATED
-            enrollment.reason = "Automatic terminal-class graduation"
+        if target_level is None:
+            enrollment.exit_outcome = StudentEnrollmentOutcome.GRADUATED
+            enrollment.exit_reason = "Final configured academic level completed"
             await StudentEnrollmentRepository.save(db, enrollment)
-
             student.status = AcademicStatus.GRADUATED
             student.graduation_date = effective_date
-            student.class_id = None
-            student.arm = None
             student.promotion_hold = True
             student.is_active = False
             student.account_status = StudentAccountStatus.INACTIVE
             await StudentRepository.save(db, student)
-            await StudentLifecycleService._revoke_student_access(
-                db,
-                student,
-                reason="graduated",
-            )
+            await StudentLifecycleService._revoke_student_access(db, student, reason="graduated")
             await AuthIdentityService.deactivate_for_actor(
-                db,
-                actor_type=ActorType.STUDENT,
-                actor_id=student.id,
+                db, actor_type=ActorType.STUDENT, actor_id=student.id
             )
             await AcademicProgressionService._downgrade_graduated_parent_access(
-                db,
-                tenant_id=actor.tenant_id,
-                student_id=student.id,
+                db, tenant_id=actor.tenant_id, student_id=student.id
             )
-
-            return await StudentProgressionRepository.add_item(
-                db,
-                StudentProgressionItem(
-                    tenant_id=actor.tenant_id,
-                    progression_run_id=run.id,
-                    student_id=student.id,
-                    from_enrollment_id=enrollment.id,
-                    from_class_id=classroom.id,
-                    to_class_id=None,
-                    action=StudentProgressionItemAction.GRADUATE,
-                    status=StudentProgressionItemStatus.GRADUATED,
-                    reason="Terminal class completed",
-                    processed_at=_utc_now(),
-                ),
-            )
-
-        target_class = graph[classroom.next_class_id]
-        enrollment.outcome = StudentEnrollmentOutcome.PROMOTED
-        enrollment.reason = "Automatic academic-session progression"
-        await StudentEnrollmentRepository.save(db, enrollment)
-
-        next_enrollment = await StudentEnrollmentRepository.add(
-            db,
-            StudentEnrollment(
-                tenant_id=actor.tenant_id,
-                student_id=student.id,
-                class_id=target_class.id,
-                academic_session_id=next_session.id,
-                started_on=effective_date,
-                is_current=True,
-                outcome=StudentEnrollmentOutcome.PROMOTED,
-                reason="Automatic academic-session progression",
-                changed_by_admin_id=actor.id,
-            ),
-        )
-        student.class_id = target_class.id
-        student.arm = target_class.arm
-        await StudentRepository.save(db, student)
-
-        return await StudentProgressionRepository.add_item(
-            db,
-            StudentProgressionItem(
+            item = existing or StudentProgressionItem(
                 tenant_id=actor.tenant_id,
                 progression_run_id=run.id,
                 student_id=student.id,
-                from_enrollment_id=enrollment.id,
-                to_enrollment_id=next_enrollment.id,
-                from_class_id=classroom.id,
-                to_class_id=target_class.id,
-                action=StudentProgressionItemAction.PROMOTE,
-                status=StudentProgressionItemStatus.PROMOTED,
-                reason="Promoted to configured next class",
-                processed_at=_utc_now(),
-            ),
+            )
+            item.from_enrollment_id = enrollment.id
+            item.from_level_id = level.id
+            item.from_class_id = enrollment.class_id
+            item.action = StudentProgressionItemAction.COMPLETE
+            item.status = StudentProgressionItemStatus.COMPLETED
+            item.reason = "Final configured level completed with administrator confirmation."
+            item.processed_at = _utc_now()
+            return (
+                await StudentProgressionRepository.save_item(db, item)
+                if existing
+                else await StudentProgressionRepository.add_item(db, item)
+            )
+
+        enrollment.exit_outcome = StudentEnrollmentOutcome.PROMOTED
+        enrollment.exit_reason = "Academic session completed"
+        await StudentEnrollmentRepository.save(db, enrollment)
+
+        item = existing or StudentProgressionItem(
+            tenant_id=actor.tenant_id,
+            progression_run_id=run.id,
+            student_id=student.id,
         )
+        item.from_enrollment_id = enrollment.id
+        item.from_level_id = level.id
+        item.to_level_id = target_level.id
+        item.from_class_id = enrollment.class_id
+        item.action = StudentProgressionItemAction.PROGRESS
+        item.status = StudentProgressionItemStatus.BLOCKED
+        item.reason = "Preparing next-session level enrollment."
+        if existing:
+            item = await StudentProgressionRepository.save_item(db, item)
+        else:
+            item = await StudentProgressionRepository.add_item(db, item)
 
-    @staticmethod
-    async def close_and_progress(
-        db: AsyncSession,
-        *,
-        actor: TenantAdmin,
-        session_id: uuid.UUID,
-        idempotency_key: str,
-    ) -> AcademicSessionCloseResponse:
-        completed_run_id: uuid.UUID | None = None
+        existing_target = None
+        target_lookup_complete = False
+        if context is not None:
+            existing_target = context["target_enrollments"].get(student.id)
+            target_lookup_complete = True
 
-        try:
-            session = await AcademicSessionLifecycleRepository.get_by_id(
-                db,
-                actor.tenant_id,
-                session_id,
-                lock=True,
-            )
-            if session is None:
-                raise NotFoundException("Academic session not found.")
-
-            existing = await StudentProgressionRepository.get_run_by_idempotency_key(
-                db,
-                actor.tenant_id,
-                idempotency_key,
-                lock=True,
-            )
-            if existing is None:
-                existing = await StudentProgressionRepository.get_run_by_session(
-                    db,
-                    actor.tenant_id,
-                    session.id,
-                    lock=True,
-                )
-
-            if existing is not None and existing.status == StudentProgressionRunStatus.COMPLETED:
-                completed_run_id = existing.id
-            else:
-                if session.status != AcademicSessionStatus.OPEN or not session.is_current:
-                    raise ConflictException("Only the current open session can be closed.")
-                if session.next_academic_session_id is None:
-                    raise BadRequestException("Configure next_academic_session_id before closure.")
-                preview = await StudentAcademicService.academic_session_dependency_preview(
-                    db,
-                    actor.tenant_id,
-                    session.id,
-                )
-                if not preview.can_progress:
-                    StudentAcademicService._raise_dependency_conflict(
-                        "Academic session has blockers and cannot be closed.",
-                        preview,
-                    )
-
-                next_session = await AcademicSessionLifecycleRepository.get_by_id(
-                    db,
-                    actor.tenant_id,
-                    session.next_academic_session_id,
-                    lock=True,
-                )
-                if next_session is None:
-                    raise NotFoundException("Next academic session not found.")
-                if next_session.status != AcademicSessionStatus.DRAFT:
-                    raise ConflictException("The next academic session must still be draft.")
-                if existing is not None and existing.idempotency_key != idempotency_key:
-                    raise ConflictException("This academic session already has a progression run.")
-
-                enrollments = await AcademicProgressionService._load_progression_enrollments(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    academic_session_id=session.id,
-                )
-                graph = await AcademicProgressionService._validate_class_graph(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    enrollments=enrollments,
-                )
-
-                if existing is None:
-                    run = await StudentProgressionRepository.add_run(
-                        db,
-                        StudentProgressionRun(
-                            tenant_id=actor.tenant_id,
-                            academic_session_id=session.id,
-                            next_academic_session_id=next_session.id,
-                            idempotency_key=idempotency_key,
-                            status=StudentProgressionRunStatus.PROCESSING,
-                            total_students=len(enrollments),
-                            started_at=_utc_now(),
-                            initiated_by_admin_id=actor.id,
-                        ),
-                    )
-                else:
-                    run = existing
-                    await db.execute(
-                        delete(StudentProgressionItem).where(
-                            StudentProgressionItem.progression_run_id == run.id
-                        )
-                    )
-                    run.status = StudentProgressionRunStatus.PROCESSING
-                    run.total_students = len(enrollments)
-                    run.promoted_students = 0
-                    run.graduated_students = 0
-                    run.skipped_students = 0
-                    run.failed_students = 0
-                    run.started_at = _utc_now()
-                    run.completed_at = None
-                    run.failure_reason = None
-                    run.initiated_by_admin_id = actor.id
-                    await StudentProgressionRepository.save_run(db, run)
-
-                previous_status = session.status
-                session.status = AcademicSessionStatus.CLOSING
-                session.closing_started_at = _utc_now()
-                await AcademicSessionLifecycleRepository.save(db, session)
-                await StudentAcademicService._record_academic_lifecycle(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    entity_type="session",
-                    entity_id=session.id,
-                    action="closing_started",
-                    previous_status=previous_status.value,
-                    new_status=session.status.value,
-                    acting_admin_id=actor.id,
-                    metadata={"progression_run_id": str(run.id)},
-                )
-
-                effective_date = session.end_date or date.today()
-                for enrollment in enrollments:
-                    classroom = graph[enrollment.class_id]
-                    item = await AcademicProgressionService._progress_student(
-                        db,
-                        actor=actor,
-                        run=run,
-                        enrollment=enrollment,
-                        classroom=classroom,
-                        graph=graph,
-                        next_session=next_session,
-                        effective_date=effective_date,
-                    )
-                    if item.status == StudentProgressionItemStatus.PROMOTED:
-                        run.promoted_students += 1
-                    elif item.status == StudentProgressionItemStatus.GRADUATED:
-                        run.graduated_students += 1
-                    elif item.status == StudentProgressionItemStatus.SKIPPED:
-                        run.skipped_students += 1
-
-                now = _utc_now()
-                previous_status = session.status
-                session.status = AcademicSessionStatus.CLOSED
-                session.is_current = False
-                session.closed_at = now
-                session.closed_by_admin_id = actor.id
-                await AcademicSessionLifecycleRepository.save(db, session)
-                await StudentAcademicService._record_academic_lifecycle(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    entity_type="session",
-                    entity_id=session.id,
-                    action="closed",
-                    previous_status=previous_status.value,
-                    new_status=session.status.value,
-                    acting_admin_id=actor.id,
-                    metadata={"progression_run_id": str(run.id)},
-                )
-
-                previous_next_status = next_session.status
-                next_session.status = AcademicSessionStatus.OPEN
-                next_session.is_current = True
-                next_session.closing_started_at = None
-                next_session.closed_at = None
-                next_session.closed_by_admin_id = None
-                await AcademicSessionLifecycleRepository.save(db, next_session)
-                await StudentAcademicService._record_academic_lifecycle(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    entity_type="session",
-                    entity_id=next_session.id,
-                    action="opened",
-                    previous_status=previous_next_status.value,
-                    new_status=next_session.status.value,
-                    acting_admin_id=actor.id,
-                    metadata={"opened_by_progression_run_id": str(run.id)},
-                )
-
-                run.status = StudentProgressionRunStatus.COMPLETED
-                run.completed_at = now
-                await StudentProgressionRepository.save_run(db, run)
-                completed_run_id = run.id
-                await db.commit()
-
-        except (BadRequestException, ConflictException, NotFoundException):
-            await db.rollback()
-            raise
-        except Exception as exc:
-            await db.rollback()
-            failed = await StudentProgressionRepository.get_run_by_idempotency_key(
-                db,
-                actor.tenant_id,
-                idempotency_key,
-                lock=True,
-            )
-            if failed is None:
-                session = await AcademicSessionLifecycleRepository.get_by_id(
-                    db,
-                    actor.tenant_id,
-                    session_id,
-                )
-                if session is not None and session.next_academic_session_id is not None:
-                    failed = await StudentProgressionRepository.add_run(
-                        db,
-                        StudentProgressionRun(
-                            tenant_id=actor.tenant_id,
-                            academic_session_id=session.id,
-                            next_academic_session_id=(session.next_academic_session_id),
-                            idempotency_key=idempotency_key,
-                            status=StudentProgressionRunStatus.FAILED,
-                            total_students=0,
-                            failed_students=1,
-                            started_at=_utc_now(),
-                            completed_at=_utc_now(),
-                            initiated_by_admin_id=actor.id,
-                            failure_reason=str(exc)[:1000],
-                        ),
-                    )
-                    await StudentAcademicService._record_academic_lifecycle(
-                        db,
-                        tenant_id=actor.tenant_id,
-                        entity_type="session",
-                        entity_id=session.id,
-                        action="progression_failed",
-                        previous_status=session.status.value,
-                        new_status=session.status.value,
-                        acting_admin_id=actor.id,
-                        reason=str(exc)[:500],
-                        metadata={"progression_run_id": str(failed.id)},
-                    )
-            elif failed.status != StudentProgressionRunStatus.COMPLETED:
-                failed.status = StudentProgressionRunStatus.FAILED
-                failed.completed_at = _utc_now()
-                failed.failed_students = max(failed.failed_students, 1)
-                failed.failure_reason = str(exc)[:1000]
-                await StudentProgressionRepository.save_run(db, failed)
-                await StudentAcademicService._record_academic_lifecycle(
-                    db,
-                    tenant_id=actor.tenant_id,
-                    entity_type="session",
-                    entity_id=failed.academic_session_id,
-                    action="progression_failed",
-                    previous_status=None,
-                    new_status=None,
-                    acting_admin_id=actor.id,
-                    reason=str(exc)[:500],
-                    metadata={"progression_run_id": str(failed.id)},
-                )
-            await db.commit()
-            raise
-
-        await AuthIdentityService.invalidate_after_commit(db)
-        if completed_run_id is None:
-            raise ConflictException("Progression run did not complete.")
-
-        return await AcademicProgressionService.get_close_response(
+        completed = await AcademicProgressionService._create_next_enrollment(
             db,
             tenant_id=actor.tenant_id,
-            progression_run_id=completed_run_id,
+            student=student,
+            item=item,
+            target_level=target_level,
+            next_session=next_session,
+            created_by_admin_id=actor.id,
+            existing_target=existing_target,
+            target_lookup_complete=target_lookup_complete,
         )
-
-    @staticmethod
-    async def get_close_response(
-        db: AsyncSession,
-        *,
-        tenant_id: uuid.UUID,
-        progression_run_id: uuid.UUID,
-    ) -> AcademicSessionCloseResponse:
-        run = await StudentProgressionRepository.get_run_by_id(
-            db,
-            tenant_id,
-            progression_run_id,
-        )
-        if run is None:
-            raise NotFoundException("Progression run not found.")
-
-        items = await StudentProgressionRepository.list_items_for_run(
-            db,
-            tenant_id,
-            run.id,
-        )
-        closed_session = await AcademicSessionLifecycleRepository.get_by_id(
-            db,
-            tenant_id,
-            run.academic_session_id,
-        )
-        opened_session = await AcademicSessionLifecycleRepository.get_by_id(
-            db,
-            tenant_id,
-            run.next_academic_session_id,
-        )
-        if closed_session is None or opened_session is None:
-            raise ConflictException("Progression session records are incomplete.")
-
-        run_summary = StudentProgressionRunResponse.model_validate(run)
-        run_payload = StudentProgressionRunDetailResponse(
-            **run_summary.model_dump(),
-            items=[StudentProgressionItemResponse.model_validate(item) for item in items],
-        )
-
-        return AcademicSessionCloseResponse(
-            closed_session=AcademicSessionResponse.model_validate(closed_session),
-            opened_session=AcademicSessionResponse.model_validate(opened_session),
-            progression_run=run_payload,
-        )
+        return completed

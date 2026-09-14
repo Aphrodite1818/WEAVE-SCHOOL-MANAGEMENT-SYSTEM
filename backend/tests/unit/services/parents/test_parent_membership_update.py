@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.modules.parents.models import (
     ParentInvitation,
@@ -61,32 +62,16 @@ def _invitation(tenant_id: uuid.UUID) -> ParentInvitation:
     )
 
 
-@pytest.mark.asyncio
-async def test_update_notifications_ignores_explicit_null_values() -> None:
-    membership = _membership()
-    db = AsyncMock()
-
-    with patch(
-        "app.modules.parents.service.ParentMembershipRepository.save",
-        new=AsyncMock(return_value=membership),
-    ):
-        response = await ParentMembershipService.update_notifications(
-            db=db,
-            membership=membership,
-            payload=ParentMembershipNotificationUpdateRequest(
-                receive_email_notifications=None,
-                receive_push_notifications=None,
-            ),
+def test_update_notifications_rejects_explicit_null_values() -> None:
+    with pytest.raises(ValidationError):
+        ParentMembershipNotificationUpdateRequest(
+            receive_email_notifications=None,
+            receive_push_notifications=None,
         )
 
-    assert membership.receive_email_notifications is True
-    assert membership.receive_push_notifications is True
-    assert response.receive_email_notifications is True
-    assert response.receive_push_notifications is True
-
 
 @pytest.mark.asyncio
-async def test_update_notifications_applies_explicit_boolean_values() -> None:
+async def test_update_notifications_applies_only_explicit_boolean_values() -> None:
     membership = _membership()
     db = AsyncMock()
 

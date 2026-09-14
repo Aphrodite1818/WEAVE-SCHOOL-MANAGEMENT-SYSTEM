@@ -16,16 +16,19 @@ from pydantic import (
     HttpUrl,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 from app.core.utils.validators import generate_slug
 from app.tenant_management.models import (
+    InstitutionType,
     SubscriptionPlan,
     TenantStatus,
     TenantVerificationStatus,
 )
 
 PHONE_PATTERN = r"^\+?[1-9]\d{7,14}$"
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 # ──────────────────────────────────────────────
@@ -163,11 +166,10 @@ class TenantRegisterRequest(InputBase):
         max_length=64,
         description="Initial tenant administrator password",
     )
-    selected_plan_code: SubscriptionPlan = Field(
-        default=SubscriptionPlan.FREE_TRIAL,
-        description="Plan selected on the public pricing page before registration.",
+    initial_plan_intent: SubscriptionPlan | None = Field(
+        default=None,
+        description="Preferred first-term plan; this never grants access or starts payment.",
     )
-    billing_interval: Literal["monthly"] = "monthly"
 
     @field_validator("school_name")
     @classmethod
@@ -187,7 +189,7 @@ class TenantCreate(TenantBase):
         pattern=PHONE_PATTERN,
         description="The WhatsApp number the school bot listens on",
     )
-    plan: SubscriptionPlan = SubscriptionPlan.FREE_TRIAL
+    plan: SubscriptionPlan = SubscriptionPlan.FREE
     max_students: int = Field(default=500, ge=1, le=100_000)
     max_teachers: int = Field(default=50, ge=1, le=100_000)
 
@@ -207,7 +209,7 @@ class TenantCreate(TenantBase):
 
 
 class TenantUpdate(InputBase):
-    """Schema for general tenant/school profile updates."""
+    """Schema for partial tenant/school profile updates."""
 
     school_name: str | None = Field(default=None, min_length=2, max_length=255)
     email: EmailStr | None = None
@@ -218,6 +220,7 @@ class TenantUpdate(InputBase):
     country: str | None = Field(default=None, max_length=100)
     timezone: str | None = Field(default=None, max_length=50)
     language: str | None = Field(default=None, max_length=10)
+    institution_type: InstitutionType | None = None
     admission_number_prefix: str | None = Field(
         default=None,
         min_length=2,
@@ -248,6 +251,13 @@ class TenantUpdate(InputBase):
 
         return _clean_optional_string(value)
 
+    @field_validator("school_name", "email", "country", "timezone", "language")
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
     @field_validator("admission_number_prefix")
     @classmethod
     def normalize_update_admission_number_prefix(
@@ -260,22 +270,29 @@ class TenantUpdate(InputBase):
             return None
         return value.upper()
 
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "TenantUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one tenant field must be provided")
+        return self
+
 
 class TenantOnboardingUpdate(InputBase):
-    """Schema for first-time tenant onboarding completion."""
+    """Sparse tenant onboarding/profile PATCH contract."""
 
-    admission_number_prefix: str = Field(
-        ...,
+    admission_number_prefix: str | None = Field(
+        default=None,
         min_length=2,
         max_length=20,
     )
+    institution_type: InstitutionType | None = None
     phone: str | None = Field(default=None, pattern=PHONE_PATTERN)
-    address: str = Field(..., min_length=3, max_length=500)
-    city: str = Field(..., min_length=2, max_length=100)
-    state: str = Field(..., min_length=2, max_length=100)
-    country: str = Field(default="Nigeria", max_length=100)
-    timezone: str = Field(default="Africa/Lagos", max_length=50)
-    language: str = Field(default="en", max_length=10)
+    address: str | None = Field(default=None, min_length=3, max_length=500)
+    city: str | None = Field(default=None, min_length=2, max_length=100)
+    state: str | None = Field(default=None, min_length=2, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
+    timezone: str | None = Field(default=None, max_length=50)
+    language: str | None = Field(default=None, max_length=10)
     school_bot_whatssap_number: str | None = Field(
         default=None,
         pattern=PHONE_PATTERN,
@@ -296,19 +313,43 @@ class TenantOnboardingUpdate(InputBase):
     )
     @classmethod
     def clean_text_fields(cls, value: str | None) -> str | None:
-        """Clean onboarding text fields."""
+        """Clean supplied onboarding/profile text fields."""
 
         return _clean_optional_string(value)
+
+    @field_validator(
+        "admission_number_prefix",
+        "institution_type",
+        "address",
+        "city",
+        "state",
+        "country",
+        "timezone",
+        "language",
+    )
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
 
     @field_validator("admission_number_prefix")
     @classmethod
     def normalize_onboarding_admission_number_prefix(
         cls,
-        value: str,
-    ) -> str:
-        """Uppercase the onboarding admission prefix."""
+        value: str | None,
+    ) -> str | None:
+        """Uppercase the onboarding admission prefix when supplied."""
 
+        if value is None:
+            return None
         return value.upper()
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "TenantOnboardingUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one onboarding field must be provided")
+        return self
 
 
 class TenantStatusUpdate(InputBase):
@@ -354,6 +395,7 @@ class TenantPublicResponse(OutputBase):
     timezone: str
     language: str
     onboarding_completed: bool
+    institution_type: InstitutionType | None = None
     verification_status: TenantVerificationStatus
     created_at: datetime
     updated_at: datetime
@@ -387,6 +429,7 @@ class TenantContext(OutputBase):
     max_teachers: int
     feature_flags: dict[str, Any] | None
     onboarding_completed: bool
+    institution_type: InstitutionType | None = None
 
     @property
     def is_active(self) -> bool:

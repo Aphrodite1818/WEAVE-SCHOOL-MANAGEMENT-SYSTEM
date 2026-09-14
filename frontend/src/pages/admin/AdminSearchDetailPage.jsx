@@ -94,13 +94,13 @@ function AdminSearchDetailPage() {
                     {item.label || item.title || item.name || "Untitled record"}
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-                    This page keeps search context in one place instead of immediately jumping into edit or view pages.
+                    This page keeps search context in one place before you open the record's owning workspace.
                   </p>
                 </div>
                 {item.href ? (
                   <Link to={item.href} className="shrink-0">
                     <Button variant="outline">
-                      Open source page
+                      Open in workspace
                       <ExternalLink className="h-4 w-4" />
                     </Button>
                   </Link>

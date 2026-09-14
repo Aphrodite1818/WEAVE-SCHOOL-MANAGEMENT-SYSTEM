@@ -140,7 +140,6 @@ function StudentDashboardPage() {
             reportCardResponse,
             subjectCardsResponse,
           ] = await Promise.all([
-            studentService.getMyStudent({ signal: controller.signal }),
             studentService.getMyParentLinks({ signal: controller.signal }),
             studentService.getMyParentLinkRequests({
               signal: controller.signal,
@@ -374,7 +373,7 @@ function StudentDashboardPage() {
             ]}
           />
 
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Current average"
               value={
@@ -616,7 +615,7 @@ function SubjectProgressPreview({ data = [] }) {
         </div>
         <Link
           to="/student/analytics"
-          className="shrink-0 text-xs font-semibold text-primary hover:underline"
+          className="inline-flex min-h-11 shrink-0 items-center text-xs font-semibold text-primary hover:underline sm:min-h-0"
         >
           View all
         </Link>
@@ -630,7 +629,7 @@ function SubjectProgressPreview({ data = [] }) {
           {items.map((item, index) => (
             <div key={`${item.label}-${index}`} className="space-y-2">
               <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
-                <span className="min-w-0 truncate font-semibold text-text">
+                <span className="min-w-0 whitespace-normal break-words font-semibold leading-5 text-text sm:truncate">
                   {item.label}
                 </span>
                 <span className="shrink-0 font-semibold text-text-muted">
@@ -658,10 +657,10 @@ function SubjectProgressPreview({ data = [] }) {
 function InfoTile({ label, value }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">
+      <p className="text-xs font-semibold leading-5 text-text-soft sm:text-[11px] sm:uppercase sm:tracking-wide sm:text-text-muted">
         {label}
       </p>
-      <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
+      <p className="mt-1 whitespace-normal break-words text-sm font-semibold leading-5 text-text sm:truncate">{value}</p>
     </div>
   );
 }

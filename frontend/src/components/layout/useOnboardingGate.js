@@ -1,13 +1,43 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { queueInitialTour } from "../../features/guides/workspaceTourState";
+import { authSession } from "../../services/api";
+import { guideService } from "../../services/guideService";
 import { onboardingService } from "../../services/onboardingService";
+import { didCompleteInitialOnboarding } from "./onboardingOrchestration";
+
+const DASHBOARD_ROUTE_BY_ROLE = {
+  admin: "/admin/dashboard",
+  teacher: "/teacher/dashboard",
+  parent: "/parent/dashboard",
+  student: "/student/dashboard",
+};
+
+const SCHOOL_SELECTION_ROUTE_BY_ROLE = {
+  teacher: "/teacher/schools",
+  parent: "/parent/schools",
+};
+
+function postOnboardingRoute(role) {
+  const user = authSession.getUser() || {};
+  const actorType = String(user.actor_type || user.account_type || "").toLowerCase();
+  const accountScoped =
+    ["teacher_account", "parent_account"].includes(actorType) && !user.tenant_id;
+
+  if (accountScoped && SCHOOL_SELECTION_ROUTE_BY_ROLE[role]) {
+    return SCHOOL_SELECTION_ROUTE_BY_ROLE[role];
+  }
+  return DASHBOARD_ROUTE_BY_ROLE[role] || null;
+}
 
 export default function useOnboardingGate({ role, enabled = true }) {
   const navigate = useNavigate();
   const normalizedRole = onboardingService.normalizeRole(role);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileMode, setProfileMode] = useState("onboarding");
+  const [preparingWelcome, setPreparingWelcome] = useState(false);
+  const onboardingWasRequiredRef = useRef(false);
   const [onboardingState, setOnboardingState] = useState({
     loading: true,
     required: false,
@@ -25,11 +55,17 @@ export default function useOnboardingGate({ role, enabled = true }) {
       }
 
       try {
-        const status = await onboardingService.getOnboardingStatus(normalizedRole);
+        const status =
+          await onboardingService.getOnboardingStatus(normalizedRole);
         if (!mounted) return;
 
         const required = Boolean(status?.onboarding_required);
-        setOnboardingState({ loading: false, required, status: status || null });
+        if (required) onboardingWasRequiredRef.current = true;
+        setOnboardingState({
+          loading: false,
+          required,
+          status: status || null,
+        });
 
         if (required) {
           setProfileMode("onboarding");
@@ -37,7 +73,9 @@ export default function useOnboardingGate({ role, enabled = true }) {
         }
       } catch {
         if (mounted) {
-          setOnboardingState((current) => ({ ...current, loading: false }));
+          // Unknown onboarding state must never be interpreted as completed.
+          // Keep first-run progression blocked until a later mount can confirm it.
+          setOnboardingState((current) => ({ ...current, loading: true }));
         }
       }
     }
@@ -51,24 +89,49 @@ export default function useOnboardingGate({ role, enabled = true }) {
 
   const handleProfileStateResolved = ({ completed, status }) => {
     const required = !completed;
+    if (required) onboardingWasRequiredRef.current = true;
     setOnboardingState({ loading: false, required, status: status || null });
     if (!required) setProfileModalOpen(false);
   };
 
-  const handleProfileSaved = (status) => {
+  const handleProfileSaved = async (status) => {
     const required = Boolean(status?.onboarding_required);
-    const completedInitialTenantOnboarding =
-      normalizedRole === "admin" && profileMode === "onboarding" && !required;
+    const completedInitialOnboarding = didCompleteInitialOnboarding({
+      profileMode,
+      wasRequired: onboardingWasRequiredRef.current,
+      nextStatus: status,
+    });
+
+    if (completedInitialOnboarding) {
+      setPreparingWelcome(true);
+      try {
+        await queueInitialTour(
+          normalizedRole,
+          true,
+          guideService,
+          { requeueNonTerminal: true },
+        );
+      } catch {
+        // An unavailable tour must not block a successfully saved profile.
+      } finally {
+        setPreparingWelcome(false);
+      }
+    }
 
     setOnboardingState({ loading: false, required, status: status || null });
     if (!required) setProfileModalOpen(false);
 
-    if (completedInitialTenantOnboarding) {
-      navigate("/admin/getting-started", { replace: true });
+    if (completedInitialOnboarding) {
+      onboardingWasRequiredRef.current = false;
+      const nextRoute = postOnboardingRoute(normalizedRole);
+      if (nextRoute) {
+        navigate(nextRoute, { replace: true });
+      }
     }
   };
 
   return {
+    preparingWelcome,
     onboardingState,
     profileModalOpen,
     setProfileModalOpen,

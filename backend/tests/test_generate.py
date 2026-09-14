@@ -1,78 +1,144 @@
-"""Smoke tests for enrollment-based report-card generation."""
+"""Generation orchestration tests for the canonical report-card service."""
 
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import select
 
-from app.core.exceptions import BadRequestException
-from app.modules.report_cards.generation_service import (
-    EnrollmentReportCardService,
+from app.modules.report_cards.schemas import (
+    ReportCardBulkGenerateResponse,
+    ReportCardGenerateRequest,
+    ReportCardResponse,
 )
-from app.modules.report_cards.schemas import ReportCardGenerateRequest
 from app.modules.report_cards.service import ReportCardService
-from app.modules.student_academics.models import AcademicTerm
-from app.modules.students.models import StudentEnrollment
 from app.modules.tenant_admins.models import TenantAdmin
 
 
+class _Savepoint:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
+class _ScalarResult:
+    def __init__(self, values):
+        self._values = values
+
+    def scalars(self):
+        return self._values
+
+
 @pytest.mark.asyncio
-async def test_generate_report_card_respects_locked_score_requirement(
-    db_session,
-) -> None:
-    enrollment_result = await db_session.execute(select(StudentEnrollment).limit(1))
-    enrollment = enrollment_result.scalar_one_or_none()
-
-    if enrollment is None:
-        pytest.skip("No enrollments are available for the smoke test.")
-
-    term_result = await db_session.execute(
-        select(AcademicTerm)
-        .where(AcademicTerm.academic_session_id == enrollment.academic_session_id)
-        .limit(1)
-    )
-    term = term_result.scalar_one_or_none()
-
-    if term is None:
-        pytest.skip("No academic term exists for the selected enrollment.")
-
-    admin = TenantAdmin(
-        tenant_id=enrollment.tenant_id,
-    )
-    admin.id = uuid.uuid4()
+async def test_single_generate_dispatches_to_authoritative_student_path(monkeypatch) -> None:
+    tenant_id = uuid.uuid4()
+    student_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    term_id = uuid.uuid4()
+    actor = TenantAdmin(tenant_id=tenant_id)
+    actor.id = uuid.uuid4()
+    expected = ReportCardResponse.model_construct(id=uuid.uuid4())
+    generate_one = AsyncMock(return_value=expected)
+    monkeypatch.setattr(ReportCardService, "generate_for_student", generate_one)
 
     payload = ReportCardGenerateRequest(
-        academic_session_id=enrollment.academic_session_id,
-        academic_term_id=term.id,
-        student_id=enrollment.student_id,
+        student_id=student_id,
+        academic_session_id=session_id,
+        academic_term_id=term_id,
+        apply_default_principal_template=True,
     )
 
-    locked_results = await ReportCardService._finalized_results_for_student(
-        db_session,
-        enrollment.tenant_id,
-        enrollment.student_id,
-        enrollment.academic_session_id,
-        term.id,
+    result = await ReportCardService.generate(SimpleNamespace(), actor, payload)
+
+    assert result is expected
+    generate_one.assert_awaited_once_with(
+        ANY,
+        actor,
+        student_id=student_id,
+        academic_session_id=session_id,
+        academic_term_id=term_id,
+        principal_comment=None,
+        principal_template_id=None,
+        apply_default_principal_template=True,
     )
 
-    if not locked_results:
-        with pytest.raises(
-            BadRequestException,
-            match="No locked scores are available",
-        ):
-            await EnrollmentReportCardService.generate(
-                db_session,
-                admin,
-                payload,
-            )
-        return
 
-    generated = await EnrollmentReportCardService.generate(
-        db_session,
-        admin,
-        payload,
+@pytest.mark.asyncio
+async def test_bulk_generate_uses_canonical_student_generation_and_refreshes_positions_once(
+    monkeypatch,
+) -> None:
+    tenant_id = uuid.uuid4()
+    class_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    term_id = uuid.uuid4()
+    student_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+
+    actor = TenantAdmin(tenant_id=tenant_id)
+    actor.id = uuid.uuid4()
+    payload = ReportCardGenerateRequest(
+        class_id=class_id,
+        academic_session_id=session_id,
+        academic_term_id=term_id,
+        apply_default_principal_template=True,
     )
 
-    assert generated is not None
+    generated_cards = [ReportCardResponse.model_construct(id=uuid.uuid4()) for _ in student_ids]
+    generate_one = AsyncMock(side_effect=generated_cards)
+    apply_positions = AsyncMock()
+    get_card = AsyncMock(side_effect=generated_cards)
+
+    monkeypatch.setattr(ReportCardService, "generate_for_student", generate_one)
+    monkeypatch.setattr(ReportCardService, "_apply_class_positions", apply_positions)
+    monkeypatch.setattr(ReportCardService, "get", get_card)
+
+    db = SimpleNamespace(
+        execute=AsyncMock(return_value=_ScalarResult(student_ids)),
+        begin_nested=MagicMock(return_value=_Savepoint()),
+        commit=AsyncMock(),
+    )
+    result = await ReportCardService.generate(db, actor, payload)
+
+    assert isinstance(result, ReportCardBulkGenerateResponse)
+    assert len(result.generated) == len(student_ids)
+    assert result.skipped == []
+    db.execute.assert_awaited_once()
+    assert db.begin_nested.call_count == len(student_ids)
+    assert generate_one.await_count == len(student_ids)
+    assert all(call.kwargs["commit"] is False for call in generate_one.await_args_list)
+    assert all(
+        call.kwargs["apply_default_principal_template"] is True
+        for call in generate_one.await_args_list
+    )
+    apply_positions.assert_awaited_once_with(
+        db,
+        tenant_id,
+        class_id,
+        session_id,
+        term_id,
+    )
+    assert db.commit.await_count == 2
+    assert get_card.await_count == len(student_ids)
+
+
+def test_bulk_generation_rejects_one_manual_or_template_principal_comment() -> None:
+    base = {
+        "class_id": uuid.uuid4(),
+        "academic_session_id": uuid.uuid4(),
+        "academic_term_id": uuid.uuid4(),
+    }
+
+    with pytest.raises(ValueError, match="performance-range defaults"):
+        ReportCardGenerateRequest(
+            **base,
+            principal_comment="One sentence for the entire class.",
+        )
+
+    with pytest.raises(ValueError, match="performance-range defaults"):
+        ReportCardGenerateRequest(
+            **base,
+            principal_template_id=uuid.uuid4(),
+        )

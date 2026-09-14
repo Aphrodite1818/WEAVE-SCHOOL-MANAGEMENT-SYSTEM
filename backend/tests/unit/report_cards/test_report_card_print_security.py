@@ -1,4 +1,5 @@
 import inspect
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -11,11 +12,9 @@ from app.modules.report_cards import router
 from app.modules.report_cards.models import ReportCardStatus
 from app.modules.report_cards.print_service import ReportCardPrintService
 from app.modules.report_cards.repository import ReportCardRepository
-from app.modules.report_cards.schemas import ReportCardCommentsUpdate
+from app.modules.report_cards.schemas import ReportCardPrincipalCommentUpdate
 from app.modules.report_cards.service import ReportCardService
-from app.modules.student_academics.models import AcademicResultStatus
-from app.modules.student_academics.repository import StudentAcademicRepository
-from app.modules.subjects.repository import SubjectRepository
+from app.tenant_management.repository import TenantRepository
 
 
 def test_report_card_html_response_headers_prevent_sensitive_caching():
@@ -35,21 +34,25 @@ def test_report_card_data_response_headers_prevent_sensitive_caching():
     assert headers["Referrer-Policy"] == "no-referrer"
 
 
-def test_canonical_report_card_template_is_print_safe_and_omits_subject_teacher():
+def test_canonical_report_card_template_is_print_safe_and_excludes_photo_signatures():
     source = inspect.getsource(ReportCardPrintService.render_html)
 
     assert "onclick=" not in source
     assert "document.write" not in source
     assert "dangerouslySetInnerHTML" not in source
-    assert "<th>Teacher" not in source
+    assert "student_passport_photo_url" not in source
+    assert "student-photo" not in source
+    assert "signature" not in source.lower()
     assert "Admission number" in source
+    assert "Overall performance" in source
     assert "Class teacher's comment" in source
     assert "Principal's comment" in source
+    assert "<th>Teacher</th>" in source
     assert "weave-email-icon.png" in source
 
 
 @pytest.mark.asyncio
-async def test_published_report_card_comments_are_immutable(monkeypatch):
+async def test_published_report_card_principal_comment_is_immutable(monkeypatch):
     card = SimpleNamespace(
         id=uuid4(),
         tenant_id=uuid4(),
@@ -63,121 +66,70 @@ async def test_published_report_card_comments_are_immutable(monkeypatch):
         AsyncMock(return_value=card),
     )
 
-    with pytest.raises(
-        BadRequestException,
-        match="Only draft report cards can be edited",
-    ):
-        await ReportCardService.update_comments(
+    with pytest.raises(BadRequestException, match="Published report revisions are immutable"):
+        await ReportCardService.update_principal_comment(
             SimpleNamespace(),
             actor,
             card.id,
-            ReportCardCommentsUpdate(class_teacher_comment="Updated"),
+            ReportCardPrincipalCommentUpdate(principal_comment="Updated principal comment"),
         )
 
 
 @pytest.mark.asyncio
-async def test_regeneration_archives_outdates_old_card_and_creates_next_draft_version(
-    monkeypatch,
-):
+async def test_print_uses_stored_report_snapshot_instead_of_live_class_configuration(monkeypatch):
     tenant_id = uuid4()
-    subject_id = uuid4()
-    existing = SimpleNamespace(
-        id=uuid4(),
+    card_id = uuid4()
+    now = datetime.now(timezone.utc)
+    actor = SimpleNamespace(id=uuid4(), tenant_id=tenant_id)
+    db = SimpleNamespace()
+    snapshot = SimpleNamespace(
+        id=card_id,
         tenant_id=tenant_id,
-        student_id=uuid4(),
-        class_id=uuid4(),
-        academic_session_id=uuid4(),
-        academic_term_id=uuid4(),
-        class_teacher_comment="Steady progress",
-        principal_comment="Keep improving",
+        student_name="Ada Student",
+        admission_number="STD-001",
+        student_passport_photo_url="https://example.com/photo.jpg",
+        class_name="SS1",
+        class_arm="C",
+        department_name="Science",
+        class_teacher_name="Snapshot Teacher",
+        academic_session_name="2026/2027",
+        academic_term_name="FIRST",
+        total_score=Decimal("180"),
+        average_score=Decimal("90"),
+        position=1,
+        position_out_of=30,
+        class_teacher_comment="Excellent consistency.",
+        principal_comment="Outstanding performance.",
         version=2,
         status=ReportCardStatus.PUBLISHED,
-        is_outdated=False,
-        superseded_at=None,
+        published_at=now,
+        lines=[],
     )
-    actor = SimpleNamespace(id=uuid4(), tenant_id=tenant_id)
-    student = SimpleNamespace(id=existing.student_id, class_id=existing.class_id)
-    result = SimpleNamespace(
-        id=uuid4(),
-        status=AcademicResultStatus.LOCKED,
-        subject_id=subject_id,
-        teacher_assignment_id=None,
-        teacher_membership_id=uuid4(),
-        total_score=Decimal("90"),
-        grade="A",
-        remark="Excellent",
+    tenant = SimpleNamespace(
+        school_name="Snapshot School",
+        address="Lagos",
+        phone="08000000000",
+        email="school@example.com",
+        logo_url=None,
     )
-
-    async def _save(_db, entity):
-        return entity
-
-    async def _create(_db, card):
-        card.id = uuid4()
-        return card
 
     monkeypatch.setattr(
         ReportCardService,
-        "_missing_subjects",
-        AsyncMock(return_value=[]),
+        "get",
+        AsyncMock(return_value=snapshot),
     )
     monkeypatch.setattr(
-        ReportCardRepository,
-        "save",
-        AsyncMock(side_effect=_save),
-    )
-    monkeypatch.setattr(
-        ReportCardRepository,
-        "create",
-        AsyncMock(side_effect=_create),
-    )
-    monkeypatch.setattr(
-        ReportCardRepository,
-        "create_line",
-        AsyncMock(side_effect=_save),
-    )
-    monkeypatch.setattr(
-        ReportCardRepository,
-        "create_component",
-        AsyncMock(side_effect=_save),
-    )
-    component = SimpleNamespace(
-        id=uuid4(),
-        name="Final",
-        code="FINAL",
-        position=0,
-        maximum_score=Decimal("100"),
-    )
-    score = SimpleNamespace(score=Decimal("90"))
-    monkeypatch.setattr(
-        StudentAcademicRepository,
-        "list_result_component_scores_batch",
-        AsyncMock(return_value={result.id: [(component, score)]}),
-    )
-    monkeypatch.setattr(
-        SubjectRepository,
-        "get_subject_by_id",
-        AsyncMock(return_value=SimpleNamespace(name="Mathematics", code="MTH")),
-    )
-    monkeypatch.setattr(
-        ReportCardService,
-        "_teacher_name_for_result",
-        AsyncMock(return_value="Teacher Example"),
+        TenantRepository,
+        "get_by_id",
+        AsyncMock(return_value=tenant),
     )
 
-    new_card = await ReportCardService._create_card_from_results(
-        SimpleNamespace(),
-        actor,
-        student,
-        existing.academic_session_id,
-        existing.academic_term_id,
-        [result],
-        replace_existing=existing,
-    )
+    html = await ReportCardPrintService.render_html(db, actor, card_id)
 
-    assert existing.status == ReportCardStatus.ARCHIVED
-    assert existing.is_outdated is True
-    assert existing.superseded_at is not None
-    assert new_card.version == 3
-    assert new_card.status == ReportCardStatus.DRAFT
-    assert new_card.published_at is None
-    assert new_card.published_by is None
+    assert "SS1 C" in html
+    assert "Excellent consistency." in html
+    assert "Outstanding performance." in html
+    assert "2026/2027" in html
+    assert "Snapshot Teacher" in html
+    assert "photo.jpg" not in html
+    ReportCardService.get.assert_awaited_once_with(db, actor, card_id)

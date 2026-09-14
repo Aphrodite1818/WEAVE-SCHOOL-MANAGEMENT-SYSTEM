@@ -216,17 +216,26 @@ jobs:
           }
 
           const adminPage = read("src/pages/admin/AdminGettingStartedPage.jsx");
-          for (const action of [
-            "createSession",
-            "createTerm",
-            "generateCalendar",
-            "createClass",
-            "createSubject",
-            "openSession",
-            "activateCalendar",
-            "openTerm",
+          if (!adminPage.includes("ROLE_GUIDES.admin")) {
+            throw new Error("Admin getting-started index must be driven by the role guide contract");
+          }
+          if (!adminPage.includes("/admin/getting-started/${step.id}")) {
+            throw new Error("Admin getting-started index must route each step to its dedicated workspace");
+          }
+
+          const workspace = read("src/features/guides/AdminGuideTaskWorkspace.jsx");
+          for (const workspaceName of [
+            "AcademicLevelsWorkspace",
+            "ArmLabelsWorkspace",
+            "ClassesWorkspace",
+            "DepartmentsWorkspace",
+            "CurriculumWorkspace",
+            "TeacherAssignmentsWorkspace",
+            "ProgressionWorkspace",
           ]) {
-            if (!adminPage.includes(action)) throw new Error(`Missing admin setup action: ${action}`);
+            if (!workspace.includes(workspaceName)) {
+              throw new Error(`Missing academic setup workspace: ${workspaceName}`);
+            }
           }
           NODE
 

@@ -14,16 +14,30 @@
     touch-action: manipulation !important;
   }
 
-  /* Admin PWA navigation: Academics, Notices, Home, Calendar, Menu. */
-  [data-mobile-bottom-nav="true"] a[href="/admin/messages"] {
-    display: none !important;
+  /* Keep floating academic controls clear of device safe areas in browser mode. */
+  [data-academic-workflow-navigator="true"] {
+    bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 
+  /* Installed PWA: share the same reserved zone as dashboard content. */
+  html[data-standalone-pwa="true"] [data-academic-workflow-navigator="true"] {
+    bottom: var(--mobile-bottom-nav-clearance);
+  }
+
+  html[data-standalone-pwa="true"] [data-academic-workflow-menu="true"] {
+    max-height: min(62dvh, 30rem);
+  }
+
+  html[data-standalone-pwa="true"] #dashboard-content {
+    padding-bottom: var(--mobile-bottom-nav-clearance);
+  }
+
+  /* Admin PWA navigation: Academics, Inbox, Home, Calendar, Menu. */
   [data-mobile-bottom-nav="true"] a[href="/admin/academic"] {
     order: 1;
   }
 
-  [data-mobile-bottom-nav="true"] a[href="/admin/announcements"] {
+  [data-mobile-bottom-nav="true"] a[href="/admin/inbox"] {
     order: 2;
   }
 

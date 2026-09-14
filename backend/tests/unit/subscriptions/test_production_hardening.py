@@ -12,7 +12,8 @@ from app.modules.classes.router import activate_classroom
 from app.modules.subjects.router import activate_subject
 from app.modules.subscriptions.payment_integrity import process_paystack_webhook_secure
 from app.modules.subscriptions.quota_lock import acquire_resource_quota_lock
-from app.modules.subscriptions.subscription_enums import ResourceLimitCode
+from app.modules.subscriptions.router import verify_term_plan_checkout
+from app.modules.subscriptions.subscription_enums import PaymentStatus, ResourceLimitCode
 from app.modules.superadmin.router import update_tenant_status
 
 
@@ -36,7 +37,7 @@ async def test_resource_quota_lock_uses_stable_transaction_advisory_key() -> Non
     await acquire_resource_quota_lock(
         other_resource_db,
         tenant_id=tenant_id,
-        resource=ResourceLimitCode.CLASSES,
+        resource=ResourceLimitCode.TEACHERS,
     )
 
     first_params = first_db.execute.await_args.args[1]
@@ -50,7 +51,10 @@ async def test_resource_quota_lock_uses_stable_transaction_advisory_key() -> Non
 
 @pytest.mark.asyncio
 async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> None:
-    payload = {"event": "invoice.create", "data": {"id": 123}}
+    payload = {
+        "event": "charge.success",
+        "data": {"id": 123, "reference": "unknown"},
+    }
     provider = SimpleNamespace(
         verify_webhook_signature=lambda **_: True,
         parse_webhook_body=lambda _body: payload,
@@ -61,12 +65,12 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
 
     with (
         patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionPaymentService.provider",
-            provider,
+            "app.modules.subscriptions.payment_integrity.PaystackClient",
+            return_value=provider,
         ),
         patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionPaymentService._extract_event_key",
-            return_value="invoice.create:123",
+            "app.modules.subscriptions.payment_integrity._event_key",
+            return_value="charge.success:123",
         ),
         patch(
             "app.modules.subscriptions.payment_integrity._acquire_webhook_lock",
@@ -81,8 +85,8 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
             new=AsyncMock(side_effect=[first_event, failure_event]),
         ) as create_event,
         patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionPaymentService.dispatch_paystack_event",
-            new=AsyncMock(side_effect=RuntimeError("downstream failure")),
+            "app.modules.subscriptions.payment_integrity._transaction_for_update",
+            new=AsyncMock(return_value=None),
         ),
         patch(
             "app.modules.subscriptions.payment_integrity.SubscriptionRepository.mark_webhook_failed",
@@ -93,7 +97,7 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
             new=AsyncMock(),
         ),
     ):
-        with pytest.raises(RuntimeError, match="downstream failure"):
+        with pytest.raises(Exception, match="Unknown term payment reference"):
             await process_paystack_webhook_secure(
                 db,
                 body=b"{}",
@@ -106,8 +110,51 @@ async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> 
     mark_failed.assert_awaited_once_with(
         db=db,
         webhook_event=failure_event,
-        error_message="downstream failure",
+        error_message="Unknown term payment reference.",
     )
+
+
+@pytest.mark.asyncio
+async def test_browser_payment_verification_locks_transaction_before_settlement() -> None:
+    tenant_id = uuid.uuid4()
+    transaction = SimpleNamespace(
+        tenant_id=tenant_id,
+        reference="term-ref",
+        reconciliation_required=False,
+        status=PaymentStatus.PENDING,
+    )
+    entitlement = SimpleNamespace()
+    admin = SimpleNamespace(tenant_id=tenant_id)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.subscriptions.router.lock_payment_transaction",
+            new=AsyncMock(return_value=transaction),
+        ) as lock_transaction,
+        patch(
+            "app.modules.subscriptions.router.PaystackClient.verify_transaction",
+            new=AsyncMock(return_value={"data": {"status": "success"}}),
+        ) as verify_provider,
+        patch(
+            "app.modules.subscriptions.router.TermPlanEntitlementService.activate_verified_transaction",
+            new=AsyncMock(return_value=entitlement),
+        ) as activate,
+        patch(
+            "app.modules.subscriptions.router.TermEntitlementResponse.model_validate",
+            return_value=entitlement,
+        ),
+    ):
+        result = await verify_term_plan_checkout(
+            reference="term-ref",
+            db=db,
+            current_admin=admin,
+        )
+
+    assert result is entitlement
+    lock_transaction.assert_awaited_once_with(db, "term-ref")
+    verify_provider.assert_awaited_once_with(reference="term-ref")
+    activate.assert_awaited_once_with(db, transaction, ANY, commit=True)
 
 
 @pytest.mark.asyncio
@@ -140,36 +187,17 @@ async def test_tenant_status_change_invalidates_active_tenant_authorization_cach
 
 
 @pytest.mark.asyncio
-async def test_class_reactivation_checks_quota_only_when_it_increases_usage() -> None:
+async def test_class_reactivation_has_no_commercial_quota() -> None:
     tenant_id = uuid.uuid4()
     class_id = uuid.uuid4()
     actor = SimpleNamespace(tenant_id=tenant_id)
     payload = SimpleNamespace(confirmation=True)
-    inactive = SimpleNamespace(is_active=False, archived_at=None)
     activated = SimpleNamespace(id=class_id, is_active=True)
 
-    with (
-        patch(
-            "app.modules.classes.router.ClassRoomRepository.get_by_id",
-            new=AsyncMock(return_value=inactive),
-        ),
-        patch(
-            "app.modules.classes.router.acquire_resource_quota_lock",
-            new=AsyncMock(),
-        ) as quota_lock,
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.ensure_resource_limit_available",
-            new=AsyncMock(),
-        ) as quota_check,
-        patch(
-            "app.modules.classes.router.ClassRoomService.activate_classroom",
-            new=AsyncMock(return_value=activated),
-        ),
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.invalidate_tenant_subscription_state",
-            new=AsyncMock(),
-        ),
-    ):
+    with patch(
+        "app.modules.classes.router.ClassRoomService.activate_classroom",
+        new=AsyncMock(return_value=activated),
+    ) as activate:
         result = await activate_classroom(
             class_id=class_id,
             payload=payload,
@@ -178,71 +206,20 @@ async def test_class_reactivation_checks_quota_only_when_it_increases_usage() ->
         )
 
     assert result is activated
-    quota_lock.assert_awaited_once()
-    quota_check.assert_awaited_once()
-
-    with (
-        patch(
-            "app.modules.classes.router.ClassRoomRepository.get_by_id",
-            new=AsyncMock(return_value=SimpleNamespace(is_active=True, archived_at=None)),
-        ),
-        patch(
-            "app.modules.classes.router.acquire_resource_quota_lock",
-            new=AsyncMock(),
-        ) as quota_lock,
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.ensure_resource_limit_available",
-            new=AsyncMock(),
-        ) as quota_check,
-        patch(
-            "app.modules.classes.router.ClassRoomService.activate_classroom",
-            new=AsyncMock(return_value=activated),
-        ),
-        patch(
-            "app.modules.classes.router.SubscriptionFeatureService.invalidate_tenant_subscription_state",
-            new=AsyncMock(),
-        ),
-    ):
-        await activate_classroom(
-            class_id=class_id,
-            payload=payload,
-            db=AsyncMock(),
-            current_user=actor,
-        )
-
-    quota_lock.assert_not_awaited()
-    quota_check.assert_not_awaited()
+    activate.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_subject_reactivation_checks_quota_before_transition() -> None:
+async def test_subject_reactivation_has_no_commercial_quota() -> None:
     tenant_id = uuid.uuid4()
     subject_id = uuid.uuid4()
     actor = SimpleNamespace(tenant_id=tenant_id)
     payload = SimpleNamespace(confirmation=True)
 
-    with (
-        patch(
-            "app.modules.subjects.router.SubjectRepository.get_subject_by_id",
-            new=AsyncMock(return_value=SimpleNamespace(is_active=False, archived_at=None)),
-        ),
-        patch(
-            "app.modules.subjects.router.acquire_resource_quota_lock",
-            new=AsyncMock(),
-        ) as quota_lock,
-        patch(
-            "app.modules.subjects.router.SubscriptionFeatureService.ensure_resource_limit_available",
-            new=AsyncMock(),
-        ) as quota_check,
-        patch(
-            "app.modules.subjects.router.SubjectService.activate_subject",
-            new=AsyncMock(return_value=SimpleNamespace(id=subject_id)),
-        ),
-        patch(
-            "app.modules.subjects.router.SubscriptionFeatureService.invalidate_tenant_subscription_state",
-            new=AsyncMock(),
-        ),
-    ):
+    with patch(
+        "app.modules.subjects.router.SubjectService.activate_subject",
+        new=AsyncMock(return_value=SimpleNamespace(id=subject_id)),
+    ) as activate:
         await activate_subject(
             subject_id=subject_id,
             payload=payload,
@@ -250,8 +227,7 @@ async def test_subject_reactivation_checks_quota_before_transition() -> None:
             current_user=actor,
         )
 
-    quota_lock.assert_awaited_once()
-    quota_check.assert_awaited_once()
+    activate.assert_awaited_once()
 
 
 @pytest.mark.asyncio

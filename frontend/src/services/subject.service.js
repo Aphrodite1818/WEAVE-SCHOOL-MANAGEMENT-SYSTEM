@@ -1,4 +1,13 @@
 import { api } from "./api";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberById,
+  rememberRecord,
+} from "./patchPayload";
+
+const subjectsById = new Map();
 
 const buildSubjectQuery = ({
   skip = 0,
@@ -33,17 +42,31 @@ const buildSubjectQuery = ({
 };
 
 export const subjectService = {
-  getSubjects: (options = {}) =>
-    api.get(`/subjects?${buildSubjectQuery(options)}`),
+  getSubjects: async (options = {}) => {
+    const response = await api.get(`/subjects?${buildSubjectQuery(options)}`);
+    return rememberById(subjectsById, response);
+  },
 
-  getSubject: (subjectId) =>
-    api.get(`/subjects/${subjectId}`),
+  getSubject: async (subjectId) => {
+    const response = await api.get(`/subjects/${subjectId}`);
+    return rememberRecord(subjectsById, response);
+  },
 
-  createSubject: (data) =>
-    api.post("/subjects", data),
+  createSubject: async (data) => {
+    const response = await api.post("/subjects", data);
+    return rememberRecord(subjectsById, response);
+  },
 
-  updateSubject: (subjectId, data) =>
-    api.patch(`/subjects/${subjectId}`, data),
+  updateSubject: async (subjectId, data) => {
+    const key = String(subjectId);
+    const current = subjectsById.get(key);
+    const changes = buildChangedPatch(current, data);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch(`/subjects/${subjectId}`, changes);
+    subjectsById.set(key, mergePatchResult(current, changes, response));
+    return response;
+  },
 
   activateSubject: (subjectId) =>
     api.post(`/subjects/${subjectId}/activate`, {

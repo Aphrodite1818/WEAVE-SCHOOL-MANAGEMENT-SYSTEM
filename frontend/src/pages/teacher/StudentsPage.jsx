@@ -1,12 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, CheckSquare, ClipboardList, Users } from "lucide-react";
+import {
+  BookOpen,
+  CheckSquare,
+  ClipboardList,
+  Search,
+  UserCheck,
+  UserRound,
+  Users,
+} from "lucide-react";
 
 import DashboardLayout from "../../components/layout/DashboardLayout";
+import {
+  DirectorySummary,
+  DirectoryTable,
+  MobileDirectoryList,
+  MobilePersonCard,
+  PersonIdentity,
+} from "../../components/people/PeopleDirectory";
 import Card from "../../components/ui/Card";
 import Badge from "../../components/ui/Badge";
+import Input from "../../components/ui/Input";
 import LoadingState from "../../components/shared/LoadingState";
 import EmptyState from "../../components/shared/EmptyState";
 import { SelectField } from "../../components/academic/AcademicSelectors";
+import { displayClass } from "../../components/academic/academicDisplay";
 import { getErrorMessage } from "../../services/api";
 import { academicService } from "../../services/academicService";
 import { classService } from "../../services/academicsService";
@@ -17,12 +34,11 @@ const studentName = (student) =>
   [student.first_name, student.last_name].filter(Boolean).join(" ") ||
   student.admission_number ||
   "Student";
-const classLabel = (item) =>
-  [item.name || item.class_name, item.arm || item.class_arm].filter(Boolean).join(" ") ||
-  "Class";
+const classLabel = (item) => displayClass(item);
 const assignmentLabel = (item) =>
   `${item.subject_name || "Subject"} - ${item.class_name || "Class"} ${item.class_arm || ""}`.trim();
-const subjectLabel = (item) => item.subject_name || item.subject_code || "Subject";
+const subjectLabel = (item) =>
+  item.subject_name || item.subject_code || "Subject";
 
 const rosterTabs = [
   {
@@ -30,7 +46,7 @@ const rosterTabs = [
     label: "Subject roster",
     shortLabel: "Subject",
     icon: BookOpen,
-    description: "Students you teach for a selected class-subject.",
+    description: "Students you teach for a selected class and subject.",
   },
   {
     id: "class",
@@ -61,7 +77,7 @@ function StudentsPage() {
       setError(null);
       try {
         const [classResponse, assignmentResponse] = await Promise.all([
-          classService.getClasses({ limit: 100, active_only: true }),
+          classService.getClasses({ limit: 100, activeOnly: true }),
           academicService.listMyTeacherAssignments(),
         ]);
         if (!mounted) return;
@@ -73,7 +89,8 @@ function StudentsPage() {
         setSelectedSubjectId(assignments[0]?.subject_id || "");
         setSelectedAssignmentId(assignments[0]?.id || "");
       } catch (err) {
-        if (mounted) setError(getErrorMessage(err, "Could not load teacher rosters."));
+        if (mounted)
+          setError(getErrorMessage(err, "Could not load teacher rosters."));
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -95,12 +112,20 @@ function StudentsPage() {
   }, [subjectAssignments]);
 
   const filteredAssignments = useMemo(
-    () => subjectAssignments.filter((assignment) => !selectedSubjectId || assignment.subject_id === selectedSubjectId),
-    [subjectAssignments, selectedSubjectId]
+    () =>
+      subjectAssignments.filter(
+        (assignment) =>
+          !selectedSubjectId || assignment.subject_id === selectedSubjectId,
+      ),
+    [subjectAssignments, selectedSubjectId],
   );
 
   useEffect(() => {
-    if (!filteredAssignments.some((assignment) => assignment.id === selectedAssignmentId)) {
+    if (
+      !filteredAssignments.some(
+        (assignment) => assignment.id === selectedAssignmentId,
+      )
+    ) {
       const timeoutId = window.setTimeout(() => {
         setSelectedAssignmentId(filteredAssignments[0]?.id || "");
       }, 0);
@@ -117,11 +142,17 @@ function StudentsPage() {
         return;
       }
       try {
-        const response = await studentService.getStudents({ classId: selectedClassId, limit: 100 });
+        const response = await studentService.getStudents({
+          classId: selectedClassId,
+          limit: 100,
+        });
         if (mounted) setClassStudents(response?.items || []);
       } catch (err) {
         if (mounted) setClassStudents([]);
-        if (mounted) setError(getErrorMessage(err, "Could not load class-teacher students."));
+        if (mounted)
+          setError(
+            getErrorMessage(err, "Could not load class-teacher students."),
+          );
       }
     }
     loadClassStudents();
@@ -139,12 +170,17 @@ function StudentsPage() {
       }
       setIsRosterLoading(true);
       try {
-        const response = await academicService.listMyAssignmentStudents(selectedAssignmentId, { limit: 100 });
+        const response = await academicService.listMyAssignmentStudents(
+          selectedAssignmentId,
+          { limit: 100 },
+        );
         if (mounted) setSubjectStudents(response?.items || []);
       } catch (err) {
         if (mounted) {
           setSubjectStudents([]);
-          setError(getErrorMessage(err, "Could not load subject-teaching roster."));
+          setError(
+            getErrorMessage(err, "Could not load subject-teaching roster."),
+          );
         }
       } finally {
         if (mounted) setIsRosterLoading(false);
@@ -164,8 +200,11 @@ function StudentsPage() {
     );
   }
 
-  const selectedAssignment = subjectAssignments.find((item) => item.id === selectedAssignmentId);
-  const activeTabMeta = rosterTabs.find((tab) => tab.id === activeTab) || rosterTabs[0];
+  const selectedAssignment = subjectAssignments.find(
+    (item) => item.id === selectedAssignmentId,
+  );
+  const activeTabMeta =
+    rosterTabs.find((tab) => tab.id === activeTab) || rosterTabs[0];
   const ActiveIcon = activeTabMeta.icon;
 
   return (
@@ -188,7 +227,9 @@ function StudentsPage() {
             </div>
             <div className="min-w-0">
               <h2 className="section-title">{activeTabMeta.label}</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">{activeTabMeta.description}</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                {activeTabMeta.description}
+              </p>
             </div>
           </div>
 
@@ -196,7 +237,12 @@ function StudentsPage() {
             <span
               aria-hidden="true"
               className="absolute bottom-1 top-1 w-[calc(50%-0.25rem)] rounded-xl bg-surface shadow-sm transition-transform duration-300 ease-out"
-              style={{ transform: activeTab === "class" ? "translateX(calc(100% + 0.25rem))" : "translateX(0)" }}
+              style={{
+                transform:
+                  activeTab === "class"
+                    ? "translateX(calc(100% + 0.25rem))"
+                    : "translateX(0)",
+              }}
             />
             {rosterTabs.map((tab) => {
               const Icon = tab.icon;
@@ -208,7 +254,9 @@ function StudentsPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
                     "relative z-10 flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition sm:text-sm",
-                    isActive ? "text-primary" : "text-text-muted hover:text-text",
+                    isActive
+                      ? "text-primary"
+                      : "text-text-muted hover:text-text",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -228,23 +276,43 @@ function StudentsPage() {
               <EmptyState
                 icon={ClipboardList}
                 title="No subject-teacher assignment"
-                description="When an admin assigns you to a class-subject, the student roster for that class-subject will appear here."
+                description="When an admin assigns you to a concrete class and subject, that class roster will appear here."
               />
             ) : (
               <>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <SelectField label="Subject" value={selectedSubjectId} onChange={setSelectedSubjectId}>
-                    {subjectOptions.map((subject) => <option key={subject.id} value={subject.id}>{subject.label}</option>)}
+                  <SelectField
+                    label="Subject"
+                    value={selectedSubjectId}
+                    onChange={setSelectedSubjectId}
+                  >
+                    {subjectOptions.map((subject) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.label}
+                      </option>
+                    ))}
                   </SelectField>
-                  <SelectField label="Class for that subject" value={selectedAssignmentId} onChange={setSelectedAssignmentId}>
-                    {filteredAssignments.map((assignment) => <option key={assignment.id} value={assignment.id}>{assignment.class_name} {assignment.class_arm || ""}</option>)}
+                  <SelectField
+                    label="Class for that subject"
+                    value={selectedAssignmentId}
+                    onChange={setSelectedAssignmentId}
+                  >
+                    {filteredAssignments.map((assignment) => (
+                      <option key={assignment.id} value={assignment.id}>
+                        {assignment.class_name} {assignment.class_arm || ""}
+                      </option>
+                    ))}
                   </SelectField>
                 </div>
                 <RosterList
-                  title={selectedAssignment ? assignmentLabel(selectedAssignment) : "Subject roster"}
+                  title={
+                    selectedAssignment
+                      ? assignmentLabel(selectedAssignment)
+                      : "Subject roster"
+                  }
                   students={subjectStudents}
                   isLoading={isRosterLoading}
-                  empty="No students found for this assigned class-subject."
+                  empty="No students found for this teaching assignment."
                 />
               </>
             )}
@@ -260,11 +328,23 @@ function StudentsPage() {
             ) : (
               <>
                 <div className="max-w-xl">
-                  <SelectField label="Class you oversee" value={selectedClassId} onChange={setSelectedClassId}>
-                    {classTeacherClasses.map((item) => <option key={item.id} value={item.id}>{classLabel(item)}</option>)}
+                  <SelectField
+                    label="Class you oversee"
+                    value={selectedClassId}
+                    onChange={setSelectedClassId}
+                  >
+                    {classTeacherClasses.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {classLabel(item)}
+                      </option>
+                    ))}
                   </SelectField>
                 </div>
-                <RosterList title="Full class roster" students={classStudents} empty="No students found in this class." />
+                <RosterList
+                  title="Full class roster"
+                  students={classStudents}
+                  empty="No students found in this class."
+                />
               </>
             )}
           </Card>
@@ -275,28 +355,167 @@ function StudentsPage() {
 }
 
 function RosterList({ title, students, empty, isLoading = false }) {
+  const [search, setSearch] = useState("");
+  const visibleStudents = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return students;
+    return students.filter((student) =>
+      [
+        studentName(student),
+        student.admission_number,
+        student.class_name,
+        student.class_arm,
+      ].some((value) => String(value || "").toLowerCase().includes(term)),
+    );
+  }, [search, students]);
+  const activeCount = visibleStudents.filter(
+    (student) => String(student.status).toLowerCase() === "active",
+  ).length;
+  const maleCount = visibleStudents.filter(
+    (student) => String(student.gender).toLowerCase() === "male",
+  ).length;
+  const femaleCount = visibleStudents.filter(
+    (student) => String(student.gender).toLowerCase() === "female",
+  ).length;
+
   return (
-    <div className="mt-4 rounded-2xl border border-border bg-surface-muted/20 p-3 sm:p-4">
-      <div className="flex items-center justify-between gap-3 px-1 py-1">
-        <p className="min-w-0 truncate text-sm font-semibold text-text">{title}</p>
-        <Badge variant="default">{students.length} students</Badge>
+    <div className="mt-5 space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-text">{title}</p>
+          <p className="mt-1 text-xs text-text-muted">
+            Search and scan the students available in this roster.
+          </p>
+        </div>
+        <div className="relative w-full lg:max-w-sm">
+          <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search name or admission number"
+            className="pl-11"
+            aria-label="Search roster"
+          />
+        </div>
       </div>
       {isLoading ? <LoadingState label="Loading students..." /> : null}
-      {!isLoading && students.length === 0 ? <p className="px-1 py-4 text-sm text-text-muted">{empty}</p> : null}
-      {!isLoading && students.length > 0 ? (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {students.map((student) => (
-            <div key={student.id} className="rounded-xl border border-border bg-surface px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-text">{studentName(student)}</p>
-                  <p className="mt-1 text-xs text-text-muted">{student.admission_number || "No admission number"}</p>
-                </div>
-                <Badge variant={student.status === "active" ? "success" : "warning"}>{student.status || "student"}</Badge>
-              </div>
-            </div>
-          ))}
+      {!isLoading && students.length === 0 ? (
+        <div className="rounded-xl border border-border bg-surface-muted/20 px-4 py-5 text-sm text-text-muted">
+          {empty}
         </div>
+      ) : null}
+      {!isLoading && students.length > 0 ? (
+        <>
+          <DirectorySummary
+            items={[
+              {
+                label: "Visible students",
+                value: visibleStudents.length,
+                detail: search ? `of ${students.length}` : "in roster",
+                icon: Users,
+                tone: "primary",
+              },
+              {
+                label: "Active",
+                value: activeCount,
+                detail: "visible",
+                icon: UserCheck,
+                tone: "success",
+              },
+              {
+                label: "Male",
+                value: maleCount,
+                detail: "visible",
+                icon: UserRound,
+              },
+              {
+                label: "Female",
+                value: femaleCount,
+                detail: "visible",
+                icon: UserRound,
+              },
+            ]}
+          />
+
+          {visibleStudents.length === 0 ? (
+            <div className="rounded-xl border border-border bg-surface-muted/20 px-4 py-5 text-sm text-text-muted">
+              No students match your search.
+            </div>
+          ) : (
+            <>
+              <DirectoryTable
+                label={`${title} students`}
+                columns={[
+                  { key: "student", label: "Student" },
+                  { key: "class", label: "Class" },
+                  { key: "gender", label: "Gender" },
+                  { key: "status", label: "Status" },
+                ]}
+              >
+                {visibleStudents.map((student) => (
+                  <tr
+                    key={student.id}
+                    className="transition hover:bg-surface-muted/25"
+                  >
+                    <td className="px-4 py-3.5 align-middle">
+                      <PersonIdentity
+                        name={studentName(student)}
+                        meta={student.admission_number || "No admission number"}
+                      />
+                    </td>
+                    <td className="px-4 py-3.5 text-sm text-text-soft">
+                      {[student.class_name, student.class_arm]
+                        .filter(Boolean)
+                        .join(" ") || "Current roster"}
+                    </td>
+                    <td className="px-4 py-3.5 text-sm capitalize text-text-soft">
+                      {student.gender || "Not set"}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge
+                        variant={
+                          student.status === "active" ? "success" : "warning"
+                        }
+                      >
+                        {student.status || "Student"}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </DirectoryTable>
+
+              <MobileDirectoryList label={`${title} students`}>
+                {visibleStudents.map((student) => (
+                  <MobilePersonCard key={student.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <PersonIdentity
+                        name={studentName(student)}
+                        meta={student.admission_number || "No admission number"}
+                      />
+                      <Badge
+                        variant={
+                          student.status === "active" ? "success" : "warning"
+                        }
+                      >
+                        {student.status || "Student"}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between rounded-xl bg-surface-muted/35 px-3 py-2 text-xs text-text-muted">
+                      <span>
+                        {[student.class_name, student.class_arm]
+                          .filter(Boolean)
+                          .join(" ") || "Current roster"}
+                      </span>
+                      <span className="capitalize">
+                        {student.gender || "Gender not set"}
+                      </span>
+                    </div>
+                  </MobilePersonCard>
+                ))}
+              </MobileDirectoryList>
+            </>
+          )}
+        </>
       ) : null}
     </div>
   );

@@ -1,4 +1,12 @@
-import { AlertTriangle, ArrowRight, CheckCircle2, Edit3 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Archive,
+  ArrowRight,
+  CheckCircle2,
+  Edit3,
+  Info,
+} from "lucide-react";
 
 import EmptyState from "../../components/shared/EmptyState";
 import Badge from "../../components/ui/Badge";
@@ -22,19 +30,19 @@ export function WorkspaceGrid({ editor, content, wide = false }) {
       className={cn(
         "grid gap-4",
         wide
-          ? "2xl:grid-cols-[minmax(340px,0.8fr)_minmax(0,1.6fr)]"
-          : "xl:grid-cols-[minmax(320px,0.85fr)_minmax(0,1.35fr)]",
+          ? "2xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.7fr)]"
+          : "xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.72fr)]",
       )}
     >
-      <div className="min-w-0">{editor}</div>
       <div className="min-w-0">{content}</div>
+      <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">{editor}</div>
     </section>
   );
 }
 
 export function WorkspacePanel({ title, description, children, actions }) {
   return (
-    <Card className="p-4 sm:p-5">
+    <Card className="rounded-xl p-4 shadow-none sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="section-title">{title}</h3>
@@ -42,7 +50,9 @@ export function WorkspacePanel({ title, description, children, actions }) {
             <p className="mt-1 text-sm leading-6 text-text-muted">{description}</p>
           ) : null}
         </div>
-        {actions ? <div className="w-full sm:w-auto sm:max-w-xs sm:shrink-0">{actions}</div> : null}
+        {actions ? (
+          <div className="w-full sm:w-auto sm:max-w-xs sm:shrink-0">{actions}</div>
+        ) : null}
       </div>
       <div className="mt-4">{children}</div>
     </Card>
@@ -99,16 +109,24 @@ export function CheckboxControl({ label, checked, onChange, disabled = false }) 
 export function FormActions({
   submitting,
   submitLabel,
+  repeatLabel,
+  closeLabel = "Save & close",
   editing = false,
   onCancel,
   disabled = false,
+  repeatable = false,
 }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row">
-      <Button type="submit" disabled={submitting || disabled}>
-        {submitting ? "Saving..." : submitLabel}
+      <Button type="submit" name="saveIntent" value="another" disabled={submitting || disabled}>
+        {submitting ? "Saving..." : repeatable ? editing ? "Save changes" : repeatLabel || "Save & add another" : submitLabel}
       </Button>
-      {editing ? (
+      {repeatable && !editing ? (
+        <Button type="submit" name="saveIntent" value="close" variant="outline" disabled={submitting || disabled}>
+          {closeLabel}
+        </Button>
+      ) : null}
+      {onCancel ? (
         <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
           Cancel
         </Button>
@@ -117,14 +135,38 @@ export function FormActions({
   );
 }
 
-const badgeVariant = (status) => {
+const lifecycleStatusMeta = (status) => {
   const value = String(status || "").toLowerCase();
   if (["active", "current", "submitted", "published", "complete"].includes(value)) {
-    return "success";
+    return {
+      badge: "success",
+      Icon: CheckCircle2,
+      iconClassName: "text-success",
+    };
   }
-  if (["draft", "pending", "read_only"].includes(value)) return "warning";
-  if (["inactive", "ended", "failed", "revoked"].includes(value)) return "error";
-  return "default";
+  if (["archived", "draft", "pending", "read_only"].includes(value)) {
+    return {
+      badge: "warning",
+      Icon: value === "archived" ? Archive : AlertTriangle,
+      iconClassName: "text-warning",
+    };
+  }
+  if (["inactive", "ended", "failed", "revoked"].includes(value)) {
+    return {
+      badge: "error",
+      Icon: AlertTriangle,
+      iconClassName: "text-error",
+    };
+  }
+  return {
+    badge: "default",
+    Icon: Info,
+    iconClassName: "text-text-muted",
+  };
+};
+
+const badgeVariant = (status) => {
+  return lifecycleStatusMeta(status).badge;
 };
 
 export function AcademicStatusBadge({ label, status, helper }) {
@@ -188,9 +230,13 @@ export function AcademicNextActionCard({
   return (
     <Card className="border-primary/30 bg-primary-soft/40 p-3 sm:p-5">
       <p className="text-xs font-semibold uppercase text-primary sm:text-sm">{title}</p>
-      <h3 className="mt-1 text-base font-semibold leading-tight text-text sm:mt-2 sm:text-xl">{action}</h3>
+      <h3 className="mt-1 text-base font-semibold leading-tight text-text sm:mt-2 sm:text-xl">
+        {action}
+      </h3>
       {description ? (
-        <p className="mt-2 line-clamp-2 text-xs leading-5 text-text-muted sm:text-sm sm:leading-6">{description}</p>
+        <p className="mt-2 line-clamp-2 text-xs leading-5 text-text-muted sm:text-sm sm:leading-6">
+          {description}
+        </p>
       ) : null}
       {onAction ? (
         <div className="mt-3 sm:mt-4">
@@ -241,7 +287,7 @@ export function AcademicLifecycleStepper({ steps, current }) {
             key={step.id}
             data-state={active ? "active" : complete ? "complete" : "idle"}
             className={cn(
-              "academic-lifecycle-step rounded-xl border px-3 py-3",
+              "academic-lifecycle-step rounded-lg border px-3 py-2.5",
               active
                 ? "border-primary/40 bg-primary-soft"
                 : complete
@@ -251,10 +297,14 @@ export function AcademicLifecycleStepper({ steps, current }) {
           >
             <div className="flex items-center gap-2">
               {complete ? <CheckCircle2 className="h-4 w-4 text-success" /> : null}
-              <p className="academic-lifecycle-step-title text-sm font-semibold text-text">{step.label}</p>
+              <p className="academic-lifecycle-step-title text-sm font-semibold text-text">
+                {step.label}
+              </p>
             </div>
             {active && step.helper ? (
-              <p className="academic-lifecycle-step-helper mt-1 text-xs leading-5 text-text-muted">{step.helper}</p>
+              <p className="academic-lifecycle-step-helper mt-1 text-xs leading-5 text-text-muted">
+                {step.helper}
+              </p>
             ) : null}
           </div>
         );
@@ -263,10 +313,95 @@ export function AcademicLifecycleStepper({ steps, current }) {
   );
 }
 
+function DefaultRecordInspector({
+  item,
+  renderTitle,
+  renderMeta,
+  renderDescription,
+  renderStatus,
+  renderActions,
+  onEdit,
+  canEdit,
+  showDefaultEditAction = true,
+}) {
+  const status = renderStatus?.(item);
+  const statusMeta = lifecycleStatusMeta(status);
+  const StatusIcon = statusMeta.Icon;
+  const showEdit =
+    showDefaultEditAction && Boolean(onEdit) && (canEdit ? canEdit(item) : true);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/70 bg-surface">
+      <div className="border-b border-border/70 px-4 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-text">{renderTitle(item)}</p>
+            {renderMeta ? (
+              <p className="mt-1 text-xs leading-5 text-text-muted">{renderMeta(item)}</p>
+            ) : null}
+          </div>
+          {status ? (
+            <Badge variant={badgeVariant(status)}>{String(status).replaceAll("_", " ")}</Badge>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="divide-y divide-border/70">
+        <section className="px-4 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
+            Details
+          </p>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            {renderDescription ? renderDescription(item) : "No additional details are available."}
+          </p>
+        </section>
+
+        <section className="px-4 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
+            Lifecycle
+          </p>
+          <div className="mt-2 flex items-start gap-2">
+            <StatusIcon
+              className={cn(
+                "mt-0.5 h-4 w-4 shrink-0",
+                statusMeta.iconClassName,
+              )}
+            />
+            <div>
+              <p className="text-sm font-semibold text-text">
+                {status ? String(status).replaceAll("_", " ") : "No lifecycle state"}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                Lifecycle operations shown here use the same backend guards as the row actions.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {showEdit || renderActions ? (
+          <section className="px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
+              Quick actions
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {renderActions ? renderActions(item) : null}
+              {showEdit ? (
+                <Button type="button" size="small" variant="outline" onClick={() => onEdit(item)}>
+                  <Edit3 className="h-4 w-4" /> Edit
+                </Button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function RecordList({
   title,
   description,
-  items,
+  items: records,
   emptyTitle,
   emptyDescription,
   emptyIcon,
@@ -275,75 +410,215 @@ export function RecordList({
   renderDescription,
   renderStatus,
   renderActions,
+  renderInspector,
   onEdit,
   canEdit,
+  showDefaultEditAction = true,
   actions,
   listClassName,
+  showInspector = true,
+  loading = false,
+  error = "",
+  onRetry,
+  recordLabel = "Record",
+  detailsLabel = "Details",
 }) {
+  const [query, setQuery] = useState("");
+  const items = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    return search ? records.filter((item) =>
+      [renderTitle(item), renderMeta?.(item), renderDescription?.(item), renderStatus?.(item)]
+        .filter((value) => typeof value === "string").join(" ").toLowerCase().includes(search),
+    ) : records;
+  }, [query, records, renderTitle, renderMeta, renderDescription, renderStatus]);
+  const [selectedRecordId, setSelectedRecordId] = useState(items[0]?.id || "");
+
+  useEffect(() => {
+    if (!items.length) {
+      setSelectedRecordId("");
+      return;
+    }
+    if (!items.some((item) => String(item.id) === String(selectedRecordId))) {
+      setSelectedRecordId(items[0].id);
+    }
+  }, [items, selectedRecordId]);
+
+  const selectedItem = useMemo(
+    () =>
+      items.find((item) => String(item.id) === String(selectedRecordId)) || items[0] || null,
+    [items, selectedRecordId],
+  );
+
   return (
     <WorkspacePanel title={title} description={description} actions={actions}>
-      {items.length === 0 ? (
-        <EmptyState
-          icon={emptyIcon}
-          title={emptyTitle}
-          description={emptyDescription}
-        />
+      <div className="mb-3 flex items-end gap-3">
+        <Input label={`Search ${title}`} value={query} onChange={(event) => setQuery(event.target.value)} />
+        <span className="shrink-0 pb-3 text-xs text-text-muted" role="status">{items.length} of {records.length}</span>
+      </div>
+      {error ? (
+        <div role="alert" className="space-y-2 text-sm text-error">
+          <p>{error}</p>
+          {onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Retry loading</Button> : null}
+        </div>
+      ) : loading ? <p role="status" className="text-sm text-text-muted">Loading records…</p> : items.length === 0 ? (
+        <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyDescription} />
       ) : (
         <div
           className={cn(
-            "mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3",
-            listClassName,
+            "grid gap-4",
+            showInspector && "xl:grid-cols-[minmax(0,1.6fr)_minmax(280px,0.62fr)]",
           )}
         >
-          {items.map((item) => {
-            const status = renderStatus?.(item);
-            const showEdit = Boolean(onEdit) && (canEdit ? canEdit(item) : true);
-            return (
-              <div
-                key={item.id}
-                className="flex min-h-[9rem] flex-col rounded-2xl border border-border/70 bg-surface px-4 py-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words text-sm font-semibold text-text">
-                      {renderTitle(item)}
-                    </p>
-                    {renderMeta ? (
-                      <p className="mt-1 break-words text-xs text-text-muted">
-                        {renderMeta(item)}
+          <div className="min-w-0">
+            <div
+              className={cn(
+                "hidden overflow-x-auto rounded-lg border border-border/70 lg:block",
+                listClassName,
+              )}
+            >
+              <table className="w-full min-w-[46rem] border-collapse text-left">
+                <thead className="bg-surface-muted/55 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  <tr>
+                    <th className="px-4 py-3">{recordLabel}</th>
+                    <th className="px-4 py-3">{detailsLabel}</th>
+                    <th className="px-4 py-3">Lifecycle</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/70">
+                  {items.map((item) => {
+                    const status = renderStatus?.(item);
+                    const showEdit =
+                      showDefaultEditAction &&
+                      Boolean(onEdit) &&
+                      (canEdit ? canEdit(item) : true);
+                    const selected = String(item.id) === String(selectedItem?.id);
+                    return (
+                      <tr
+                        key={item.id}
+                        onClick={() => setSelectedRecordId(item.id)}
+                        className={cn(
+                          "cursor-pointer bg-surface transition hover:bg-surface-muted/35",
+                          selected && "bg-primary-soft/35",
+                        )}
+                      >
+                        <td className="px-4 py-3 align-top">
+                          <button type="button" className="text-left font-semibold text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" aria-pressed={selected} onClick={() => setSelectedRecordId(item.id)}>{renderTitle(item)}</button>
+                          {renderMeta ? (
+                            <p className="mt-1 text-xs text-text-muted">{renderMeta(item)}</p>
+                          ) : null}
+                        </td>
+                        <td className="max-w-md px-4 py-3 align-top text-sm leading-5 text-text-muted">
+                          {renderDescription ? renderDescription(item) : "-"}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          {status ? (
+                            <Badge
+                              variant={badgeVariant(status)}
+                              title={String(status).replaceAll("_", " ")}
+                            >
+                              {String(status).replaceAll("_", " ")}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-text-muted">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {renderActions ? renderActions(item) : null}
+                            {showEdit ? (
+                              <Button
+                                type="button"
+                                size="small"
+                                variant="outline"
+                                onClick={() => onEdit(item)}
+                              >
+                                <Edit3 className="h-4 w-4" /> Edit
+                              </Button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mobile-scroll-list record-list-grid grid grid-cols-1 gap-3 lg:hidden">
+              {items.map((item) => {
+                const status = renderStatus?.(item);
+                const showEdit =
+                  showDefaultEditAction &&
+                  Boolean(onEdit) &&
+                  (canEdit ? canEdit(item) : true);
+                return (
+                  <div
+                    key={item.id}
+                    className="flex min-h-[9rem] flex-col rounded-xl border border-border/70 bg-surface px-4 py-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-semibold text-text">
+                          {renderTitle(item)}
+                        </p>
+                        {renderMeta ? (
+                          <p className="mt-1 break-words text-xs text-text-muted">
+                            {renderMeta(item)}
+                          </p>
+                        ) : null}
+                      </div>
+                      {status ? (
+                        <Badge variant={badgeVariant(status)}>
+                          {String(status).replaceAll("_", " ")}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {renderDescription ? (
+                      <p className="mt-3 line-clamp-3 text-sm leading-6 text-text-muted">
+                        {renderDescription(item)}
                       </p>
                     ) : null}
-                  </div>
-                  {status ? (
-                    <Badge variant={badgeVariant(status)} title={String(status).replaceAll("_", " ")}>
-                      {String(status).replaceAll("_", " ")}
-                    </Badge>
-                  ) : null}
-                </div>
-                {renderDescription ? (
-                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-text-muted">
-                    {renderDescription(item)}
-                  </p>
-                ) : null}
-                {showEdit || renderActions ? (
-                  <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                    {renderActions ? renderActions(item) : null}
-                    {showEdit ? (
-                    <Button
-                      type="button"
-                      size="small"
-                      variant="outline"
-                      onClick={() => onEdit(item)}
-                    >
-                      <Edit3 className="h-4 w-4" />
-                      Edit
-                    </Button>
+                    {showEdit || renderActions ? (
+                      <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                        {renderActions ? renderActions(item) : null}
+                        {showEdit ? (
+                          <Button
+                            type="button"
+                            size="small"
+                            variant="outline"
+                            onClick={() => onEdit(item)}
+                          >
+                            <Edit3 className="h-4 w-4" /> Edit
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
-                ) : null}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
+
+          {showInspector && selectedItem ? (
+            <aside className="hidden min-w-0 xl:block xl:sticky xl:top-4 xl:self-start">
+              {renderInspector ? (
+                renderInspector(selectedItem)
+              ) : (
+                <DefaultRecordInspector
+                  item={selectedItem}
+                  renderTitle={renderTitle}
+                  renderMeta={renderMeta}
+                  renderDescription={renderDescription}
+                  renderStatus={renderStatus}
+                  renderActions={renderActions}
+                  onEdit={onEdit}
+                  canEdit={canEdit}
+                  showDefaultEditAction={showDefaultEditAction}
+                />
+              )}
+            </aside>
+          ) : null}
         </div>
       )}
     </WorkspacePanel>

@@ -2,9 +2,12 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.modules.student_academics.models import AssessmentSchemeStatus
+
+
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
 
 class AssessmentInput(BaseModel):
@@ -28,6 +31,19 @@ class AssessmentComponentUpdate(AssessmentInput):
     maximum_score: Decimal | None = Field(
         default=None, gt=0, le=100, max_digits=5, decimal_places=2
     )
+
+    @field_validator("name", "maximum_score", mode="before")
+    @classmethod
+    def reject_null_non_clearable_fields(cls, value, info):
+        if value is None:
+            raise ValueError(f"{info.field_name} {_PATCH_NULL_ERROR}")
+        return value
+
+    @model_validator(mode="after")
+    def require_patch_field(self) -> "AssessmentComponentUpdate":
+        if not self.model_fields_set:
+            raise ValueError("at least one assessment component field must be provided")
+        return self
 
 
 class AssessmentComponentResponse(AssessmentOutput):

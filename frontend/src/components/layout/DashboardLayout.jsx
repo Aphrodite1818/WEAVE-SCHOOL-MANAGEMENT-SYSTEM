@@ -1,3 +1,4 @@
+import { ArrowLeft, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -7,34 +8,41 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowLeft, CreditCard, Loader2, X } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { adminSchoolYearCompletion } from "../../features/guides/adminSchoolYearCompletion";
+import { schoolYearProgress } from "../../features/guides/schoolYearProgress";
+import { useAdminSetupReadiness } from "../../features/guides/useAdminSetupReadiness";
 
-import { clearGuideReturn, readGuideReturn } from "../../features/guides/guideNavigation";
 import {
-  FEATURE_CODES,
-  clearRegistrationCheckoutIntent,
-  formatPlanName,
-  getRegistrationCheckoutIntent,
-  markRegistrationCheckoutRedirect,
-} from "../../features/subscriptions/subscriptionConfig";
+  clearGuideReturn,
+  readGuideReturn,
+} from "../../features/guides/guideNavigation";
+import useRoleGuide from "../../features/guides/useRoleGuide";
+import useWorkspaceTour from "../../features/guides/useWorkspaceTour";
+import {
+  isPausedTourState,
+  requestWorkspaceTour,
+} from "../../features/guides/workspaceTourState";
+import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
+import { FEATURE_CODES } from "../../features/subscriptions/subscriptionConfig";
 import { useSubscription } from "../../features/subscriptions/useSubscription";
+import { TeacherClassDutyAccessProvider } from "../../features/teachers/TeacherClassDutyAccess";
+import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
 import { TenantBrandingProvider } from "../../features/tenant-branding/TenantBrandingProvider";
 import { useTenantBranding } from "../../features/tenant-branding/useTenantBranding";
-import LegalComplianceModal from "../../features/legal/LegalComplianceModal";
 import { authSession } from "../../services/api";
 import { clearDashboardSessionCache } from "../../services/dashboardSessionCache";
 import { legalComplianceService } from "../../services/legalComplianceService";
-import { subscriptionService } from "../../services/subscriptionService";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
 import { scheduleThemeChromeSync } from "../../utils/themeChromeSync";
 import AiChatLauncher from "../ai/AiChatLauncher";
 import WeaveIcon from "../brand/WeaveIcon";
-import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import GettingStartedBanner from "../guides/GettingStartedBanner";
+import WorkspaceTour from "../guides/WorkspaceTour";
+import WorkspaceTourResumeBanner from "../guides/WorkspaceTourResumeBanner";
+import ProfileCompletionForm from "../shared/ProfileCompletionForm";
 import Button from "../ui/Button";
-import Input from "../ui/Input";
 import Modal from "../ui/Modal";
 import BottomNav from "./BottomNav";
 import MobileDrawer from "./MobileDrawer";
@@ -42,7 +50,6 @@ import SidebarContent from "./Sidebar";
 import Topbar from "./Topbar";
 import { onboardingModalCopy } from "./navConfig";
 import useOnboardingGate from "./useOnboardingGate";
-import useRoleGuide from "../../features/guides/useRoleGuide";
 
 const DashboardShellContext = createContext(null);
 const PULL_REFRESH_THRESHOLD = 68;
@@ -64,7 +71,9 @@ function getDefaultPageMeta(role, onboardingModalEnabled = true) {
 }
 
 function getRole(user, fallback) {
-  return String(user?.role || authSession.getRole() || fallback || "admin").toLowerCase();
+  return String(
+    user?.role || authSession.getRole() || fallback || "admin",
+  ).toLowerCase();
 }
 
 function isMobileViewport() {
@@ -76,15 +85,18 @@ function isCenterDrawerGestureStart(clientX) {
   if (typeof window === "undefined") return false;
   const width = window.innerWidth || 0;
   if (!width) return false;
-  return clientX >= width * DRAWER_CENTER_START_MIN && clientX <= width * DRAWER_CENTER_START_MAX;
+  return (
+    clientX >= width * DRAWER_CENTER_START_MIN &&
+    clientX <= width * DRAWER_CENTER_START_MAX
+  );
 }
 
 function blocksDrawerGesture(target) {
   if (!target || typeof target.closest !== "function") return false;
   return Boolean(
     target.closest(
-      "button, a, input, select, textarea, [role='button'], [data-mobile-drawer='true'], .chart-interactive-scroll"
-    )
+      "button, a, input, select, textarea, [role='button'], [data-mobile-drawer='true'], .chart-interactive-scroll",
+    ),
   );
 }
 
@@ -100,39 +112,42 @@ function DashboardShellFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const role = getRole(user, roleProp);
-  const guidePageActive = location.pathname.endsWith("/getting-started");
+  const { loading: classDutyAccessLoading, hasClassTeacherDuties } =
+    useTeacherClassDutyAccess();
+  const guidePageActive =
+    role === "admin" && location.pathname.startsWith("/admin/getting-started");
+  const hasValidSchoolContext = role === "admin" || Boolean(user.tenant_id);
   const academicHubActive = location.pathname.startsWith("/admin/academic");
-  const {
-    currentSubscription,
-    entitlements,
-    getFeatureGuard,
-    isTenantAdmin,
-  } = useSubscription();
-  const [registrationCheckout, setRegistrationCheckout] = useState(() =>
-    getRegistrationCheckoutIntent(user),
-  );
-  const [registrationBillingEmail, setRegistrationBillingEmail] = useState(
-    user?.email || "",
-  );
-  const [registrationCheckoutBusy, setRegistrationCheckoutBusy] = useState(false);
-  const [registrationCheckoutError, setRegistrationCheckoutError] = useState("");
+  const { entitlements, getFeatureGuard, isTenantAdmin } = useSubscription();
   const [legalState, setLegalState] = useState(() => ({
     loading: onboardingModalEnabled,
-    required: Boolean(user?.legal_compliance_required ?? onboardingModalEnabled),
+    required: Boolean(
+      user?.legal_compliance_required ?? onboardingModalEnabled,
+    ),
     dismissed: false,
     status: null,
   }));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [guideReturn, setGuideReturn] = useState(() => readGuideReturn());
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
-    window.localStorage.getItem("sidebarCollapsed") === "true"
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => window.localStorage.getItem("sidebarCollapsed") === "true",
   );
   const [pullDistance, setPullDistance] = useState(0);
   const [drawerSwipeDistance, setDrawerSwipeDistance] = useState(0);
   const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const [profileSubmitState, setProfileSubmitState] = useState({
+    disabled: true,
+    label: "Save profile",
+  });
   const shellRef = useRef(null);
   const mainRef = useRef(null);
-  const pullStateRef = useRef({ tracking: false, active: false, startX: 0, startY: 0 });
+  const initialScrollRestoreRef = useRef(true);
+  const pullStateRef = useRef({
+    tracking: false,
+    active: false,
+    startX: 0,
+    startY: 0,
+  });
   const drawerSwipeRef = useRef({
     tracking: false,
     active: false,
@@ -148,34 +163,16 @@ function DashboardShellFrame({
       ? getFeatureGuard(FEATURE_CODES.AI_ASSISTANT || "ai_assistant")
       : { allowed: true, pending: false };
   const showAiLauncher =
-    role !== "admin" || !isTenantAdmin ? true : Boolean(entitlements) && aiAssistantGuard.allowed;
+    role !== "admin" || !isTenantAdmin
+      ? true
+      : Boolean(entitlements) && aiAssistantGuard.allowed;
   const shouldRenderAiLauncher = AI_CHAT_LAUNCHER_VISIBLE && showAiLauncher;
-  const registrationCheckoutPlanCode = registrationCheckout?.planCode || "";
-  const activeSubscriptionPlanCode =
-    currentSubscription?.plan_code || entitlements?.plan || "";
-  const activeSubscriptionStatus = String(
-    currentSubscription?.status || entitlements?.subscription_status || "",
-  ).toLowerCase();
-  const subscriptionStateResolved = Boolean(currentSubscription || entitlements);
-  const registrationCheckoutEligible = Boolean(
-    subscriptionStateResolved && activeSubscriptionStatus === "trialing",
+  const legalBlocksProgression = Boolean(
+    legalState.loading || legalState.required,
   );
-  const registrationCheckoutSatisfied = Boolean(
-    registrationCheckoutPlanCode &&
-      activeSubscriptionPlanCode === registrationCheckoutPlanCode &&
-      ["active", "non_renewing"].includes(activeSubscriptionStatus),
-  );
-  const registrationCheckoutOpen = Boolean(
-    role === "admin" &&
-      onboardingModalEnabled &&
-      registrationCheckoutEligible &&
-      registrationCheckoutPlanCode &&
-      !registrationCheckoutSatisfied &&
-      location.pathname !== "/billing/subscription/verify",
-  );
-  const legalBlocksProgression = Boolean(legalState.loading || legalState.required);
   const {
     onboardingState,
+    preparingWelcome,
     profileModalOpen,
     setProfileModalOpen,
     profileMode,
@@ -183,49 +180,73 @@ function DashboardShellFrame({
     handleProfileSaved,
   } = useOnboardingGate({
     role,
-    enabled: onboardingModalEnabled && !registrationCheckoutOpen && !legalBlocksProgression,
+    enabled: onboardingModalEnabled && !legalBlocksProgression,
   });
+  const setupEnabled =
+    role === "admin" &&
+    onboardingModalEnabled &&
+    !legalBlocksProgression &&
+    !onboardingState.loading &&
+    !onboardingState.required &&
+    !profileModalOpen;
+  const schoolSetup = useAdminSetupReadiness({ enabled: setupEnabled });
+  const schoolSetupIncomplete =
+    Boolean(schoolSetup.data) &&
+    !schoolYearProgress(adminSchoolYearCompletion(schoolSetup.data)).complete;
   const roleGuide = useRoleGuide({
     role,
     enabled:
+      role === "admin" &&
       onboardingModalEnabled &&
-      !registrationCheckoutOpen &&
+      hasValidSchoolContext &&
       !legalBlocksProgression &&
       !onboardingState.loading &&
       !onboardingState.required &&
       !profileModalOpen,
   });
   const gettingStartedRoute = roleGuide.config?.route || "";
-  const startRoleGuide = roleGuide.start;
-  const shouldAutoRedirect = roleGuide.shouldAutoRedirect;
+  const tour = useWorkspaceTour({
+    role,
+    pathname: location.pathname,
+    navigationKey: location.key,
+    hasClassTeacherDuties,
+    enabled:
+      onboardingModalEnabled &&
+      hasValidSchoolContext &&
+      !legalBlocksProgression &&
+      !onboardingState.loading &&
+      !onboardingState.required &&
+      !preparingWelcome &&
+      !profileModalOpen &&
+      (role !== "teacher" || !classDutyAccessLoading) &&
+      !guidePageActive,
+  });
   const showGettingStartedBanner = Boolean(
-    roleGuide.shouldShowBanner &&
-      roleGuide.config?.dashboardRoute === location.pathname &&
-      gettingStartedRoute !== location.pathname,
+    setupEnabled &&
+    !schoolSetup.loading &&
+    !schoolSetup.error &&
+    schoolSetupIncomplete &&
+    !tour.open &&
+    roleGuide.config?.dashboardRoute === location.pathname &&
+    gettingStartedRoute !== location.pathname,
   );
-
-  useEffect(() => {
-    const nextIntent = getRegistrationCheckoutIntent(authSession.getUser() || user);
-    setRegistrationCheckout(nextIntent);
-    setRegistrationBillingEmail((currentEmail) => currentEmail || user?.email || "");
-  }, [user, user?.email, user?.tenant?.feature_flags, user?.feature_flags]);
-
-  useEffect(() => {
-    if (!registrationCheckoutSatisfied) return;
-    clearRegistrationCheckoutIntent();
-    setRegistrationCheckout(null);
-  }, [registrationCheckoutSatisfied]);
-
-  useEffect(() => {
-    if (registrationCheckoutOpen) setProfileModalOpen(false);
-  }, [registrationCheckoutOpen, setProfileModalOpen]);
+  const showWorkspaceTourReminder = Boolean(
+    location.pathname === `/${role}/dashboard` &&
+    !tour.open &&
+    isPausedTourState(tour.state),
+  );
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadLegalStatus() {
-      if (!onboardingModalEnabled || registrationCheckoutOpen) {
-        setLegalState({ loading: false, required: false, dismissed: false, status: null });
+      if (!onboardingModalEnabled) {
+        setLegalState({
+          loading: false,
+          required: false,
+          dismissed: false,
+          status: null,
+        });
         return;
       }
 
@@ -251,35 +272,11 @@ function DashboardShellFrame({
     return () => {
       cancelled = true;
     };
-  }, [onboardingModalEnabled, registrationCheckoutOpen, role]);
+  }, [onboardingModalEnabled, role]);
 
   useEffect(() => {
     if (legalState.required) setProfileModalOpen(false);
   }, [legalState.required, setProfileModalOpen]);
-
-  useEffect(() => {
-    if (
-      !shouldAutoRedirect ||
-      !gettingStartedRoute ||
-      location.pathname === gettingStartedRoute
-    ) {
-      return undefined;
-    }
-
-    let cancelled = false;
-    startRoleGuide().then(() => {
-      if (!cancelled) navigate(gettingStartedRoute, { replace: true });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    gettingStartedRoute,
-    location.pathname,
-    navigate,
-    shouldAutoRedirect,
-    startRoleGuide,
-  ]);
 
   useEffect(() => {
     window.localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
@@ -301,9 +298,36 @@ function DashboardShellFrame({
   }, [academicHubActive, location.pathname]);
 
   useEffect(() => {
+    if (guidePageActive && initialScrollRestoreRef.current) return;
     scrollDashboardViewportToTop("auto");
-  }, [location.pathname]);
+  }, [guidePageActive, location.pathname, location.search]);
 
+  useEffect(() => {
+    if (!guidePageActive) return undefined;
+
+    const locationKey = `${location.pathname}${location.search}`;
+    const target = shellRef.current;
+    if (!target) return undefined;
+
+    const storageKey = `weave:dashboard-scroll:${locationKey}`;
+    if (initialScrollRestoreRef.current) {
+      initialScrollRestoreRef.current = false;
+      const savedScrollTop = Number(window.sessionStorage.getItem(storageKey));
+      if (Number.isFinite(savedScrollTop) && savedScrollTop > 0) {
+        window.requestAnimationFrame(() => {
+          target.scrollTop = savedScrollTop;
+        });
+      }
+    }
+
+    const rememberScrollPosition = () => {
+      window.sessionStorage.setItem(storageKey, String(target.scrollTop));
+    };
+    target.addEventListener("scroll", rememberScrollPosition, {
+      passive: true,
+    });
+    return () => target.removeEventListener("scroll", rememberScrollPosition);
+  }, [guidePageActive, location.pathname, location.search]);
 
   useEffect(() => {
     scheduleThemeChromeSync();
@@ -313,121 +337,138 @@ function DashboardShellFrame({
     };
   }, [role]);
 
-  const handleTouchStart = useCallback((event) => {
-    if (!isMobileViewport()) return;
+  const handleTouchStart = useCallback(
+    (event) => {
+      if (!isMobileViewport()) return;
 
-    const touch = event.touches?.[0];
-    if (!touch) return;
+      const touch = event.touches?.[0];
+      if (!touch) return;
 
-    drawerSwipeRef.current = {
-      tracking: false,
-      active: false,
-      startX: 0,
-      startY: 0,
-      currentX: 0,
-      currentY: 0,
-    };
-    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
-
-    const canOpenDrawer =
-      !mobileNavOpen &&
-      isCenterDrawerGestureStart(touch.clientX) &&
-      !blocksDrawerGesture(event.target);
-    const canPullRefresh =
-      !isPullRefreshing && (mainRef.current?.scrollTop || 0) <= 0;
-
-    if (canOpenDrawer) {
       drawerSwipeRef.current = {
-        tracking: true,
+        tracking: false,
         active: false,
-        startX: touch.clientX,
-        startY: touch.clientY,
-        currentX: touch.clientX,
-        currentY: touch.clientY,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        currentY: 0,
       };
-      setPullDistance(0);
-    }
-
-    if (canPullRefresh) {
       pullStateRef.current = {
-        tracking: true,
+        tracking: false,
         active: false,
-        startX: touch.clientX,
-        startY: touch.clientY,
-      };
-    }
-  }, [isPullRefreshing, mobileNavOpen]);
-
-  const handleTouchMove = useCallback((event) => {
-    if (!isMobileViewport()) return;
-
-    const touch = event.touches?.[0];
-    if (!touch) return;
-
-    const drawerState = drawerSwipeRef.current;
-    if (drawerState.tracking) {
-      const rawDeltaX = touch.clientX - drawerState.startX;
-      const deltaX = Math.abs(rawDeltaX);
-      const deltaY = touch.clientY - drawerState.startY;
-      const absDeltaY = Math.abs(deltaY);
-      const shouldActivateDrawer =
-        drawerState.active ||
-        (deltaX >= GESTURE_ACTIVATION_DISTANCE &&
-          deltaX > absDeltaY + 4);
-
-      drawerSwipeRef.current = {
-        ...drawerState,
-        active: shouldActivateDrawer,
-        currentX: touch.clientX,
-        currentY: touch.clientY,
+        startX: 0,
+        startY: 0,
       };
 
-      if (shouldActivateDrawer) {
-        event.preventDefault();
-        setDrawerSwipeDistance(Math.min(96, Math.round(deltaX * 0.62)));
-        pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+      const canOpenDrawer =
+        !mobileNavOpen &&
+        isCenterDrawerGestureStart(touch.clientX) &&
+        !blocksDrawerGesture(event.target);
+      const canPullRefresh =
+        !isPullRefreshing && (mainRef.current?.scrollTop || 0) <= 0;
+
+      if (canOpenDrawer) {
+        drawerSwipeRef.current = {
+          tracking: true,
+          active: false,
+          startX: touch.clientX,
+          startY: touch.clientY,
+          currentX: touch.clientX,
+          currentY: touch.clientY,
+        };
+        setPullDistance(0);
+      }
+
+      if (canPullRefresh) {
+        pullStateRef.current = {
+          tracking: true,
+          active: false,
+          startX: touch.clientX,
+          startY: touch.clientY,
+        };
+      }
+    },
+    [isPullRefreshing, mobileNavOpen],
+  );
+
+  const handleTouchMove = useCallback(
+    (event) => {
+      if (!isMobileViewport()) return;
+
+      const touch = event.touches?.[0];
+      if (!touch) return;
+
+      const drawerState = drawerSwipeRef.current;
+      if (drawerState.tracking) {
+        const rawDeltaX = touch.clientX - drawerState.startX;
+        const deltaX = Math.abs(rawDeltaX);
+        const deltaY = touch.clientY - drawerState.startY;
+        const absDeltaY = Math.abs(deltaY);
+        const shouldActivateDrawer =
+          drawerState.active ||
+          (deltaX >= GESTURE_ACTIVATION_DISTANCE && deltaX > absDeltaY + 4);
+
+        drawerSwipeRef.current = {
+          ...drawerState,
+          active: shouldActivateDrawer,
+          currentX: touch.clientX,
+          currentY: touch.clientY,
+        };
+
+        if (shouldActivateDrawer) {
+          event.preventDefault();
+          setDrawerSwipeDistance(Math.min(96, Math.round(deltaX * 0.62)));
+          pullStateRef.current = {
+            tracking: false,
+            active: false,
+            startX: 0,
+            startY: 0,
+          };
+          return;
+        }
+
+        if (
+          absDeltaY >= GESTURE_ACTIVATION_DISTANCE &&
+          absDeltaY > deltaX + 4
+        ) {
+          drawerSwipeRef.current = {
+            tracking: false,
+            active: false,
+            startX: 0,
+            startY: 0,
+            currentX: 0,
+            currentY: 0,
+          };
+        }
+      }
+
+      const state = pullStateRef.current;
+      if (!state.tracking || isPullRefreshing) return;
+
+      if ((mainRef.current?.scrollTop || 0) > 0) {
+        pullStateRef.current = { tracking: false, startY: 0 };
+        setPullDistance(0);
         return;
       }
 
-      if (absDeltaY >= GESTURE_ACTIVATION_DISTANCE && absDeltaY > deltaX + 4) {
-        drawerSwipeRef.current = {
-          tracking: false,
-          active: false,
-          startX: 0,
-          startY: 0,
-          currentX: 0,
-          currentY: 0,
-        };
+      const deltaX = Math.abs(touch.clientX - state.startX);
+      const deltaY = touch.clientY - state.startY;
+      if (deltaY <= 0) {
+        setPullDistance(0);
+        return;
       }
-    }
 
-    const state = pullStateRef.current;
-    if (!state.tracking || isPullRefreshing) return;
+      const shouldActivatePull =
+        state.active ||
+        (deltaY >= GESTURE_ACTIVATION_DISTANCE && deltaY > deltaX + 4);
 
-    if ((mainRef.current?.scrollTop || 0) > 0) {
-      pullStateRef.current = { tracking: false, startY: 0 };
-      setPullDistance(0);
-      return;
-    }
+      if (!shouldActivatePull) return;
 
-    const deltaX = Math.abs(touch.clientX - state.startX);
-    const deltaY = touch.clientY - state.startY;
-    if (deltaY <= 0) {
-      setPullDistance(0);
-      return;
-    }
-
-    const shouldActivatePull =
-      state.active ||
-      (deltaY >= GESTURE_ACTIVATION_DISTANCE &&
-        deltaY > deltaX + 4);
-
-    if (!shouldActivatePull) return;
-
-    pullStateRef.current = { ...state, active: true };
-    if (deltaY > 8) event.preventDefault();
-    setPullDistance(Math.min(104, Math.round(deltaY * 0.46)));
-  }, [isPullRefreshing]);
+      pullStateRef.current = { ...state, active: true };
+      if (deltaY > 8) event.preventDefault();
+      setPullDistance(Math.min(104, Math.round(deltaY * 0.46)));
+    },
+    [isPullRefreshing],
+  );
 
   const handleTouchEnd = useCallback(() => {
     const drawerState = drawerSwipeRef.current;
@@ -454,7 +495,12 @@ function DashboardShellFrame({
     }
 
     const shouldRefresh = pullDistance >= PULL_REFRESH_THRESHOLD;
-    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+    pullStateRef.current = {
+      tracking: false,
+      active: false,
+      startX: 0,
+      startY: 0,
+    };
 
     if (!shouldRefresh) {
       setPullDistance(0);
@@ -476,7 +522,12 @@ function DashboardShellFrame({
   }, [pullDistance]);
 
   const handleTouchCancel = useCallback(() => {
-    pullStateRef.current = { tracking: false, active: false, startX: 0, startY: 0 };
+    pullStateRef.current = {
+      tracking: false,
+      active: false,
+      startX: 0,
+      startY: 0,
+    };
     drawerSwipeRef.current = {
       tracking: false,
       active: false,
@@ -506,31 +557,6 @@ function DashboardShellFrame({
     clearGuideReturn();
     setGuideReturn(null);
   };
-  const startRegistrationCheckout = async () => {
-    if (!registrationCheckoutPlanCode || !registrationBillingEmail.trim()) return;
-
-    setRegistrationCheckoutBusy(true);
-    setRegistrationCheckoutError("");
-    try {
-      const response = await subscriptionService.initializeSubscriptionCheckout({
-        plan_code: registrationCheckoutPlanCode,
-        billing_interval: registrationCheckout?.billingInterval || "monthly",
-        billing_email: registrationBillingEmail.trim(),
-      });
-      markRegistrationCheckoutRedirect(registrationCheckout);
-      window.location.assign(response.authorization_url);
-    } catch (error) {
-      setRegistrationCheckoutError(
-        error?.message || "We could not start checkout right now.",
-      );
-      setRegistrationCheckoutBusy(false);
-    }
-  };
-  const continueRegistrationOnTrial = () => {
-    clearRegistrationCheckoutIntent();
-    setRegistrationCheckout(null);
-    setRegistrationCheckoutError("");
-  };
   const handleLegalAccepted = (status) => {
     setLegalState({
       loading: false,
@@ -557,7 +583,7 @@ function DashboardShellFrame({
         className="min-h-[100dvh] overflow-y-auto bg-background text-text"
       >
         <header className="sticky top-0 z-40 border-b border-border/70 bg-surface/95 backdrop-blur-xl">
-          <div className="mx-auto flex min-h-16 w-full max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex min-h-16 w-full max-w-md items-center justify-between gap-4 px-5 sm:max-w-[1440px] sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <WeaveIcon className="h-10 w-10 shrink-0" decorative />
               <div>
@@ -569,13 +595,17 @@ function DashboardShellFrame({
               type="button"
               size="small"
               variant="outline"
-              onClick={() => navigate(roleGuide.config?.dashboardRoute || `/${role}/dashboard`)}
+              onClick={() =>
+                navigate(
+                  roleGuide.config?.dashboardRoute || `/${role}/dashboard`,
+                )
+              }
             >
               Finish later
             </Button>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1440px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
+        <main className="mx-auto w-full max-w-md px-5 py-6 sm:max-w-[1440px] sm:px-6 sm:py-7 lg:px-8 lg:py-9">
           {children}
         </main>
       </div>
@@ -603,12 +633,14 @@ function DashboardShellFrame({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 hidden border-r border-sidebar-border bg-sidebar-background text-sidebar-text transition-all duration-300 md:block",
-          sidebarCollapsed ? "w-[4.25rem]" : "w-[13rem] xl:w-[14rem]"
+          sidebarCollapsed && !tour.open
+            ? "w-[4.25rem]"
+            : "w-[13rem] xl:w-[14rem]",
         )}
       >
         <SidebarContent
           role={role}
-          collapsed={sidebarCollapsed}
+          collapsed={tour.open ? false : sidebarCollapsed}
           schoolName={schoolName}
           schoolLogoUrl={workspaceBranding.logoUrl}
           onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
@@ -616,7 +648,8 @@ function DashboardShellFrame({
       </aside>
 
       <MobileDrawer
-        open={mobileNavOpen}
+        open={mobileNavOpen || tour.open}
+        tourMode={tour.open}
         role={role}
         schoolName={schoolName}
         schoolLogoUrl={workspaceBranding.logoUrl}
@@ -626,7 +659,9 @@ function DashboardShellFrame({
       <div
         className={cn(
           "flex h-full min-h-0 flex-col overflow-hidden transition-[padding] duration-300",
-          sidebarCollapsed ? "md:pl-[4.25rem]" : "md:pl-[13rem] xl:pl-[14rem]"
+          sidebarCollapsed && !tour.open
+            ? "md:pl-[4.25rem]"
+            : "md:pl-[13rem] xl:pl-[14rem]",
         )}
       >
         <Topbar
@@ -647,11 +682,20 @@ function DashboardShellFrame({
           <div
             aria-hidden="true"
             className="pointer-events-none fixed left-1/2 top-1/2 z-30 hidden -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/80 transition-[width,opacity] duration-150 md:hidden"
-            style={{ width: drawerSwipeDistance ? `${Math.max(8, drawerSwipeDistance / 2)}px` : 0, height: drawerSwipeDistance ? "0.35rem" : 0, opacity: drawerSwipeDistance ? 1 : 0 }}
+            style={{
+              width: drawerSwipeDistance
+                ? `${Math.max(8, drawerSwipeDistance / 2)}px`
+                : 0,
+              height: drawerSwipeDistance ? "0.35rem" : 0,
+              opacity: drawerSwipeDistance ? 1 : 0,
+            }}
           />
           <div
             className="pointer-events-none sticky top-0 z-20 flex justify-center overflow-hidden transition-[height,opacity] duration-150 md:hidden"
-            style={{ height: pullDistance ? `${pullDistance}px` : 0, opacity: pullDistance ? 1 : 0 }}
+            style={{
+              height: pullDistance ? `${pullDistance}px` : 0,
+              opacity: pullDistance ? 1 : 0,
+            }}
           >
             <div className="mt-2 inline-flex h-10 items-center rounded-full border border-border bg-surface/95 px-4 text-xs font-semibold text-text-muted shadow-lg backdrop-blur-md">
               {pullRefreshLabel}
@@ -661,7 +705,9 @@ function DashboardShellFrame({
             id="dashboard-content"
             className={cn(
               "mx-auto flex w-full max-w-[1320px] flex-col gap-5 px-3 pt-4 sm:gap-6 sm:px-5 sm:pt-6 lg:px-8",
-              shouldRenderAiLauncher ? "pb-10 sm:pb-24 lg:pb-28" : "pb-6 sm:pb-12"
+              shouldRenderAiLauncher
+                ? "pb-10 sm:pb-24 lg:pb-28"
+                : "pb-6 sm:pb-12",
             )}
           >
             {(title || description || actions) && (
@@ -669,7 +715,9 @@ function DashboardShellFrame({
                 <div className="min-w-0 flex-1">
                   {title ? <h1 className="page-title">{title}</h1> : null}
                   {description ? (
-                    <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">{description}</p>
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-text-muted">
+                      {description}
+                    </p>
                   ) : null}
                 </div>
                 {actions ? (
@@ -686,9 +734,12 @@ function DashboardShellFrame({
                     <ArrowLeft className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-text">Tutorial still in progress</p>
+                    <p className="text-sm font-semibold text-text">
+                      Tutorial still in progress
+                    </p>
                     <p className="truncate text-xs text-text-muted">
-                      {guideReturn.label || "Return to the getting-started page when you are done exploring."}
+                      {guideReturn.label ||
+                        "Return to the getting-started page when you are done exploring."}
                     </p>
                   </div>
                 </div>
@@ -707,6 +758,13 @@ function DashboardShellFrame({
                 </div>
               </section>
             ) : null}
+            {showWorkspaceTourReminder ? (
+              <WorkspaceTourResumeBanner
+                role={role}
+                state={tour.state}
+                onResume={() => requestWorkspaceTour(role, { resume: true })}
+              />
+            ) : null}
             {showGettingStartedBanner ? (
               <GettingStartedBanner
                 guide={roleGuide}
@@ -718,11 +776,34 @@ function DashboardShellFrame({
         </div>
       </div>
 
+      {tour.open ? (
+        <WorkspaceTour
+          role={role}
+          initialIndex={tour.resumeIndex}
+          focusTo={tour.focusTo}
+          focusRoutes={tour.focusRoutes}
+          dedicated={tour.dedicated}
+          dedicatedKind={tour.classDutyTour ? "class-duties" : "upgrade"}
+          onClose={async (result) => {
+            await tour.close(result);
+            setMobileNavOpen(false);
+            if (role !== "admin") {
+              navigate(`/${role}/dashboard`, { replace: true });
+            }
+          }}
+          onSetup={
+            tour.initialWelcome && schoolSetupIncomplete
+              ? () => navigate("/admin/getting-started")
+              : undefined
+          }
+        />
+      ) : null}
+
       <BottomNav role={role} onOpenMenu={() => setMobileNavOpen(true)} />
 
       {onboardingModalEnabled ? (
         <LegalComplianceModal
-          open={Boolean(legalState.required && !legalState.dismissed && !registrationCheckoutOpen)}
+          open={Boolean(legalState.required && !legalState.dismissed)}
           role={role}
           onAccepted={handleLegalAccepted}
           onRejected={handleLegalRejected}
@@ -732,87 +813,55 @@ function DashboardShellFrame({
       {onboardingModalEnabled ? (
         <Modal
           open={profileModalOpen}
-          onClose={() => !onboardingState.required && setProfileModalOpen(false)}
-          title={profileMode === "onboarding" ? profileCopy.onboardingTitle : profileCopy.editTitle}
-          description={profileMode === "onboarding" ? null : profileCopy.editDescription}
+          onClose={() =>
+            !onboardingState.required && setProfileModalOpen(false)
+          }
+          title={
+            profileMode === "onboarding"
+              ? profileCopy.onboardingTitle
+              : profileCopy.editTitle
+          }
+          description={
+            profileMode === "onboarding" ? null : profileCopy.editDescription
+          }
           closeOnOverlay={!onboardingState.required}
           showClose={!onboardingState.required}
+          footer={
+            <Button
+              type="submit"
+              form="profile-completion-form"
+              className="w-full sm:w-auto"
+              disabled={profileSubmitState.disabled}
+            >
+              {profileSubmitState.label}
+            </Button>
+          }
         >
           <ProfileCompletionForm
             role={role}
             mode={profileMode}
+            formId="profile-completion-form"
+            showSubmitButton={false}
             initialStatusData={onboardingState.status}
             onProfileStateResolved={handleProfileStateResolved}
             onSaved={handleProfileSaved}
+            onSubmitStateChange={setProfileSubmitState}
           />
         </Modal>
       ) : null}
-
-      <Modal
-        open={registrationCheckoutOpen}
-        title={`Checkout for ${formatPlanName(registrationCheckoutPlanCode)}`}
-        description="Complete payment before onboarding so your school setup uses the limits you selected."
-        closeOnOverlay={false}
-        showClose={false}
-        footer={(
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={registrationCheckoutBusy}
-              onClick={continueRegistrationOnTrial}
-            >
-              Upgrade later
-            </Button>
-            <Button
-              type="button"
-              disabled={registrationCheckoutBusy || !registrationBillingEmail.trim()}
-              onClick={startRegistrationCheckout}
-            >
-              {registrationCheckoutBusy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <CreditCard className="h-4 w-4" />
-              )}
-              Continue to Paystack
-            </Button>
-          </div>
-        )}
-      >
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-primary/20 bg-primary-subtle/50 p-4">
-            <p className="text-sm font-semibold text-text">
-              {formatPlanName(registrationCheckoutPlanCode)} selected
-            </p>
-            <p className="mt-1 text-sm leading-6 text-text-muted">
-              Payment activates this plan. Until checkout succeeds, the tenant remains on the normal trial limits.
-            </p>
-          </div>
-          <Input
-            label="Billing email"
-            type="email"
-            value={registrationBillingEmail}
-            onChange={(event) => setRegistrationBillingEmail(event.target.value)}
-            placeholder="admin@school.example"
-            required
-          />
-          {registrationCheckoutError ? (
-            <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
-              {registrationCheckoutError}
-            </div>
-          ) : null}
-        </div>
-      </Modal>
 
       {shouldRenderAiLauncher ? <AiChatLauncher role={role} /> : null}
     </div>
   );
 }
 
-export function DashboardShell({ role = "admin", onboardingModalEnabled = true }) {
+export function DashboardShell({
+  role = "admin",
+  onboardingModalEnabled = true,
+}) {
   const location = useLocation();
   const [pageMeta, setPageMetaState] = useState(() =>
-    getDefaultPageMeta(role, onboardingModalEnabled)
+    getDefaultPageMeta(role, onboardingModalEnabled),
   );
 
   useEffect(() => {
@@ -844,18 +893,23 @@ export function DashboardShell({ role = "admin", onboardingModalEnabled = true }
         return next;
       });
     },
-    [onboardingModalEnabled, role]
+    [onboardingModalEnabled, role],
   );
 
   const shellContext = useMemo(() => ({ setPageMeta }), [setPageMeta]);
 
   return (
-    <TenantBrandingProvider user={authSession.getUser() || {}} role={pageMeta.role}>
-      <DashboardShellContext.Provider value={shellContext}>
-        <DashboardShellFrame {...pageMeta}>
-          <Outlet />
-        </DashboardShellFrame>
-      </DashboardShellContext.Provider>
+    <TenantBrandingProvider
+      user={authSession.getUser() || {}}
+      role={pageMeta.role}
+    >
+      <TeacherClassDutyAccessProvider enabled={pageMeta.role === "teacher"}>
+        <DashboardShellContext.Provider value={shellContext}>
+          <DashboardShellFrame {...pageMeta}>
+            <Outlet />
+          </DashboardShellFrame>
+        </DashboardShellContext.Provider>
+      </TeacherClassDutyAccessProvider>
     </TenantBrandingProvider>
   );
 }
@@ -881,21 +935,31 @@ function DashboardLayout({
       actions,
       onboardingModalEnabled,
     });
-  }, [shell, location.pathname, roleProp, title, description, actions, onboardingModalEnabled]);
+  }, [
+    shell,
+    location.pathname,
+    roleProp,
+    title,
+    description,
+    actions,
+    onboardingModalEnabled,
+  ]);
 
   if (shell) return <>{children}</>;
 
   return (
     <TenantBrandingProvider user={authSession.getUser() || {}} role={roleProp}>
-      <DashboardShellFrame
-        role={roleProp}
-        title={title}
-        description={description}
-        actions={actions}
-        onboardingModalEnabled={onboardingModalEnabled}
-      >
-        {children}
-      </DashboardShellFrame>
+      <TeacherClassDutyAccessProvider enabled={roleProp === "teacher"}>
+        <DashboardShellFrame
+          role={roleProp}
+          title={title}
+          description={description}
+          actions={actions}
+          onboardingModalEnabled={onboardingModalEnabled}
+        >
+          {children}
+        </DashboardShellFrame>
+      </TeacherClassDutyAccessProvider>
     </TenantBrandingProvider>
   );
 }

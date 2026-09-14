@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -9,72 +9,137 @@ import pytest
 from app.modules.bulk_imports.models import ImportResourceType
 from app.modules.bulk_imports.normalizers import BulkImportNormalizer
 from app.modules.bulk_imports.service import BulkImportService
-from app.modules.bulk_imports.validators import (
-    BulkImportValidator,
-    ImportRowValidationResult,
+from app.modules.bulk_imports.templates import (
+    DATA_HEADERS_BY_RESOURCE,
+    TEMPLATE_VERSION_BY_RESOURCE,
 )
-from app.modules.classes.repository import ClassRoomRepository
+from app.modules.bulk_imports.validators import BulkImportValidator, ImportRowValidationResult
+from app.modules.classes.department_repository import AcademicLevelDepartmentRepository
+from app.modules.classes.models import AcademicLevelStatus
+from app.modules.classes.repository import (
+    AcademicLevelRepository,
+    ArmLabelRepository,
+    ClassRoomRepository,
+)
+from app.modules.student_academics.repository import StudentAcademicRepository
 
 
-def test_student_import_normalizes_class_fields_like_class_creation() -> None:
-    normalized_row, ignored_fields = BulkImportNormalizer.normalize_row(
+def _mock_department_context(monkeypatch, level_id, assigned):
+    assigned_link = SimpleNamespace(
+        id=uuid4(),
+        academic_level_id=level_id,
+        department=assigned,
+        is_active=True,
+        archived_at=None,
+    )
+    monkeypatch.setattr(
+        BulkImportService,
+        "_get_class_term_department_assignment",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                academic_level_department_id=assigned_link.id,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        AcademicLevelDepartmentRepository,
+        "get_by_id",
+        AsyncMock(return_value=assigned_link),
+    )
+    return assigned_link
+
+
+def _active_level(level_id, name="JSS1"):
+    return SimpleNamespace(
+        id=level_id,
+        name=name,
+        normalized_name=name,
+        status=AcademicLevelStatus.ACTIVE,
+        archived_at=None,
+    )
+
+
+def _active_arm(arm_id, label="A"):
+    return SimpleNamespace(
+        id=arm_id,
+        label=label,
+        normalized_label=label,
+        is_active=True,
+        archived_at=None,
+    )
+
+
+def _active_class(class_id, level_id=None, arm_id=None):
+    return SimpleNamespace(
+        id=class_id,
+        academic_level_id=level_id,
+        arm_label_id=arm_id,
+        is_active=True,
+        archived_at=None,
+    )
+
+
+def _active_department(department_id, name="Science"):
+    return SimpleNamespace(
+        id=department_id,
+        name=name,
+        normalized_name=name.casefold(),
+        is_active=True,
+        archived_at=None,
+    )
+
+
+class _Result:
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return list(self.rows)
+
+
+def _batch_db(levels, arms, classes, assignments=(), mappings=()):
+    return SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                _Result(levels),
+                _Result(arms),
+                _Result(classes),
+                *([_Result(assignments)] if classes else []),
+                _Result(mappings),
+            ]
+        )
+    )
+
+
+def test_student_template_contract_uses_level_and_arm_without_department() -> None:
+    assert TEMPLATE_VERSION_BY_RESOURCE[ImportResourceType.STUDENTS] == "students_v8"
+    headers = DATA_HEADERS_BY_RESOURCE[ImportResourceType.STUDENTS]
+    assert headers[4:6] == ["level", "arm"]
+    assert "department" not in headers
+    assert "class" not in headers
+
+
+def test_student_import_requires_level_and_arm_and_does_not_accept_department_input() -> None:
+    normalized, ignored = BulkImportNormalizer.normalize_row(
         resource_type=ImportResourceType.STUDENTS,
         raw_row={
             "First Name": "Ada",
             "Last Name": "Lovelace",
             "Date of Birth": "2018-01-01",
-            "Class": " junior secondary school 1 ",
+            "Level": " jss 1 ",
             "Arm": " a ",
+            "Department": " Science ",
         },
     )
+    assert ignored == ["Department"]
+    assert normalized["level"] == "JSS1"
+    assert normalized["arm"] == "A"
+    assert "department" not in normalized
 
-    assert ignored_fields == []
-    assert normalized_row["class_name"] == "JUNIOR SECONDARY SCHOOL 1"
-    assert normalized_row["class_arm"] == "A"
-
-
-def test_student_import_normalizes_no_arm_without_import_sentinel() -> None:
-    normalized_row, ignored_fields = BulkImportNormalizer.normalize_row(
-        resource_type=ImportResourceType.STUDENTS,
-        raw_row={
-            "First Name": "Ada",
-            "Last Name": "Lovelace",
-            "Date of Birth": "2018-01-01",
-            "Class": "JSS 1",
-            "Arm": "no arm",
-        },
-    )
-
-    assert ignored_fields == []
-    assert normalized_row["class_name"] == "JSS1"
-    assert normalized_row["class_arm"] is None
-
-
-def test_student_import_dry_run_rejects_future_date_of_birth() -> None:
-    future_date = date.today() + timedelta(days=1)
-    validation_result = BulkImportValidator.validate_row(
-        resource_type=ImportResourceType.STUDENTS,
-        row_number=2,
-        raw_row={},
-        normalized_row={
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "date_of_birth": future_date.isoformat(),
-        },
-        ignored_fields=[],
-    )
-
-    assert not validation_result.is_valid
-    assert any(
-        error.field_name == "date_of_birth"
-        and error.error_code == "date_not_before_today"
-        and error.error_message == "date_of_birth must be before today."
-        for error in validation_result.errors
-    )
-
-
-def test_student_import_requires_class_name() -> None:
-    validation_result = BulkImportValidator.validate_row(
+    result = BulkImportValidator.validate_row(
         resource_type=ImportResourceType.STUDENTS,
         row_number=2,
         raw_row={},
@@ -85,128 +150,293 @@ def test_student_import_requires_class_name() -> None:
         },
         ignored_fields=[],
     )
+    assert {error.field_name for error in result.errors} == {"level", "arm"}
 
-    assert not validation_result.is_valid
-    assert any(
-        error.field_name == "class_name" and error.error_code == "required"
-        for error in validation_result.errors
+
+def test_student_import_does_not_accept_legacy_class_column() -> None:
+    normalized, ignored = BulkImportNormalizer.normalize_row(
+        resource_type=ImportResourceType.STUDENTS,
+        raw_row={
+            "First Name": "Ada",
+            "Last Name": "Lovelace",
+            "Date of Birth": "2018-01-01",
+            "Level": "JSS1",
+            "Class": "JSS1 A",
+        },
     )
+    assert "Class" in ignored
+    assert "arm" not in normalized
 
 
 @pytest.mark.asyncio
-async def test_student_import_resolves_uppercase_class_reference(monkeypatch) -> None:
-    tenant_id = uuid4()
-    class_id = uuid4()
-    calls: list[dict[str, object]] = []
-
-    async def get_by_normalized_name_and_arm(db, tenant_id, class_name, class_arm=None):
-        calls.append({"class_name": class_name, "class_arm": class_arm})
-        return SimpleNamespace(
-            id=class_id,
-            name="JSS1",
-            arm="A",
-            is_active=True,
-            archived_at=None,
-        )
-
+async def test_student_import_resolves_level_and_arm_for_general_class(monkeypatch) -> None:
+    tenant_id, level_id, arm_id, class_id, term_id = (
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+    )
+    monkeypatch.setattr(
+        AcademicLevelRepository,
+        "get_by_normalized_name",
+        AsyncMock(return_value=_active_level(level_id)),
+    )
+    monkeypatch.setattr(
+        ArmLabelRepository,
+        "get_by_normalized_label",
+        AsyncMock(return_value=_active_arm(arm_id)),
+    )
     monkeypatch.setattr(
         ClassRoomRepository,
-        "get_by_normalized_name_and_arm",
-        get_by_normalized_name_and_arm,
+        "get_by_level_arm_label",
+        AsyncMock(return_value=_active_class(class_id)),
     )
-    validation_result = ImportRowValidationResult(
+    monkeypatch.setattr(
+        StudentAcademicRepository,
+        "get_current_term",
+        AsyncMock(return_value=SimpleNamespace(id=term_id)),
+    )
+    monkeypatch.setattr(
+        BulkImportService,
+        "_get_class_term_department_assignment",
+        AsyncMock(return_value=None),
+    )
+
+    row = ImportRowValidationResult(
         row_number=2,
         raw_row={},
         normalized_row={
             "first_name": "Ada",
             "last_name": "Lovelace",
             "date_of_birth": "2018-01-01",
-            "class_name": "JSS1",
-            "class_arm": "A",
+            "level": "JSS1",
+            "arm": "A",
+            "department": "Stale value from an earlier dry run",
+        },
+    )
+    db = _batch_db(
+        [_active_level(level_id)],
+        [_active_arm(arm_id)],
+        [_active_class(class_id, level_id, arm_id)],
+        [],
+        [],
+    )
+
+    await BulkImportService.resolve_student_class_references(
+        db=db,
+        tenant_id=tenant_id,
+        validation_results=[row],
+    )
+
+    assert row.errors == []
+    assert row.normalized_row["academic_level_id"] == str(level_id)
+    assert row.normalized_row["class_id"] == str(class_id)
+    assert row.normalized_row["arm"] == "A"
+    assert row.normalized_row["department"] is None
+
+
+@pytest.mark.asyncio
+async def test_student_import_derives_current_term_department_from_class(monkeypatch) -> None:
+    tenant_id, level_id, arm_id, class_id, term_id, department_id = (
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+    )
+    department = _active_department(department_id)
+    monkeypatch.setattr(
+        AcademicLevelRepository,
+        "get_by_normalized_name",
+        AsyncMock(return_value=_active_level(level_id, "SS2")),
+    )
+    monkeypatch.setattr(
+        ArmLabelRepository,
+        "get_by_normalized_label",
+        AsyncMock(return_value=_active_arm(arm_id)),
+    )
+    monkeypatch.setattr(
+        ClassRoomRepository,
+        "get_by_level_arm_label",
+        AsyncMock(return_value=_active_class(class_id)),
+    )
+    monkeypatch.setattr(
+        StudentAcademicRepository,
+        "get_current_term",
+        AsyncMock(return_value=SimpleNamespace(id=term_id)),
+    )
+
+    _mock_department_context(monkeypatch, level_id, department)
+
+    row = ImportRowValidationResult(
+        row_number=2,
+        raw_row={},
+        normalized_row={
+            "level": "SS2",
+            "arm": "A",
         },
     )
 
     await BulkImportService.resolve_student_class_references(
-        db=SimpleNamespace(),
+        db=_batch_db(
+            [_active_level(level_id, "SS2")],
+            [_active_arm(arm_id)],
+            [_active_class(class_id, level_id, arm_id)],
+        ),
         tenant_id=tenant_id,
-        validation_results=[validation_result],
+        validation_results=[row],
     )
 
-    assert validation_result.errors == []
-    assert calls == [{"class_name": "JSS1", "class_arm": "A"}]
-    assert validation_result.normalized_row["class_id"] == str(class_id)
-    assert validation_result.normalized_row["class_name"] == "JSS1"
-    assert validation_result.normalized_row["class_arm"] == "A"
-    assert validation_result.normalized_row["arm"] == "A"
+    assert row.errors == []
+    assert row.normalized_row["class_id"] == str(class_id)
+    assert row.normalized_row["department"] == "Science"
 
 
 @pytest.mark.asyncio
-async def test_student_import_allows_class_name_only_for_no_arm_class(
+async def test_student_import_rejects_invalid_class_department_assignment(monkeypatch) -> None:
+    tenant_id, level_id, arm_id, class_id, term_id = (
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+    )
+    monkeypatch.setattr(
+        AcademicLevelRepository,
+        "get_by_normalized_name",
+        AsyncMock(return_value=_active_level(level_id, "SS2")),
+    )
+    monkeypatch.setattr(
+        ArmLabelRepository,
+        "get_by_normalized_label",
+        AsyncMock(return_value=_active_arm(arm_id)),
+    )
+    monkeypatch.setattr(
+        ClassRoomRepository,
+        "get_by_level_arm_label",
+        AsyncMock(return_value=_active_class(class_id)),
+    )
+    monkeypatch.setattr(
+        StudentAcademicRepository,
+        "get_current_term",
+        AsyncMock(return_value=SimpleNamespace(id=term_id)),
+    )
+    monkeypatch.setattr(
+        BulkImportService,
+        "_get_class_term_department_assignment",
+        AsyncMock(return_value=SimpleNamespace(academic_level_department_id=uuid4())),
+    )
+    monkeypatch.setattr(
+        AcademicLevelDepartmentRepository,
+        "get_by_id",
+        AsyncMock(return_value=None),
+    )
+
+    row = ImportRowValidationResult(
+        row_number=2,
+        raw_row={},
+        normalized_row={"level": "SS2", "arm": "A"},
+    )
+
+    await BulkImportService.resolve_student_class_references(
+        db=_batch_db(
+            [_active_level(level_id, "SS2")],
+            [_active_arm(arm_id)],
+            [_active_class(class_id, level_id, arm_id)],
+        ),
+        tenant_id=tenant_id,
+        validation_results=[row],
+    )
+
+    assert row.errors[0].field_name == "arm"
+    assert row.errors[0].error_code == "class_department_assignment_invalid"
+
+
+@pytest.mark.asyncio
+async def test_worker_creation_reresolves_class_department_before_student_creation(
     monkeypatch,
 ) -> None:
     tenant_id = uuid4()
-    class_id = uuid4()
-    calls: list[dict[str, object]] = []
-
-    async def get_by_normalized_name_and_arm(db, tenant_id, class_name, class_arm=None):
-        calls.append({"class_name": class_name, "class_arm": class_arm})
-        return SimpleNamespace(
-            id=class_id,
-            name="JSS1",
-            arm=None,
-            is_active=True,
-            archived_at=None,
-        )
-
-    monkeypatch.setattr(
-        ClassRoomRepository,
-        "get_by_normalized_name_and_arm",
-        get_by_normalized_name_and_arm,
-    )
-    validation_result = ImportRowValidationResult(
+    actor = SimpleNamespace(tenant_id=tenant_id)
+    row = ImportRowValidationResult(
         row_number=2,
         raw_row={},
         normalized_row={
             "first_name": "Ada",
             "last_name": "Lovelace",
-            "date_of_birth": "2018-01-01",
-            "class_name": "JSS1",
-            "class_arm": None,
+            "level": "SS2",
+            "arm": "A",
+            "department": "Arts",
         },
     )
 
-    await BulkImportService.resolve_student_class_references(
+    async def refresh_references(*, db, tenant_id, validation_results):
+        assert tenant_id == actor.tenant_id
+        validation_results[0].normalized_row["department"] = "Science"
+
+    resolver = AsyncMock(side_effect=refresh_references)
+    creator = AsyncMock(
+        return_value=SimpleNamespace(
+            student=SimpleNamespace(
+                first_name="Ada",
+                last_name="Lovelace",
+                admission_number="ADM001",
+            ),
+            setup_code="12345678",
+            access_code_expires_at=SimpleNamespace(isoformat=lambda: "2026-09-08T12:00:00+00:00"),
+            parent_invitation_count=0,
+        )
+    )
+    monkeypatch.setattr(BulkImportService, "resolve_student_class_references", resolver)
+    monkeypatch.setattr(BulkImportService, "create_student_from_row", creator)
+
+    result = await BulkImportService.process_valid_row(
         db=SimpleNamespace(),
-        tenant_id=tenant_id,
-        validation_results=[validation_result],
+        actor=actor,
+        resource_type=ImportResourceType.STUDENTS,
+        validation_result=row,
+        school_name="Test School",
     )
 
-    assert validation_result.errors == []
-    assert calls == [{"class_name": "JSS1", "class_arm": None}]
-    assert validation_result.normalized_row["class_id"] == str(class_id)
-    assert validation_result.normalized_row["class_arm"] is None
-    assert validation_result.normalized_row["arm"] is None
+    assert result["department"] == "Science"
+    resolver.assert_awaited_once()
+    creator.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_student_import_rejects_class_arm_without_class_name() -> None:
-    validation_result = ImportRowValidationResult(
+async def test_student_import_cannot_invent_new_arm_label(monkeypatch) -> None:
+    tenant_id, level_id = uuid4(), uuid4()
+    monkeypatch.setattr(
+        AcademicLevelRepository,
+        "get_by_normalized_name",
+        AsyncMock(return_value=_active_level(level_id, "SS2")),
+    )
+    monkeypatch.setattr(
+        ArmLabelRepository,
+        "get_by_normalized_label",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        StudentAcademicRepository,
+        "get_current_term",
+        AsyncMock(return_value=None),
+    )
+    row = ImportRowValidationResult(
         row_number=2,
         raw_row={},
         normalized_row={
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "date_of_birth": "2018-01-01",
-            "class_arm": "A",
+            "level": "SS2",
+            "arm": "Z",
         },
     )
 
     await BulkImportService.resolve_student_class_references(
-        db=SimpleNamespace(),
-        tenant_id=uuid4(),
-        validation_results=[validation_result],
+        db=_batch_db([_active_level(level_id, "SS2")], [], [], [], []),
+        tenant_id=tenant_id,
+        validation_results=[row],
     )
 
-    assert len(validation_result.errors) == 1
-    assert validation_result.errors[0].field_name == "class_name"
-    assert validation_result.errors[0].error_code == "required_with_class_arm"
+    assert row.errors[0].field_name == "arm"
+    assert row.errors[0].error_code == "arm_label_not_found"

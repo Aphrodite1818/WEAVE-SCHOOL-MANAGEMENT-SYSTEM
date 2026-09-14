@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
-from app.modules.student_academics.schemas import AcademicSessionCloseRequest
+from app.modules.student_academics.session_closure_enrollment_guard import SessionClosureService
 from app.modules.student_academics.session_closure_schemas import (
     SessionClosureAuditResponse,
     SessionClosureFinalizeRequest,
@@ -17,7 +17,6 @@ from app.modules.student_academics.session_closure_schemas import (
     SessionClosureStatusResponse,
     SessionProgressionRetryRequest,
 )
-from app.modules.student_academics.session_closure_service import SessionClosureService
 from app.modules.tenant_admins.models import TenantAdmin
 
 router = APIRouter(
@@ -57,24 +56,7 @@ async def start_session_closing(
         actor=current_admin,
         session_id=session_id,
         idempotency_key=payload.idempotency_key,
-    )
-
-
-# Backward-compatible path. It no longer closes or opens sessions atomically;
-# it only starts the staged CLOSING workflow.
-@router.post("/{session_id}/close-and-progress", response_model=SessionClosureStartResponse)
-async def legacy_close_and_progress_starts_closing(
-    session_id: UUID,
-    payload: AcademicSessionCloseRequest,
-    db: DbSession,
-    current_admin: CurrentTenantAdmin,
-) -> SessionClosureStartResponse:
-    _ = payload.confirmation
-    return await SessionClosureService.start_closing(
-        db,
-        actor=current_admin,
-        session_id=session_id,
-        idempotency_key=payload.idempotency_key,
+        allow_terminal_completion=payload.allow_terminal_completion,
     )
 
 

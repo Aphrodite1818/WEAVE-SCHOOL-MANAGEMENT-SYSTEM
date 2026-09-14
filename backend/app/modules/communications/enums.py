@@ -23,7 +23,7 @@ class ConversationType(str, Enum):
     SUPPORT = "support"
 
 
-class AnnouncementAudienceType(str, Enum):
+class NoticeAudienceType(str, Enum):
     ALL_TENANT_ADMINS = "all_tenant_admins"
     SELECTED_TENANT_ADMINS = "selected_tenant_admins"
     TENANT_ADMINS_OF_TENANTS = "tenant_admins_of_tenants"
@@ -37,7 +37,7 @@ class AnnouncementAudienceType(str, Enum):
     CLASS_PARENTS = "class_parents"
 
 
-class AnnouncementCategory(str, Enum):
+class NoticeCategory(str, Enum):
     GENERAL = "general"
     ACADEMIC = "academic"
     ATTENDANCE = "attendance"
@@ -47,14 +47,14 @@ class AnnouncementCategory(str, Enum):
     SYSTEM = "system"
 
 
-class AnnouncementPriority(str, Enum):
+class NoticePriority(str, Enum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
     URGENT = "urgent"
 
 
-class AnnouncementStatus(str, Enum):
+class NoticeStatus(str, Enum):
     DRAFT = "draft"
     SCHEDULED = "scheduled"
     PUBLISHED = "published"
@@ -63,7 +63,7 @@ class AnnouncementStatus(str, Enum):
 
 
 class NotificationSourceType(str, Enum):
-    ANNOUNCEMENT = "announcement"
+    NOTICE = "notice"
     MESSAGE = "message"
     SYSTEM_EVENT = "system_event"
     ATTENDANCE_REMINDER = "attendance_reminder"

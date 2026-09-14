@@ -1,3 +1,4 @@
+import { shouldShowUsage } from "../../features/subscriptions/usageVisibility";
 import { Activity } from "lucide-react";
 import {
   Bar,
@@ -27,6 +28,7 @@ const USAGE_FIELDS = [
   { key: "parents", label: "Parents" },
   { key: "classes", label: "Classes" },
   { key: "subjects", label: "Subjects" },
+  { key: "cbt_servers", label: "CBT Servers" },
 ];
 
 function getUsagePercent(usage) {
@@ -48,7 +50,7 @@ function getUsagePercent(usage) {
 function buildUsageItems(entitlements) {
   return USAGE_FIELDS.map((field) => {
     const usage = entitlements?.usage?.[field.key];
-    if (!usage) return null;
+    if (!shouldShowUsage(usage)) return null;
 
     const used = Number(usage.used || 0);
     const limit =
@@ -99,12 +101,7 @@ function UsageProgressCard({ item }) {
 }
 
 function UsagePage() {
-  const {
-    entitlements,
-    planCode,
-    isLoading,
-    errors,
-  } = useSubscription();
+  const { entitlements, planCode, isLoading, errors } = useSubscription();
   const usageItems = buildUsageItems(entitlements);
   const limitedUsageItems = usageItems.filter((item) => item.limit !== null);
 
@@ -138,7 +135,9 @@ function UsagePage() {
                 <Badge variant="default">{formatPlanName(planCode)}</Badge>
                 <Badge variant="primary">Usage tracking</Badge>
               </div>
-              <h1 className="text-xl sm:text-2xl font-semibold text-text">Usage Limits</h1>
+              <h1 className="text-xl sm:text-2xl font-semibold text-text">
+                Usage Limits
+              </h1>
               <p className="mt-1 text-sm text-text-muted">
                 Track actual resource usage against your current plan limits.
               </p>

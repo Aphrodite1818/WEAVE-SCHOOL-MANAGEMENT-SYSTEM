@@ -29,6 +29,8 @@ from app.modules.students.models import (
     StudentProfileStatus,
 )
 
+_PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
+
 
 class InputBase(BaseModel):
     """Base configuration for student request schemas."""
@@ -131,23 +133,22 @@ class StudentCreate(InputBase):
     Create a student using backend-generated admission credentials.
 
     Admission numbers are generated internally and are never accepted from a
-    client. Creation also requires a class so the service can atomically create
-    the student's current enrolment.
+    client. Academic level is authoritative; class placement is optional.
     """
 
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
     date_of_birth: date
-    class_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    class_id: uuid.UUID | None = None
     gender: Gender | None = None
-    arm: str | None = Field(default=None, max_length=20)
     state_of_origin: str | None = Field(default=None, max_length=100)
     parents: list[StudentParentInvitationInput] = Field(
         default_factory=list,
         max_length=2,
     )
 
-    @field_validator("arm", "state_of_origin", mode="before")
+    @field_validator("state_of_origin", mode="before")
     @classmethod
     def clean_optional_fields(cls, value: str | None) -> str | None:
         """Clean optional student fields."""
@@ -195,13 +196,11 @@ class StudentAdminProfileUpdate(InputBase):
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
     date_of_birth: date | None = None
     gender: Gender | None = None
-    arm: str | None = Field(default=None, max_length=20)
     state_of_origin: str | None = Field(default=None, max_length=100)
 
     @field_validator(
         "first_name",
         "last_name",
-        "arm",
         "state_of_origin",
         mode="before",
     )
@@ -231,7 +230,7 @@ class StudentAdminProfileUpdate(InputBase):
 
 
 class StudentSelfUpdate(InputBase):
-    """Student-controlled profile update."""
+    """Student-controlled partial profile update."""
 
     first_name: str | None = Field(default=None, min_length=1, max_length=100)
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
@@ -246,10 +245,13 @@ class StudentSelfUpdate(InputBase):
 
     @model_validator(mode="after")
     def require_at_least_one_change(self) -> "StudentSelfUpdate":
-        """Reject empty self-service updates."""
+        """Reject empty updates and explicit nulls for required profile fields."""
 
         if not self.model_fields_set:
             raise ValueError("at least one profile field must be provided")
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} {_PATCH_NULL_ERROR}")
         return self
 
 
@@ -299,46 +301,13 @@ class StudentReinstateRequest(StudentLifecycleReasonRequest):
 class StudentWithdrawRequest(StudentLifecycleReasonRequest):
     """Withdraw a student and close their current enrolment."""
 
-    effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Withdrawal cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
 
 class StudentExpelRequest(StudentLifecycleReasonRequest):
     """Expel a student and immediately end parent access."""
 
-    effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Expulsion cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
 
 class StudentGraduateRequest(StudentLifecycleReasonRequest):
     """Privileged single-student graduation correction request."""
-
-    graduation_date: date = Field(default_factory=date.today)
-
-    @field_validator("graduation_date")
-    @classmethod
-    def validate_graduation_date(cls, value: date) -> date:
-        """Graduation cannot be future-dated."""
-
-        validated = validate_date_not_future(value, field_name="graduation_date")
-        assert validated is not None
-        return validated
 
 
 class StudentArchiveRequest(StudentLifecycleReasonRequest):
@@ -349,21 +318,13 @@ class StudentRestoreFromArchiveRequest(StudentLifecycleReasonRequest):
     """Restore an archived record to operational visibility."""
 
 
-class StudentExpelledReinstatementRequest(StudentLifecycleReasonRequest):
-    """Privileged reinstatement of an expelled student."""
+class StudentReturnEnrollmentRequest(StudentLifecycleReasonRequest):
+    """Create a new placement after a genuine terminal student exit."""
 
+    target_academic_level_id: uuid.UUID
     target_class_id: uuid.UUID
     academic_session_id: uuid.UUID
     effective_date: date = Field(default_factory=date.today)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Reinstatement cannot start in the future."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
 
 
 class StudentPromotionHoldUpdateRequest(InputBase):
@@ -395,64 +356,43 @@ class StudentHardDeleteRequest(InputBase):
 
 
 # ---------------------------------------------------------------------------
-# Student enrolment and class changes
+# Student enrolment responses
 # ---------------------------------------------------------------------------
 
 
-class StudentClassChangeRequest(InputBase):
-    """Dedicated class-change request."""
-
-    target_class_id: uuid.UUID
-    academic_session_id: uuid.UUID
-    effective_date: date = Field(default_factory=date.today)
-    outcome: Literal["reclassified", "repeated"] = "reclassified"
-    reason: str = Field(min_length=3, max_length=500)
-
-    @field_validator("effective_date")
-    @classmethod
-    def validate_effective_date(cls, value: date) -> date:
-        """Class changes cannot be future-dated in this phase."""
-
-        validated = validate_date_not_future(value, field_name="effective_date")
-        assert validated is not None
-        return validated
-
-    @field_validator("reason", mode="before")
-    @classmethod
-    def clean_reason(cls, value: str) -> str:
-        """Clean class-change reason."""
-
-        return clean_required_string(value)
-
-
 class StudentEnrollmentResponse(OutputBase):
-    """Student class-placement history response."""
+    """Immutable student class-placement segment."""
 
     id: uuid.UUID
     tenant_id: uuid.UUID
     student_id: uuid.UUID
-    class_id: uuid.UUID
+    academic_level_id: uuid.UUID
+    class_id: uuid.UUID | None = None
     academic_session_id: uuid.UUID
     started_on: date
     ended_on: date | None = None
-    is_current: bool
-    outcome: StudentEnrollmentOutcome
-    reason: str | None = None
-    changed_by_admin_id: uuid.UUID | None = None
+    entry_outcome: StudentEnrollmentOutcome
+    exit_outcome: StudentEnrollmentOutcome | None = None
+    entry_reason: str | None = None
+    exit_reason: str | None = None
+    created_by_admin_id: uuid.UUID | None = None
+    ended_by_admin_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class StudentEnrollmentDetailResponse(StudentEnrollmentResponse):
-    """Enrolment response with display labels."""
+    """Enrollment segment with display labels."""
 
     class_name: str | None = None
     class_arm: str | None = None
+    academic_level_name: str | None = None
     academic_session_name: str | None = None
+    lifecycle_state: Literal["historical", "current", "upcoming"] = "historical"
 
 
 class StudentEnrollmentListResponse(OutputBase):
-    """Student enrolment history list."""
+    """Student enrollment history list."""
 
     items: list[StudentEnrollmentDetailResponse]
     total: int = Field(ge=0)
@@ -555,10 +495,13 @@ class StudentParentLinkUpdateRequest(InputBase):
 
     @model_validator(mode="after")
     def require_at_least_one_change(self) -> "StudentParentLinkUpdateRequest":
-        """Reject empty link preference updates."""
+        """Reject empty updates and explicit null preference values."""
 
         if not self.model_fields_set:
             raise ValueError("at least one link field must be provided")
+        for field_name in self.model_fields_set:
+            if getattr(self, field_name) is None:
+                raise ValueError(f"{field_name} {_PATCH_NULL_ERROR}")
         return self
 
 
@@ -671,6 +614,18 @@ class StudentParentLinkRequestListResponse(OutputBase):
 # ---------------------------------------------------------------------------
 
 
+class StudentLifecycleCapabilities(OutputBase):
+    """Backend-owned lifecycle actions available for the student's current state."""
+
+    can_undo_withdrawal: bool = False
+    can_undo_expulsion: bool = False
+    can_undo_graduation: bool = False
+    can_readmit: bool = False
+    can_reinstate_expelled: bool = False
+    can_reenrol_graduate: bool = False
+    undo_block_reason: str | None = None
+
+
 class StudentOutputBase(OutputBase):
     """Student profile and lifecycle response."""
 
@@ -690,7 +645,7 @@ class StudentOutputBase(OutputBase):
     admission_date: date
     graduation_date: date | None = None
     class_id: uuid.UUID | None = None
-    arm: str | None = None
+    academic_level_id: uuid.UUID | None = None
     status: AcademicStatus
     promotion_hold: bool
     profile_status: StudentProfileStatus
@@ -701,6 +656,7 @@ class StudentOutputBase(OutputBase):
     archive_reason: str | None = None
     created_at: datetime
     updated_at: datetime
+    lifecycle_capabilities: StudentLifecycleCapabilities | None = None
 
 
 class StudentResponse(StudentOutputBase):
@@ -715,7 +671,9 @@ class StudentDetailResponse(StudentResponse):
 
     class_name: str | None = None
     class_arm: str | None = None
+    academic_level_name: str | None = None
     current_enrollment_id: uuid.UUID | None = None
+    upcoming_enrollment: StudentEnrollmentDetailResponse | None = None
     current_academic_session_id: uuid.UUID | None = None
     current_academic_session_name: str | None = None
     current_academic_term_id: uuid.UUID | None = None
@@ -760,3 +718,4 @@ class StudentHardDeleteEligibilityResponse(OutputBase):
     eligible: bool
     blocking_dependencies: list[str]
     recommendation: Literal["hard_delete", "archive"]
+    academic_level_name: str | None = None

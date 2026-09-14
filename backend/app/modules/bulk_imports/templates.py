@@ -24,7 +24,7 @@ CONTROL_COLUMNS: set[str] = {
 }
 
 TEMPLATE_VERSION_BY_RESOURCE: dict[ImportResourceType, str] = {
-    ImportResourceType.STUDENTS: "students_v4",
+    ImportResourceType.STUDENTS: "students_v8",
 }
 
 DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
@@ -33,8 +33,8 @@ DATA_HEADERS_BY_RESOURCE: dict[ImportResourceType, list[str]] = {
         "last_name",
         "date_of_birth",
         "gender",
-        "class_name",
-        "class_arm",
+        "level",
+        "arm",
         "state_of_origin",
         "parent_email_1",
         "parent_relationship_1",
@@ -115,18 +115,18 @@ def create_student_template() -> ImportTemplateDefinition:
                 accepted_values=["male", "female"],
             ),
             create_template_column(
-                name="class_name",
-                label="Class Name",
+                name="level",
+                label="Academic Level",
                 required=True,
                 example="JSS1",
-                description="Required. Use the class name visible to admins, for example JSS1 or Primary 4.",
+                description="Required. Enter an existing academic level such as JSS1. Do not combine it with the arm.",
             ),
             create_template_column(
-                name="class_arm",
-                label="Class Arm",
-                required=False,
+                name="arm",
+                label="Arm",
+                required=True,
                 example="A",
-                description="Optional. Leave blank for classes without arms, or enter an existing arm such as A or Science.",
+                description="Required. Enter the arm label only, such as A or B. The backend derives the class from level + arm.",
             ),
             create_template_column(
                 name="state_of_origin",
@@ -167,9 +167,9 @@ def create_student_template() -> ImportTemplateDefinition:
             "Use the downloaded backend-generated template file. Do not recreate headers manually.",
             "Admission numbers are generated automatically by the backend.",
             "Date of birth is required because students cannot edit it later.",
-            "Class name is required. Class arm is optional for classes without an arm.",
-            "Use class_name and optional class_arm for student class placement. Do not enter internal class UUIDs.",
-            "The backend resolves class_name + class_arm to the real active class during dry-run.",
+            "Academic level and arm are required. The backend derives the actual class from level + arm.",
+            "Do not enter combined class names such as JSS1 A. Enter level=JSS1 and arm=A instead.",
+            "Department is derived automatically from the resolved class and current academic term. Do not include a department column.",
             "Parent or guardian emails are optional in the current student-creation workflow. If an email is supplied, its matching relationship column is required.",
             "A maximum of two parents or guardians is supported per imported student.",
             "Accepted date formats include YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, MM/DD/YYYY, MM-DD-YYYY, and YYYY/MM/DD.",
@@ -241,7 +241,7 @@ def get_template_response(
     resource_type: ImportResourceType,
     file_type: ImportFileType = ImportFileType.XLSX,
 ) -> ImportTemplateResponse:
-    """Return one template response."""
+    """Return one supported import template response."""
 
     template = get_template_definition(resource_type=resource_type)
 
@@ -255,7 +255,7 @@ def list_template_responses(
     *,
     file_type: ImportFileType = ImportFileType.XLSX,
 ) -> list[ImportTemplateResponse]:
-    """Return all supported template responses."""
+    """Return all supported import templates."""
 
     return [
         convert_template_to_response(

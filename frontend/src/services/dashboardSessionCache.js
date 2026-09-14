@@ -6,6 +6,7 @@ const DASHBOARD_BUNDLE_CACHE_PREFIX = "weave:dashboard-session:v2";
 const dashboardBundleCache = new Map();
 let invalidationBound = false;
 let lastActorCacheScope = null;
+let cacheGeneration = 0;
 
 const getActorCacheScope = () => {
   const user = authSession.getUser() || {};
@@ -21,19 +22,24 @@ const storageKey = (cacheKey) => `${DASHBOARD_BUNDLE_CACHE_PREFIX}:snapshot:${ca
 const removeStoredScope = (scope) => {
   if (typeof window === "undefined") return;
   const prefix = `${DASHBOARD_BUNDLE_CACHE_PREFIX}:snapshot:${scope}:`;
-  Object.keys(window.sessionStorage)
+  Array.from({ length: window.sessionStorage.length }, (_, index) => window.sessionStorage.key(index))
     .filter((key) => key.startsWith(prefix))
     .forEach((key) => window.sessionStorage.removeItem(key));
 };
 
 const clearCache = () => {
+  cacheGeneration += 1;
   dashboardBundleCache.clear();
   removeStoredScope(lastActorCacheScope || getActorCacheScope());
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("weave:dashboard-cache-invalidated"));
+  }
 };
 
 const resolveActorScope = () => {
   const nextScope = getActorCacheScope();
   if (lastActorCacheScope && lastActorCacheScope !== nextScope) {
+    cacheGeneration += 1;
     dashboardBundleCache.clear();
     removeStoredScope(lastActorCacheScope);
   }
@@ -109,9 +115,12 @@ export const getCachedDashboardBundle = async (
     }
   }
 
+  const generation = cacheGeneration;
   const promise = Promise.resolve()
     .then(loader)
     .then((value) => {
+      // A request started before a write or actor change cannot restore stale data.
+      if (generation !== cacheGeneration) return value;
       const expiresAt = Date.now() + ttlMs;
       dashboardBundleCache.set(cacheKey, { value, expiresAt, promise: null });
       writeSnapshot(cacheKey, value, expiresAt);

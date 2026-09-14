@@ -100,9 +100,13 @@ function AdminInvitationPage() {
       showSuccess(`${titleCase(role)} invitation is on its way.`);
     } catch (requestError) {
       const parsed = parseApiError(requestError, `Could not send ${role} invitation.`);
+      const message =
+        role === "teacher" && parsed?.data?.code === "TEACHER_ALREADY_ACTIVE_MEMBER"
+          ? "This teacher is already an active member of your school. You do not need to send another invitation."
+          : parsed.message;
       setFieldErrors(parsed.fieldErrors || {});
-      setError(parsed.message);
-      showError(parsed.message);
+      setError(message);
+      showError(message);
     } finally {
       setIsSubmitting(false);
     }

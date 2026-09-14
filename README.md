@@ -66,6 +66,8 @@ Environment values are managed separately and must not be committed. Do not put 
 
 ```bash
 cd backend
+cp .env.example .env
+# Set DATABASE_URL to an empty or initialized local PostgreSQL database.
 uv sync
 ```
 
@@ -75,6 +77,7 @@ If a deployment target still uses `requirements.txt`, treat it as compatibility 
 
 ```bash
 cd frontend
+cp .env.example .env.local
 npm ci
 ```
 
@@ -163,16 +166,32 @@ Use `/health/ready` for deployment readiness and `/health/live` for process live
 
 ## PostgreSQL and Alembic
 
-Alembic migrations live in `backend/alembic/versions/` and must be treated as protected history after the first production database is created. Create forward migrations for later schema changes.
+`20260911_initial_schema` is the frozen initial production schema. It is the only baseline revision and has no predecessor. Once staging or production uses it, do not edit, replace, or squash it.
 
-For a new database:
+On application startup, Weave acquires a PostgreSQL transaction advisory lock and inspects the `public` schema. An empty database is initialized from the complete SQLAlchemy model registry, required PostgreSQL extensions are created, and `alembic_version` is stamped to the baseline in the same transaction. Concurrent first starts therefore serialize safely.
+
+If all model tables already exist, startup does not call `create_all()`, stamp, drop, or recreate anything. A partial schema—or an Alembic marker without the application tables—is rejected with an explicit startup error because silently repairing it could hide drift or data loss. `create_all()` is only the first-install mechanism; every schema change after the baseline requires Alembic.
+
+The frozen baseline also supports migration-only provisioning of an empty PostgreSQL database:
 
 ```bash
 cd backend
 uv run alembic upgrade head
 ```
 
-`20260731_clean_baseline` is a frozen, explicit description of the initial production schema. After it has been used by staging or production, never edit or regenerate it. Every later model or schema change must be represented by a new forward Alembic revision whose `down_revision` points to the current head.
+For each future schema change:
+
+```bash
+cd backend
+uv run alembic revision --autogenerate -m "describe the schema change"
+# Review the generated upgrade and downgrade before running either.
+uv run alembic upgrade head
+uv run alembic heads
+uv run alembic current
+uv run alembic check
+```
+
+Never stamp an existing database merely to silence Alembic. Stamping is valid only after its schema has been independently verified to match the target revision. Database resets and history rewrites are development-only operations and must never target staging or production.
 
 Before production rollout, run migrations against a current production-like database, verify critical workflows, and confirm backup and restore procedures.
 

@@ -246,7 +246,29 @@ class AuthIdentityService:
             or existing.tenant_id != tenant_id
         ):
             raise ConflictException("This actor already has a different login identity.")
-        if payload.is_active and not existing.is_active:
+        should_activate = payload.is_active and not existing.is_active
+        if should_activate and actor_type == ActorType.STUDENT:
+            # A future formal return intentionally leaves the Student row in its
+            # terminal lifecycle state until the future StudentEnrollment becomes
+            # date-effective. Do not let a generic ensure call reactivate login
+            # identity early. Immediate and due returns set Student.status ACTIVE
+            # before calling this method, so those paths still activate normally.
+            from app.modules.students.models import AcademicStatus
+            from app.modules.students.repository import StudentRepository
+
+            student = await StudentRepository.get_by_id(
+                db,
+                tenant_id,
+                payload.actor_id,
+                include_archived=True,
+            )
+            if student is not None and student.status in {
+                AcademicStatus.WITHDRAWN,
+                AcademicStatus.EXPELLED,
+                AcademicStatus.GRADUATED,
+            }:
+                should_activate = False
+        if should_activate:
             existing.is_active = True
             await AuthIdentityRepository.save(db, existing)
             AuthIdentityService._queue_cache_invalidation(

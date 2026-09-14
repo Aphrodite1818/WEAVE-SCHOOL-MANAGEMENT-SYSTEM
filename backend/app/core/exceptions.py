@@ -176,11 +176,25 @@ class ConflictException(AppException):
         detail: str = "Resource conflict",
         payload: dict[str, Any] | None = None,
     ) -> None:
-        """Initialize the ConflictException instance."""
+        """Initialize the ConflictException instance.
+
+        Dependency/readiness conflicts already carry concrete ``blocker_messages``.
+        Prefer those messages as the human-readable detail so API consumers do not
+        hide the actual reason behind a generic lifecycle or readiness summary.
+        """
+        normalized_payload = payload or {}
+        blocker_messages = normalized_payload.get("blocker_messages")
+        if isinstance(blocker_messages, list):
+            concrete_blockers = [
+                str(message).strip() for message in blocker_messages if str(message).strip()
+            ]
+            if concrete_blockers:
+                detail = " ".join(concrete_blockers)
+
         super().__init__(
             status_code=status.HTTP_409_CONFLICT,
             detail=detail,
-            payload=payload,
+            payload=normalized_payload,
         )
 
 

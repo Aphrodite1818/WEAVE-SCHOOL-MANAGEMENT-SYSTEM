@@ -1,8 +1,45 @@
 import { api } from "./api";
+import {
+  buildChangedPatch,
+  hasPatchChanges,
+  mergePatchResult,
+  rememberRecord,
+} from "./patchPayload";
+
+const tenantsById = new Map();
 
 export const tenantService = {
-    registerTenant: (data) => api.post("/tenants/register", data, { auth: false }),
+  registerTenant: (data) => api.post("/tenants/register", data, { auth: false }),
 
-    getTenant: (tenantId) => api.get(`/tenants/${tenantId}`),
-    updateTenant: (tenantId, data) => api.patch(`/tenants/${tenantId}`, data),
+  getTenant: async (tenantId) => {
+    const response = await api.get(`/tenants/${tenantId}`);
+    return rememberRecord(tenantsById, response);
+  },
+
+  updateTenant: async (tenantId, data) => {
+    const key = String(tenantId);
+    const current = tenantsById.get(key);
+    const changes = buildChangedPatch(current, data);
+    if (!hasPatchChanges(changes)) return current;
+
+    const response = await api.patch(`/tenants/${tenantId}`, changes);
+    tenantsById.set(key, mergePatchResult(current, changes, response));
+    return response;
+  },
+
+  previewInstitutionTypeTransition: (tenantId, institutionType) =>
+    api.get(
+      `/tenants/${tenantId}/institution-type-transition?institution_type=${encodeURIComponent(
+        institutionType,
+      )}`,
+    ),
+
+  applyInstitutionTypeTransition: async (tenantId, payload) => {
+    const response = await api.post(
+      `/tenants/${tenantId}/institution-type-transition`,
+      payload,
+    );
+    tenantsById.delete(String(tenantId));
+    return response;
+  },
 };

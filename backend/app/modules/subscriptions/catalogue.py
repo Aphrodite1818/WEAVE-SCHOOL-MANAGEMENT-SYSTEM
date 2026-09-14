@@ -11,9 +11,7 @@ from app.core.cache.base import build_cache_key
 from app.core.cache.manager import CacheManager
 from app.modules.subscriptions.constants import (
     DEFAULT_CURRENCY,
-    DEFAULT_TRIAL_DAYS,
     PAYSTACK_AMOUNT_SETTING_FIELDS,
-    PAYSTACK_PLAN_SETTING_FIELDS,
 )
 from app.modules.subscriptions.plans import get_plan_entitlements
 from app.modules.subscriptions.subscription_enums import BillingInterval
@@ -21,12 +19,13 @@ from app.tenant_management.models import SubscriptionPlan
 
 PLAN_DISPLAY_NAMES = {
     SubscriptionPlan.FREE_TRIAL: "Free Trial",
+    SubscriptionPlan.FREE: "Free",
     SubscriptionPlan.PLUS: "Plus",
     SubscriptionPlan.PROFESSIONAL: "Professional",
     SubscriptionPlan.ENTERPRISE: "Enterprise",
 }
 PLAN_ORDER = (
-    SubscriptionPlan.FREE_TRIAL,
+    SubscriptionPlan.FREE,
     SubscriptionPlan.PLUS,
     SubscriptionPlan.PROFESSIONAL,
     SubscriptionPlan.ENTERPRISE,
@@ -60,18 +59,17 @@ class PublicSubscriptionCatalogue(BaseModel):
 class PublicSubscriptionCatalogueService:
     @staticmethod
     def _amount_kobo(plan: SubscriptionPlan) -> int:
-        if plan == SubscriptionPlan.FREE_TRIAL:
+        if plan == SubscriptionPlan.FREE:
             return 0
-        field_name = PAYSTACK_AMOUNT_SETTING_FIELDS[plan][BillingInterval.MONTHLY]
+        field_name = PAYSTACK_AMOUNT_SETTING_FIELDS[plan][BillingInterval.TERM]
         value = getattr(settings, field_name, None)
         return int(value or 0)
 
     @staticmethod
     def _checkout_enabled(plan: SubscriptionPlan, amount_kobo: int) -> bool:
-        if plan == SubscriptionPlan.FREE_TRIAL:
+        if plan == SubscriptionPlan.FREE:
             return True
-        field_name = PAYSTACK_PLAN_SETTING_FIELDS[plan][BillingInterval.MONTHLY]
-        return amount_kobo > 0 and bool(getattr(settings, field_name, None))
+        return amount_kobo > 0
 
     @classmethod
     def _source_payload(cls) -> dict[str, Any]:
@@ -127,10 +125,8 @@ class PublicSubscriptionCatalogueService:
                     amount=amount_kobo // 100,
                     amount_kobo=amount_kobo,
                     currency=DEFAULT_CURRENCY,
-                    billing_interval=BillingInterval.MONTHLY,
-                    trial_days=(
-                        DEFAULT_TRIAL_DAYS if plan == SubscriptionPlan.FREE_TRIAL else None
-                    ),
+                    billing_interval=BillingInterval.TERM,
+                    trial_days=None,
                     checkout_enabled=bool(item["checkout_enabled"]),
                     features=dict(item["features"]),
                     limits=dict(item["limits"]),
@@ -139,7 +135,7 @@ class PublicSubscriptionCatalogueService:
 
         return PublicSubscriptionCatalogue(
             currency=DEFAULT_CURRENCY,
-            billing_intervals=[BillingInterval.MONTHLY],
+            billing_intervals=[BillingInterval.TERM],
             cache_version=cls._cache_version(),
             plans=plans,
         )

@@ -51,7 +51,7 @@ from app.modules.tenant_admins.repository import TenantAdminRepository
 from app.tenant_management.models import TenantStatus, TenantVerificationStatus
 from app.tenant_management.repository import TenantRepository
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_PREFIX}/auth/login")
 TokenDependency: TypeAlias = Annotated[str, Depends(oauth2_scheme)]
 DbDependency: TypeAlias = Annotated[AsyncSession, Depends(get_db)]
 
@@ -167,6 +167,13 @@ async def get_current_actor(token: TokenDependency, db: DbDependency) -> Current
             actor_id=actor_id,
             tenant_id=tenant_id,
         )
+        if tenant_id is not None:
+            from app.modules.students.lifecycle_service import StudentLifecycleService
+
+            await StudentLifecycleService.activate_due_returns_for_tenant(
+                db,
+                tenant_id=tenant_id,
+            )
     except (JWTError, ValueError, TypeError) as exc:
         raise UnauthorizedException("Could not validate credentials") from exc
 

@@ -56,12 +56,13 @@ test("the PWA navbar geometry remains frozen while scroll ownership changes", as
   );
   assert.match(
     css,
-    /data-pwa-platform="ios"[\s\S]*?calc\(env\(safe-area-inset-bottom, 0px\) - 1\.45rem\)/,
+    /data-pwa-platform="ios"[\s\S]*?calc\(env\(safe-area-inset-bottom, 0px\) - 1\.8rem\)/,
   );
   assert.match(
     css,
-    /data-keyboard-open="true"[\s\S]*?translate3d\([\s\S]*?var\(--virtual-keyboard-height\)/,
+    /data-keyboard-open="true"[\s\S]*?transform:\s*translate3d\(0, 0, 0\)\s*!important/,
   );
+  assert.doesNotMatch(css, /var\(--virtual-keyboard-height\)/);
   assert.match(
     css,
     /data-mobile-bottom-nav="true"[\s\S]*?position:\s*fixed\s*!important/,
@@ -118,6 +119,32 @@ test("every actor dashboard uses the shared vertically scrollable viewport and n
     const source = await read(path);
     assert.match(source, /DashboardShell/);
   }
+});
+
+test("installed bottom navigation publishes its measured obstruction as shared clearance", async () => {
+  const [navSource, platformCss, interactionCss] = await Promise.all([
+    read("src/components/layout/BottomNav.jsx"),
+    read("src/styles/mobilePlatformFixes.css"),
+    read("src/styles/pwaInteractions.css"),
+  ]);
+
+  assert.match(navSource, /BOTTOM_NAV_CONTENT_GAP_PX/);
+  assert.match(navSource, /getBoundingClientRect\(\)/);
+  assert.match(navSource, /obstructionHeight/);
+  assert.match(navSource, /--mobile-bottom-nav-clearance/);
+  assert.match(navSource, /ResizeObserver/);
+  assert.match(
+    platformCss,
+    /data-mobile-billing-action="true"[\s\S]*?bottom:\s*var\(--mobile-bottom-nav-clearance\)\s*!important/,
+  );
+  assert.match(
+    platformCss,
+    /data-mobile-billing-page="true"[\s\S]*?padding-bottom:\s*calc\(var\(--mobile-bottom-nav-clearance\) \+ 9rem\)\s*!important/,
+  );
+  assert.match(
+    interactionCss,
+    /data-academic-workflow-navigator="true"[\s\S]*?bottom:\s*var\(--mobile-bottom-nav-clearance\)/,
+  );
 });
 
 test("all role guide pages own a full visible-height PWA scroll surface", async () => {

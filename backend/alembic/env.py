@@ -82,7 +82,10 @@ def _normalized_schema(value: str | None) -> str:
 
 def _normalized_fk_action(value: str | None) -> str:
     normalized = (value or "").strip().upper().replace("_", " ")
-    return "" if normalized in {"", "NO ACTION"} else normalized
+    # PostgreSQL reflection may omit explicit RESTRICT from Inspector options
+    # while Alembic's reflected constraint retains it. For non-deferrable
+    # constraints RESTRICT and NO ACTION are equivalent, so normalize both.
+    return "" if normalized in {"", "NO ACTION", "RESTRICT"} else normalized
 
 
 def _fk_signature(
@@ -142,9 +145,12 @@ def _metadata_fk_signatures() -> set[tuple[Any, ...]]:
     }
 
 
-def _database_fk_signatures(connection: Any) -> set[tuple[Any, ...]]:
+def _database_fk_signatures(
+    connection: Any,
+) -> tuple[set[tuple[Any, ...]], dict[str, tuple[Any, ...]]]:
     inspector = sa.inspect(connection)
     signatures: set[tuple[Any, ...]] = set()
+    named_signatures: dict[str, tuple[Any, ...]] = {}
 
     for table_name in inspector.get_table_names(schema="public"):
         for reflected_fk in inspector.get_foreign_keys(table_name, schema="public"):
@@ -153,25 +159,32 @@ def _database_fk_signatures(connection: Any) -> set[tuple[Any, ...]]:
                 continue
 
             options = reflected_fk.get("options") or {}
-            signatures.add(
-                _fk_signature(
-                    source_schema="public",
-                    source_table=table_name,
-                    local_columns=reflected_fk.get("constrained_columns") or (),
-                    referent_schema=reflected_fk.get("referred_schema"),
-                    referent_table=referred_table,
-                    remote_columns=reflected_fk.get("referred_columns") or (),
-                    ondelete=options.get("ondelete"),
-                    onupdate=options.get("onupdate"),
-                    deferrable=options.get("deferrable"),
-                    initially=options.get("initially"),
-                )
+            signature = _fk_signature(
+                source_schema="public",
+                source_table=table_name,
+                local_columns=reflected_fk.get("constrained_columns") or (),
+                referent_schema=reflected_fk.get("referred_schema"),
+                referent_table=referred_table,
+                remote_columns=reflected_fk.get("referred_columns") or (),
+                ondelete=options.get("ondelete"),
+                onupdate=options.get("onupdate"),
+                deferrable=options.get("deferrable"),
+                initially=options.get("initially"),
             )
+            signatures.add(signature)
+            if name := reflected_fk.get("name"):
+                named_signatures[name] = signature
 
-    return signatures
+    return signatures, named_signatures
 
 
 METADATA_FK_SIGNATURES = _metadata_fk_signatures()
+METADATA_NAMED_FK_SIGNATURES = {
+    constraint.name: _constraint_fk_signature(constraint)
+    for table in target_metadata.tables.values()
+    for constraint in table.foreign_key_constraints
+    if constraint.name
+}
 
 
 def _schema_neutral_index_name(name: str | None) -> str:
@@ -212,7 +225,10 @@ def _include_name(
     return True
 
 
-def _include_object(database_fk_signatures: set[tuple[Any, ...]]):
+def _include_object(
+    database_fk_signatures: set[tuple[Any, ...]],
+    database_named_fk_signatures: dict[str, tuple[Any, ...]],
+):
     def include_object(
         obj: Any,
         name: str | None,
@@ -224,6 +240,16 @@ def _include_object(database_fk_signatures: set[tuple[Any, ...]]):
 
         if type_ == "table" and name == "alembic_version":
             return False
+
+        # Alembic can materialize public-schema composite FKs differently from
+        # both Inspector and model objects. Suppress those unmatched halves only
+        # when the database and metadata independently report the same named,
+        # fully normalized constraint. A missing or changed FK still surfaces.
+        if type_ == "foreign_key_constraint" and name:
+            database_signature = database_named_fk_signatures.get(name)
+            metadata_signature = METADATA_NAMED_FK_SIGNATURES.get(name)
+            if database_signature is not None and database_signature == metadata_signature:
+                return False
 
         if type_ == "index" and isinstance(obj, sa.Index) and compare_to is None:
             if obj.name != _schema_neutral_index_name(obj.name):
@@ -261,6 +287,7 @@ def _configure_context(
     *,
     connection: Any | None = None,
     database_fk_signatures: set[tuple[Any, ...]] | None = None,
+    database_named_fk_signatures: dict[str, tuple[Any, ...]] | None = None,
 ) -> None:
     """Apply one comparison policy to online and offline migration runs."""
 
@@ -271,7 +298,10 @@ def _configure_context(
         "version_table_schema": "public",
         "compare_type": _compare_type,
         "compare_server_default": False,
-        "include_object": _include_object(database_fk_signatures or set()),
+        "include_object": _include_object(
+            database_fk_signatures or set(),
+            database_named_fk_signatures or {},
+        ),
     }
     if connection is None:
         options.update(
@@ -305,13 +335,16 @@ def run_migrations_online() -> None:
         # FK reflection opens an implicit read transaction. Close it before
         # Alembic begins its migration transaction so DDL is not rolled back when
         # the async connection context exits.
-        database_fk_signatures = _database_fk_signatures(sync_connection)
+        database_fk_signatures, database_named_fk_signatures = _database_fk_signatures(
+            sync_connection
+        )
         if sync_connection.in_transaction():
             sync_connection.commit()
 
         _configure_context(
             connection=sync_connection,
             database_fk_signatures=database_fk_signatures,
+            database_named_fk_signatures=database_named_fk_signatures,
         )
 
         try:

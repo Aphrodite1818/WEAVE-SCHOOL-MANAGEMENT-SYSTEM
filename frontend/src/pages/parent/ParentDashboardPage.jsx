@@ -216,7 +216,7 @@ function ParentDashboardPage() {
             academicLabel={selectedChildAcademicLabel}
           />
 
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Linked children"
               value={linkedStudents}
@@ -293,7 +293,7 @@ function ParentDashboardPage() {
             description="Common parent workflows."
             actions={[
               { label: "Student linking", description: "Request or manage child access", to: "/parent/student-linking", icon: Link2, tone: "primary" },
-              { label: "Results", description: "View academic scores", to: "/parent/results", icon: BarChart3, tone: "success" },
+              { label: "Family insights", description: "Links and school updates", to: "/parent/analytics", icon: BarChart3, tone: "success" },
               { label: "Report cards", description: "Open published reports", to: "/parent/report-cards", icon: FileText, tone: "warning" },
               { label: "Inbox", description: "Notifications and updates", to: "/parent/inbox", icon: Bell, tone: "accent" },
             ]}
@@ -307,8 +307,8 @@ function ParentDashboardPage() {
 function InfoTile({ label, value }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
+      <p className="text-xs font-semibold leading-5 text-text-soft sm:text-[11px] sm:uppercase sm:tracking-wide sm:text-text-muted">{label}</p>
+      <p className="mt-1 whitespace-normal break-words text-sm font-semibold leading-5 text-text sm:truncate">{value}</p>
     </div>
   );
 }
@@ -318,12 +318,12 @@ function ChildSwitcher({ linkedChildren = [], selectedChildId, onSelectChild, ac
     <section className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-surface/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Viewing child</p>
-        <p className="mt-0.5 truncate text-sm font-semibold text-text">
+        <p className="mt-0.5 whitespace-normal break-words text-sm font-semibold leading-5 text-text sm:truncate">
           {academicLabel && academicLabel !== "-" ? academicLabel : "Select a linked child"}
         </p>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 sm:justify-end sm:pb-0">
+      <div className="grid grid-cols-1 gap-2 sm:flex sm:overflow-x-auto sm:justify-end">
         {linkedChildren.length > 0 ? (
           linkedChildren.map((entry, index) => {
             const { student, link } = normalizeParentChildRecord(entry);
@@ -336,7 +336,7 @@ function ChildSwitcher({ linkedChildren = [], selectedChildId, onSelectChild, ac
                 onClick={() => studentId && onSelectChild(studentId)}
                 disabled={!studentId}
                 className={cn(
-                  "min-h-10 shrink-0 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition",
+                  "min-h-11 shrink-0 whitespace-normal rounded-xl border px-3 py-2 text-left text-sm font-semibold transition sm:min-h-10 sm:text-xs",
                   isActive
                     ? "border-primary bg-primary text-primary-foreground shadow-sm"
                     : "border-border/70 bg-surface text-text-soft hover:border-primary/40 hover:text-text",

@@ -5,6 +5,7 @@ from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import BadRequestException, ConflictException
 from app.modules.student_academics.models import AcademicSession, AcademicSessionStatus
@@ -22,6 +23,11 @@ def _session(tenant_id: uuid.UUID) -> AcademicSession:
         status=AcademicSessionStatus.DRAFT,
         is_current=False,
     )
+
+
+def test_update_academic_session_rejects_explicit_null_name() -> None:
+    with pytest.raises(ValidationError):
+        AcademicSessionUpdate(name=None)
 
 
 @pytest.mark.asyncio
@@ -45,7 +51,6 @@ async def test_update_academic_session_allows_explicit_nullable_fields_to_clear(
             tenant_id=tenant_id,
             academic_session_id=session.id,
             payload=AcademicSessionUpdate(
-                name=None,
                 start_date=None,
                 end_date=None,
                 next_academic_session_id=None,

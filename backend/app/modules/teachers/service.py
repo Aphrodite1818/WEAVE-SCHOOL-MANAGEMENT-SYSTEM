@@ -603,14 +603,19 @@ class TeacherMembershipService:
         if membership is None:
             raise NotFoundException("Teacher membership not found.")
 
-        for subject_id in payload.subject_ids:
-            subject = await SubjectRepository.get_subject_by_id(
-                db,
-                actor.tenant_id,
-                subject_id,
-            )
-            if subject is None or not subject.is_active:
-                raise NotFoundException(f"Subject {subject_id} was not found or is inactive.")
+        requested = set(payload.subject_ids)
+        subjects = await SubjectRepository.get_subjects_by_id(
+            db,
+            actor.tenant_id,
+            list(requested),
+        )
+        active_subject_ids = {
+            subject.id for subject in subjects if subject.is_active and subject.archived_at is None
+        }
+        unavailable = requested - active_subject_ids
+        if unavailable:
+            subject_id = sorted(unavailable, key=str)[0]
+            raise NotFoundException(f"Subject {subject_id} was not found or is inactive.")
 
         existing = {
             link.subject_id: link
@@ -620,10 +625,10 @@ class TeacherMembershipService:
                 membership.id,
             )
         }
-        requested = set(payload.subject_ids)
         for subject_id, link in existing.items():
             link.is_active = subject_id in requested
-            await TeacherMembershipSubjectRepository.save(db, link)
+            db.add(link)
+        await db.flush()
 
         missing = [subject_id for subject_id in requested if subject_id not in existing]
         if missing:
@@ -641,6 +646,12 @@ class TeacherInvitationService:
     """School invitation and teacher membership acceptance workflow."""
 
     INVITATION_DAYS = 7
+
+    @staticmethod
+    def _membership_is_usable(membership: TeacherMembership | None) -> bool:
+        """Match the acceptance contract: only inactive memberships are reusable."""
+
+        return membership is not None and membership.status != TeacherMembershipStatus.INACTIVE
 
     @staticmethod
     async def _recommended_action_for_email(
@@ -712,6 +723,23 @@ class TeacherInvitationService:
             email=str(payload.email),
             invited_actor_type=ActorType.TEACHER_ACCOUNT,
         )
+        account = await TeacherAccountRepository.get_by_email(
+            db,
+            normalized_email,
+            lock=True,
+        )
+        if account is not None:
+            existing_membership = await TeacherMembershipRepository.get_by_account_and_tenant(
+                db,
+                account.id,
+                actor.tenant_id,
+                lock=True,
+            )
+            if TeacherInvitationService._membership_is_usable(existing_membership):
+                raise ConflictException(
+                    "This teacher is already an active member of this school.",
+                    payload={"code": "TEACHER_ALREADY_ACTIVE_MEMBER"},
+                )
         pending = await TeacherInvitationRepository.get_pending_for_email(
             db,
             actor.tenant_id,
@@ -830,7 +858,7 @@ class TeacherInvitationService:
             membership.department = invitation.department or membership.department
             membership.employment_type = invitation.employment_type or membership.employment_type
             await TeacherMembershipRepository.save(db, membership)
-        else:
+        elif TeacherInvitationService._membership_is_usable(membership):
             raise ConflictException("This teacher already has a usable membership in the school.")
 
         invitation.status = TeacherInvitationStatus.ACCEPTED

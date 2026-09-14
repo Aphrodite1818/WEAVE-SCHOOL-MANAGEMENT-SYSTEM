@@ -59,18 +59,19 @@ class PaystackClient:
         email: str,
         amount_kobo: int,
         reference: str,
-        plan_code: str,
         callback_url: str,
         metadata: dict[str, Any],
+        plan_code: str | None = None,
     ) -> dict[str, Any]:
         payload = {
             "email": email,
             "amount": amount_kobo,
             "reference": reference,
-            "plan": self._normalize_plan_code(plan_code),
             "callback_url": callback_url,
             "metadata": metadata,
         }
+        if plan_code:
+            payload["plan"] = self._normalize_plan_code(plan_code)
 
         timeout = httpx.Timeout(20.0, connect=5.0)
         async with httpx.AsyncClient(timeout=timeout) as client:

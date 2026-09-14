@@ -2,8 +2,8 @@ import { api } from "./api";
 import { clearDashboardMetricsCache } from "./dashboard.service";
 
 const STUDENT_RESOURCE_TYPE = "students";
-const JOB_POLL_CACHE_MS = 1500;
-const ERROR_POLL_CACHE_MS = 15000;
+const JOB_RESPONSE_CACHE_MS = 1500;
+const ERROR_RESPONSE_CACHE_MS = 15000;
 const inFlightJobRequests = new Map();
 const inFlightErrorRequests = new Map();
 const jobResponseCache = new Map();
@@ -22,7 +22,7 @@ const withRequestDeduplication = ({ key, inFlight, cache, ttlMs, loader }) => {
       return value;
     })
     .finally(() => {
-      inFlight.delete(key);
+      if (inFlight.get(key) === promise) inFlight.delete(key);
     });
 
   inFlight.set(key, promise);
@@ -53,7 +53,8 @@ const invalidateImportRelatedCaches = () => {
 };
 
 export const bulkImportService = {
-  listTemplates: (requestOptions) => api.get("/tenant-admin/imports/templates", requestOptions),
+  listTemplates: (requestOptions) =>
+    api.get("/tenant-admin/imports/templates", requestOptions),
 
   downloadTemplate: (requestOptions = {}) =>
     downloadBlob(
@@ -75,25 +76,41 @@ export const bulkImportService = {
   },
 
   confirm: async (jobId, requestOptions = {}) => {
-    const result = await api.post(`/tenant-admin/imports/${jobId}/confirm`, undefined, requestOptions);
+    const result = await api.post(
+      `/tenant-admin/imports/${jobId}/confirm`,
+      undefined,
+      requestOptions,
+    );
     invalidateImportRelatedCaches();
     return result;
   },
 
   retry: async (jobId, requestOptions = {}) => {
-    const result = await api.post(`/tenant-admin/imports/${jobId}/retry`, undefined, requestOptions);
+    const result = await api.post(
+      `/tenant-admin/imports/${jobId}/retry`,
+      undefined,
+      requestOptions,
+    );
     invalidateImportRelatedCaches();
     return result;
   },
 
-  getJob: (jobId, requestOptions = {}) =>
-    withRequestDeduplication({
+  getJob: (jobId, requestOptions = {}) => {
+    const { force = false, ...apiOptions } = requestOptions;
+    if (force) {
+      jobResponseCache.delete(jobId);
+      errorResponseCache.delete(jobId);
+      inFlightJobRequests.delete(jobId);
+      inFlightErrorRequests.delete(jobId);
+    }
+    return withRequestDeduplication({
       key: jobId,
       inFlight: inFlightJobRequests,
       cache: jobResponseCache,
-      ttlMs: JOB_POLL_CACHE_MS,
-      loader: () => api.get(`/tenant-admin/imports/${jobId}`, requestOptions),
-    }),
+      ttlMs: JOB_RESPONSE_CACHE_MS,
+      loader: () => api.get(`/tenant-admin/imports/${jobId}`, apiOptions),
+    });
+  },
 
   listJobs: ({ skip = 0, limit = 20, status, signal } = {}) => {
     const params = new URLSearchParams({
@@ -105,32 +122,36 @@ export const bulkImportService = {
   },
 
   deleteJob: async (jobId, requestOptions = {}) => {
-    const result = await api.delete(`/tenant-admin/imports/${jobId}`, requestOptions);
+    const result = await api.delete(
+      `/tenant-admin/imports/${jobId}`,
+      requestOptions,
+    );
     invalidateImportRelatedCaches();
     return result;
   },
 
-  getErrors: (jobId, requestOptions = {}) =>
-    withRequestDeduplication({
+  getErrors: (jobId, requestOptions = {}) => {
+    const { force = false, ...apiOptions } = requestOptions;
+    if (force) {
+      errorResponseCache.delete(jobId);
+      inFlightErrorRequests.delete(jobId);
+    }
+    return withRequestDeduplication({
       key: jobId,
       inFlight: inFlightErrorRequests,
       cache: errorResponseCache,
-      ttlMs: ERROR_POLL_CACHE_MS,
-      loader: () => api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, requestOptions),
-    }),
+      ttlMs: ERROR_RESPONSE_CACHE_MS,
+      loader: () =>
+        api.get(`/tenant-admin/imports/${jobId}/errors?limit=100`, apiOptions),
+    });
+  },
 
   getSlipSummary: (jobId, requestOptions) =>
     api.get(`/tenant-admin/imports/${jobId}/slips/summary`, requestOptions),
 
   listSlips: (
     jobId,
-    {
-      search = "",
-      classKey = "",
-      page = 1,
-      pageSize = 50,
-      signal,
-    } = {},
+    { search = "", classKey = "", page = 1, pageSize = 50, signal } = {},
   ) => {
     const params = new URLSearchParams({
       page: String(page),
@@ -138,14 +159,24 @@ export const bulkImportService = {
     });
     if (search) params.set("search", search);
     if (classKey) params.set("class_key", classKey);
-    return api.get(`/tenant-admin/imports/${jobId}/slips?${params.toString()}`, { signal });
+    return api.get(
+      `/tenant-admin/imports/${jobId}/slips?${params.toString()}`,
+      { signal },
+    );
   },
 
   getSlip: (jobId, rowNumber, requestOptions) =>
-    api.get(`/tenant-admin/imports/${jobId}/slips/${rowNumber}`, requestOptions),
+    api.get(
+      `/tenant-admin/imports/${jobId}/slips/${rowNumber}`,
+      requestOptions,
+    ),
 
   getSlipPrintData: (jobId, payload, requestOptions) =>
-    api.post(`/tenant-admin/imports/${jobId}/slips/print`, payload, requestOptions),
+    api.post(
+      `/tenant-admin/imports/${jobId}/slips/print`,
+      payload,
+      requestOptions,
+    ),
 
   downloadResult: (jobId, { format = "spreadsheet", signal } = {}) => {
     if (format === "slip") {

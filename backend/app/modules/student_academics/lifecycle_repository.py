@@ -4,15 +4,19 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.student_academics.academic_lock import acquire_academic_lifecycle_lock
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicSessionStatus,
     StudentProgressionItem,
+    StudentProgressionItemAction,
+    StudentProgressionItemStatus,
     StudentProgressionRun,
 )
+from app.modules.students.models import StudentEnrollment
 
 
 class AcademicSessionLifecycleRepository:
@@ -24,6 +28,8 @@ class AcademicSessionLifecycleRepository:
         *,
         lock: bool = False,
     ) -> AcademicSession | None:
+        if lock:
+            await acquire_academic_lifecycle_lock(db, tenant_id=tenant_id)
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.id == session_id,
@@ -40,10 +46,12 @@ class AcademicSessionLifecycleRepository:
         *,
         lock: bool = False,
     ) -> AcademicSession | None:
+        if lock:
+            await acquire_academic_lifecycle_lock(db, tenant_id=tenant_id)
         query = select(AcademicSession).where(
             AcademicSession.tenant_id == tenant_id,
             AcademicSession.is_current.is_(True),
-            AcademicSession.status == AcademicSessionStatus.OPEN,
+            AcademicSession.status.in_({AcademicSessionStatus.OPEN, AcademicSessionStatus.CLOSING}),
         )
         if lock:
             query = query.with_for_update()
@@ -72,7 +80,52 @@ class AcademicSessionLifecycleRepository:
 class StudentProgressionRunRepository:
     @staticmethod
     async def add(db: AsyncSession, run: StudentProgressionRun) -> StudentProgressionRun:
+        """Create a progression run and freeze its exact enrollment population.
+
+        The manifest is committed with the run before the worker is queued. Retries
+        therefore operate on the same students even if live enrollment state changes
+        while the session is closing.
+        """
+
         db.add(run)
+        await db.flush()
+
+        result = await db.execute(
+            select(StudentEnrollment)
+            .where(
+                StudentEnrollment.tenant_id == run.tenant_id,
+                StudentEnrollment.academic_session_id == run.academic_session_id,
+                StudentEnrollment.is_current.is_(True),
+            )
+            .order_by(StudentEnrollment.student_id.asc())
+            .with_for_update()
+        )
+        enrollments = list(result.scalars().all())
+
+        run.total_students = len(enrollments)
+        run.pending_students = len(enrollments)
+        db.add(run)
+
+        if enrollments:
+            db.add_all(
+                [
+                    StudentProgressionItem(
+                        tenant_id=run.tenant_id,
+                        progression_run_id=run.id,
+                        student_id=enrollment.student_id,
+                        from_enrollment_id=enrollment.id,
+                        from_level_id=enrollment.academic_level_id,
+                        from_class_id=enrollment.class_id,
+                        action=StudentProgressionItemAction.PROGRESS,
+                        # BLOCKED is the existing retryable item state. A null
+                        # processed_at marks this row as an unattempted manifest item.
+                        status=StudentProgressionItemStatus.BLOCKED,
+                        reason="Pending session progression.",
+                        processed_at=None,
+                    )
+                    for enrollment in enrollments
+                ]
+            )
         await db.flush()
         return run
 
@@ -159,6 +212,32 @@ class StudentProgressionRunRepository:
 class StudentProgressionItemRepository:
     @staticmethod
     async def add(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
+        """Create or update the one logical progression item for a student/run."""
+        existing = await StudentProgressionItemRepository.get_by_run_and_student(
+            db,
+            item.progression_run_id,
+            item.student_id,
+            lock=True,
+        )
+        if existing is not None:
+            for field in (
+                "tenant_id",
+                "from_enrollment_id",
+                "to_enrollment_id",
+                "from_level_id",
+                "to_level_id",
+                "from_class_id",
+                "to_class_id",
+                "action",
+                "status",
+                "reason",
+                "processed_at",
+            ):
+                setattr(existing, field, getattr(item, field))
+            db.add(existing)
+            await db.flush()
+            return existing
+
         db.add(item)
         await db.flush()
         return item
@@ -208,6 +287,90 @@ class StudentProgressionItemRepository:
         return list(result.scalars().all())
 
     @staticmethod
+    async def reconcile_legacy_manifest(
+        db: AsyncSession,
+        run: StudentProgressionRun,
+    ) -> list[StudentProgressionItem]:
+        """Safely repair an older run that stored only a population count.
+
+        Older closure runs can have fewer progression items than ``total_students``
+        because their worker rediscovered only live current enrollments. We recover
+        a missing item only when the enrollment can be reconstructed unambiguously
+        as effective on the calendar date when the run was created. If the exact
+        number of candidates cannot be proven, nothing is guessed or mutated.
+        """
+
+        items = await StudentProgressionItemRepository.list_for_run(db, run.tenant_id, run.id)
+        missing_count = max(run.total_students - len(items), 0)
+        if missing_count == 0 or run.created_at is None:
+            return items
+
+        existing_student_ids = {item.student_id for item in items}
+        run_date = run.created_at.date()
+        query = select(StudentEnrollment).where(
+            StudentEnrollment.tenant_id == run.tenant_id,
+            StudentEnrollment.academic_session_id == run.academic_session_id,
+            StudentEnrollment.created_at <= run.created_at,
+            StudentEnrollment.started_on <= run_date,
+            or_(
+                StudentEnrollment.ended_on.is_(None),
+                StudentEnrollment.ended_on >= run_date,
+            ),
+        )
+        if existing_student_ids:
+            query = query.where(StudentEnrollment.student_id.not_in(existing_student_ids))
+        candidates = list(
+            (await db.execute(query.order_by(StudentEnrollment.student_id.asc()).with_for_update()))
+            .scalars()
+            .all()
+        )
+
+        candidate_student_ids = {enrollment.student_id for enrollment in candidates}
+        if len(candidates) != missing_count or len(candidate_student_ids) != missing_count:
+            return items
+
+        await StudentProgressionItemRepository.add_many(
+            db,
+            [
+                StudentProgressionItem(
+                    tenant_id=run.tenant_id,
+                    progression_run_id=run.id,
+                    student_id=enrollment.student_id,
+                    from_enrollment_id=enrollment.id,
+                    from_level_id=enrollment.academic_level_id,
+                    from_class_id=enrollment.class_id,
+                    action=StudentProgressionItemAction.PROGRESS,
+                    status=StudentProgressionItemStatus.BLOCKED,
+                    reason="Recovered pending student from the frozen closure population.",
+                    processed_at=None,
+                )
+                for enrollment in candidates
+            ],
+        )
+        return await StudentProgressionItemRepository.list_for_run(db, run.tenant_id, run.id)
+
+    @staticmethod
+    async def get_latest_for_student(
+        db: AsyncSession,
+        tenant_id: UUID,
+        student_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> StudentProgressionItem | None:
+        query = (
+            select(StudentProgressionItem)
+            .where(
+                StudentProgressionItem.tenant_id == tenant_id,
+                StudentProgressionItem.student_id == student_id,
+            )
+            .order_by(StudentProgressionItem.created_at.desc())
+            .limit(1)
+        )
+        if lock:
+            query = query.with_for_update()
+        return (await db.execute(query)).scalar_one_or_none()
+
+    @staticmethod
     async def save(db: AsyncSession, item: StudentProgressionItem) -> StudentProgressionItem:
         db.add(item)
         await db.flush()
@@ -230,6 +393,8 @@ class StudentProgressionRepository:
 
     add_item = StudentProgressionItemRepository.add
     add_items = StudentProgressionItemRepository.add_many
+    reconcile_legacy_manifest = StudentProgressionItemRepository.reconcile_legacy_manifest
     get_item_by_run_and_student = StudentProgressionItemRepository.get_by_run_and_student
+    get_latest_item_for_student = StudentProgressionItemRepository.get_latest_for_student
     list_items_for_run = StudentProgressionItemRepository.list_for_run
     save_item = StudentProgressionItemRepository.save

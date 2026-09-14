@@ -1,4 +1,5 @@
 import { api, authSession } from "./api";
+import { buildChangedPatch, hasPatchChanges } from "./patchPayload";
 
 const ROLE_CONFIG = {
   admin: {
@@ -44,17 +45,51 @@ const ID_FIELD_BY_ROLE = {
   student: "student_id",
 };
 
+const onboardingStatusByRole = new Map();
+
 export const normalizeRole = (role) => {
-  const normalizedRole = String(role || "").trim().toLowerCase();
+  const normalizedRole = String(role || "")
+    .trim()
+    .toLowerCase();
   return ACTOR_ROLE_MAP[normalizedRole] || normalizedRole;
 };
 
 export const roleFromActorType = (actorType) =>
-  ACTOR_ROLE_MAP[String(actorType || "").trim().toLowerCase()] || null;
+  ACTOR_ROLE_MAP[
+    String(actorType || "")
+      .trim()
+      .toLowerCase()
+  ] || null;
 
 const getRoleConfig = (role) => ROLE_CONFIG[normalizeRole(role)] || null;
 
-const buildSessionUserFromStatus = (role, status, currentUser = authSession.getUser()) => {
+const rememberOnboardingStatus = (role, status) => {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole && status) {
+    onboardingStatusByRole.set(normalizedRole, status);
+  }
+  return status;
+};
+
+const mergeSubmittedChanges = (role, changes) => {
+  const normalizedRole = normalizeRole(role);
+  const current = onboardingStatusByRole.get(normalizedRole);
+  if (!current) return;
+
+  onboardingStatusByRole.set(normalizedRole, {
+    ...current,
+    current_values: {
+      ...(current.current_values || {}),
+      ...changes,
+    },
+  });
+};
+
+const buildSessionUserFromStatus = (
+  role,
+  status,
+  currentUser = authSession.getUser(),
+) => {
   const normalizedRole = normalizeRole(role);
   const roleConfig = getRoleConfig(normalizedRole);
 
@@ -76,8 +111,12 @@ const buildSessionUserFromStatus = (role, status, currentUser = authSession.getU
     nextUser.tenant = {
       ...(nextUser.tenant || {}),
       id: status.tenant_id,
-      school_name: status.current_values?.school_name || nextUser.tenant?.school_name,
+      school_name:
+        status.current_values?.school_name || nextUser.tenant?.school_name,
       email: status.current_values?.email || nextUser.tenant?.email,
+      institution_type:
+        status.current_values?.institution_type ||
+        nextUser.tenant?.institution_type,
       onboarding_completed: status.onboarding_completed,
     };
     nextUser.email = status.current_values?.email || nextUser.email;
@@ -85,12 +124,14 @@ const buildSessionUserFromStatus = (role, status, currentUser = authSession.getU
   } else if (normalizedRole === "student") {
     nextUser.admission_number =
       status.current_values?.admission_number || nextUser.admission_number;
-    nextUser.first_name = status.current_values?.first_name || nextUser.first_name;
+    nextUser.first_name =
+      status.current_values?.first_name || nextUser.first_name;
     nextUser.last_name = status.current_values?.last_name || nextUser.last_name;
     nextUser.profile_status = status.profile_status;
   } else {
     nextUser.email = status.current_values?.email || nextUser.email;
-    nextUser.first_name = status.current_values?.first_name || nextUser.first_name;
+    nextUser.first_name =
+      status.current_values?.first_name || nextUser.first_name;
     nextUser.last_name = status.current_values?.last_name || nextUser.last_name;
     nextUser.profile_completed = status.profile_completed;
     nextUser.onboarding_required = !status.profile_completed;
@@ -123,21 +164,39 @@ export const onboardingService = {
     if (!roleConfig) return null;
 
     const status = await api.get(roleConfig.statusEndpoint);
+    rememberOnboardingStatus(role, status);
     buildSessionUserFromStatus(role, status);
     return status;
   },
 
   async submitOnboarding(role = this.getCurrentRole(), payload) {
-    const roleConfig = getRoleConfig(role);
+    const normalizedRole = normalizeRole(role);
+    const roleConfig = getRoleConfig(normalizedRole);
     if (!roleConfig) {
       throw new Error("Unsupported onboarding role.");
     }
 
     const submit = api[roleConfig.submitMethod] || api.patch;
-    return submit(roleConfig.submitEndpoint, payload);
+
+    // Only PATCH contracts are sparse. POST onboarding routes are completion
+    // commands and still require their complete role-specific payload.
+    if (roleConfig.submitMethod !== "patch") {
+      return submit(roleConfig.submitEndpoint, payload);
+    }
+
+    const baseline = onboardingStatusByRole.get(normalizedRole)?.current_values;
+    const changes = buildChangedPatch(baseline, payload);
+    if (!hasPatchChanges(changes)) {
+      return onboardingStatusByRole.get(normalizedRole) || null;
+    }
+
+    const response = await submit(roleConfig.submitEndpoint, changes);
+    mergeSubmittedChanges(normalizedRole, changes);
+    return response;
   },
 
   updateSessionUserFromStatus(role, status) {
+    rememberOnboardingStatus(role, status);
     return buildSessionUserFromStatus(role, status);
   },
 };

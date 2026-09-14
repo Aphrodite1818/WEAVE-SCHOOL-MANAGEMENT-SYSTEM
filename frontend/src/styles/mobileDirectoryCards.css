@@ -1,5 +1,165 @@
-/* Mobile and installed-PWA directory cards: full-width cards in a bounded, scrollable list. */
+/* Mobile and installed-PWA directories: compact summaries and natural page-flow rows. */
 @media (max-width: 639px) {
+  .people-directory-summary {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100%;
+    gap: 0.625rem !important;
+    overflow: visible;
+  }
+
+  .people-directory-summary > * {
+    min-height: 5.25rem;
+    padding: 0.75rem !important;
+    border-radius: 0.7rem !important;
+    box-shadow: none !important;
+  }
+
+  .people-directory-summary > * > div {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.65rem !important;
+  }
+
+  .people-directory-summary > * > div > span {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .people-directory-summary > * > div > span svg {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  .people-directory-summary .people-summary-label {
+    font-size: 0.68rem;
+    line-height: 0.9rem;
+  }
+
+  .people-directory-summary .people-summary-value {
+    margin-top: 0.2rem;
+    font-size: 1.1rem;
+  }
+
+  .people-directory-summary .people-summary-detail {
+    display: none;
+  }
+
+  .people-mobile-list.mobile-scroll-list {
+    display: block !important;
+    width: 100%;
+    max-width: 100%;
+    max-height: none !important;
+    margin-inline: 0;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border-radius: 1.1rem;
+    scrollbar-gutter: auto;
+  }
+
+  .people-mobile-row + .people-mobile-row {
+    border-top: 1px solid rgb(var(--color-border) / 0.68);
+  }
+
+  .people-mobile-row::before {
+    content: "";
+    position: absolute;
+    inset-block: 0.85rem;
+    inset-inline-start: 0;
+    width: 0.18rem;
+    border-radius: 0 999px 999px 0;
+    background: rgb(var(--color-primary) / 0.62);
+    opacity: 0;
+    transition: opacity 180ms ease, background-color 180ms ease;
+  }
+
+  .people-mobile-row.is-expanded {
+    background: rgb(var(--color-primary) / 0.055);
+  }
+
+  .people-mobile-row.is-expanded::before {
+    opacity: 1;
+  }
+
+  .people-mobile-row[data-tone="success"]::before {
+    background: rgb(var(--color-success));
+  }
+
+  .people-mobile-row[data-tone="warning"]::before {
+    background: rgb(var(--color-warning));
+  }
+
+  .people-mobile-row[data-tone="error"]::before {
+    background: rgb(var(--color-error));
+  }
+
+  .people-person-identity > span:first-child {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 999px;
+  }
+
+  .people-person-identity p:first-child {
+    font-size: 0.9rem;
+    line-height: 1.25rem;
+  }
+
+  .people-mobile-row-details > div > :first-child {
+    margin-top: 0.8rem;
+  }
+
+  .people-mobile-row-details dl {
+    border: 1px solid rgb(var(--color-border) / 0.6);
+    background: rgb(var(--color-surface-muted) / 0.34);
+  }
+
+  .people-mobile-row-details .btn-base {
+    min-height: 2.75rem;
+  }
+
+  .people-filter-panel {
+    border-radius: 1rem !important;
+    box-shadow: none !important;
+  }
+
+  .people-directory-toolbar {
+    border-radius: 0.8rem !important;
+    box-shadow: none !important;
+  }
+
+  .people-directory-tabs {
+    display: grid !important;
+    width: 100%;
+    gap: 0.2rem !important;
+    overflow: visible !important;
+    border-radius: 0.65rem !important;
+  }
+
+  .people-directory-tabs > button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 0.45rem !important;
+    border-radius: 0.55rem !important;
+    white-space: normal !important;
+    line-height: 1rem;
+  }
+
+  .people-filter-panel .people-filter-search label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .mobile-filter-sheet [data-modal-scroll-container="true"] {
+    padding-block: 1rem;
+  }
+
   .directory-card-grid.mobile-scroll-list {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
@@ -8,23 +168,21 @@
     align-content: start;
     width: 100% !important;
     max-width: 100% !important;
-    max-height: min(64dvh, 42rem);
+    max-height: none;
     margin-inline: 0 !important;
-    padding: 0 0.25rem 0.5rem 0 !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior-y: contain;
-    scroll-snap-type: y proximity !important;
-    scrollbar-gutter: stable;
-    -webkit-overflow-scrolling: touch;
+    padding: 0 !important;
+    overflow-x: clip !important;
+    overflow-y: visible !important;
+    overscroll-behavior-y: auto;
+    scroll-snap-type: none !important;
+    scrollbar-gutter: auto;
   }
 
   .directory-card-grid.mobile-scroll-list > * {
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
-    scroll-snap-align: start !important;
-    scroll-snap-stop: normal;
+    scroll-snap-align: none !important;
   }
 
   .directory-card-grid .card-base {
@@ -43,12 +201,6 @@
   .directory-card-grid .card-base h3,
   .directory-card-grid .card-base span {
     overflow-wrap: anywhere;
-  }
-
-  .directory-card-grid.mobile-scroll-list {
-    max-height: calc(100dvh - 18rem - env(safe-area-inset-bottom, 0px));
-    min-height: 14rem;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   /* Visual treatment only. PWA dock geometry lives in pwaInteractions.css. */

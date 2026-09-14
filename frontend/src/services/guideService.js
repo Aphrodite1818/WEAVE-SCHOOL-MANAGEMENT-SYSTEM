@@ -22,6 +22,8 @@ const storageKey = (guideKey) => {
     user.account_id ||
     user.teacher_account_id ||
     user.parent_account_id ||
+    user.meta?.teacher_account_id ||
+    user.meta?.parent_account_id ||
     user.actor_id ||
     user.id ||
     user.email ||
@@ -29,10 +31,7 @@ const storageKey = (guideKey) => {
     "anonymous";
   const tenant = accountScoped
     ? "global"
-    : user.tenant_id ||
-      user.tenant?.id ||
-      user.membership_id ||
-      "global";
+    : user.tenant_id || user.tenant?.id || user.membership_id || "global";
   return `weave:guide:${tenant}:${actor}:${guideKey}`;
 };
 
@@ -74,9 +73,7 @@ const normalizeState = (guideKey, value, { syncPending = false } = {}) => ({
   ...emptyState(guideKey),
   ...(value || {}),
   guide_key: guideKey,
-  skipped_steps: Array.isArray(value?.skipped_steps)
-    ? value.skipped_steps
-    : [],
+  skipped_steps: Array.isArray(value?.skipped_steps) ? value.skipped_steps : [],
   sync_pending: syncPending || Boolean(value?.sync_pending),
 });
 
@@ -129,7 +126,10 @@ const ensureTerminalConfirmation = (requestedStatus, state) => {
 const shouldPreserveLocalState = (localState, serverState) => {
   if (localState?.sync_pending) return true;
   if (isTerminal(localState) && !isTerminal(serverState)) return true;
-  if (localState?.status === "completed" && serverState?.status === "dismissed") {
+  if (
+    localState?.status === "completed" &&
+    serverState?.status === "dismissed"
+  ) {
     return true;
   }
   return false;
@@ -137,7 +137,8 @@ const shouldPreserveLocalState = (localState, serverState) => {
 
 const confirmPendingState = async (guideKey, localState, pending) => {
   const payload =
-    pending?.payload || (isTerminal(localState) ? terminalPayload(localState) : null);
+    pending?.payload ||
+    (isTerminal(localState) ? terminalPayload(localState) : null);
   if (!payload) return null;
 
   const response = await api.patch(`/guides/${guideKey}`, payload, {

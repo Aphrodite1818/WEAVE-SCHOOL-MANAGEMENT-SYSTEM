@@ -9,18 +9,11 @@ from uuid import UUID
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 
-from app.core.cache.events import (
-    CACHE_INVALIDATION_EVENTS,
-    CacheInvalidationEvent,
-)
+from app.core.cache.events import CACHE_INVALIDATION_EVENTS, CacheInvalidationEvent
 from app.core.cache.base import build_cache_key, tenant_prefix
 from app.modules.communications.enums import CommunicationActorType
-from app.modules.communications.models import (
-    Announcement,
-    AnnouncementAudience,
-    NotificationDelivery,
-)
-from app.modules.classes.models import ClassRoom
+from app.modules.communications.models import Notice, NoticeAudience, NotificationDelivery
+from app.modules.classes.models import AcademicLevel, ClassRoom
 from app.modules.metrics.cache import (
     parent_dashboard_cache_key,
     student_dashboard_cache_key,
@@ -33,11 +26,10 @@ from app.modules.report_cards.models import ReportCard
 from app.modules.student_academics.models import (
     AcademicSession,
     AcademicTerm,
-    ClassSubject,
-    ClassSubjectTeacher,
     StudentSubjectResult,
     TeacherAssignment,
 )
+from app.modules.student_academics.curriculum_models import CurriculumSubject
 from app.modules.students.models import Student, StudentEnrollment, StudentParentLink
 from app.modules.subjects.models import Subject
 from app.modules.subscriptions.models import TenantSubscription
@@ -51,12 +43,12 @@ from app.tenant_management.models import Tenant
 TENANT_ADMIN_METRIC_MODELS = (
     AcademicSession,
     AcademicTerm,
-    Announcement,
-    AnnouncementAudience,
+    Notice,
+    NoticeAudience,
     NotificationDelivery,
     ClassRoom,
-    ClassSubject,
-    ClassSubjectTeacher,
+    AcademicLevel,
+    CurriculumSubject,
     ParentAccount,
     ParentMembership,
     ReportCard,
@@ -176,7 +168,7 @@ def _queue_metric_invalidations_for_object(session: Session, obj: object) -> Non
     if isinstance(obj, TeacherMembership):
         _queue_teacher_dashboard(session, tenant_id, _coerce_uuid(obj.id))
 
-    if isinstance(obj, (TeacherAssignment, ClassSubjectTeacher)):
+    if isinstance(obj, TeacherAssignment):
         _queue_teacher_dashboard(
             session,
             tenant_id,

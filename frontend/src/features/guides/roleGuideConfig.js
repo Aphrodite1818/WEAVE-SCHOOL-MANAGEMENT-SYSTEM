@@ -4,94 +4,46 @@ import {
   CalendarDays,
   ClipboardCheck,
   FileText,
-  GraduationCap,
-  ImageIcon,
-  Route,
   School,
   Users,
 } from "lucide-react";
 
 export const ROLE_GUIDES = {
   admin: {
-    key: "tenant_admin_academic_setup",
+    key: "tenant_admin_academic_setup_v3",
     route: "/admin/getting-started",
     dashboardRoute: "/admin/dashboard",
-    eyebrow: "Academic setup",
-    title: "Set up your school workspace",
+    eyebrow: "School year setup",
+    title: "Set up your school year",
     description:
-      "Follow the backend-safe setup order. Every stage is verified against your live school data before the next lifecycle transition.",
+      "Prepare the session, first term, and calendar in the lifecycle order Weave requires.",
     steps: [
-      {
-        id: "school_logo",
-        shortLabel: "Logo",
-        label: "Upload the school logo",
-        description:
-          "Add the logo that appears in the school workspace, printable records, invitations, and report cards.",
-        icon: ImageIcon,
-      },
       {
         id: "session",
         shortLabel: "Session",
-        label: "Create an academic session",
-        description:
-          "Define the dated academic year that the term and school calendar will belong to.",
+        label: "Create your school year",
+        description: "Give your academic session a name and set its start and end dates. It stays draft until your first term exists.",
+        actionLabel: "Set up session",
+        to: "/admin/academic/sessions",
         icon: CalendarDays,
       },
       {
         id: "term",
         shortLabel: "Term",
-        label: "Create a term in the session",
-        description:
-          "Create the first draft term and keep its dates inside the academic session date range.",
+        label: "Add your first term and open the session",
+        description: "Create the first term inside the session. Then Weave will help you open the session before calendar activation.",
+        actionLabel: "Set up term",
+        to: "/admin/academic/terms",
         icon: CalendarCheck2,
       },
       {
         id: "calendar",
         shortLabel: "Calendar",
-        label: "Configure and generate the calendar",
-        description:
-          "Save the school calendar defaults and generate complete operational days for the draft term.",
+        label: "Prepare your term calendar",
+        description: "Configure the school week, generate the first-term calendar, resolve any lifecycle blockers, and activate it while the term is still draft.",
+        actionLabel: "Set up calendar",
+        to: "/admin/academic/school-calendar",
         icon: CalendarDays,
-      },
-      {
-        id: "structure",
-        shortLabel: "Structure",
-        label: "Create classes and subjects",
-        description:
-          "Create at least one active class and one active subject before launching normal academic work.",
-        icon: School,
-      },
-      {
-        id: "progression",
-        shortLabel: "Progression",
-        label: "Configure class progression",
-        description:
-          "Choose the next class for every non-terminal class and mark final classes as terminal.",
-        icon: Route,
-      },
-      {
-        id: "session_open",
-        shortLabel: "Open session",
-        label: "Open the academic session",
-        description:
-          "The backend requires a dated draft session, at least one term, and saved calendar configuration before the session can become current.",
-        icon: GraduationCap,
-      },
-      {
-        id: "calendar_active",
-        shortLabel: "Activate calendar",
-        label: "Activate the school calendar",
-        description:
-          "Calendar activation happens only after the session is open and while the selected term is still draft.",
-        icon: CalendarCheck2,
-      },
-      {
-        id: "term_open",
-        shortLabel: "Open term",
-        label: "Open the academic term",
-        description:
-          "Open the term last. The backend requires both the current open session and an active, complete calendar.",
-        icon: GraduationCap,
       },
     ],
   },
@@ -102,27 +54,27 @@ export const ROLE_GUIDES = {
     eyebrow: "Teacher workspace",
     title: "Learn your teaching workspace",
     description:
-      "A short, practical introduction to the areas you will use during normal school operations.",
+      "A short, practical introduction to the areas currently available during normal school operations.",
     steps: [
       {
         id: "classes",
         shortLabel: "Classes",
         label: "Review your assigned classes",
         description:
-          "Confirm your class and subject assignments before entering attendance or scores.",
+          "Confirm your class and subject assignments before entering scores or reviewing academic work.",
         actionLabel: "Open my classes",
         to: "/teacher/classes",
         icon: School,
       },
       {
-        id: "results",
-        shortLabel: "Results",
-        label: "Understand score entry",
+        id: "comments",
+        shortLabel: "Comments",
+        label: "Complete class-teacher comments",
         description:
-          "Choose an assignment, search students by name or admission number, save drafts, and submit complete results.",
-        actionLabel: "Open score entry",
-        to: "/teacher/score-entry",
-        icon: ClipboardCheck,
+          "If you are the explicit class teacher, review finalized academic performance, save drafts, and submit term comments when results are ready.",
+        actionLabel: "Open student comments",
+        to: "/teacher/student-comments",
+        icon: FileText,
       },
       {
         id: "attendance",
@@ -133,6 +85,7 @@ export const ROLE_GUIDES = {
         actionLabel: "Open attendance",
         to: "/teacher/attendance",
         icon: Users,
+        runtimeFeature: "attendance",
       },
       {
         id: "calendar",
@@ -153,7 +106,7 @@ export const ROLE_GUIDES = {
     eyebrow: "Parent workspace",
     title: "Follow your child’s school progress",
     description:
-      "Learn where to find linked children, attendance, report cards, and school dates.",
+      "Learn where to find linked children, published reports, and school dates in the workspace available to you.",
     steps: [
       {
         id: "children",
@@ -174,6 +127,7 @@ export const ROLE_GUIDES = {
         actionLabel: "View attendance",
         to: "/parent/attendance",
         icon: ClipboardCheck,
+        runtimeFeature: "attendance",
       },
       {
         id: "reports",
@@ -204,7 +158,7 @@ export const ROLE_GUIDES = {
     eyebrow: "Student workspace",
     title: "Find your academic information quickly",
     description:
-      "A short introduction to subjects, attendance, report cards, and school dates.",
+      "A short introduction to the academic information and school dates currently available to you.",
     steps: [
       {
         id: "subjects",
@@ -225,6 +179,7 @@ export const ROLE_GUIDES = {
         actionLabel: "View attendance",
         to: "/student/attendance",
         icon: ClipboardCheck,
+        runtimeFeature: "attendance",
       },
       {
         id: "reports",

@@ -14,6 +14,27 @@
   min-width: 0;
 }
 
+#dashboard-content .dashboard-welcome-panel,
+#dashboard-content .dashboard-focus-card,
+#dashboard-content .dashboard-list-card,
+#dashboard-content .dashboard-quick-actions {
+  transition:
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+@media (max-width: 767px) {
+  #dashboard-content .dashboard-welcome-panel,
+  #dashboard-content .dashboard-focus-card,
+  #dashboard-content .dashboard-list-card,
+  #dashboard-content .dashboard-quick-actions,
+  #dashboard-content .dashboard-attention-item,
+  #dashboard-content .dashboard-quick-action-grid > * {
+    transition-duration: 120ms;
+  }
+}
+
 #dashboard-content p,
 #dashboard-content h1,
 #dashboard-content h2,
@@ -66,15 +87,11 @@
 }
 
 #dashboard-content .mobile-list-pagination {
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
+  position: static;
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid rgb(var(--color-border) / 0.7);
-  background: rgb(var(--color-background) / 0.94);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  background: transparent;
 }
 
 .dashboard-topbar {
@@ -98,6 +115,13 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
 }
 
 .manual-refresh-action {
@@ -203,7 +227,74 @@
     display: none !important;
   }
 
-  .page-header-actions:has(.manual-refresh-action) {
+  * {
+    scroll-behavior: auto !important;
+  }
+
+  #dashboard-content {
+    gap: 0.875rem;
+    padding-left: clamp(0.7rem, 3.2vw, 1rem);
+    padding-right: clamp(0.7rem, 3.2vw, 1rem);
+    padding-top: 0.75rem;
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  #dashboard-content .dashboard-welcome-panel,
+  #dashboard-content .card-base,
+  #dashboard-content .surface-panel,
+  #dashboard-content .subtle-panel,
+  #dashboard-content .dashboard-chart-card,
+  #dashboard-content .dashboard-attention-item,
+  #dashboard-content .dashboard-quick-action-grid > * {
+    border-color: rgb(var(--color-border) / 0.8);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  #dashboard-content .dashboard-welcome-panel {
+    border-radius: 1.2rem !important;
+    padding: 0.875rem !important;
+  }
+
+  #dashboard-content .dashboard-welcome-panel h2 {
+    font-size: clamp(1.15rem, 5vw, 1.55rem);
+    line-height: 1.2;
+  }
+
+  #dashboard-content .dashboard-welcome-panel p,
+  #dashboard-content .dashboard-welcome-panel .dashboard-welcome-chip {
+    font-size: 0.77rem;
+  }
+
+  #dashboard-content .dashboard-kpi-grid > * {
+    border-radius: 1rem;
+    min-height: 0;
+  }
+
+  #dashboard-content .dashboard-kpi-grid > * .text-sm,
+  #dashboard-content .dashboard-kpi-grid > * [class*="text-"],
+  #dashboard-content .dashboard-kpi-grid > * .text-xs {
+    line-height: 1.35;
+  }
+
+  #dashboard-content .dashboard-chart-card {
+    padding: 0.875rem;
+  }
+
+  #dashboard-content .dashboard-attention-item {
+    min-height: 0;
+    padding: 0.8rem 0.8rem 0.9rem;
+  }
+
+  #dashboard-content .dashboard-quick-action-grid > * {
+    min-height: 5.2rem;
+  }
+
+  #dashboard-content .dashboard-quick-action-grid > * p {
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+
+  .page-header-actions:has(> .manual-refresh-action:only-child) {
     display: none !important;
   }
 
@@ -218,6 +309,49 @@
   button,
   a {
     touch-action: manipulation;
+  }
+
+  #dashboard-content .btn-base {
+    min-height: 2.75rem;
+  }
+
+  #dashboard-content .page-header {
+    flex-flow: row wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #dashboard-content .page-header-actions {
+    width: auto;
+    max-width: 100%;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
+  #dashboard-content .page-header-actions > *,
+  #dashboard-content .page-header-actions .btn-base {
+    width: auto;
+  }
+
+  #dashboard-content .page-header-actions .btn-base,
+  #dashboard-content .dashboard-section-action .btn-base {
+    white-space: normal;
+  }
+
+  #dashboard-content .admin-dashboard-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  #dashboard-content .admin-dashboard-header > .min-w-0 {
+    order: 2;
+  }
+
+  #dashboard-content .admin-dashboard-header .page-header-actions {
+    order: 1;
+    justify-self: end;
+    margin-left: 0;
   }
 
   .dashboard-topbar {
@@ -249,26 +383,128 @@
   }
 }
 
-@media (max-width: 640px) {
-  #dashboard-content {
+@media (max-width: 639px) {
+  #dashboard-content .dashboard-attention-list {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0.75rem;
+  }
+
+  #dashboard-content .dashboard-attention-item {
+    min-height: 0;
+    border-radius: 0.875rem;
+  }
+
+  #dashboard-content .dashboard-attention-item p {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+
+  #dashboard-content .dashboard-quick-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.75rem;
+  }
+
+  #dashboard-content .dashboard-welcome-chip {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    border-radius: 0.75rem;
+    line-height: 1.5;
+  }
+
+  #dashboard-content .dashboard-welcome-chip > span {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  #dashboard-content .dashboard-welcome-blue {
+    color: rgb(var(--color-on-primary));
+  }
+
+  :root[data-theme="dark"] #dashboard-content .dashboard-welcome-blue {
+    color: rgb(var(--color-text));
+  }
+
+  #dashboard-content
+    .dashboard-welcome-blue
+    :is(h2, p, .dashboard-welcome-chip) {
+    color: inherit;
+  }
+
+  #dashboard-content .dashboard-welcome-blue .dashboard-welcome-chip {
+    background: transparent;
+    border-color: currentColor;
+  }
+
+  /* The visual viewport owns dialog height; reserve the browser home indicator. */
+  html:not([data-standalone-pwa="true"]) [data-modal-panel="true"] {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  [data-modal-panel="true"] .btn-base {
+    min-height: 2.75rem;
+    white-space: normal;
+  }
+
+  [data-modal-footer="true"] > .flex {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  [data-modal-footer="true"] > .flex > .btn-base {
+    flex: 1 1 0;
+    min-width: 0;
     padding-left: 0.75rem;
     padding-right: 0.75rem;
-    padding-top: 0.75rem;
+  }
+
+  #dashboard-content .dashboard-section-action,
+  #dashboard-content .dashboard-section-action > *,
+  #dashboard-content .dashboard-section-action .btn-base {
+    width: 100%;
+  }
+
+  #dashboard-content .dashboard-section-action .btn-base,
+  #dashboard-content .page-header-actions .btn-base {
+    min-height: 2.8rem;
+    padding-block: 0.7rem;
+  }
+
+  #dashboard-content .mobile-list-pagination {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+  }
+
+  #dashboard-content .mobile-list-pagination > :last-child {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  #dashboard-content {
+    gap: 1rem;
+    padding-left: clamp(0.75rem, 3.5vw, 1rem);
+    padding-right: clamp(0.75rem, 3.5vw, 1rem);
+    padding-top: 1rem;
     padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)) !important;
   }
 
-  #dashboard-content > div {
-    gap: 0.9rem;
-  }
-
-  #dashboard-content > div > div:first-child {
-    border-radius: 1.65rem;
-    padding: 0.9rem;
+  #dashboard-content .page-header {
+    gap: 0.625rem;
+    padding-inline: 0.125rem;
   }
 
   #dashboard-content .dashboard-title {
     font-size: clamp(1.1rem, 4.8vw, 1.35rem);
     line-height: 1.22;
+  }
+
+  #dashboard-content .section-title,
+  #dashboard-content .dashboard-chart-card h3,
+  #dashboard-content .dashboard-title {
+    letter-spacing: -0.015em;
   }
 
   #dashboard-content .dashboard-subtitle {
@@ -282,18 +518,17 @@
 
   #dashboard-content .dashboard-grid,
   #dashboard-content .resource-page-grid {
-    gap: 0.85rem;
+    gap: 1rem;
     grid-template-columns: 1fr;
   }
 
   #dashboard-content .resource-page-form-card,
   #dashboard-content .resource-page-list-card {
-    width: calc(100% + 1rem);
-    max-width: calc(100% + 1rem);
-    margin-left: -0.5rem;
-    margin-right: -0.5rem;
-    border-radius: 1.2rem;
-    padding: 0.95rem;
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    border-radius: 1rem;
+    padding: 1rem;
   }
 
   #dashboard-content .resource-page-filters {
@@ -303,7 +538,6 @@
 
   #dashboard-content .stat-grid,
   #dashboard-content .dashboard-kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
   }
 
@@ -311,17 +545,17 @@
   #dashboard-content .dashboard-kpi-grid > * {
     min-width: 0;
     overflow: visible;
-    border-radius: 1.55rem !important;
+    border-radius: 1rem !important;
   }
 
   #dashboard-content .card-base,
   #dashboard-content .surface-panel,
   #dashboard-content .subtle-panel {
-    border-radius: 1.45rem;
+    border-radius: 1rem;
   }
 
   #dashboard-content .card-base {
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
   #dashboard-content .section-title {
@@ -329,11 +563,19 @@
     line-height: 1.3;
   }
 
+  #dashboard-content .page-header {
+    padding-inline: 0.1rem;
+  }
+
+  #dashboard-content .page-title {
+    letter-spacing: -0.02em;
+  }
+
   #dashboard-content .dashboard-chart-card {
     min-height: 20rem;
     height: auto;
-    border-radius: 1.45rem;
-    padding: 0.9rem;
+    border-radius: 1rem;
+    padding: 1rem;
     overflow: hidden;
   }
 
@@ -354,44 +596,45 @@
   }
 
   #dashboard-content .data-table tbody {
-    max-height: min(34rem, 68dvh);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
-    padding-right: 0.25rem;
-    scrollbar-width: thin;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   #dashboard-content .mobile-scroll-list {
-    max-height: min(30rem, 58dvh);
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
     border-radius: 1rem;
   }
 
   #dashboard-content .mobile-scroll-list.directory-card-grid,
   #dashboard-content .mobile-scroll-list.record-list-grid,
   #dashboard-content .mobile-scroll-list.resource-page-mobile-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
   }
 
   #dashboard-content .mobile-scroll-list.directory-card-grid .card-base,
   #dashboard-content .mobile-scroll-list.record-list-grid > *,
   #dashboard-content .mobile-scroll-list.resource-page-mobile-list > * {
-    min-height: 8.25rem;
+    min-height: auto;
     border-radius: 1rem;
-    padding: 0.75rem;
+    padding: 1rem;
   }
 
   #dashboard-content .mobile-scroll-list.directory-card-grid .card-base p,
   #dashboard-content .mobile-scroll-list.record-list-grid p,
   #dashboard-content .mobile-scroll-list.resource-page-mobile-list p {
-    font-size: 0.75rem;
-    line-height: 1.35;
+    font-size: 0.8125rem;
+    line-height: 1.45;
   }
 
   #dashboard-content .mobile-list-pagination {
-    margin-inline: -0.25rem;
-    padding: 0.65rem 0.25rem 0;
+    position: static;
+    margin-inline: 0;
+    padding: 0.75rem 0 0;
+    background: transparent;
   }
 
   #dashboard-content .stat-grid + .dashboard-grid,
@@ -400,7 +643,7 @@
   }
 }
 
-@media (min-width: 641px) and (max-width: 1023px) {
+@media (min-width: 640px) and (max-width: 1023px) {
   #dashboard-content .stat-grid,
   #dashboard-content .dashboard-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -417,6 +660,16 @@
     min-height: 18rem;
     height: auto;
     padding: 0.8rem;
+  }
+}
+
+@media (max-width: 429px) {
+  #dashboard-content .analytics-page .dashboard-chart-card {
+    min-height: 21rem;
+  }
+
+  #dashboard-content .analytics-insight-card {
+    border-radius: 1.35rem;
   }
 }
 
@@ -471,36 +724,34 @@
   }
 }
 
-/* Widen mobile table cards without changing desktop table layout. */
-@media (max-width: 640px) {
-  .table-wrap {
-    width: calc(100% + 1.25rem);
-    max-width: calc(100% + 1.25rem);
-    margin-left: -0.625rem;
-    margin-right: -0.625rem;
-    border-radius: 1.2rem;
+/* Keep mobile table cards aligned with the same page gutter as other content. */
+@media (max-width: 639px) {
+  #dashboard-content .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    border-radius: 1rem;
   }
 
-  .data-table tbody {
-    padding: 0.5rem;
-    gap: 0.85rem;
+  #dashboard-content .data-table tbody {
+    padding: 0;
+    gap: 0.75rem;
   }
 
-  .data-table tr {
-    border-radius: 1.05rem;
+  #dashboard-content .data-table tr {
+    border-radius: 1rem;
   }
 
-  .data-table td {
-    padding-left: 1.125rem;
-    padding-right: 1.125rem;
+  #dashboard-content .data-table td {
+    padding: 0.875rem 1rem;
   }
 
-  .data-table td > * {
+  #dashboard-content .data-table td > * {
     overflow-wrap: break-word;
   }
 }
 
-/* Installed-PWA drawer/nav polish. Keep the bottom nav hidden in normal mobile browser. */
+/* Mobile drawer/nav polish shared by browser and installed app surfaces. */
 @media (max-width: 767px) {
   header button[aria-label="Open navigation"],
   header button[aria-label="Open notifications"],

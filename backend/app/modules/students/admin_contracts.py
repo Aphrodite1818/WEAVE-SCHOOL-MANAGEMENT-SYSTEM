@@ -21,6 +21,31 @@ class StudentAdminContractService:
     """Admin read/update operations with explicit archival and PATCH semantics."""
 
     @staticmethod
+    async def _materialize_due_returns(db: AsyncSession, tenant_id: UUID) -> None:
+        """Apply date-effective formal returns without a scheduler."""
+
+        from app.modules.students.lifecycle_service import StudentLifecycleService
+
+        await StudentLifecycleService.activate_due_returns_for_tenant(
+            db,
+            tenant_id=tenant_id,
+        )
+
+    @staticmethod
+    async def _with_lifecycle_capabilities(
+        db: AsyncSession,
+        student: StudentDetailResponse,
+    ) -> StudentDetailResponse:
+        from app.modules.students.lifecycle_service import StudentLifecycleService
+
+        capabilities = await StudentLifecycleService.capabilities(
+            db,
+            tenant_id=student.tenant_id,
+            student_id=student.id,
+        )
+        return student.model_copy(update={"lifecycle_capabilities": capabilities})
+
+    @staticmethod
     async def list_students(
         db: AsyncSession,
         *,
@@ -29,22 +54,42 @@ class StudentAdminContractService:
         limit: int = 50,
         search: str | None = None,
         class_id: UUID | None = None,
+        academic_level_id: UUID | None = None,
+        unassigned_class: bool = False,
         status: AcademicStatus | None = None,
         include_archived: bool = False,
     ) -> tuple[list[StudentDetailResponse], int]:
+        await StudentAdminContractService._materialize_due_returns(db, actor.tenant_id)
         students, total = await StudentRepository.list_for_tenant(
             db,
             actor.tenant_id,
             search=search,
             class_id=class_id,
+            academic_level_id=academic_level_id,
+            unassigned_class=unassigned_class,
             status=status,
             include_archived=include_archived,
             offset=skip,
             limit=min(limit, 100),
         )
-        return [
+        responses = [
             await StudentService._build_detail_response(db, student) for student in students
+        ]
+        return [
+            await StudentAdminContractService._with_lifecycle_capabilities(db, student)
+            for student in responses
         ], total
+
+    @staticmethod
+    async def get_student(
+        db: AsyncSession,
+        *,
+        actor: TenantAdmin,
+        student_id: UUID,
+    ) -> StudentDetailResponse:
+        await StudentAdminContractService._materialize_due_returns(db, actor.tenant_id)
+        student = await StudentService.get_student_profile(db, actor, student_id)
+        return await StudentAdminContractService._with_lifecycle_capabilities(db, student)
 
     @staticmethod
     async def update_profile(

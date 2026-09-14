@@ -1,21 +1,25 @@
 @media (max-width: 767px) {
-  /* Android positioning is intentionally unchanged. */
+  html[data-standalone-pwa="true"][data-pwa-platform="android"]
+    [data-mobile-bottom-nav="true"] {
+    bottom: -0.3rem !important;
+  }
+
   html[data-standalone-pwa="true"][data-pwa-platform="ios"]
     [data-mobile-bottom-nav="true"] {
-    bottom: -0.35rem !important;
+    bottom: -0.65rem !important;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-billing-page="true"] {
     min-height: 100% !important;
     padding-top: calc(env(safe-area-inset-top, 0px) + 1rem) !important;
-    padding-bottom: calc(11rem + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: calc(var(--mobile-bottom-nav-clearance) + 9rem) !important;
   }
 
   html[data-standalone-pwa="true"] [data-mobile-billing-action="true"] {
     position: fixed !important;
     left: 50% !important;
     right: auto !important;
-    bottom: 0 !important;
+    bottom: var(--mobile-bottom-nav-clearance) !important;
     z-index: 60 !important;
     box-sizing: border-box;
     width: min(100%, 32rem) !important;

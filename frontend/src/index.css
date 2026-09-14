@@ -192,8 +192,71 @@
 }
 
 @layer components {
+  .pairing-success-orbit {
+    position: relative;
+    height: 11rem;
+    width: 11rem;
+  }
+
+  .pairing-success-orbit__ring,
+  .pairing-success-orbit__check {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    width: 100%;
+  }
+
+  .pairing-success-orbit__circle,
+  .pairing-success-orbit__check path {
+    fill: none;
+    stroke: #059669;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3;
+  }
+
+  .pairing-success-orbit__circle {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transform: rotate(180deg);
+    transform-origin: center;
+    animation: pairing-success-circle-draw 900ms cubic-bezier(0.4, 0, 0.2, 1)
+      forwards;
+  }
+
+  .pairing-success-orbit__check path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: pairing-success-check-draw 340ms ease-out 920ms forwards;
+  }
+
+  @keyframes pairing-success-circle-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes pairing-success-check-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pairing-success-orbit__circle,
+    .pairing-success-orbit__check path {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+  }
+
   .card-base {
     @apply w-full min-w-0 rounded-[1.25rem] border border-border/70 bg-surface shadow-sm sm:rounded-[1.35rem] sm:shadow-premium;
+  }
+
+  .brand-strip-card {
+    position: relative;
+    overflow: hidden;
   }
 
   .dashboard-welcome-blue,
@@ -210,8 +273,43 @@
     --weave-icon-primary: rgb(var(--color-on-primary));
     --weave-icon-accent: rgb(var(--color-accent));
     border: 1px solid rgb(var(--color-border) / 0.7);
-    background-color: rgb(var(--color-surface-muted));
-    box-shadow: inset 0 3px 0 rgb(var(--color-primary));
+    background: rgb(var(--color-surface-raised)) !important;
+    box-shadow: 0 10px 28px rgb(2 6 23 / 0.18);
+  }
+
+  :root[data-theme="dark"] .brand-strip-card::before {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    z-index: 1;
+    height: 0.28rem;
+    background: rgb(var(--color-primary));
+    pointer-events: none;
+  }
+
+  :root[data-theme="dark"] .dashboard-welcome-blue [class*="text-white"],
+  :root[data-theme="dark"] .dashboard-welcome-student [class*="text-white"] {
+    color: rgb(var(--color-text));
+  }
+
+  :root[data-theme="dark"] .dashboard-welcome-blue [class*="bg-white"],
+  :root[data-theme="dark"] .dashboard-welcome-student [class*="bg-white"] {
+    border-color: rgb(var(--color-border));
+    background: rgb(var(--color-surface));
+  }
+
+  :root[data-theme="dark"] .payment-plan-card {
+    background: rgb(var(--color-surface)) !important;
+  }
+
+  :root[data-theme="dark"] .payment-plan-card-selected,
+  :root[data-theme="dark"] .payment-plan-card[aria-pressed="true"] {
+    border-color: rgb(var(--color-primary) / 0.55) !important;
+    background: rgb(var(--color-surface-raised)) !important;
+    box-shadow:
+      inset 0 0 0 1px rgb(147 197 253 / 0.1),
+      0 10px 28px rgb(2 6 23 / 0.16);
   }
 
   .tenant-school-name-sidebar {
@@ -229,7 +327,8 @@
   .landing-headline-word {
     display: inline-block;
     opacity: 0;
-    animation: landing-headline-reveal 780ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: landing-headline-reveal 780ms cubic-bezier(0.16, 1, 0.3, 1)
+      forwards;
   }
 
   .landing-headline-word:nth-child(1) {
@@ -455,7 +554,11 @@
 
   :root[data-theme="dark"] .is-selected-highlight {
     border-color: rgb(96 165 250 / 0.58) !important;
-    background: linear-gradient(135deg, rgb(30 64 175 / 0.24), rgb(20 31 54 / 0.92)) !important;
+    background: linear-gradient(
+      135deg,
+      rgb(30 64 175 / 0.24),
+      rgb(20 31 54 / 0.92)
+    ) !important;
     color: rgb(219 234 254) !important;
     box-shadow:
       inset 0 0 0 1px rgb(147 197 253 / 0.12),
@@ -573,7 +676,11 @@
 
   :root[data-theme="dark"] .academic-lifecycle-step[data-state="active"] {
     border-color: rgb(96 165 250 / 0.6);
-    background: linear-gradient(135deg, rgb(30 64 175 / 0.2), rgb(20 31 54 / 0.94));
+    background: linear-gradient(
+      135deg,
+      rgb(30 64 175 / 0.2),
+      rgb(20 31 54 / 0.94)
+    );
     box-shadow: inset 0 0 0 1px rgb(147 197 253 / 0.12);
   }
 
@@ -597,13 +704,21 @@
     background: rgb(6 78 59 / 0.42);
   }
 
-  :root[data-theme="dark"] .academic-lifecycle-step[data-state="active"] .academic-lifecycle-step-title,
-  :root[data-theme="dark"] .academic-lifecycle-step[data-state="complete"] .academic-lifecycle-step-title {
+  :root[data-theme="dark"]
+    .academic-lifecycle-step[data-state="active"]
+    .academic-lifecycle-step-title,
+  :root[data-theme="dark"]
+    .academic-lifecycle-step[data-state="complete"]
+    .academic-lifecycle-step-title {
     color: rgb(var(--color-text));
   }
 
-  :root[data-theme="dark"] .academic-lifecycle-step[data-state="active"] .academic-lifecycle-step-helper,
-  :root[data-theme="dark"] .academic-lifecycle-step[data-state="complete"] .academic-lifecycle-step-helper {
+  :root[data-theme="dark"]
+    .academic-lifecycle-step[data-state="active"]
+    .academic-lifecycle-step-helper,
+  :root[data-theme="dark"]
+    .academic-lifecycle-step[data-state="complete"]
+    .academic-lifecycle-step-helper {
     color: rgb(var(--color-text-soft));
   }
 
@@ -902,6 +1017,35 @@
   }
 }
 
+.public-panel-reveal {
+  animation: public-panel-enter 950ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes public-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(1.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+html[data-reduced-motion="true"] .public-panel-reveal,
+html[data-reduced-motion="true"] .landing-headline-word {
+  animation: none !important;
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-panel-reveal {
+    animation: none;
+  }
+}
+
 @keyframes landing-headline-reveal {
   from {
     opacity: 0;
@@ -971,7 +1115,6 @@
       transform: translateX(220%);
     }
   }
-
 }
 
 html[data-reduced-motion="true"] *,

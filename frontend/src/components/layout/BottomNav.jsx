@@ -1,14 +1,12 @@
 import {
-  Bell,
   BookOpen,
-  Building2,
   CalendarDays,
   ClipboardList,
   FileText,
   Home,
-  Mail,
+  Inbox,
   Menu,
-  Users,
+  Settings,
 } from "lucide-react";
 import {
   memo,
@@ -20,6 +18,7 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
+import { useTeacherClassDutyAccess } from "../../features/teachers/TeacherClassDutyAccessContext";
 import { authSession, NAVIGATION_ABORT_EVENT } from "../../services/api";
 import { cn } from "../../utils/cn";
 import { scrollDashboardViewportToTop } from "../../utils/dashboardScroll";
@@ -28,62 +27,47 @@ const NAV_INDICATOR_COMMIT_DELAY_MS = 350;
 const NAV_LOADING_SHOW_DELAY_MS = 80;
 const NAV_LOADING_MIN_VISIBLE_MS = 300;
 const NAV_LOADING_MAX_MS = 1200;
+const BOTTOM_NAV_CONTENT_GAP_PX = 12;
 
 const isStandalonePwaDisplay = () => {
   if (typeof window === "undefined") return false;
 
   return Boolean(
     window.matchMedia?.("(display-mode: standalone)")?.matches ||
-    window.navigator?.standalone === true,
+      window.navigator?.standalone === true,
   );
 };
 
 const bottomNavConfig = {
   admin: [
     { label: "Academic", to: "/admin/academic", icon: ClipboardList },
-    {
-      label: "Messages",
-      to: "/admin/messages",
-      icon: Mail,
-      runtimeFeature: "messaging",
-    },
+    { label: "Inbox", to: "/admin/inbox", icon: Inbox },
     { label: "Home", to: "/admin/dashboard", icon: Home, isHome: true },
-    { label: "Notices", to: "/admin/announcements", icon: Bell },
     { label: "Calendar", to: "/admin/calendar", icon: CalendarDays },
   ],
   teacher: [
     { label: "Rosters", to: "/teacher/students", icon: BookOpen },
-    { label: "Scores", to: "/teacher/score-entry", icon: FileText },
+    { label: "Inbox", to: "/teacher/inbox", icon: Inbox },
     { label: "Home", to: "/teacher/dashboard", icon: Home, isHome: true },
-    {
-      label: "Schools",
-      to: "/teacher/schools",
-      icon: Building2,
-      accountScope: true,
-    },
+    { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
   ],
   student: [
     { label: "Subjects", to: "/student/subjects", icon: BookOpen },
-    { label: "Calendar", to: "/student/calendar", icon: CalendarDays },
+    { label: "Inbox", to: "/student/inbox", icon: Inbox },
     { label: "Home", to: "/student/dashboard", icon: Home, isHome: true },
     { label: "Reports", to: "/student/report-cards", icon: FileText },
   ],
   parent: [
     { label: "Results", to: "/parent/results", icon: BookOpen },
-    { label: "Children", to: "/parent/student-linking", icon: Users },
+    { label: "Inbox", to: "/parent/inbox", icon: Inbox },
     { label: "Home", to: "/parent/dashboard", icon: Home, isHome: true },
-    {
-      label: "Schools",
-      to: "/parent/schools",
-      icon: Building2,
-      accountScope: true,
-    },
+    { label: "Calendar", to: "/parent/calendar", icon: CalendarDays },
   ],
   superadmin: [
     { label: "Verify", to: "/superadmin/verification", icon: BookOpen },
-    { label: "Calendar", to: "/superadmin/calendar", icon: CalendarDays },
+    { label: "Inbox", to: "/superadmin/inbox", icon: Inbox },
     { label: "Home", to: "/superadmin/dashboard", icon: Home, isHome: true },
-    { label: "Notices", to: "/superadmin/announcements", icon: Bell },
+    { label: "Settings", to: "/superadmin/settings", icon: Settings },
   ],
 };
 
@@ -100,6 +84,7 @@ const getIndicatorStyleForElement = (element) => ({
 function BottomNav({ role, onOpenMenu }) {
   const location = useLocation();
   const runtimeConfig = useRuntimeConfig();
+  const { hasClassTeacherDuties } = useTeacherClassDutyAccess();
   const user = authSession.getUser() || {};
   const actorType = String(user?.actor_type || "").toLowerCase();
   const isAccountScope =
@@ -111,6 +96,10 @@ function BottomNav({ role, onOpenMenu }) {
     opacity: 0,
   });
   const [loadingVisible, setLoadingVisible] = useState(false);
+  const [isPwaDisplay, setIsPwaDisplay] = useState(() =>
+    isStandalonePwaDisplay(),
+  );
+  const shellRef = useRef(null);
   const navRef = useRef(null);
   const itemRefs = useRef({});
   const indicatorTimerRef = useRef(null);
@@ -130,8 +119,9 @@ function BottomNav({ role, onOpenMenu }) {
       : configuredItems
   ).filter(
     (item) =>
-      !item.runtimeFeature ||
-      runtimeConfig?.features?.[item.runtimeFeature] !== false,
+      (!item.requiresClassTeacher || hasClassTeacherDuties) &&
+      (!item.runtimeFeature ||
+        runtimeConfig?.features?.[item.runtimeFeature] !== false),
   );
 
   const clearTimer = useCallback((timerRef) => {
@@ -140,15 +130,78 @@ function BottomNav({ role, onOpenMenu }) {
     timerRef.current = null;
   }, []);
 
-  const [isPwaDisplay, setIsPwaDisplay] = useState(() =>
-    isStandalonePwaDisplay(),
-  );
-
   const clearLoadingTimers = useCallback(() => {
     clearTimer(loadingShowTimerRef);
     clearTimer(loadingHideTimerRef);
     clearTimer(loadingMaxTimerRef);
   }, [clearTimer]);
+
+  useEffect(() => {
+    const syncStandalonePwaMode = () => {
+      setIsPwaDisplay(isStandalonePwaDisplay());
+    };
+
+    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
+
+    syncStandalonePwaMode();
+    standaloneQuery?.addEventListener?.("change", syncStandalonePwaMode);
+    window.addEventListener("pageshow", syncStandalonePwaMode);
+    window.addEventListener("resize", syncStandalonePwaMode);
+    document.addEventListener("visibilitychange", syncStandalonePwaMode);
+
+    return () => {
+      standaloneQuery?.removeEventListener?.("change", syncStandalonePwaMode);
+      window.removeEventListener("pageshow", syncStandalonePwaMode);
+      window.removeEventListener("resize", syncStandalonePwaMode);
+      document.removeEventListener("visibilitychange", syncStandalonePwaMode);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isPwaDisplay) return undefined;
+
+    const navElement = shellRef.current;
+    if (!navElement) return undefined;
+
+    const root = document.documentElement;
+    let frameId = 0;
+
+    const syncBottomNavClearance = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        const viewportHeight = Number(window.innerHeight || root.clientHeight || 0);
+        if (viewportHeight <= 0) return;
+
+        const rect = navElement.getBoundingClientRect();
+        const obstructionHeight = Math.max(0, viewportHeight - rect.top);
+        if (obstructionHeight <= 0) return;
+
+        root.style.setProperty(
+          "--mobile-bottom-nav-clearance",
+          `${Math.ceil(obstructionHeight + BOTTOM_NAV_CONTENT_GAP_PX)}px`,
+        );
+      });
+    };
+
+    syncBottomNavClearance();
+
+    const resizeObserver = window.ResizeObserver
+      ? new window.ResizeObserver(syncBottomNavClearance)
+      : null;
+    resizeObserver?.observe(navElement);
+    window.addEventListener("resize", syncBottomNavClearance);
+    window.addEventListener("orientationchange", syncBottomNavClearance);
+    window.addEventListener("pageshow", syncBottomNavClearance);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", syncBottomNavClearance);
+      window.removeEventListener("orientationchange", syncBottomNavClearance);
+      window.removeEventListener("pageshow", syncBottomNavClearance);
+      window.cancelAnimationFrame(frameId);
+      root.style.removeProperty("--mobile-bottom-nav-clearance");
+    };
+  }, [isPwaDisplay]);
 
   const abortStalePageRequests = useCallback(() => {
     window.dispatchEvent(new CustomEvent(NAVIGATION_ABORT_EVENT));
@@ -212,29 +265,6 @@ function BottomNav({ role, onOpenMenu }) {
       loadingMaxTimerRef.current = null;
     }, NAV_LOADING_MAX_MS);
   }, [clearLoadingTimers]);
-
-  useEffect(() => {
-    const syncStandalonePwaMode = () => {
-      const nextValue = isStandalonePwaDisplay();
-      document.documentElement.dataset.standalonePwa = String(nextValue);
-      setIsPwaDisplay(nextValue);
-    };
-
-    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
-
-    syncStandalonePwaMode();
-    standaloneQuery?.addEventListener?.("change", syncStandalonePwaMode);
-    window.addEventListener("pageshow", syncStandalonePwaMode);
-    window.addEventListener("resize", syncStandalonePwaMode);
-    document.addEventListener("visibilitychange", syncStandalonePwaMode);
-
-    return () => {
-      standaloneQuery?.removeEventListener?.("change", syncStandalonePwaMode);
-      window.removeEventListener("pageshow", syncStandalonePwaMode);
-      window.removeEventListener("resize", syncStandalonePwaMode);
-      document.removeEventListener("visibilitychange", syncStandalonePwaMode);
-    };
-  }, []);
 
   useLayoutEffect(() => {
     clearTimer(indicatorTimerRef);
@@ -334,9 +364,10 @@ function BottomNav({ role, onOpenMenu }) {
       ) : null}
 
       <nav
+        ref={shellRef}
         data-mobile-bottom-nav="true"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background px-2 pt-0.5 pb-3 shadow-[0_-14px_34px_rgba(15,23,42,0.14)] md:hidden"
-        aria-label="Primary installed app navigation"
+        aria-label="Primary mobile app navigation"
       >
         <div
           ref={navRef}
@@ -344,7 +375,7 @@ function BottomNav({ role, onOpenMenu }) {
         >
           <span
             aria-hidden="true"
-            className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary/10"
+            className="bottom-nav-indicator pointer-events-none absolute bottom-2 left-0 top-2 z-0 rounded-[1.65rem] bg-primary shadow-sm shadow-primary/20"
             style={indicatorStyle}
           />
 
@@ -363,7 +394,9 @@ function BottomNav({ role, onOpenMenu }) {
                 aria-label={item.label}
                 className={cn(
                   "relative z-10 flex min-h-[3.45rem] flex-1 touch-manipulation select-none flex-col items-center justify-center gap-1 rounded-[1.75rem] px-1.5 py-1.5 text-center transition-colors duration-150 ease-out",
-                  isActive ? "text-primary" : "text-text-muted hover:text-text",
+                  isActive
+                    ? "text-primary-foreground"
+                    : "text-text-muted hover:text-text",
                 )}
               >
                 <span className="flex h-6 w-6 items-center justify-center">
@@ -377,7 +410,7 @@ function BottomNav({ role, onOpenMenu }) {
                 <span
                   className={cn(
                     "max-w-full truncate text-[10.5px] font-semibold leading-none transition-colors duration-150",
-                    isActive ? "text-primary" : "text-text-muted",
+                    isActive ? "text-primary-foreground" : "text-text-muted",
                   )}
                 >
                   {item.label}

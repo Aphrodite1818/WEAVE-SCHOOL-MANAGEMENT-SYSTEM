@@ -1,4 +1,3 @@
-
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -7,8 +6,14 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("subscription pricing is hydrated from the public backend catalogue", async () => {
   const service = await read("src/services/subscriptionService.js");
-  const runtime = await read("src/features/subscriptions/pricingCatalogueRuntime.js");
+  const runtime = await read(
+    "src/features/subscriptions/pricingCatalogueRuntime.js",
+  );
   const main = await read("src/main.jsx");
+  const landing = await read("src/pages/public/LandingPage.jsx");
+  const pricingHook = await read(
+    "src/features/subscriptions/usePublicPricingCatalogue.js",
+  );
 
   assert.match(service, /getPublicPlans/);
   assert.match(service, /\/subscriptions\/plans/);
@@ -20,16 +25,79 @@ test("subscription pricing is hydrated from the public backend catalogue", async
   assert.match(runtime, /backendPlan\.limits/);
   assert.match(main, /subscriptionService[\s\S]*\.getPublicPlans/);
   assert.match(main, /applyPublicPricingCatalogue/);
+  assert.match(main, /settlePublicPricingCatalogue/);
+  assert.match(landing, /usePublicPricingCatalogue/);
+  assert.match(pricingHook, /CATALOGUE_CHANGED_EVENT/);
 });
 
-test("iOS PWA nav and billing dock fixes do not target Android", async () => {
+test("pricing surfaces show three paid cards and keep Free outside checkout cards", async () => {
+  const landing = await read("src/pages/public/LandingPage.jsx");
+  const pricing = await read("src/pages/public/PricingPage.jsx");
+  const desktopPlans = await read(
+    "src/pages/admin/SubscriptionOptionsPage.jsx",
+  );
+  const mobilePlans = await read(
+    "src/pages/admin/ResponsiveSubscriptionOptionsPage.jsx",
+  );
+
+  assert.match(landing, /plan\.planCode !== "free"/);
+  assert.match(pricing, /plan\.planCode !== "free"/);
+  assert.match(desktopPlans, /option\.plan_code !== "free"/);
+  assert.match(mobilePlans, /option\.plan_code !== "free"/);
+  assert.match(desktopPlans, /freeOption\?\.eligible/);
+  assert.match(desktopPlans, /Continue with Free/);
+  assert.match(mobilePlans, /Continue on Free/);
+});
+
+test("iOS and Android PWA nav positions are platform-specific", async () => {
   const css = await read("src/styles/mobilePlatformFixes.css");
   assert.match(css, /data-pwa-platform="ios"/);
-  assert.match(css, /bottom: -0\.35rem/);
+  assert.match(css, /bottom: -0\.65rem/);
+  assert.match(css, /data-pwa-platform="android"/);
+  assert.match(css, /bottom: -0\.3rem/);
   assert.match(css, /data-mobile-billing-action/);
   assert.match(css, /position: fixed/);
   assert.match(css, /safe-area-inset-top/);
-  assert.doesNotMatch(css, /data-pwa-platform="android"[\s\S]*bottom:/);
+});
+
+test("dark payment and dashboard hero cards keep brand colour as a strip only", async () => {
+  const [
+    themeCss,
+    primitives,
+    billingPage,
+    mobilePlans,
+    desktopPlans,
+    publicCard,
+  ] = await Promise.all([
+    read("src/index.css"),
+    read("src/components/dashboard/DashboardPrimitives.jsx"),
+    read("src/pages/admin/BillingPage.jsx"),
+    read("src/pages/admin/ResponsiveSubscriptionOptionsPage.jsx"),
+    read("src/pages/admin/SubscriptionOptionsPage.jsx"),
+    read("src/components/subscriptions/PublicPricingCard.jsx"),
+  ]);
+
+  assert.match(primitives, /brand-strip-card dashboard-welcome-blue/);
+  assert.match(billingPage, /brand-strip-card dashboard-welcome-blue/);
+  assert.match(mobilePlans, /payment-plan-card-selected brand-strip-card/);
+  assert.match(desktopPlans, /payment-plan-card-selected brand-strip-card/);
+  assert.match(publicCard, /payment-plan-card-selected brand-strip-card/);
+  assert.match(
+    themeCss,
+    /:root\[data-theme="dark"\] \.brand-strip-card::before[\s\S]*?background:\s*rgb\(var\(--color-primary\)\)/,
+  );
+  assert.match(
+    themeCss,
+    /:root\[data-theme="dark"\] \.dashboard-welcome-blue,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/,
+  );
+  assert.match(
+    themeCss,
+    /:root\[data-theme="dark"\] \.payment-plan-card-selected,[\s\S]*?background:\s*rgb\(var\(--color-surface-raised\)\)\s*!important/,
+  );
+  assert.doesNotMatch(
+    themeCss,
+    /dashboard-welcome-blue[\s\S]{0,220}box-shadow:\s*inset 0 3px 0/,
+  );
 });
 
 test("theme chrome follows the resolved application theme", async () => {
@@ -55,7 +123,10 @@ test("mobile browser uses one authoritative theme-color while PWA stays isolated
   assert.match(runtime, /content: "light dark"/);
   assert.doesNotMatch(runtime, /oppositeTheme|not all/);
   assert.match(startup, /data-weave-theme/);
-  assert.match(startup, /colorSchemeMeta\.setAttribute\("content", "light dark"\)/);
+  assert.match(
+    startup,
+    /colorSchemeMeta\.setAttribute\("content", "light dark"\)/,
+  );
   assert.doesNotMatch(startup, /oppositeTheme|not all/);
   assert.match(preferences, /scheduleThemeChromeSync\(\)/);
   assert.doesNotMatch(preferences, /themeColorMeta/);

@@ -49,33 +49,34 @@ function AdminDashboardPage() {
   const user = authSession.getUser();
   const firstName = user?.first_name || user?.firstname || "Admin";
   const calendarScope = `${user?.tenant_id || "global"}:${user?.membership_id || ""}:${user?.id || user?.email || ""}`;
-  const advancedAnalyticsGuard = getFeatureGuard(FEATURE_CODES.ADVANCED_ANALYTICS);
   const bulkImportGuard = getFeatureGuard(FEATURE_CODES.BULK_IMPORT);
   const canShowBulkImport = bulkImportGuard.allowed && String(planCode || "").toLowerCase() !== "free_trial";
 
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
+    let generation = 0;
 
     async function loadMetrics() {
+      const request = ++generation;
+      setError(null);
       try {
         const data = await getCachedDashboardBundle(ADMIN_DASHBOARD_CACHE_KEY, () =>
           dashboardService.getTenantAdminAnalytics({ signal: controller.signal }),
         );
-        if (!mounted || controller.signal.aborted) return;
+        if (!mounted || controller.signal.aborted || request !== generation) return;
         setAnalytics(data);
       } catch (err) {
-        if (!mounted || isAbortError(err)) return;
+        if (!mounted || isAbortError(err) || request !== generation) return;
         setError(getErrorMessage(err, "Failed to load dashboard analytics."));
       }
     }
 
     loadMetrics();
-    const handlePullRefresh = () => loadMetrics();
-    window.addEventListener("weave:pull-refresh", handlePullRefresh);
+    window.addEventListener("weave:dashboard-cache-invalidated", loadMetrics);
 
     return () => {
-      window.removeEventListener("weave:pull-refresh", handlePullRefresh);
+      window.removeEventListener("weave:dashboard-cache-invalidated", loadMetrics);
       mounted = false;
       controller.abort();
     };
@@ -148,18 +149,20 @@ function AdminDashboardPage() {
   ].filter(Boolean);
 
   return (
-    <DashboardLayout
-      role="admin"
-      title={`${firstName}'s Dashboard`}
-      actions={
-        <Link to="/admin/students/create">
-          <Button>
-            <PlusCircle className="h-4 w-4" />
-            Create student
-          </Button>
-        </Link>
-      }
-    >
+    <DashboardLayout role="admin">
+      <section className="admin-dashboard-header page-header">
+        <div className="min-w-0">
+          <h1 className="page-title">{firstName}'s Dashboard</h1>
+        </div>
+        <div className="page-header-actions">
+          <Link to="/admin/students/create">
+            <Button>
+              <PlusCircle className="h-4 w-4" />
+              Create student
+            </Button>
+          </Link>
+        </div>
+      </section>
       {error ? (
         <div className="rounded-2xl border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
           {error}
@@ -180,7 +183,7 @@ function AdminDashboardPage() {
             ]}
           />
 
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <section className="dashboard-kpi-grid dashboard-kpi-grid-four grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <DashboardMetricCard
               label="Students"
               value={totalStudents}
@@ -222,7 +225,7 @@ function AdminDashboardPage() {
               icon={BookOpen}
               tone="primary"
               primaryAction={{ to: "/admin/academic", label: "Open academic hub", icon: BookOpen }}
-              secondaryAction={{ to: "/admin/analytics", label: "Advanced analytics", icon: BarChart3, disabled: !advancedAnalyticsGuard.allowed }}
+              secondaryAction={{ to: "/admin/analytics", label: "Advanced analytics", icon: BarChart3 }}
             >
               <div className="grid grid-cols-2 gap-3">
                 <InfoTile label="Active session" value={cleanText(stats.active_academic_session, "Not set")} />
@@ -298,8 +301,8 @@ function AdminDashboardPage() {
 function InfoTile({ label, value }) {
   return (
     <div className="rounded-2xl border border-border/70 bg-surface-muted/20 px-3 py-3 sm:px-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted sm:text-[11px]">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-text">{value}</p>
+      <p className="text-xs font-semibold leading-5 text-text-soft sm:text-[11px] sm:uppercase sm:tracking-wide sm:text-text-muted">{label}</p>
+      <p className="mt-1 whitespace-normal break-words text-sm font-semibold leading-5 text-text sm:truncate">{value}</p>
     </div>
   );
 }
