@@ -11,6 +11,7 @@ from app.core.exceptions import ConflictException
 from app.modules.student_academics.models import TeacherAssignment
 from app.modules.student_academics.schemas import (
     TeacherAssignmentEnd,
+    TeacherAssignmentReassign,
     TeacherAssignmentScheduleCancel,
 )
 from app.modules.student_academics.service import StudentAcademicService
@@ -56,13 +57,17 @@ async def test_current_assignment_with_planned_end_is_still_endable() -> None:
             "app.modules.student_academics.service.StudentAcademicRepository.count_teacher_assignment_dependencies",
             new=AsyncMock(return_value={"student_results": 0, "report_card_references": 0}),
         ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject",
+            new=AsyncMock(return_value=[assignment]),
+        ),
     ):
         preview = await StudentAcademicService.teacher_assignment_dependency_preview(
             db, assignment.tenant_id, assignment.id
         )
 
     assert preview.can_end is True
-    assert preview.can_reassign is False
+    assert preview.can_reassign is True
     assert all("permanently deleted" not in message for message in preview.blocker_messages)
 
 
@@ -285,3 +290,147 @@ async def test_early_end_does_not_cancel_unrelated_adjacent_schedule() -> None:
             )
 
     delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reassign_planned_end_defaults_takeover_to_next_day() -> None:
+    today = date.today()
+    tenant_id = uuid.uuid4()
+    class_id = uuid.uuid4()
+    curriculum_subject_id = uuid.uuid4()
+    replacement_teacher_id = uuid.uuid4()
+    planned_end = today + timedelta(days=10)
+    current = _assignment(
+        tenant_id=tenant_id,
+        class_id=class_id,
+        curriculum_subject_id=curriculum_subject_id,
+        effective_from=today - timedelta(days=30),
+        effective_to=planned_end,
+    )
+    created: list[TeacherAssignment] = []
+
+    async def _create(_db, assignment):
+        assignment.id = uuid.uuid4()
+        created.append(assignment)
+        return assignment
+
+    db = AsyncMock()
+    with (
+        patch(
+            "app.modules.student_academics.service.ensure_academic_write_window",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_teacher_assignment_by_id",
+            new=AsyncMock(return_value=current),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._scheduled_takeover_successor",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._load_curriculum_subject_context",
+            new=AsyncMock(
+                return_value=(
+                    SimpleNamespace(id=curriculum_subject_id, subject_id=uuid.uuid4()),
+                    SimpleNamespace(academic_level_id=uuid.uuid4()),
+                )
+            ),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._ensure_curriculum_subject_available_to_class",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    id=uuid.uuid4(),
+                    start_date=today - timedelta(days=60),
+                    end_date=today + timedelta(days=60),
+                )
+            ),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._validate_teacher_capability",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._ensure_backdated_assignment_change_safe",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_later_teacher_assignments",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.save_teacher_assignment",
+            new=AsyncMock(side_effect=lambda _db, row: row),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.create_teacher_assignment",
+            new=AsyncMock(side_effect=_create),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._record_teacher_assignment_audit",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._build_teacher_assignment_response",
+            new=AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4())),
+        ),
+    ):
+        await StudentAcademicService.reassign_teacher_assignment(
+            db,
+            tenant_id,
+            current.id,
+            TeacherAssignmentReassign(
+                teacher_membership_id=replacement_teacher_id,
+                academic_term_id=uuid.uuid4(),
+                effective_from=None,
+                reason="Replace teacher after planned end",
+            ),
+        )
+
+    assert len(created) == 1
+    replacement = created[0]
+    assert replacement.effective_from == planned_end + timedelta(days=1)
+    assert current.effective_to == planned_end
+
+
+@pytest.mark.asyncio
+async def test_reassign_still_blocks_a_real_scheduled_takeover() -> None:
+    today = date.today()
+    current = _assignment(
+        effective_from=today - timedelta(days=30),
+        effective_to=today + timedelta(days=10),
+    )
+    successor = _assignment(
+        tenant_id=current.tenant_id,
+        class_id=current.class_id,
+        curriculum_subject_id=current.curriculum_subject_id,
+        effective_from=current.effective_to + timedelta(days=1),
+    )
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.modules.student_academics.service.ensure_academic_write_window",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicRepository.get_teacher_assignment_by_id",
+            new=AsyncMock(return_value=current),
+        ),
+        patch(
+            "app.modules.student_academics.service.StudentAcademicService._scheduled_takeover_successor",
+            new=AsyncMock(return_value=successor),
+        ),
+    ):
+        with pytest.raises(ConflictException, match="takeover is already scheduled"):
+            await StudentAcademicService.reassign_teacher_assignment(
+                db,
+                current.tenant_id,
+                current.id,
+                TeacherAssignmentReassign(
+                    teacher_membership_id=uuid.uuid4(),
+                    academic_term_id=uuid.uuid4(),
+                    reason="Attempt duplicate takeover",
+                ),
+            )
