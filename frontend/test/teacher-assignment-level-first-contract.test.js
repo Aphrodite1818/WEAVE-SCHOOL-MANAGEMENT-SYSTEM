@@ -44,3 +44,19 @@ test("assignment cards consume canonical scheduled-current-ended status", () => 
   assert.match(source, /item\.status\)\.toLowerCase\(\) === "current"/);
   assert.match(source, /item\.status\)\.toLowerCase\(\) === "scheduled"/);
 });
+
+
+test("planned assignment endings remain current but are visibly marked to end", () => {
+  assert.match(source, /const isMarkedToEnd = \(item\) =>/);
+  assert.match(source, /MARKED TO END/);
+  assert.match(source, />marked to end<\/Badge>/);
+});
+
+test("reassigning a marked-to-end assignment defaults takeover to the next day", () => {
+  assert.match(
+    source,
+    /effective_from: isMarkedToEnd\(item\) \? nextDate\(item\.effective_to\) : today\(\)/,
+  );
+  assert.match(source, /The takeover defaults to the next day/);
+  assert.match(source, /setEffectiveTo\(item\.effective_to \|\| today\(\)\)/);
+});

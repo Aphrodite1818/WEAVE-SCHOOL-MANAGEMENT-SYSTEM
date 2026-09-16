@@ -26,6 +26,12 @@ import {
 
 const PAGE_SIZE = 25;
 const today = () => new Date().toISOString().slice(0, 10);
+const nextDate = (value) => {
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return today();
+  parsed.setUTCDate(parsed.getUTCDate() + 1);
+  return parsed.toISOString().slice(0, 10);
+};
 
 const asItems = (response) =>
   Array.isArray(response)
@@ -57,10 +63,18 @@ const teacherLabel = (item) => {
 const assignmentClassLabel = (item) =>
   [item?.class_name, item?.class_arm].filter(Boolean).join(" ") || "Class";
 
+const isMarkedToEnd = (item) =>
+  String(item?.status || "").toLowerCase() === "current" &&
+  Boolean(item?.effective_to) &&
+  !item?.has_scheduled_takeover;
+
 const formatPeriod = (item) => {
   const period = `${item?.effective_from || "Unknown start"} – ${item?.effective_to || "Present"}`;
-  if (!item?.has_scheduled_takeover) return period;
-  return `${period} · HANDOVER SCHEDULED to ${item.scheduled_takeover_teacher_name || "incoming teacher"} on ${item.scheduled_takeover_effective_from}`;
+  if (item?.has_scheduled_takeover) {
+    return `${period} · HANDOVER SCHEDULED to ${item.scheduled_takeover_teacher_name || "incoming teacher"} on ${item.scheduled_takeover_effective_from}`;
+  }
+  if (isMarkedToEnd(item)) return `${period} · MARKED TO END`;
+  return period;
 };
 
 const formatDependencyMessage = (preview) => {
@@ -542,7 +556,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
     setForm((current) => ({
       ...current,
       teacher_membership_id: "",
-      effective_from: today(),
+      effective_from: isMarkedToEnd(item) ? nextDate(item.effective_to) : today(),
     }));
     setReassigning(item);
   };
@@ -583,7 +597,7 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
             disabled={saving === item.id}
             onClick={() => {
               setReason("");
-              setEffectiveTo(today());
+              setEffectiveTo(item.effective_to || today());
               setEnding(item);
             }}
           >
@@ -865,6 +879,11 @@ function TeacherAssignmentsWorkspace({ activeTab }) {
         <form id="teacher-reassign-form" className="space-y-3" onSubmit={submitReassign}>
           <SelectControl label="Replacement teacher" value={form.teacher_membership_id} onChange={(value) => setForm((current) => ({ ...current, teacher_membership_id: value }))} options={replacementTeacherOptions} required />
           <Input label="Effective from" type="date" value={form.effective_from} onChange={(event) => setForm((current) => ({ ...current, effective_from: event.target.value }))} required />
+          {isMarkedToEnd(reassigning) ? (
+            <p className="text-sm text-text-muted">
+              This assignment is marked to end on {reassigning.effective_to}. The takeover defaults to the next day; choosing an earlier date will shorten the current teacher's assignment.
+            </p>
+          ) : null}
           {form.effective_from === reassigning?.effective_from ? (
             <p className="text-sm text-text-muted">
               This date is the same as when the current teacher started. Weave will treat this as a correction if no academic records already depend on the assignment.
@@ -978,6 +997,7 @@ function AssignmentInspector({ item, actions }) {
             {item.has_scheduled_takeover ? (
               <Badge variant="warning">handover scheduled</Badge>
             ) : null}
+            {isMarkedToEnd(item) ? <Badge variant="warning">marked to end</Badge> : null}
           </div>
         </div>
       </div>

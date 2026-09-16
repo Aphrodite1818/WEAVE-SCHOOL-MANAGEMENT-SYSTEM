@@ -1554,6 +1554,39 @@ class StudentAcademicService:
         return audit is not None
 
     @staticmethod
+    async def _scheduled_takeover_successor(
+        db: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+        assignment: TeacherAssignment,
+        lock: bool = False,
+    ) -> TeacherAssignment | None:
+        """Return the real scheduled handover successor, not merely a planned end date."""
+        if assignment.effective_to is None:
+            return None
+
+        history = await StudentAcademicRepository.list_teacher_assignments_for_curriculum_subject(
+            db,
+            tenant_id,
+            assignment.curriculum_subject_id,
+            assignment.class_id,
+            lock=lock,
+        )
+        successor = StudentAcademicService._adjacent_scheduled_successor(assignment, history)
+        if successor is None:
+            return None
+
+        if not await StudentAcademicService._is_scheduled_takeover_relation(
+            db,
+            tenant_id=tenant_id,
+            successor=successor,
+            predecessor=assignment,
+        ):
+            return None
+
+        return successor
+
+    @staticmethod
     async def create_teacher_assignment(
         db: AsyncSession,
         tenant_id: uuid.UUID,
@@ -1696,6 +1729,16 @@ class StudentAcademicService:
             db, tenant_id, assignment_id
         )
         has_dependencies = any(counts.values())
+        scheduled_takeover = None
+        if (
+            assignment.state == TeacherAssignmentState.CURRENT
+            and assignment.effective_to is not None
+        ):
+            scheduled_takeover = await StudentAcademicService._scheduled_takeover_successor(
+                db,
+                tenant_id=tenant_id,
+                assignment=assignment,
+            )
         blockers: list[str] = []
         if has_dependencies:
             blockers.append("Historical results or report-card lines reference this assignment.")
@@ -1711,7 +1754,7 @@ class StudentAcademicService:
             can_end=assignment.state == TeacherAssignmentState.CURRENT,
             can_reassign=(
                 assignment.state == TeacherAssignmentState.CURRENT
-                and assignment.effective_to is None
+                and scheduled_takeover is None
             ),
             can_delete=(
                 assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
@@ -1851,7 +1894,13 @@ class StudentAcademicService:
             raise NotFoundException("Teacher assignment not found.")
         if current.state != TeacherAssignmentState.CURRENT:
             raise ConflictException("Only the current assignment can be reassigned.")
-        if current.effective_to is not None:
+        scheduled_takeover = await StudentAcademicService._scheduled_takeover_successor(
+            db,
+            tenant_id=tenant_id,
+            assignment=current,
+            lock=True,
+        )
+        if scheduled_takeover is not None:
             StudentAcademicService._raise_teacher_assignment_conflict(
                 "TAKEOVER_ALREADY_SCHEDULED",
                 "A teacher takeover is already scheduled for this class and subject.",
@@ -1884,9 +1933,14 @@ class StudentAcademicService:
                 "This teacher is already assigned to this class and subject.",
             )
         today = date.today()
-        effective_from = payload.effective_from or (
-            term.start_date if term.start_date is not None and term.start_date > today else today
-        )
+        if payload.effective_from is not None:
+            effective_from = payload.effective_from
+        elif current.effective_to is not None:
+            effective_from = current.effective_to + timedelta(days=1)
+        else:
+            effective_from = (
+                term.start_date if term.start_date is not None and term.start_date > today else today
+            )
         if (term.start_date is not None and effective_from < term.start_date) or (
             term.end_date is not None and effective_from > term.end_date
         ):
@@ -1956,6 +2010,7 @@ class StudentAcademicService:
             )
         previous_teacher = current.teacher_membership_id
         previous_state = current.state.value
+        previous_effective_to = current.effective_to
         current.effective_to = effective_from - timedelta(days=1)
         if current.effective_to < current.effective_from:
             raise ConflictException(
@@ -1992,7 +2047,7 @@ class StudentAcademicService:
             previous_state=previous_state,
             new_state=replacement.state.value,
             previous_effective_from=current.effective_from,
-            previous_effective_to=current.effective_to,
+            previous_effective_to=previous_effective_to,
             new_effective_from=replacement.effective_from,
             acting_admin_id=acting_admin_id,
             reason=payload.reason,
