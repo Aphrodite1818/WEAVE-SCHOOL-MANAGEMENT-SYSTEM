@@ -1753,8 +1753,7 @@ class StudentAcademicService:
             dependency_counts=counts,
             can_end=assignment.state == TeacherAssignmentState.CURRENT,
             can_reassign=(
-                assignment.state == TeacherAssignmentState.CURRENT
-                and scheduled_takeover is None
+                assignment.state == TeacherAssignmentState.CURRENT and scheduled_takeover is None
             ),
             can_delete=(
                 assignment.state == TeacherAssignmentState.SCHEDULED and not has_dependencies
@@ -1939,7 +1938,9 @@ class StudentAcademicService:
             effective_from = current.effective_to + timedelta(days=1)
         else:
             effective_from = (
-                term.start_date if term.start_date is not None and term.start_date > today else today
+                term.start_date
+                if term.start_date is not None and term.start_date > today
+                else today
             )
         if (term.start_date is not None and effective_from < term.start_date) or (
             term.end_date is not None and effective_from > term.end_date
