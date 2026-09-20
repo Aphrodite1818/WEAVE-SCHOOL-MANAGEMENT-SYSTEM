@@ -116,14 +116,8 @@ class CBTReleaseService:
             )
 
         asset = release.installer_asset.strip()
-        if (
-            not asset.lower().endswith(".exe")
-            or PurePath(asset).name != asset
-            or "\\" in asset
-        ):
-            raise CBTReleaseUnavailableError(
-                "The WEAVE CBT installer asset name is invalid."
-            )
+        if not asset.lower().endswith(".exe") or PurePath(asset).name != asset or "\\" in asset:
+            raise CBTReleaseUnavailableError("The WEAVE CBT installer asset name is invalid.")
 
         installer_url = str(release.installer_url)
         parsed = urlparse(installer_url)
