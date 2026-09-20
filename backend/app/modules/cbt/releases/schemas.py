@@ -11,9 +11,7 @@ class CBTReleaseResponse(BaseModel):
     channel: Literal["production", "staging"]
     manager_version: str = Field(pattern=r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
     cbt_version: str = Field(pattern=r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
-    minimum_supported_version: str = Field(
-        pattern=r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$"
-    )
+    minimum_supported_version: str = Field(pattern=r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
     image: str = Field(min_length=1, max_length=512)
     installer_asset: str = Field(min_length=1, max_length=255)
     installer_url: HttpUrl
