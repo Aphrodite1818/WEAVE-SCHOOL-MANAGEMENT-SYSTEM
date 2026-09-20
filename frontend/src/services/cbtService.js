@@ -83,6 +83,11 @@ const listServers = async () => {
 export const cbtService = {
   createPairingCode,
   getPairingStatus,
+  getLatestRelease: () =>
+    api.get("/cbt/releases/latest", {
+      auth: false,
+      clearAuthOnUnauthorized: false,
+    }),
   verifyPairingCode: (payload) =>
     api.post("/cbt/pairing/verify", payload, { auth: false }),
   listServers,

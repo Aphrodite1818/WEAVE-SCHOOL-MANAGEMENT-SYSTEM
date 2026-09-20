@@ -24,6 +24,9 @@ const BillingPage = lazy(() => import("../pages/admin/BillingPage"));
 const CBTPairingCodePage = lazy(
   () => import("../pages/admin/CBTPairingCodePage"),
 );
+const CBTServerSetupPage = lazy(
+  () => import("../pages/admin/CBTServerSetupPage"),
+);
 const CBTServersPage = lazy(() => import("../pages/admin/CBTServersPage"));
 const CBTResultLedgerPage = lazy(
   () => import("../pages/admin/CBTResultLedgerPage"),
@@ -130,6 +133,14 @@ export const adminRoutes = (
           <CBTHistoricalAccessRouteGuard>
             <CBTServersPage />
           </CBTHistoricalAccessRouteGuard>,
+        )}
+      />
+      <Route
+        path="/admin/cbt/setup-server"
+        element={protectedWorkflow(
+          <SubscriptionFeatureRouteGuard featureCode={FEATURE_CODES.CBT_PAIRING}>
+            <CBTServerSetupPage />
+          </SubscriptionFeatureRouteGuard>,
         )}
       />
       <Route
