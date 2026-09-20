@@ -63,7 +63,7 @@ const STATUS_META = {
     icon: ShieldX,
     dotClassName: "bg-rose-500",
     haloClassName: "ring-rose-100",
-    tintClassName: "bg-rose-50 text-rose-700 ring-1 ring-rose-100",
+    tintClassName: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
   },
 };
 
@@ -359,26 +359,9 @@ export default function CBTServersPage() {
     ]);
   };
 
-  const generatePairingCode = async () => {
-    setBusyAction("create-code");
-    try {
-      const existingServerIds = servers.map((server) => String(server.id));
-      const response = await cbtService.createPairingCode();
-      setRotatedCredential(null);
-      await refreshSubscriptionState({ silent: true });
-      showSuccess("New pairing code generated.");
-      navigate("/admin/cbt/pairing-code", {
-        state: { pairingCode: response, existingServerIds },
-      });
-    } catch (requestError) {
-      const parsed = parseApiError(
-        requestError,
-        "Could not create a pairing code.",
-      );
-      showError(parsed.message);
-    } finally {
-      setBusyAction("");
-    }
+  const beginPairingSetup = () => {
+    setRotatedCredential(null);
+    navigate("/admin/cbt/setup-server");
   };
 
   const closeConfirmDialog = () => {
@@ -473,7 +456,7 @@ export default function CBTServersPage() {
               Result Ledger
             </Button>
             <Button
-              onClick={generatePairingCode}
+              onClick={beginPairingSetup}
               disabled={
                 Boolean(busyAction) ||
                 !featureGuard.allowed ||
@@ -601,7 +584,7 @@ export default function CBTServersPage() {
                   title="No CBT servers found"
                   description={
                     servers.length === 0
-                      ? "Generate a pairing code, enter it on the local CBT server, and the server will appear here after verification."
+                      ? "Use Pair Server to download and install WEAVE CBT, then generate a pairing code when the local Manager is ready."
                       : "Adjust the search or filters to see more paired servers."
                   }
                 />
