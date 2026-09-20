@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.dependencies.db import DbSession
 from app.core.dependencies.route_guards import get_current_tenant_admin
@@ -24,6 +24,11 @@ from app.modules.cbt.pairing.schemas import (
 )
 from app.modules.cbt.pairing.repository import CBTServerRepository
 from app.modules.cbt.pairing.service import CBTPairingService, CBTPairingStatusService
+from app.modules.cbt.releases.schemas import CBTReleaseResponse
+from app.modules.cbt.releases.service import (
+    CBTReleaseService,
+    CBTReleaseUnavailableError,
+)
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import FeatureCode
 from app.modules.tenant_admins.models import TenantAdmin
@@ -40,6 +45,23 @@ def tenant_id_for(admin: TenantAdmin) -> UUID:
 
 def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
+
+
+@router.get(
+    "/releases/latest",
+    response_model=CBTReleaseResponse,
+    tags=["CBT Releases"],
+)
+async def get_latest_cbt_release() -> CBTReleaseResponse:
+    """Return the published installer that matches this Weave environment."""
+
+    try:
+        return await CBTReleaseService.get_latest()
+    except CBTReleaseUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(
