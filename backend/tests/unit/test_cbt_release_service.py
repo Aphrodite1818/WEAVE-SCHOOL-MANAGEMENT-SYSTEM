@@ -11,7 +11,9 @@ from app.modules.cbt.releases.service import (
 import app.modules.cbt.releases.service as release_service_module
 
 
-def _release(*, channel: str = "production", tag: str = "manager-production-latest") -> CBTReleaseResponse:
+def _release(
+    *, channel: str = "production", tag: str = "manager-production-latest"
+) -> CBTReleaseResponse:
     asset = (
         "WeaveCBT-Setup-Windows-x64.exe"
         if channel == "production"
@@ -25,8 +27,7 @@ def _release(*, channel: str = "production", tag: str = "manager-production-late
         image="ghcr.io/aphrodite1818/weave-cbt-module:sha-7604735",
         installer_asset=asset,
         installer_url=(
-            "https://github.com/Aphrodite1818/WEAVE-CBT-MODULE/"
-            f"releases/download/{tag}/{asset}"
+            f"https://github.com/Aphrodite1818/WEAVE-CBT-MODULE/releases/download/{tag}/{asset}"
         ),
         installer_sha256="a" * 64,
         release_notes="Test release",
