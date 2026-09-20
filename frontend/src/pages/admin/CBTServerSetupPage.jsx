@@ -88,14 +88,15 @@ export default function CBTServerSetupPage() {
 
   const startDownload = () => {
     if (!release?.installer_url) return;
-    const downloadWindow = window.open(
-      release.installer_url,
-      "_blank",
-      "noopener,noreferrer",
-    );
-    if (!downloadWindow) {
-      window.location.assign(release.installer_url);
-    }
+
+    const downloadLink = document.createElement("a");
+    downloadLink.href = release.installer_url;
+    downloadLink.download = packageName;
+    downloadLink.rel = "noopener noreferrer";
+    downloadLink.style.display = "none";
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
   };
 
   const continueToPairing = async () => {

@@ -35,6 +35,16 @@ test("CBT setup page downloads backend-selected release metadata", async () => {
   assert.match(setupPage, /Environment matched automatically/);
 });
 
+test("installer download is dispatched exactly once without opening or navigating to GitHub", async () => {
+  const setupPage = await readSource("src/pages/admin/CBTServerSetupPage.jsx");
+
+  assert.match(setupPage, /document\.createElement\("a"\)/);
+  assert.match(setupPage, /downloadLink\.href = release\.installer_url/);
+  assert.match(setupPage, /downloadLink\.click\(\)/);
+  assert.doesNotMatch(setupPage, /window\.open\(/);
+  assert.doesNotMatch(setupPage, /window\.location\.assign\(/);
+});
+
 test("CBT setup and pairing routes retain the subscription feature guard", async () => {
   const routes = await readSource("src/routes/adminRoutes.jsx");
 
