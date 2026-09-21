@@ -70,12 +70,7 @@ def test_valid_production_release_is_accepted() -> None:
 
 
 def test_immutable_digest_release_is_accepted() -> None:
-    release = _release(
-        image=(
-            "ghcr.io/aphrodite1818/weave-cbt-module@sha256:"
-            + ("a" * 64)
-        )
-    )
+    release = _release(image=("ghcr.io/aphrodite1818/weave-cbt-module@sha256:" + ("a" * 64)))
 
     CBTReleaseService._validate_release(
         channel="production",
@@ -116,12 +111,7 @@ def test_unexpected_image_repository_is_rejected() -> None:
 
 
 def test_lookalike_image_repository_is_rejected() -> None:
-    release = _release(
-        image=(
-            "ghcr.io/aphrodite1818/weave-cbt-module-evil@sha256:"
-            + ("a" * 64)
-        )
-    )
+    release = _release(image=("ghcr.io/aphrodite1818/weave-cbt-module-evil@sha256:" + ("a" * 64)))
     with pytest.raises(CBTReleaseUnavailableError, match="unexpected container image"):
         CBTReleaseService._validate_release(
             channel="production",
@@ -131,9 +121,7 @@ def test_lookalike_image_repository_is_rejected() -> None:
 
 
 def test_malformed_digest_is_rejected() -> None:
-    release = _release(
-        image="ghcr.io/aphrodite1818/weave-cbt-module@sha256:not-a-digest"
-    )
+    release = _release(image="ghcr.io/aphrodite1818/weave-cbt-module@sha256:not-a-digest")
     with pytest.raises(CBTReleaseUnavailableError, match="unexpected container image"):
         CBTReleaseService._validate_release(
             channel="production",
