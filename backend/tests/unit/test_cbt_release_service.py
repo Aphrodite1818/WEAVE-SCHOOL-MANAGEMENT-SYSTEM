@@ -12,7 +12,10 @@ import app.modules.cbt.releases.service as release_service_module
 
 
 def _release(
-    *, channel: str = "production", tag: str = "manager-production-latest"
+    *,
+    channel: str = "production",
+    tag: str = "manager-production-latest",
+    image: str = "ghcr.io/aphrodite1818/weave-cbt-module:sha-7604735",
 ) -> CBTReleaseResponse:
     asset = (
         "WeaveCBT-Setup-Windows-x64.exe"
@@ -24,7 +27,7 @@ def _release(
         manager_version="0.1.0",
         cbt_version="0.1.0",
         minimum_supported_version="0.1.0",
-        image="ghcr.io/aphrodite1818/weave-cbt-module:sha-7604735",
+        image=image,
         installer_asset=asset,
         installer_url=(
             f"https://github.com/Aphrodite1818/WEAVE-CBT-MODULE/releases/download/{tag}/{asset}"
@@ -66,6 +69,16 @@ def test_valid_production_release_is_accepted() -> None:
     )
 
 
+def test_immutable_digest_release_is_accepted() -> None:
+    release = _release(image=("ghcr.io/aphrodite1818/weave-cbt-module@sha256:" + ("a" * 64)))
+
+    CBTReleaseService._validate_release(
+        channel="production",
+        tag="manager-production-latest",
+        release=release,
+    )
+
+
 def test_wrong_release_channel_is_rejected() -> None:
     with pytest.raises(CBTReleaseUnavailableError, match="does not match"):
         CBTReleaseService._validate_release(
@@ -88,9 +101,27 @@ def test_wrong_release_tag_is_rejected() -> None:
 
 
 def test_unexpected_image_repository_is_rejected() -> None:
-    release = _release().model_copy(
-        update={"image": "ghcr.io/example/untrusted:latest"},
-    )
+    release = _release(image="ghcr.io/example/untrusted:latest")
+    with pytest.raises(CBTReleaseUnavailableError, match="unexpected container image"):
+        CBTReleaseService._validate_release(
+            channel="production",
+            tag="manager-production-latest",
+            release=release,
+        )
+
+
+def test_lookalike_image_repository_is_rejected() -> None:
+    release = _release(image=("ghcr.io/aphrodite1818/weave-cbt-module-evil@sha256:" + ("a" * 64)))
+    with pytest.raises(CBTReleaseUnavailableError, match="unexpected container image"):
+        CBTReleaseService._validate_release(
+            channel="production",
+            tag="manager-production-latest",
+            release=release,
+        )
+
+
+def test_malformed_digest_is_rejected() -> None:
+    release = _release(image="ghcr.io/aphrodite1818/weave-cbt-module@sha256:not-a-digest")
     with pytest.raises(CBTReleaseUnavailableError, match="unexpected container image"):
         CBTReleaseService._validate_release(
             channel="production",
