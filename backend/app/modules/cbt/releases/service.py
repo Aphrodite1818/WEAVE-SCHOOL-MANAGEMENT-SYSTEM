@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import PurePath
+import re
 from time import monotonic
 from urllib.parse import urlparse
 
@@ -20,7 +21,13 @@ _RELEASE_TAGS = {
     "production": "manager-production-latest",
     "staging": "manager-staging-latest",
 }
-_IMAGE_PREFIX = "ghcr.io/aphrodite1818/weave-cbt-module:"
+_IMAGE_REPOSITORY = "ghcr.io/aphrodite1818/weave-cbt-module"
+_IMAGE_REFERENCE_PATTERN = re.compile(
+    rf"^{re.escape(_IMAGE_REPOSITORY)}(?:"
+    r":[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}"
+    r"|@sha256:[0-9a-f]{64}"
+    r")$"
+)
 _CACHE_TTL_SECONDS = 300.0
 
 
@@ -132,7 +139,7 @@ class CBTReleaseService:
                 "The WEAVE CBT installer URL failed release-channel validation."
             )
 
-        if not release.image.startswith(_IMAGE_PREFIX):
+        if not _IMAGE_REFERENCE_PATTERN.fullmatch(release.image):
             raise CBTReleaseUnavailableError(
                 "The WEAVE CBT release references an unexpected container image."
             )
