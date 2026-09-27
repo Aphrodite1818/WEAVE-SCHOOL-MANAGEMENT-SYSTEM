@@ -13,6 +13,7 @@ from app.modules.student_academics.curriculum_models import (
 )
 from app.modules.student_academics.curriculum_v2_schemas import CurriculumSubjectsBulkCreate
 from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
+from app.modules.student_academics.elective_service import ElectivePolicyService
 from app.modules.student_academics.write_guard import ensure_academic_write_window
 from app.modules.subjects.models import Subject
 
@@ -68,6 +69,16 @@ async def add_curriculum_subjects(
         await AcademicCurriculumService._validated_level_department_ids(
             db, tenant_id=tenant_id, academic_level_id=level_id, ids=department_ids
         )
+        for item in payload.subjects:
+            await ElectivePolicyService.validate_curriculum_subject_group(
+                db,
+                tenant_id=tenant_id,
+                curriculum_id=curriculum.id,
+                is_elective=item.is_elective,
+                elective_group_id=item.elective_group_id,
+                lock=True,
+            )
+
         # Validate the whole batch before writing, and commit exactly once.
         for item in payload.subjects:
             row = CurriculumSubject(
@@ -76,6 +87,7 @@ async def add_curriculum_subjects(
                 curriculum_id=curriculum.id,
                 subject_id=item.subject_id,
                 is_elective=item.is_elective,
+                elective_group_id=item.elective_group_id,
                 is_active=True,
             )
             db.add(row)
