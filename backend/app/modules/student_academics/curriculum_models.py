@@ -11,7 +11,16 @@ from __future__ import annotations
 import uuid
 from enum import Enum
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, ForeignKeyConstraint, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -52,15 +61,22 @@ class CurriculumElectiveGroup(BaseModel):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    minimum_choices: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    minimum_choices: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     maximum_choices: Mapped[int] = mapped_column(Integer, nullable=False)
     lifecycle: Mapped[str] = mapped_column(
-        String(16), nullable=False, default=ElectiveGroupLifecycle.ACTIVE.value, server_default=ElectiveGroupLifecycle.ACTIVE.value
+        String(16),
+        nullable=False,
+        default=ElectiveGroupLifecycle.ACTIVE.value,
+        server_default=ElectiveGroupLifecycle.ACTIVE.value,
     )
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "id", name="uq_curriculum_elective_groups_tenant_id"),
-        UniqueConstraint("tenant_id", "curriculum_id", "name", name="uq_curriculum_elective_group_name"),
+        UniqueConstraint(
+            "tenant_id", "curriculum_id", "name", name="uq_curriculum_elective_group_name"
+        ),
         CheckConstraint("minimum_choices >= 0", name="ck_elective_group_min_nonnegative"),
         CheckConstraint("maximum_choices >= 1", name="ck_elective_group_max_positive"),
         CheckConstraint("minimum_choices <= maximum_choices", name="ck_elective_group_min_lte_max"),
@@ -134,18 +150,34 @@ class StudentElectiveSelection(BaseModel):
         UUID(as_uuid=True), ForeignKey("students.id", ondelete="CASCADE"), nullable=False
     )
     elective_group_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("curriculum_elective_groups.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_elective_groups.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"),
+        nullable=False,
     )
 
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "student_id", "curriculum_subject_id", name="uq_student_elective_selection_subject"
+            "tenant_id",
+            "student_id",
+            "curriculum_subject_id",
+            name="uq_student_elective_selection_subject",
         ),
-        Index("ix_student_elective_selections_student_group", "tenant_id", "student_id", "elective_group_id"),
-        Index("ix_student_elective_selections_curriculum_subject", "tenant_id", "curriculum_subject_id"),
+        Index(
+            "ix_student_elective_selections_student_group",
+            "tenant_id",
+            "student_id",
+            "elective_group_id",
+        ),
+        Index(
+            "ix_student_elective_selections_curriculum_subject",
+            "tenant_id",
+            "curriculum_subject_id",
+        ),
     )
 
 
