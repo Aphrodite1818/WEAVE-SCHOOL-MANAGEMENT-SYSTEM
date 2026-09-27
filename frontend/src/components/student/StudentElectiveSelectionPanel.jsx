@@ -13,7 +13,7 @@ export default function StudentElectiveSelectionPanel({
   workspace,
   onSave,
 }) {
-  const groups = workspace?.groups || [];
+  const groups = useMemo(() => workspace?.groups || [], [workspace]);
   const [selectedByGroup, setSelectedByGroup] = useState({});
   const [savingGroupId, setSavingGroupId] = useState("");
   const [errorByGroup, setErrorByGroup] = useState({});
@@ -28,7 +28,7 @@ export default function StudentElectiveSelectionPanel({
       ),
     );
     setErrorByGroup({});
-  }, [workspace]);
+  }, [groups]);
 
   const originalByGroup = useMemo(
     () =>
