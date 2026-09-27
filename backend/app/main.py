@@ -91,6 +91,9 @@ from app.modules.student_academics.bulk_results_router import (
     admin_router as bulk_results_admin_router,
 )
 from app.modules.student_academics.curriculum_router import router as curriculum_router
+from app.modules.student_academics.elective_router import (
+    student_router as elective_student_router,
+)
 from app.modules.student_academics.grading_readiness_router import (
     router as grading_readiness_router,
 )
@@ -266,6 +269,7 @@ def create_app() -> FastAPI:
     app.include_router(assessment_teacher_router, prefix=API_V1_PREFIX)
     app.include_router(curriculum_router, prefix=API_V1_PREFIX)
     app.include_router(assessment_student_router, prefix=API_V1_PREFIX)
+    app.include_router(elective_student_router, prefix=API_V1_PREFIX)
     app.include_router(grading_readiness_router, prefix=API_V1_PREFIX)
     app.include_router(open_session_config_router, prefix=API_V1_PREFIX)
     app.include_router(session_closure_router, prefix=API_V1_PREFIX)
