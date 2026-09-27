@@ -45,9 +45,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "lifecycle IN ('ACTIVE', 'ARCHIVED')", name="ck_elective_group_lifecycle"
         ),
-        sa.ForeignKeyConstraint(
-            ["curriculum_id"], ["curricula.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["curriculum_id"], ["curricula.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("tenant_id", "id", name="uq_curriculum_elective_groups_tenant_id"),
