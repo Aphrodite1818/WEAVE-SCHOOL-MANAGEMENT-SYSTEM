@@ -63,7 +63,10 @@ function StudentSubjectsPage() {
       setSubjectCards(refreshedSubjects?.items || []);
       setContext(refreshedSubjects?.context || null);
     } catch (error) {
-      throw new Error(getErrorMessage(error, "Failed to save elective choices."));
+      throw new Error(
+        getErrorMessage(error, "Failed to save elective choices."),
+        { cause: error },
+      );
     }
   };
 
