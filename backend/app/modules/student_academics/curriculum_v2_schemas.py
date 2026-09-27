@@ -19,6 +19,7 @@ class CurriculumSubjectCreate(BaseModel):
 
     subject_id: uuid.UUID
     is_elective: bool = False
+    elective_group_id: uuid.UUID | None = None
     academic_level_department_ids: list[uuid.UUID] = Field(default_factory=list)
 
     @field_validator("academic_level_department_ids")
@@ -27,6 +28,14 @@ class CurriculumSubjectCreate(BaseModel):
         if len(value) != len(set(value)):
             raise ValueError("department selections must be unique")
         return value
+
+    @model_validator(mode="after")
+    def validate_elective_group(self) -> "CurriculumSubjectCreate":
+        if self.is_elective and self.elective_group_id is None:
+            raise ValueError("elective_group_id is required for elective subjects")
+        if not self.is_elective and self.elective_group_id is not None:
+            raise ValueError("compulsory subjects cannot reference an elective group")
+        return self
 
 
 class CurriculumSubjectsBulkCreate(BaseModel):
@@ -95,6 +104,7 @@ class CurriculumSubjectUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     is_elective: bool | None = None
+    elective_group_id: uuid.UUID | None = None
     academic_level_department_ids: list[uuid.UUID] | None = None
 
     @field_validator("is_elective", mode="before")
@@ -132,6 +142,7 @@ class CurriculumSubjectResponse(OutputBase):
     subject_name: str | None = None
     subject_code: str | None = None
     is_elective: bool
+    elective_group_id: uuid.UUID | None = None
     is_active: bool
     departments: list[CurriculumSubjectDepartmentResponse] = Field(default_factory=list)
     created_at: datetime
@@ -195,6 +206,7 @@ class ResolvedClassSubjectResponse(OutputBase):
     subject_name: str | None = None
     subject_code: str | None = None
     is_elective: bool
+    elective_group_id: uuid.UUID | None = None
     is_general: bool
     matched_academic_level_department_id: uuid.UUID | None = None
 
