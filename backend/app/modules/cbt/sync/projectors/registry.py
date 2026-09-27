@@ -26,6 +26,7 @@ from app.modules.cbt.sync.projectors.curriculum import (
     project_curriculum,
     project_curriculum_subject,
     project_curriculum_subject_department,
+    project_student_elective_selection,
     project_subject,
 )
 from app.modules.cbt.sync.projectors.staff import (
@@ -55,6 +56,7 @@ PROJECTORS: dict[CBTSyncEntityType, Projector] = {
     CBTSyncEntityType.TEACHER: project_teacher,
     CBTSyncEntityType.TEACHER_ASSIGNMENT: project_teacher_assignment,
     CBTSyncEntityType.STUDENT_ENROLLMENT: project_student_enrollment,
+    CBTSyncEntityType.STUDENT_ELECTIVE_SELECTION: project_student_elective_selection,
 }
 
 
