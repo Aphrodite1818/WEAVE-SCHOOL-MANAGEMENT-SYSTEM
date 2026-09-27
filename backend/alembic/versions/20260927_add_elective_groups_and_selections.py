@@ -18,6 +18,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # CBT change rows use a PostgreSQL enum, so extending the Python enum alone is
+    # not enough. Keep the database wire enum aligned before any elective-selection
+    # change can be recorded.
+    op.execute(
+        "ALTER TYPE public.cbt_sync_entity_type "
+        "ADD VALUE IF NOT EXISTS 'student_elective_selection'"
+    )
+
     op.create_table(
         "curriculum_elective_groups",
         sa.Column("curriculum_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -37,7 +45,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "lifecycle IN ('ACTIVE', 'ARCHIVED')", name="ck_elective_group_lifecycle"
         ),
-        sa.ForeignKeyConstraint(["curriculum_id"], ["curricula.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["curriculum_id"], ["curricula.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("tenant_id", "id", name="uq_curriculum_elective_groups_tenant_id"),
         sa.UniqueConstraint(
@@ -94,6 +105,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["curriculum_subject_id"], ["curriculum_subjects.id"], ondelete="RESTRICT"
         ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "tenant_id",
@@ -137,3 +149,7 @@ def downgrade() -> None:
         "ix_curriculum_elective_groups_tenant_curriculum", table_name="curriculum_elective_groups"
     )
     op.drop_table("curriculum_elective_groups")
+
+    # PostgreSQL enum values cannot be removed safely in-place. Leaving the additive
+    # wire value behind makes downgrade non-destructive for any retained sync rows;
+    # a later full type rebuild can remove it if the deployment explicitly requires it.
