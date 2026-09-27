@@ -34,7 +34,9 @@ CRITICAL_TABLES = {
     "arm_labels",
     "classes",
     "curricula",
+    "curriculum_elective_groups",
     "curriculum_subjects",
+    "student_elective_selections",
     "curriculum_subject_departments",
     "class_term_department_assignments",
     "teacher_assignments",
@@ -67,25 +69,28 @@ OBSOLETE_ACADEMIC_TABLES = {
 }
 
 
-def test_alembic_has_one_initial_baseline_head() -> None:
+def test_alembic_has_one_current_schema_head_and_one_root_baseline() -> None:
     backend_root = Path(__file__).resolve().parents[3]
     config = Config(str(backend_root / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
     assert script.get_heads() == [BASELINE_REVISION]
-    revision = script.get_revision(BASELINE_REVISION)
-    assert revision is not None
-    assert revision.down_revision is None
+    head = script.get_revision(BASELINE_REVISION)
+    assert head is not None
+
+    roots = [revision for revision in script.walk_revisions(base="base", head="heads") if revision.down_revision is None]
+    assert len(roots) == 1
+    assert roots[0].revision == "20260911_initial_schema"
 
 
 def test_model_registry_contains_critical_fresh_schema_tables() -> None:
-    """Ensure the baseline imports every critical SQLAlchemy model module."""
+    """Ensure the current schema imports every critical SQLAlchemy model module."""
 
     configure_mappers()
     registered_table_names = {table.name for table in Base.metadata.tables.values()}
     missing_tables = CRITICAL_TABLES - registered_table_names
     assert not missing_tables, (
-        f"The fresh migration baseline is missing registered model tables: {sorted(missing_tables)}"
+        f"The fresh schema is missing registered model tables: {sorted(missing_tables)}"
     )
 
 
