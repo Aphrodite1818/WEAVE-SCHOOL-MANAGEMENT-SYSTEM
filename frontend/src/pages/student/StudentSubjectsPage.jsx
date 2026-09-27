@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import EmptyState from "../../components/shared/EmptyState";
 import LoadingState from "../../components/shared/LoadingState";
+import StudentElectiveSelectionPanel from "../../components/student/StudentElectiveSelectionPanel";
 import StudentSubjectPerformanceCard from "../../components/student/StudentSubjectPerformanceCard";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -14,6 +15,7 @@ import { cn } from "../../utils/cn";
 function StudentSubjectsPage() {
   const [subjectCards, setSubjectCards] = useState([]);
   const [context, setContext] = useState(null);
+  const [electiveWorkspace, setElectiveWorkspace] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -26,10 +28,14 @@ function StudentSubjectsPage() {
       setLoadError(null);
 
       try {
-        const response = await academicService.listMySubjectCards();
+        const [response, electives] = await Promise.all([
+          academicService.listMySubjectCards(),
+          academicService.getMyElectiveWorkspace(),
+        ]);
         if (!mounted) return;
         setSubjectCards(response?.items || []);
         setContext(response?.context || null);
+        setElectiveWorkspace(electives || null);
       } catch (error) {
         if (mounted) {
           setLoadError(getErrorMessage(error, "Failed to load subjects."));
@@ -45,6 +51,21 @@ function StudentSubjectsPage() {
       mounted = false;
     };
   }, []);
+
+  const handleElectiveSave = async (electiveGroupId, curriculumSubjectIds) => {
+    try {
+      const updatedWorkspace = await academicService.updateMyElectiveSelection(
+        electiveGroupId,
+        curriculumSubjectIds,
+      );
+      setElectiveWorkspace(updatedWorkspace);
+      const refreshedSubjects = await academicService.listMySubjectCards();
+      setSubjectCards(refreshedSubjects?.items || []);
+      setContext(refreshedSubjects?.context || null);
+    } catch (error) {
+      throw new Error(getErrorMessage(error, "Failed to save elective choices."));
+    }
+  };
 
   const isGridView = viewMode === "grid";
   const classLabel = cleanText(
@@ -128,6 +149,11 @@ function StudentSubjectsPage() {
           </div>
         </Card>
 
+        <StudentElectiveSelectionPanel
+          workspace={electiveWorkspace}
+          onSave={handleElectiveSave}
+        />
+
         {loadError ? (
           <div className="rounded-[1.35rem] border border-error/30 bg-error-soft px-4 py-3 text-sm font-medium text-error">
             {loadError}
@@ -141,7 +167,7 @@ function StudentSubjectsPage() {
               title="No subjects available"
               description={
                 context?.class_id
-                  ? "Your class has no active subjects yet, so there are no subject cards to show."
+                  ? "Your class has no active or selected subjects yet. Choose available electives above when applicable."
                   : "No class has been assigned to your student profile yet."
               }
             />
