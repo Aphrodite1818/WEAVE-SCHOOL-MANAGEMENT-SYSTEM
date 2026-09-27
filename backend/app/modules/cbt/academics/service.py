@@ -13,12 +13,14 @@ from app.modules.cbt.academics.schemas import (
     CBTAcademicBootstrapResponse,
     CBTSchoolSnapshot,
     CBTServerSnapshot,
+    CBTStudentElectiveSelectionSnapshot,
     CBTSyncMetadata,
 )
 from app.modules.cbt.auth.schemas import AuthenticatedCBTServer
 from app.modules.cbt.models import CBTServer
 from app.modules.cbt.sync.projectors.bootstrap import build_bootstrap_sections
 from app.modules.cbt.sync.repository import CBTSyncRepository
+from app.modules.student_academics.curriculum_models import StudentElectiveSelection
 from app.tenant_management.models import Tenant
 
 
@@ -63,6 +65,39 @@ class CBTAcademicSyncService:
             )
         )
 
+        visible_student_ids = {item.student_id for item in sections["student_enrollments"]}
+        visible_curriculum_subject_ids = {
+            item.id for item in sections["curriculum_subjects"]
+        }
+        if visible_student_ids and visible_curriculum_subject_ids:
+            selection_rows = list(
+                (
+                    await db.execute(
+                        select(StudentElectiveSelection).where(
+                            StudentElectiveSelection.tenant_id == tenant_id,
+                            StudentElectiveSelection.student_id.in_(visible_student_ids),
+                            StudentElectiveSelection.curriculum_subject_id.in_(
+                                visible_curriculum_subject_ids
+                            ),
+                        )
+                    )
+                ).scalars()
+            )
+        else:
+            selection_rows = []
+        student_elective_selections = sorted(
+            [
+                CBTStudentElectiveSelectionSnapshot(
+                    id=row.id,
+                    student_id=row.student_id,
+                    elective_group_id=row.elective_group_id,
+                    curriculum_subject_id=row.curriculum_subject_id,
+                )
+                for row in selection_rows
+            ],
+            key=lambda item: str(item.id),
+        )
+
         # Read after all projections while still inside the same repeatable-read
         # transaction. A concurrent mutation therefore belongs either entirely to
         # this snapshot/cursor boundary or entirely to a later incremental page.
@@ -99,4 +134,5 @@ class CBTAcademicSyncService:
             teachers=sections["teachers"],
             teacher_assignments=sections["teacher_assignments"],
             student_enrollments=sections["student_enrollments"],
+            student_elective_selections=student_elective_selections,
         )
