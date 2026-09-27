@@ -23,15 +23,43 @@ def context(monkeypatch):
         for key in [source_id, target_id]
     }
     curricula = {key: SimpleNamespace(id=uuid4()) for key in levels}
+    source_group = SimpleNamespace(
+        id=uuid4(),
+        name="Languages",
+        minimum_choices=1,
+        maximum_choices=1,
+        lifecycle="ACTIVE",
+    )
+    target_group = SimpleNamespace(
+        id=uuid4(),
+        name=source_group.name,
+        minimum_choices=source_group.minimum_choices,
+        maximum_choices=source_group.maximum_choices,
+        lifecycle="ACTIVE",
+    )
     rows = [
-        SimpleNamespace(id=uuid4(), subject_id=uuid4(), is_active=True, is_elective=elective)
-        for elective in [False, True]
+        SimpleNamespace(
+            id=uuid4(),
+            subject_id=uuid4(),
+            is_active=True,
+            is_elective=False,
+            elective_group_id=None,
+        ),
+        SimpleNamespace(
+            id=uuid4(),
+            subject_id=uuid4(),
+            is_active=True,
+            is_elective=True,
+            elective_group_id=source_group.id,
+        ),
     ]
     subjects = [SimpleNamespace(is_active=True, archived_at=None) for _ in rows]
-    results = [MagicMock() for _ in range(3)]
+    results = [MagicMock() for _ in range(5)]
     results[0].all.return_value = list(zip(rows, subjects))
     results[1].scalars.return_value = []
-    results[2].all.return_value = []
+    results[2].scalars.return_value = [source_group]
+    results[3].scalars.return_value = [target_group]
+    results[4].all.return_value = []
     db = SimpleNamespace(
         execute=AsyncMock(side_effect=results),
         add=MagicMock(),
@@ -68,7 +96,7 @@ async def copy(ctx):
 async def test_copy_preserves_semantics_and_remaps_department_identity(context):
     c = context
     department_id = uuid4()
-    c.results[2].all.return_value = [
+    c.results[4].all.return_value = [
         (
             SimpleNamespace(curriculum_subject_id=c.rows[1].id),
             SimpleNamespace(department_id=department_id, academic_level_id=c.source_id),
@@ -79,6 +107,8 @@ async def test_copy_preserves_semantics_and_remaps_department_identity(context):
     memberships = [row for row in added if isinstance(row, CurriculumSubject)]
     scopes = [row for row in added if isinstance(row, CurriculumSubjectDepartment)]
     assert [row.is_elective for row in memberships] == [False, True]
+    assert memberships[0].elective_group_id is None
+    assert memberships[1].elective_group_id == c.target_group.id
     assert all(row.curriculum_id == c.curricula[c.target_id].id for row in memberships)
     assert all(row.tenant_id == c.tenant for row in added)
     assert scopes[0].academic_level_department_id == c.target_link.id
@@ -101,6 +131,8 @@ async def test_copy_preserves_semantics_and_remaps_department_identity(context):
 async def test_existing_memberships_are_untouched_and_repeated_copy_is_a_noop(context):
     c = context
     c.results[1].scalars.return_value = [row.subject_id for row in c.rows]
+    # An empty IN query returns no source groups when there are no missing subjects.
+    c.results[2].scalars.return_value = []
     assert await copy(c) == {"created": 0, "skipped_existing": 2, "skipped_inactive": 0}
     c.db.add.assert_not_called()
     c.validate.assert_not_awaited()
@@ -150,7 +182,7 @@ async def test_copy_rejects_invalid_context_and_rolls_back_everything(context, f
     elif failure == "empty":
         c.results[0].all.return_value = []
     elif failure in ["missing_department", "invalid_department", "wrong_source_scope"]:
-        c.results[2].all.return_value = [
+        c.results[4].all.return_value = [
             (
                 SimpleNamespace(curriculum_subject_id=c.rows[0].id),
                 SimpleNamespace(
