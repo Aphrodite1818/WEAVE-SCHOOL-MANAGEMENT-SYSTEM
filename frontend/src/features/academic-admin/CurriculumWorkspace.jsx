@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CurriculumCopyPanel from "./CurriculumCopyPanel";
+import ElectiveGroupManager from "./ElectiveGroupManager";
 import {
   beginAcademicSubmission,
   endAcademicSubmission,
@@ -63,6 +64,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const [levels, setLevels] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [levelDepartments, setLevelDepartments] = useState([]);
+  const [electiveGroups, setElectiveGroups] = useState([]);
   const [levelId, setLevelId] = useState("");
   const [curriculum, setCurriculum] = useState(null);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
@@ -72,8 +74,12 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [elective, setElective] = useState(false);
+  const [addElectiveGroupId, setAddElectiveGroupId] = useState("");
   const [scopeSubjectId, setScopeSubjectId] = useState("");
   const [selectedDepartmentIds, setSelectedDepartmentIds] = useState([]);
+  const [semanticSubject, setSemanticSubject] = useState(null);
+  const [semanticElective, setSemanticElective] = useState(false);
+  const [semanticGroupId, setSemanticGroupId] = useState("");
   const [editorMode, setEditorMode] = useState("");
   const [saving, setSaving] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -98,20 +104,24 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     if (!levelId) {
       setCurriculum(null);
       setLevelDepartments([]);
+      setElectiveGroups([]);
       return;
     }
     setLoading(true);
     setLoadError("");
     setCurriculum(null);
     try {
-      const [curriculumResponse, departmentResponse] = await Promise.all([
-        curriculumService.getCurriculum(levelId),
-        departmentService.getLevelDepartments(levelId, { activeOnly: true }),
-      ]);
+      const [curriculumResponse, departmentResponse, groupResponse] =
+        await Promise.all([
+          curriculumService.getCurriculum(levelId),
+          departmentService.getLevelDepartments(levelId, { activeOnly: true }),
+          curriculumService.listElectiveGroups(levelId),
+        ]);
       if (request !== levelRequest.current) return;
       const curriculumRows = curriculumResponse?.subjects || [];
       setCurriculum(curriculumResponse);
       setLevelDepartments(items(departmentResponse));
+      setElectiveGroups(items(groupResponse));
       setScopeSubjectId((current) =>
         curriculumRows.some((row) => row.id === current)
           ? current
@@ -142,6 +152,11 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     setEditorMode("");
     setSelectedSubjectIds([]);
     setAddDepartmentIds([]);
+    setElective(false);
+    setAddElectiveGroupId("");
+    setSemanticSubject(null);
+    setSemanticElective(false);
+    setSemanticGroupId("");
     setReviewing(false);
   }, [activeTab, levelId]);
 
@@ -152,6 +167,14 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
   const selectedLevel = useMemo(
     () => levels.find((row) => row.id === levelId) || null,
     [levelId, levels],
+  );
+  const activeElectiveGroups = useMemo(
+    () => electiveGroups.filter((group) => group.lifecycle === "ACTIVE"),
+    [electiveGroups],
+  );
+  const electiveGroupById = useMemo(
+    () => new Map(electiveGroups.map((group) => [group.id, group])),
+    [electiveGroups],
   );
   const specializationEnabled = levelSupportsSpecialization(selectedLevel);
   const attached = useMemo(
@@ -184,7 +207,8 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
       !selectedSubjectIds.length ||
       selectedSubjectIds.length > 100 ||
       !levelId ||
-      !reviewing
+      !reviewing ||
+      (elective && !addElectiveGroupId)
     )
       return;
     const submission = beginAcademicSubmission(event, Boolean(saving));
@@ -195,6 +219,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
         subjects: selectedSubjectIds.map((subject_id) => ({
           subject_id,
           is_elective: elective,
+          elective_group_id: elective ? addElectiveGroupId : null,
           academic_level_department_ids: specializationEnabled
             ? addDepartmentIds
             : [],
@@ -208,6 +233,7 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
         () => {
           setSelectedSubjectIds([]);
           setElective(false);
+          setAddElectiveGroupId("");
           setAddDepartmentIds([]);
           setReviewing(false);
         },
@@ -254,22 +280,42 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     }
   };
 
-  const toggleElective = async (row) => {
-    if (saving) return;
-    setSaving(row.id);
+  const beginSemanticEdit = (row) => {
+    if (saving || row.is_active === false) return;
+    setSemanticSubject(row);
+    setSemanticElective(Boolean(row.is_elective));
+    setSemanticGroupId(row.elective_group_id || "");
+    setEditorMode("semantics");
+  };
+
+  const saveSemantics = async (event) => {
+    event.preventDefault();
+    if (!semanticSubject || saving || (semanticElective && !semanticGroupId)) {
+      return;
+    }
+    const submission = beginAcademicSubmission(event, Boolean(saving));
+    if (!submission) return;
+    setSaving("semantics");
     try {
-      await curriculumService.updateSubject(row.id, {
-        is_elective: !row.is_elective,
+      await curriculumService.updateSubject(semanticSubject.id, {
+        is_elective: semanticElective,
+        elective_group_id: semanticElective ? semanticGroupId : null,
       });
+      setSemanticSubject(null);
+      setSemanticElective(false);
+      setSemanticGroupId("");
+      setEditorMode("");
       await loadLevel();
-      showSuccess(
-        row.is_elective
-          ? "Subject is now compulsory."
-          : "Subject is now elective.",
-      );
+      showSuccess("Curriculum subject elective settings updated.");
     } catch (error) {
-      showError(getErrorMessage(error, "Could not update curriculum subject."));
+      showError(
+        errorWithDependencies(
+          error,
+          "Could not update curriculum subject elective settings.",
+        ),
+      );
     } finally {
+      endAcademicSubmission(submission);
       setSaving("");
     }
   };
@@ -537,7 +583,77 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
     );
   }
 
-  const editorOpen = ["subject", "copy", "applicability"].includes(editorMode);
+  const semanticsEditor = editorMode === "semantics" && semanticSubject ? (
+    <WorkspacePanel
+      title="Elective settings"
+      description={`Set whether ${semanticSubject.subject_name || "this subject"} is compulsory or elective. Elective subjects must belong to one active group.`}
+    >
+      <form className="space-y-4" onSubmit={saveSemantics}>
+        <fieldset disabled={Boolean(saving)} className="space-y-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-text">
+            <input
+              type="checkbox"
+              checked={semanticElective}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setSemanticElective(next);
+                if (!next) setSemanticGroupId("");
+              }}
+            />
+            Elective subject
+          </label>
+          {semanticElective ? (
+            activeElectiveGroups.length ? (
+              <SelectControl
+                label="Elective group"
+                value={semanticGroupId}
+                onChange={setSemanticGroupId}
+                options={activeElectiveGroups.map((group) => ({
+                  value: group.id,
+                  label: `${group.name} (${group.minimum_choices}–${group.maximum_choices})`,
+                }))}
+                required
+              />
+            ) : (
+              <div className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-3 text-sm text-text-soft">
+                Create an active elective group before making a subject elective.
+              </div>
+            )
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              disabled={
+                saving === "semantics" ||
+                (semanticElective && !semanticGroupId)
+              }
+            >
+              {saving === "semantics" ? "Saving…" : "Save elective settings"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setSemanticSubject(null);
+                setEditorMode("");
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </fieldset>
+      </form>
+    </WorkspacePanel>
+  ) : null;
+
+  const editorOpen = [
+    "subject",
+    "copy",
+    "applicability",
+    "elective-groups",
+    "semantics",
+  ].includes(editorMode);
+
   return (
     <>
       <WorkspaceGrid
@@ -553,6 +669,15 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
               onCopy={copyCurriculum}
               onCancel={() => setEditorMode("")}
             />
+          ) : editorMode === "elective-groups" ? (
+            <ElectiveGroupManager
+              levelId={levelId}
+              groups={electiveGroups}
+              onChanged={loadLevel}
+              onCancel={() => setEditorMode("")}
+            />
+          ) : editorMode === "semantics" ? (
+            semanticsEditor
           ) : editorMode === "applicability" ? (
             applicabilityEditor
           ) : editorOpen ? (
@@ -631,12 +756,42 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                         <input
                           type="checkbox"
                           checked={elective}
-                          onChange={(event) =>
-                            setElective(event.target.checked)
-                          }
+                          onChange={(event) => {
+                            const next = event.target.checked;
+                            setElective(next);
+                            if (!next) setAddElectiveGroupId("");
+                          }}
                         />{" "}
                         Elective subjects
                       </label>
+                      {elective ? (
+                        activeElectiveGroups.length ? (
+                          <SelectControl
+                            label="Elective group"
+                            value={addElectiveGroupId}
+                            onChange={setAddElectiveGroupId}
+                            options={activeElectiveGroups.map((group) => ({
+                              value: group.id,
+                              label: `${group.name} (${group.minimum_choices}–${group.maximum_choices})`,
+                            }))}
+                            required
+                          />
+                        ) : (
+                          <div className="space-y-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-3 text-sm text-text-soft">
+                            <p>
+                              This level has no active elective group. Create one before adding elective subjects.
+                            </p>
+                            <Button
+                              type="button"
+                              size="small"
+                              variant="outline"
+                              onClick={() => setEditorMode("elective-groups")}
+                            >
+                              Manage Elective Groups
+                            </Button>
+                          </div>
+                        )
+                      ) : null}
                       {specializationEnabled ? (
                         <>
                           <p className="text-sm font-semibold">
@@ -676,7 +831,8 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                         type="button"
                         disabled={
                           !selectedSubjectIds.length ||
-                          selectedSubjectIds.length > 100
+                          selectedSubjectIds.length > 100 ||
+                          (elective && !addElectiveGroupId)
                         }
                         onClick={() => setReviewing(true)}
                       >
@@ -692,7 +848,12 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                           .join(", ")}
                       </p>
                       <p className="text-sm">
-                        {elective ? "Elective" : "Compulsory"} /{" "}
+                        {elective
+                          ? `Elective / ${
+                              electiveGroupById.get(addElectiveGroupId)?.name ||
+                              "Group required"
+                            }`
+                          : "Compulsory"} /{" "}
                         {specializationEnabled && addDepartmentIds.length
                           ? levelDepartments
                               .filter((row) =>
@@ -738,6 +899,14 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                       type="button"
                       variant="outline"
                       disabled={loading || Boolean(loadError) || !curriculum}
+                      onClick={() => setEditorMode("elective-groups")}
+                    >
+                      Manage Elective Groups
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={loading || Boolean(loadError) || !curriculum}
                       onClick={() => setEditorMode("copy")}
                     >
                       Copy curriculum
@@ -760,7 +929,14 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
             emptyTitle="No curriculum subjects"
             emptyDescription="Attach a subject from the school subject pool."
             renderTitle={(row) => row.subject_name}
-            renderMeta={(row) => (row.is_elective ? "Elective" : "Compulsory")}
+            renderMeta={(row) =>
+              row.is_elective
+                ? `Elective · ${
+                    electiveGroupById.get(row.elective_group_id)?.name ||
+                    "Legacy ungrouped"
+                  }`
+                : "Compulsory"
+            }
             renderDescription={(row) => `Available to: ${scopeLabel(row)}`}
             renderStatus={(row) =>
               row.is_active === false ? "inactive" : "active"
@@ -781,10 +957,10 @@ export default function CurriculumWorkspace({ activeTab = "subjects" }) {
                 <Button
                   size="small"
                   variant="outline"
-                  disabled={Boolean(saving)}
-                  onClick={() => toggleElective(row)}
+                  disabled={row.is_active === false || Boolean(saving)}
+                  onClick={() => beginSemanticEdit(row)}
                 >
-                  {row.is_elective ? "Make compulsory" : "Make elective"}
+                  Elective settings
                 </Button>
                 <Button
                   size="small"
