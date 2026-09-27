@@ -488,9 +488,12 @@ class ElectivePolicyService:
                     )
                 )
             groups = []
-            for group_id, group in sorted(group_by_id.items(), key=lambda item: item[1].name.lower()):
-                locked = term.status != AcademicTermStatus.OPEN or await (
-                    ElectivePolicyService._group_has_current_term_score_evidence(
+            for group_id, group in sorted(
+                group_by_id.items(), key=lambda item: item[1].name.lower()
+            ):
+                locked = (
+                    term.status != AcademicTermStatus.OPEN
+                    or await ElectivePolicyService._group_has_current_term_score_evidence(
                         db,
                         tenant_id=student.tenant_id,
                         student_id=student.id,
@@ -562,7 +565,9 @@ class ElectivePolicyService:
             lock=True,
         )
         if group.curriculum_id != curriculum.id:
-            raise BadRequestException("This elective group is not available to your academic level.")
+            raise BadRequestException(
+                "This elective group is not available to your academic level."
+            )
         if group.lifecycle != ElectiveGroupLifecycle.ACTIVE.value:
             raise ConflictException("This elective group is archived.")
 
@@ -906,9 +911,7 @@ class ElectiveAwareCurriculumService:
         refreshed = await CurriculumSubjectRepository.get_by_id(
             db, tenant_id, curriculum_subject_id
         )
-        return ElectiveAwareCurriculumService._enrich_subject_response(
-            response, refreshed or row
-        )
+        return ElectiveAwareCurriculumService._enrich_subject_response(response, refreshed or row)
 
     @staticmethod
     async def deactivate_subject(
