@@ -69,9 +69,7 @@ class CBTAcademicSyncService:
         )
 
         visible_student_ids = {item.student_id for item in sections["student_enrollments"]}
-        visible_curriculum_subject_ids = {
-            item.id for item in sections["curriculum_subjects"]
-        }
+        visible_curriculum_subject_ids = {item.id for item in sections["curriculum_subjects"]}
 
         # The canonical bulk bootstrap projector predates elective groups. Enrich
         # its already-filtered curriculum-subject snapshots inside the same
