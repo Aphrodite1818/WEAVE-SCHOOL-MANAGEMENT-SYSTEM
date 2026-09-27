@@ -110,6 +110,10 @@ from app.modules.student_academics.router import (
     tenant_admin_router as tenant_admin_academic_router,
 )
 from app.modules.student_academics.session_closure_router import router as session_closure_router
+from app.modules.student_academics.subject_card_router import (
+    parent_router as current_subject_card_parent_router,
+    student_router as current_subject_card_student_router,
+)
 from app.modules.student_academics.teacher_grading_router import router as teacher_grading_router
 from app.modules.student_academics.write_guard import ensure_admin_academic_write_window
 from app.modules.students.academic_context_router import router as student_academic_context_router
@@ -137,7 +141,12 @@ _TENANT_ADMIN_ACADEMIC_OVERRIDES: set[RouteKey] = {
     ("PATCH", "/tenant-admin/academics/sessions/{session_id}"),
 }
 _TEACHER_ACADEMIC_OVERRIDES: set[RouteKey] = set()
-_STUDENT_ACADEMIC_OVERRIDES: set[RouteKey] = set()
+_STUDENT_ACADEMIC_OVERRIDES: set[RouteKey] = {
+    ("GET", "/students/academics/subjects"),
+}
+_PARENT_ACADEMIC_OVERRIDES: set[RouteKey] = {
+    ("GET", "/parents/academics/students/{student_id}/subjects"),
+}
 
 
 def _exclude_overridden_routes(router: APIRouter, overrides: set[RouteKey]) -> None:
@@ -159,6 +168,7 @@ def _prepare_academic_routers() -> None:
     _exclude_overridden_routes(tenant_admin_academic_router, _TENANT_ADMIN_ACADEMIC_OVERRIDES)
     _exclude_overridden_routes(teacher_academic_router, _TEACHER_ACADEMIC_OVERRIDES)
     _exclude_overridden_routes(student_academic_router, _STUDENT_ACADEMIC_OVERRIDES)
+    _exclude_overridden_routes(parent_academic_router, _PARENT_ACADEMIC_OVERRIDES)
 
 
 @asynccontextmanager
@@ -270,6 +280,8 @@ def create_app() -> FastAPI:
     app.include_router(curriculum_router, prefix=API_V1_PREFIX)
     app.include_router(assessment_student_router, prefix=API_V1_PREFIX)
     app.include_router(elective_student_router, prefix=API_V1_PREFIX)
+    app.include_router(current_subject_card_student_router, prefix=API_V1_PREFIX)
+    app.include_router(current_subject_card_parent_router, prefix=API_V1_PREFIX)
     app.include_router(grading_readiness_router, prefix=API_V1_PREFIX)
     app.include_router(open_session_config_router, prefix=API_V1_PREFIX)
     app.include_router(session_closure_router, prefix=API_V1_PREFIX)
