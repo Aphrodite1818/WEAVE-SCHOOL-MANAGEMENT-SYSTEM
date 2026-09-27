@@ -31,12 +31,18 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint("minimum_choices >= 0", name="ck_elective_group_min_nonnegative"),
         sa.CheckConstraint("maximum_choices >= 1", name="ck_elective_group_max_positive"),
-        sa.CheckConstraint("minimum_choices <= maximum_choices", name="ck_elective_group_min_lte_max"),
-        sa.CheckConstraint("lifecycle IN ('ACTIVE', 'ARCHIVED')", name="ck_elective_group_lifecycle"),
+        sa.CheckConstraint(
+            "minimum_choices <= maximum_choices", name="ck_elective_group_min_lte_max"
+        ),
+        sa.CheckConstraint(
+            "lifecycle IN ('ACTIVE', 'ARCHIVED')", name="ck_elective_group_lifecycle"
+        ),
         sa.ForeignKeyConstraint(["curriculum_id"], ["curricula.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("tenant_id", "id", name="uq_curriculum_elective_groups_tenant_id"),
-        sa.UniqueConstraint("tenant_id", "curriculum_id", "name", name="uq_curriculum_elective_group_name"),
+        sa.UniqueConstraint(
+            "tenant_id", "curriculum_id", "name", name="uq_curriculum_elective_group_name"
+        ),
     )
     op.create_index(
         "ix_curriculum_elective_groups_tenant_curriculum",
@@ -82,11 +88,18 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["student_id"], ["students.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["elective_group_id"], ["curriculum_elective_groups.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["curriculum_subject_id"], ["curriculum_subjects.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["elective_group_id"], ["curriculum_elective_groups.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["curriculum_subject_id"], ["curriculum_subjects.id"], ondelete="RESTRICT"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "tenant_id", "student_id", "curriculum_subject_id", name="uq_student_elective_selection_subject"
+            "tenant_id",
+            "student_id",
+            "curriculum_subject_id",
+            name="uq_student_elective_selection_subject",
         ),
     )
     op.create_index(
@@ -104,12 +117,23 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_student_elective_selections_curriculum_subject", table_name="student_elective_selections")
-    op.drop_index("ix_student_elective_selections_student_group", table_name="student_elective_selections")
+    op.drop_index(
+        "ix_student_elective_selections_curriculum_subject",
+        table_name="student_elective_selections",
+    )
+    op.drop_index(
+        "ix_student_elective_selections_student_group", table_name="student_elective_selections"
+    )
     op.drop_table("student_elective_selections")
     op.drop_index("ix_curriculum_subjects_elective_group", table_name="curriculum_subjects")
-    op.drop_constraint("ck_compulsory_subject_has_no_elective_group", "curriculum_subjects", type_="check")
-    op.drop_constraint("fk_curriculum_subjects_elective_group", "curriculum_subjects", type_="foreignkey")
+    op.drop_constraint(
+        "ck_compulsory_subject_has_no_elective_group", "curriculum_subjects", type_="check"
+    )
+    op.drop_constraint(
+        "fk_curriculum_subjects_elective_group", "curriculum_subjects", type_="foreignkey"
+    )
     op.drop_column("curriculum_subjects", "elective_group_id")
-    op.drop_index("ix_curriculum_elective_groups_tenant_curriculum", table_name="curriculum_elective_groups")
+    op.drop_index(
+        "ix_curriculum_elective_groups_tenant_curriculum", table_name="curriculum_elective_groups"
+    )
     op.drop_table("curriculum_elective_groups")
