@@ -85,13 +85,11 @@ class StudentSubjectCardService:
             )
             if subject is None:
                 continue
-            assignment = (
-                await StudentAcademicRepository.get_active_teacher_assignment_for_curriculum_subject(
-                    db,
-                    actor.tenant_id,
-                    curriculum_subject.curriculum_subject_id,
-                    class_id,
-                )
+            assignment = await StudentAcademicRepository.get_active_teacher_assignment_for_curriculum_subject(
+                db,
+                actor.tenant_id,
+                curriculum_subject.curriculum_subject_id,
+                class_id,
             )
             teacher = (
                 await TeacherMembershipRepository.get_by_id(
