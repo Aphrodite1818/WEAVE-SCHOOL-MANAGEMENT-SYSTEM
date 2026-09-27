@@ -78,7 +78,11 @@ def test_alembic_has_one_current_schema_head_and_one_root_baseline() -> None:
     head = script.get_revision(BASELINE_REVISION)
     assert head is not None
 
-    roots = [revision for revision in script.walk_revisions(base="base", head="heads") if revision.down_revision is None]
+    roots = [
+        revision
+        for revision in script.walk_revisions(base="base", head="heads")
+        if revision.down_revision is None
+    ]
     assert len(roots) == 1
     assert roots[0].revision == "20260911_initial_schema"
 
