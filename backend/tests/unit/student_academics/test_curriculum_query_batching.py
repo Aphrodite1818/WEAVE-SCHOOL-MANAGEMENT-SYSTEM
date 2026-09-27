@@ -202,6 +202,7 @@ async def test_teacher_subject_availability_resolves_all_classes_once() -> None:
                 subject_id=uuid4(),
                 academic_level_department_id=None,
                 is_elective=False,
+                elective_group_id=None,
                 is_general=True,
             )
         ]

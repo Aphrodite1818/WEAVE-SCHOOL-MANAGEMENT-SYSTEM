@@ -102,6 +102,7 @@ class CBTCurriculumSubjectSnapshot(SnapshotBase):
     curriculum_id: uuid.UUID
     subject_id: uuid.UUID
     is_elective: bool
+    elective_group_id: uuid.UUID | None = None
     is_active: bool
 
 
@@ -164,6 +165,13 @@ class CBTStudentEnrollmentSnapshot(SnapshotBase):
     student_status: str
 
 
+class CBTStudentElectiveSelectionSnapshot(SnapshotBase):
+    id: uuid.UUID
+    student_id: uuid.UUID
+    elective_group_id: uuid.UUID
+    curriculum_subject_id: uuid.UUID
+
+
 class CBTAcademicBootstrapResponse(SnapshotBase):
     metadata: CBTSyncMetadata
     school: CBTSchoolSnapshot
@@ -185,3 +193,4 @@ class CBTAcademicBootstrapResponse(SnapshotBase):
     teachers: list[CBTTeacherSnapshot]
     teacher_assignments: list[CBTTeacherAssignmentSnapshot]
     student_enrollments: list[CBTStudentEnrollmentSnapshot]
+    student_elective_selections: list[CBTStudentElectiveSelectionSnapshot]

@@ -45,6 +45,7 @@ async def test_reconciliation_ends_removed_assignment_and_preserves_general() ->
             subject_id=uuid4(),
             academic_level_department_id=None,
             is_elective=False,
+            elective_group_id=None,
             is_general=True,
         )
     ]

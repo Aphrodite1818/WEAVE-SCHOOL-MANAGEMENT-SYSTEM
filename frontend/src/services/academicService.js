@@ -364,6 +364,12 @@ export const academicService = {
     api.get("/students/academics/results", requestOptions),
   listMySubjectCards: (requestOptions) =>
     api.get("/students/academics/subjects", requestOptions),
+  getMyElectiveWorkspace: (requestOptions) =>
+    api.get("/students/academics/electives", requestOptions),
+  updateMyElectiveSelection: (electiveGroupId, curriculumSubjectIds) =>
+    api.put(`/students/academics/electives/${electiveGroupId}`, {
+      curriculum_subject_ids: curriculumSubjectIds,
+    }),
   listChildResults: (studentId, requestOptions) =>
     api.get(`/parents/academics/students/${studentId}/results`, requestOptions),
   listChildSubjectCards: (studentId, requestOptions) =>

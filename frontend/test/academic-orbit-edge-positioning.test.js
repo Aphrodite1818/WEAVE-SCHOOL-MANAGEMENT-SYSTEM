@@ -33,11 +33,14 @@ test("academic orbit launcher supports pointer dragging and nearest-edge snappin
   );
 });
 
-test("academic orbit reserves the installed PWA bottom navigation while positioning and dragging", () => {
+test("academic orbit reserves only a visible installed-PWA bottom navigation", () => {
   assert.match(source, /getBottomNavObstruction/);
   assert.match(source, /dataset\?\.standalonePwa !== "true"/);
   assert.match(source, /data-mobile-bottom-nav="true"/);
   assert.match(source, /getBoundingClientRect\(\)/);
+  assert.match(source, /rect\.width <= 0/);
+  assert.match(source, /rect\.height <= 0/);
+  assert.match(source, /rect\.top >= viewportHeight/);
   assert.match(source, /bottomObstruction/);
   assert.match(source, /getUsableViewportHeight/);
   assert.match(source, /window\.ResizeObserver/);

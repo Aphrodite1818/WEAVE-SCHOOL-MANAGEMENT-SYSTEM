@@ -13,12 +13,17 @@ from app.modules.cbt.academics.schemas import (
     CBTAcademicBootstrapResponse,
     CBTSchoolSnapshot,
     CBTServerSnapshot,
+    CBTStudentElectiveSelectionSnapshot,
     CBTSyncMetadata,
 )
 from app.modules.cbt.auth.schemas import AuthenticatedCBTServer
 from app.modules.cbt.models import CBTServer
 from app.modules.cbt.sync.projectors.bootstrap import build_bootstrap_sections
 from app.modules.cbt.sync.repository import CBTSyncRepository
+from app.modules.student_academics.curriculum_models import (
+    CurriculumSubject,
+    StudentElectiveSelection,
+)
 from app.tenant_management.models import Tenant
 
 
@@ -63,6 +68,66 @@ class CBTAcademicSyncService:
             )
         )
 
+        visible_student_ids = {item.student_id for item in sections["student_enrollments"]}
+        visible_curriculum_subject_ids = {item.id for item in sections["curriculum_subjects"]}
+
+        # The canonical bulk bootstrap projector predates elective groups. Enrich
+        # its already-filtered curriculum-subject snapshots inside the same
+        # repeatable-read transaction so bootstrap and incremental projections
+        # expose identical elective metadata without a wire-version bump.
+        if visible_curriculum_subject_ids:
+            group_rows = (
+                await db.execute(
+                    select(CurriculumSubject.id, CurriculumSubject.elective_group_id).where(
+                        CurriculumSubject.tenant_id == tenant_id,
+                        CurriculumSubject.id.in_(visible_curriculum_subject_ids),
+                    )
+                )
+            ).all()
+            group_by_subject_id = {
+                curriculum_subject_id: elective_group_id
+                for curriculum_subject_id, elective_group_id in group_rows
+            }
+            curriculum_subjects = [
+                item.model_copy(
+                    update={
+                        "elective_group_id": group_by_subject_id.get(item.id),
+                    }
+                )
+                for item in sections["curriculum_subjects"]
+            ]
+        else:
+            curriculum_subjects = sections["curriculum_subjects"]
+
+        if visible_student_ids and visible_curriculum_subject_ids:
+            selection_rows = list(
+                (
+                    await db.execute(
+                        select(StudentElectiveSelection).where(
+                            StudentElectiveSelection.tenant_id == tenant_id,
+                            StudentElectiveSelection.student_id.in_(visible_student_ids),
+                            StudentElectiveSelection.curriculum_subject_id.in_(
+                                visible_curriculum_subject_ids
+                            ),
+                        )
+                    )
+                ).scalars()
+            )
+        else:
+            selection_rows = []
+        student_elective_selections = sorted(
+            [
+                CBTStudentElectiveSelectionSnapshot(
+                    id=row.id,
+                    student_id=row.student_id,
+                    elective_group_id=row.elective_group_id,
+                    curriculum_subject_id=row.curriculum_subject_id,
+                )
+                for row in selection_rows
+            ],
+            key=lambda item: str(item.id),
+        )
+
         # Read after all projections while still inside the same repeatable-read
         # transaction. A concurrent mutation therefore belongs either entirely to
         # this snapshot/cursor boundary or entirely to a later incremental page.
@@ -91,7 +156,7 @@ class CBTAcademicSyncService:
             class_term_departments=sections["class_term_departments"],
             subjects=sections["subjects"],
             curricula=sections["curricula"],
-            curriculum_subjects=sections["curriculum_subjects"],
+            curriculum_subjects=curriculum_subjects,
             curriculum_subject_departments=sections["curriculum_subject_departments"],
             assessment_schemes=sections["assessment_schemes"],
             assessment_components=sections["assessment_components"],
@@ -99,4 +164,5 @@ class CBTAcademicSyncService:
             teachers=sections["teachers"],
             teacher_assignments=sections["teacher_assignments"],
             student_enrollments=sections["student_enrollments"],
+            student_elective_selections=student_elective_selections,
         )

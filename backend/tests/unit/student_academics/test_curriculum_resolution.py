@@ -30,7 +30,12 @@ def _scalars(values):
 
 
 def _subject(row_id):
-    return SimpleNamespace(id=row_id, subject_id=uuid4(), is_elective=False)
+    return SimpleNamespace(
+        id=row_id,
+        subject_id=uuid4(),
+        is_elective=False,
+        elective_group_id=None,
+    )
 
 
 @pytest.mark.asyncio

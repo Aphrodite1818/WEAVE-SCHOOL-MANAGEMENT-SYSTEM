@@ -22,6 +22,7 @@ from app.modules.student_academics.curriculum_models import (
     Curriculum,
     CurriculumSubject,
     CurriculumSubjectDepartment,
+    StudentElectiveSelection,
 )
 from app.modules.student_academics.models import (
     AcademicTerm,
@@ -49,6 +50,7 @@ class ResolvedCurriculumSubject:
     subject_id: uuid.UUID
     academic_level_department_id: uuid.UUID | None
     is_elective: bool
+    elective_group_id: uuid.UUID | None
     is_general: bool
 
 
@@ -59,6 +61,10 @@ class CurriculumResolutionService:
     subject applies to every class in the level. Once specialization is active,
     a class must have an exact ClassTermDepartmentAssignment and receives general
     subjects plus subjects linked to that level-department identity.
+
+    Student resolution additionally applies persisted elective selections for the
+    current term. Historical curriculum resolution intentionally does not project
+    today's selection backwards; historical result rows remain authoritative.
     """
 
     @staticmethod
@@ -351,6 +357,7 @@ class CurriculumResolutionService:
                             None if is_general or not specialization_active else level_department_id
                         ),
                         is_elective=curriculum_subject.is_elective,
+                        elective_group_id=curriculum_subject.elective_group_id,
                         is_general=is_general,
                     )
                 )
@@ -397,12 +404,45 @@ class CurriculumResolutionService:
             raise ConflictException("Student enrollment for this academic session is required.")
         if enrollment.class_id is None:
             raise ConflictException("Student must belong to a class for curriculum resolution.")
-        return await CurriculumResolutionService.resolve_class_subjects(
+        subjects = await CurriculumResolutionService.resolve_class_subjects(
             db,
             tenant_id=tenant_id,
             class_id=enrollment.class_id,
             academic_term_id=academic_term_id,
         )
+
+        # Persisted choices represent the student's current elective intent. Only
+        # apply them to the current term; historical periods are resolved from their
+        # own academic evidence instead of projecting today's choice backwards.
+        if not term.is_current:
+            return subjects
+        grouped_elective_ids = {
+            item.curriculum_subject_id
+            for item in subjects
+            if item.is_elective and item.elective_group_id is not None
+        }
+        if not grouped_elective_ids:
+            return subjects
+        selected_ids = set(
+            (
+                await db.execute(
+                    select(StudentElectiveSelection.curriculum_subject_id).where(
+                        StudentElectiveSelection.tenant_id == tenant_id,
+                        StudentElectiveSelection.student_id == student_id,
+                        StudentElectiveSelection.curriculum_subject_id.in_(grouped_elective_ids),
+                    )
+                )
+            ).scalars()
+        )
+        return [
+            item
+            for item in subjects
+            if not (
+                item.is_elective
+                and item.elective_group_id is not None
+                and item.curriculum_subject_id not in selected_ids
+            )
+        ]
 
     @staticmethod
     async def resolve_level_department_for_student(
@@ -442,12 +482,29 @@ class CurriculumResolutionService:
         """Return report-card-required curriculum for one student and term.
 
         Electives only become report-card-required after actual score participation.
+        This deliberately resolves the class curriculum directly rather than using
+        current persisted elective choices, preserving historical academic evidence.
         """
 
-        subjects = await CurriculumResolutionService.resolve_student_subjects(
+        term = await CurriculumResolutionService._term(
             db,
             tenant_id=tenant_id,
-            student_id=student_id,
+            academic_term_id=academic_term_id,
+        )
+        enrollment = await StudentEnrollmentRepository.get_authoritative_for_session(
+            db,
+            tenant_id,
+            student_id,
+            term.academic_session_id,
+        )
+        if enrollment is None or enrollment.class_id is None:
+            raise ConflictException(
+                "Student enrollment and class placement are required for curriculum resolution."
+            )
+        subjects = await CurriculumResolutionService.resolve_class_subjects(
+            db,
+            tenant_id=tenant_id,
+            class_id=enrollment.class_id,
             academic_term_id=academic_term_id,
         )
         elective_ids = {item.curriculum_subject_id for item in subjects if item.is_elective}

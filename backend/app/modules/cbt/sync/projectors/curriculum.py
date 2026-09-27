@@ -12,6 +12,7 @@ from app.modules.cbt.academics.schemas import (
     CBTCurriculumSnapshot,
     CBTCurriculumSubjectDepartmentSnapshot,
     CBTCurriculumSubjectSnapshot,
+    CBTStudentElectiveSelectionSnapshot,
     CBTSubjectSnapshot,
 )
 from app.modules.classes.models import AcademicLevel, AcademicLevelDepartment, Department
@@ -19,6 +20,7 @@ from app.modules.student_academics.curriculum_models import (
     Curriculum,
     CurriculumSubject,
     CurriculumSubjectDepartment,
+    StudentElectiveSelection,
 )
 from app.modules.subjects.models import Subject
 
@@ -100,7 +102,40 @@ def project_curriculum_subject(
         curriculum_id=curriculum_subject.curriculum_id,
         subject_id=curriculum_subject.subject_id,
         is_elective=curriculum_subject.is_elective,
+        elective_group_id=curriculum_subject.elective_group_id,
         is_active=curriculum_subject.is_active,
+    ).model_dump(mode="json")
+
+
+def project_student_elective_selection(
+    session: Session, tenant_id: uuid.UUID, entity_id: uuid.UUID
+) -> dict[str, Any] | None:
+    joined = session.execute(
+        select(StudentElectiveSelection, CurriculumSubject)
+        .join(
+            CurriculumSubject,
+            CurriculumSubject.id == StudentElectiveSelection.curriculum_subject_id,
+        )
+        .where(
+            StudentElectiveSelection.tenant_id == tenant_id,
+            StudentElectiveSelection.id == entity_id,
+            CurriculumSubject.tenant_id == tenant_id,
+        )
+    ).first()
+    if joined is None:
+        return None
+    selection, curriculum_subject = joined
+    if (
+        not curriculum_subject.is_active
+        or not curriculum_subject.is_elective
+        or curriculum_subject.elective_group_id != selection.elective_group_id
+    ):
+        return None
+    return CBTStudentElectiveSelectionSnapshot(
+        id=selection.id,
+        student_id=selection.student_id,
+        elective_group_id=selection.elective_group_id,
+        curriculum_subject_id=selection.curriculum_subject_id,
     ).model_dump(mode="json")
 
 

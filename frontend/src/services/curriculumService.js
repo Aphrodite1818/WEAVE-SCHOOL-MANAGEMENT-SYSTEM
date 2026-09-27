@@ -3,6 +3,16 @@ import { api } from "./api";
 export const curriculumService = {
   getSpecializationWorkspace: (termId) =>
     api.get(`/tenant-admin/academics/terms/${termId}/specialization-workspace`),
+  listElectiveGroups: (levelId) =>
+    api.get(`/tenant-admin/academics/levels/${levelId}/elective-groups`),
+  createElectiveGroup: (levelId, payload) =>
+    api.post(`/tenant-admin/academics/levels/${levelId}/elective-groups`, payload),
+  updateElectiveGroup: (groupId, payload) =>
+    api.patch(`/tenant-admin/academics/elective-groups/${groupId}`, payload),
+  archiveElectiveGroup: (groupId) =>
+    api.post(`/tenant-admin/academics/elective-groups/${groupId}/archive`, {}),
+  restoreElectiveGroup: (groupId) =>
+    api.post(`/tenant-admin/academics/elective-groups/${groupId}/restore`, {}),
   addSubjects: (levelId, payload) =>
     api.post(`/tenant-admin/academics/levels/${levelId}/curriculum/subjects/bulk`, payload),
   copyCurriculum: (levelId, sourceLevelId) =>

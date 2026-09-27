@@ -18,7 +18,9 @@ import app.models  # noqa: F401
 from app.config.logging import get_logger
 from app.shared.base_model import Base
 
-BASELINE_REVISION = "20260911_initial_schema"
+# Fresh installs are created directly from current ORM metadata, so their Alembic
+# stamp must be the current schema head rather than the historical root revision.
+BASELINE_REVISION = "20260927_elective_groups"
 _BOOTSTRAP_LOCK_KEY = 8_733_241_109_202_609_11
 _ALEMBIC_VERSION_TABLE = "alembic_version"
 
