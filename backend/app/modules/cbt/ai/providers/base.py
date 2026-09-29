@@ -1,67 +1,44 @@
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from dataclasses import dataclass , field
-from typing import Any , Mapping , Sequence
+from dataclasses import dataclass, field
+from typing import Any, Literal, Mapping, Sequence
 
 
-
-@dataclass(slots = True)
+@dataclass(slots=True)
 class ProviderUsage:
-    """
-    Normalized usage/cost metadata returned by a provider call
-    """
+    """Normalized usage/cost metadata returned by a provider call."""
 
-    input_tokens : int = 0
-    output_tokens : int = 0
-    cache_read_tokens : int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
 
-    #optional provider-side calculated cost , if available
-    provider_cost : float | None = None
-    currency : str | None  = "USD"
+    # Optional provider-side calculated cost, if available.
+    provider_cost: float | None = None
+    currency: str | None = "USD"
 
 
-@dataclass(slots = True)
+@dataclass(slots=True)
 class ProviderQuestionGenerationResult:
-    """
-    Result returned when a provider generates a batch of 
-    draft questions
+    """Result returned when a provider generates a batch of draft questions."""
 
-    'question' is intentionally kept as a list of dict for now
-    because the final CBT AI domain schemas are not locked yet.
-    The orchestration/validation layer will later validate and
-    normalize these strictly before they are returned to CBT
-    """
-
-    questions : list[dict[str , Any]]
+    questions: list[dict[str, Any]]
     usage: ProviderUsage = field(default_factory=ProviderUsage)
-    raw_response : dict[str, Any] | None = None
+    raw_response: dict[str, Any] | None = None
 
 
-
-@dataclass(slots = True)
+@dataclass(slots=True)
 class ProviderQuestionRegenerationResult:
-    """
-    Result returned when a provider regenerates/ transforms a 
-    single draft question
-    """
+    """Result returned when a provider regenerates/transforms one draft question."""
 
-    question : dict[str , Any]
+    question: dict[str, Any]
     usage: ProviderUsage = field(default_factory=ProviderUsage)
-    raw_response : dict[str , Any] | None = None
+    raw_response: dict[str, Any] | None = None
+
 
 @dataclass(slots=True)
 class ProviderGeneratedImage:
-    """
-    Normalized generated-image payload.
-
-    The provider may either return:
-    - a direct URL,
-    - or base64/image bytes represented as a string,
-    depending on how the concrete implementation is designed.
-
-    The orchestration layer can decide how to persist or further
-    process the asset.
-    """
+    """Normalized image returned by an image-generation provider."""
 
     content_type: str
     data_base64: str | None = None
@@ -69,15 +46,12 @@ class ProviderGeneratedImage:
 
     width: int | None = None
     height: int | None = None
-
     alt_text: str | None = None
 
 
 @dataclass(slots=True)
 class ProviderImageGenerationResult:
-    """
-    Result returned when a provider generates one image.
-    """
+    """Result returned when a provider generates one image."""
 
     image: ProviderGeneratedImage
     usage: ProviderUsage = field(default_factory=ProviderUsage)
@@ -86,10 +60,7 @@ class ProviderImageGenerationResult:
 
 @dataclass(slots=True)
 class ImageCandidate:
-    """
-    Normalized representation of a sourced/retrieved image
-    candidate from a search provider such as Openverse.
-    """
+    """Normalized sourced-image candidate returned by a search provider."""
 
     source: str
     source_url: str
@@ -111,85 +82,67 @@ class ImageCandidate:
     mime_type: str | None = None
 
 
+@dataclass(slots=True)
+class ProviderImageEvaluationResult:
+    """Decision returned after a vision-capable provider reviews image candidates."""
+
+    decision: Literal["use_candidate", "generate_image"]
+    selected_index: int | None = None
+    reason: str | None = None
+    usage: ProviderUsage = field(default_factory=ProviderUsage)
+    raw_response: dict[str, Any] | None = None
+
+
+@dataclass(slots=True)
+class ImageResolutionResult:
+    """Final result produced by the provider-agnostic image resolver."""
+
+    source: Literal["search", "generated"]
+    candidate: ImageCandidate | None = None
+    generation: ProviderImageGenerationResult | None = None
+    evaluation: ProviderImageEvaluationResult | None = None
+
 
 class BaseProvider(ABC):
-    """
-    Base provider class for all CBT AI providers
-    """
+    """Base provider class for all CBT AI providers."""
 
-
-    provider_name : str
+    provider_name: str
 
     @abstractmethod
-    def is_configured(self)->bool:
+    def is_configured(self) -> bool:
         """
-        Return True if the provider has the minimum configuration
-        required to operate
+        Return True when the provider has the minimum configuration required.
 
-        This should NOT crash applications startup. It is meant to 
-        support runtime checks because provider credentials are 
-        allowed to be absent in environments where CBT AI is not being 
-        used
+        Missing optional AI credentials must not block application startup;
+        concrete providers should fail only when the capability is invoked.
         """
-
         raise NotImplementedError
 
 
-
-
-class BaseQuestionGenerationProvider(BaseProvider , ABC):
-    """
-    Contract for providers that generate or transform CBT 
-    question drafts
-    """
-
-
+class BaseQuestionGenerationProvider(BaseProvider, ABC):
+    """Contract for providers that generate or transform CBT question drafts."""
 
     @abstractmethod
     async def generate_questions(
         self,
         *,
-        request : Mapping[str , Any]
-    )->ProviderQuestionGenerationResult:
-        """
-        Generate a batch of draft questions
-
-        Expected request payload (roughly)
-        - subject / class / level context
-        - allowed topics
-        - question types
-        - free-form author instruction
-        - image preference/policy
-        """
+        request: Mapping[str, Any],
+    ) -> ProviderQuestionGenerationResult:
+        """Generate a batch of draft questions."""
         raise NotImplementedError
-
-
-
 
     @abstractmethod
     async def regenerate_question(
         self,
         *,
-        request : Mapping[str, Any]
-    )->ProviderQuestionRegenerationResult:
-        """
-        Regenerate/transform a single existing draft question
-
-
-        Expected request payload (roughly):
-        - current question draft
-        - subject / class / topic context
-        - transformation instruction
-        - image policy
-        """
+        request: Mapping[str, Any],
+    ) -> ProviderQuestionRegenerationResult:
+        """Regenerate or transform one existing draft question."""
         raise NotImplementedError
 
 
 class BaseImageGenerationProvider(BaseProvider, ABC):
-    """
-    Contract for providers that generate new images
-    (e.g. diagrams, illustrations, visual options).
-    """
+    """Contract for providers that generate new visual assets."""
 
     @abstractmethod
     async def generate_image(
@@ -199,24 +152,12 @@ class BaseImageGenerationProvider(BaseProvider, ABC):
         metadata: Mapping[str, Any] | None = None,
         reference_images: Sequence[str] | None = None,
     ) -> ProviderImageGenerationResult:
-        """
-        Generate a single image.
-
-        `metadata` can carry implementation-specific but still
-        provider-agnostic instructions such as:
-        - image role: stem / option
-        - style hint
-        - size hint
-        - educational context
-        """
+        """Generate one image."""
         raise NotImplementedError
 
 
 class BaseImageSearchProvider(BaseProvider, ABC):
-    """
-    Contract for providers that retrieve/reference suitable
-    existing images instead of generating them.
-    """
+    """Contract for providers that retrieve existing image candidates."""
 
     @abstractmethod
     async def search(
@@ -226,14 +167,24 @@ class BaseImageSearchProvider(BaseProvider, ABC):
         limit: int = 10,
         metadata: Mapping[str, Any] | None = None,
     ) -> list[ImageCandidate]:
-        """
-        Search for candidate images.
+        """Search for candidate images."""
+        raise NotImplementedError
 
-        `metadata` can later be used to refine retrieval with
-        additional constraints such as:
-        - safe educational usage
-        - preferred orientation
-        - preferred license requirements
-        - subject/topic hints
+
+class BaseImageEvaluationProvider(BaseProvider, ABC):
+    """Contract for vision-capable providers that judge retrieved images."""
+
+    @abstractmethod
+    async def evaluate_images(
+        self,
+        *,
+        requirement: str,
+        candidates: Sequence[ImageCandidate],
+    ) -> ProviderImageEvaluationResult:
+        """
+        Decide whether one candidate satisfies the requirement.
+
+        The selected index always refers to the position inside `candidates`.
+        If no candidate is suitable, return the `generate_image` decision.
         """
         raise NotImplementedError
