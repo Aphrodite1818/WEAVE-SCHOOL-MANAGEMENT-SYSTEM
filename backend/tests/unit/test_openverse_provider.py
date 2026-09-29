@@ -1,6 +1,8 @@
 """Openverse regressions with intercepted HTTP; no external requests."""
 
 import asyncio
+import time
+from unittest.mock import AsyncMock
 from urllib.parse import parse_qs
 
 import httpx
@@ -77,7 +79,7 @@ async def test_partial_credentials(credentials):
         await p.search(query="test")
 
 
-async def test_token_lock_cache_and_refresh(monkeypatch):
+async def test_token_lock_cache_and_refresh(monkeypatch, redis_cache):
     def respond(request):
         if request.method == "POST":
             assert parse_qs(request.content.decode())["grant_type"] == ["client_credentials"]
@@ -88,15 +90,17 @@ async def test_token_lock_cache_and_refresh(monkeypatch):
     calls = mock_http(monkeypatch, respond)
     p = provider(client_id="id", client_secret=SecretStr("secret"))
     assert p.is_configured()
-    await asyncio.gather(*(p.search(query="test") for _ in range(5)))
+    await asyncio.gather(
+        *(provider(client_id="id", client_secret="secret").search(query="test") for _ in range(5))
+    )
     assert sum(c.method == "POST" for c in calls) == 1
-    p._access_token_expires_at = 0
+    redis_cache.expires[p._token_cache_key] = 0
     await p.search(query="test")
     assert sum(c.method == "POST" for c in calls) == 2
 
 
 @pytest.mark.parametrize("lifetime", [None, 0, -1, True, "3600"])
-async def test_bad_token_lifetime(monkeypatch, lifetime):
+async def test_bad_token_lifetime(monkeypatch, lifetime, redis_cache):
     mock_http(
         monkeypatch,
         lambda request: httpx.Response(
@@ -106,7 +110,8 @@ async def test_bad_token_lifetime(monkeypatch, lifetime):
     p = provider(client_id="id", client_secret="secret")
     with pytest.raises(module.OpenverseProviderError, match="lifetime"):
         await p.search(query="test")
-    assert p._access_token is None
+    assert await redis_cache.get(p._token_cache_key) is None
+    assert await redis_cache.get(p._token_lock_key) is None
 
 
 @pytest.mark.parametrize("authenticated", [False, True])
@@ -174,3 +179,110 @@ def test_page_size_bounds():
         )["page_size"]
         == 50
     )
+
+
+class FakeRedis:
+    def __init__(self):
+        self.values = {}
+        self.expires = {}
+
+    async def get(self, key):
+        if time.monotonic() >= self.expires.get(key, 0):
+            self.values.pop(key, None)
+        return self.values.get(key)
+
+    async def set(self, key, value, *, nx=False, ex):
+        if nx and await self.get(key) is not None:
+            return False
+        self.values[key] = value
+        self.expires[key] = time.monotonic() + ex
+        return True
+
+    async def eval(self, script, numkeys, *args):
+        lock_key = args[0]
+        owner = args[numkeys]
+        if await self.get(lock_key) != owner:
+            return 0
+        if numkeys == 2:
+            await self.set(args[1], args[3], ex=args[4])
+        else:
+            self.values.pop(lock_key, None)
+        return 1
+
+
+@pytest.fixture(autouse=True)
+def redis_cache(monkeypatch):
+    cache = FakeRedis()
+    monkeypatch.setattr(module, "get_redis", lambda: cache)
+    return cache
+
+
+async def test_missing_redis_only_blocks_authenticated_requests(monkeypatch):
+    monkeypatch.setattr(module, "get_redis", lambda: None)
+    assert await provider()._get_headers() == {"Accept": "application/json"}
+    with pytest.raises(module.OpenverseProviderError, match="unavailable"):
+        await provider(client_id="id", client_secret="secret")._get_headers()
+
+
+async def test_redis_failure(monkeypatch, redis_cache):
+    monkeypatch.setattr(redis_cache, "get", AsyncMock(side_effect=module.RedisError("failure")))
+    with pytest.raises(module.OpenverseProviderError, match="cache is unavailable"):
+        await provider(client_id="id", client_secret="secret")._get_headers()
+
+
+def test_credential_and_endpoint_cache_isolation():
+    first = provider(client_id="one", client_secret="secret")
+    assert (
+        first._token_cache_key != provider(client_id="two", client_secret="secret")._token_cache_key
+    )
+    assert (
+        first._token_cache_key
+        != provider(client_id="one", client_secret="rotated")._token_cache_key
+    )
+    assert (
+        first._token_cache_key
+        != provider(
+            client_id="one", client_secret="secret", base_url="https://other.example"
+        )._token_cache_key
+    )
+    assert "secret" not in first._token_cache_key
+
+
+async def test_lock_wait_is_bounded(redis_cache):
+    p = provider(client_id="id", client_secret="secret", timeout=0.01)
+    p.LOCK_SAFETY_BUFFER_SECONDS = 0
+    await redis_cache.set(p._token_lock_key, "another-worker", ex=30)
+    with pytest.raises(module.OpenverseProviderError, match="timed out"):
+        await p._get_access_token()
+    assert await redis_cache.get(p._token_lock_key) == "another-worker"
+
+
+async def test_lost_lock_cannot_publish_or_delete_successor(monkeypatch, redis_cache):
+    p = provider(client_id="id", client_secret="secret")
+
+    async def refresh():
+        await redis_cache.set(p._token_lock_key, "successor", ex=30)
+        return "stale-token", 3600
+
+    monkeypatch.setattr(p, "_request_access_token", refresh)
+    with pytest.raises(module.OpenverseProviderError, match="lock expired"):
+        await p._get_access_token()
+    assert await redis_cache.get(p._token_cache_key) is None
+    assert await redis_cache.get(p._token_lock_key) == "successor"
+
+
+async def test_cancelled_refresh_releases_lock(monkeypatch, redis_cache):
+    p = provider(client_id="id", client_secret="secret")
+    started = asyncio.Event()
+
+    async def refresh():
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(p, "_request_access_token", refresh)
+    task = asyncio.create_task(p._get_access_token())
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert await redis_cache.get(p._token_lock_key) is None

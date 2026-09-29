@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import math
+import secrets
 import time
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
 import httpx
 from pydantic import SecretStr
+from redis.exceptions import RedisError
 
 from app.config.settings import settings
+from app.core.cache.redis import get_redis
 from app.modules.cbt.ai.providers.base import BaseImageSearchProvider, ImageCandidate
 
 
@@ -33,17 +39,29 @@ class OpenverseProviderConfigurationError(OpenverseProviderError):
 
 
 class OpenverseImageSearchProvider(BaseImageSearchProvider):
-    """
-    Search Openverse for openly licensed image candidates.
-
-    Openverse supports anonymous requests, so credentials are optional
-
-    If both client ID and client secret are configured, this provider
-    authenticates using OAuth client credentials and caches the access
-    token until shortly before expiry
-    """
+    """Search openly licensed images, sharing OAuth tokens through Redis."""
 
     provider_name = "openverse"
+    TOKEN_CACHE_KEY = "cbt:ai:openverse:access_token"
+    TOKEN_REFRESH_LOCK_KEY = "cbt:ai:openverse:access_token:lock"
+    TOKEN_EXPIRY_BUFFER_SECONDS = 60
+    LOCK_SAFETY_BUFFER_SECONDS = 5
+    LOCK_POLL_INTERVAL_SECONDS = 0.25
+
+    _RELEASE_LOCK_SCRIPT = """
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("del", KEYS[1])
+    end
+    return 0
+    """
+
+    _CACHE_TOKEN_SCRIPT = """
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        redis.call("set", KEYS[2], ARGV[2], "EX", ARGV[3])
+        return 1
+    end
+    return 0
+    """
 
     def __init__(
         self,
@@ -69,11 +87,13 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
         self.base_url = (base_url or settings.OPENVERSE_BASE_URL).rstrip("/")
 
         self.timeout = timeout or settings.OPENVERSE_REQUEST_TIMEOUT_SECONDS
-
-        self._access_token: str | None = None
-        self._access_token_expires_at: float = 0
-
-        self._token_lock = asyncio.Lock()
+        # Tokens are application credentials, not tenant data. Scope by endpoint
+        # and credentials, including rotations, without exposing secrets in keys.
+        cache_scope = hashlib.sha256(
+            json.dumps([self.base_url, self.client_id, self.client_secret]).encode()
+        ).hexdigest()
+        self._token_cache_key = f"{self.TOKEN_CACHE_KEY}:{cache_scope}"
+        self._token_lock_key = f"{self.TOKEN_REFRESH_LOCK_KEY}:{cache_scope}"
 
     # configuration
     def is_configured(self) -> bool:
@@ -133,27 +153,68 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
         return headers
 
     async def _get_access_token(self) -> str:
-        """
-        Return a valid cached Openverse OAuth access token
+        """Read or refresh a shared token using a bounded, owner-checked lock."""
+        redis = get_redis()
+        if redis is None:
+            raise OpenverseProviderError(
+                "Shared Redis is unavailable for Openverse token management"
+            )
 
-        A new token is requested only when no token exists or the
-        current token is close to expiration
-        """
+        lock_seconds = math.ceil(self.timeout + self.LOCK_SAFETY_BUFFER_SECONDS)
+        owner = secrets.token_hex(16)
+        try:
+            async with asyncio.timeout(lock_seconds):
+                while True:
+                    cached_token = await redis.get(self._token_cache_key)
+                    if cached_token:
+                        return cached_token
+                    acquired = await redis.set(
+                        self._token_lock_key, owner, nx=True, ex=lock_seconds
+                    )
+                    if acquired:
+                        try:
+                            # Another worker may have published between our GET and SET.
+                            cached_token = await redis.get(self._token_cache_key)
+                            if cached_token:
+                                return cached_token
+                            started_at = time.monotonic()
+                            token, expires_in = await self._request_access_token()
+                            buffer = min(self.TOKEN_EXPIRY_BUFFER_SECONDS, expires_in // 10)
+                            ttl = math.floor(expires_in - buffer - (time.monotonic() - started_at))
+                            if ttl <= 0:
+                                raise OpenverseProviderError(
+                                    "Openverse token expired before it could be cached."
+                                )
+                            stored = await redis.eval(
+                                self._CACHE_TOKEN_SCRIPT,
+                                2,
+                                self._token_lock_key,
+                                self._token_cache_key,
+                                owner,
+                                token,
+                                ttl,
+                            )
+                            if not stored:
+                                raise OpenverseProviderError(
+                                    "Openverse token refresh lock expired."
+                                )
+                            return token
+                        finally:
+                            # A stale worker must never remove a successor's lock.
+                            # On Redis failure the lock still expires automatically.
+                            try:
+                                await redis.eval(
+                                    self._RELEASE_LOCK_SCRIPT, 1, self._token_lock_key, owner
+                                )
+                            except RedisError:
+                                pass
+                    await asyncio.sleep(self.LOCK_POLL_INTERVAL_SECONDS)
+        except TimeoutError as exc:
+            raise OpenverseProviderError("Openverse token refresh timed out.") from exc
+        except RedisError as exc:
+            raise OpenverseProviderError("Openverse token cache is unavailable.") from exc
 
-        now = time.monotonic()
-
-        if self._access_token and now < self._access_token_expires_at:
-            return self._access_token
-
-        async with self._token_lock:
-            now = time.monotonic()
-
-            if self._access_token and now < self._access_token_expires_at:
-                return self._access_token
-
-            return await self._request_access_token()
-
-    async def _request_access_token(self) -> str:
+    async def _request_access_token(self) -> tuple[str, int]:
         """Request an OAuth client-credentials token from Openverse"""
 
         if not self._has_complete_credentials():
@@ -161,7 +222,6 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
                 "Openverse OAuth credentials are not configured"
             )
 
-        requested_at = time.monotonic()
         payload = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
@@ -207,14 +267,7 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
         if type(expires_in) is not int or expires_in <= 0:
             raise OpenverseProviderError("Openverse returned an invalid token lifetime.")
 
-        # Refresh slightly before actual expiry.
-        refresh_buffer = min(60, expires_in // 10)
-
-        self._access_token = access_token.strip()
-
-        self._access_token_expires_at = requested_at + expires_in - refresh_buffer
-
-        return self._access_token
+        return access_token.strip(), expires_in
 
     # IMAGE SEARCH
 
