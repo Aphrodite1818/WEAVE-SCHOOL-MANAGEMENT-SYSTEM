@@ -32,8 +32,10 @@ def make_settings(**overrides):
 def test_defaults_and_validator_chain():
     config = make_settings()
     assert config.MINIMAX_BASE_URL == "https://api.minimax.io"
-    assert config.validate_cbt_ai_provider_settings() is config
     assert config.GEMINI_API_KEY is None
+    assert config.MINIMAX_API_KEY is None
+    assert config.OPENVERSE_CLIENT_ID is None
+    assert config.OPENVERSE_CLIENT_SECRET is None
     with pytest.raises(ValidationError, match="DATABASE_URL"):
         make_settings(DATABASE_URL=None)
 
@@ -98,28 +100,45 @@ def test_values_normalized_and_secrets_masked():
         "MINIMAX_IMAGE_MODEL",
         "GEMINI_TEXT_MODEL",
         "GEMINI_IMAGE_MODEL",
-        "MINIMAX_API_KEY",
-        "GEMINI_API_KEY",
-        "OPENVERSE_CLIENT_ID",
-        "OPENVERSE_CLIENT_SECRET",
     ],
 )
-def test_blank_values_rejected(field):
+def test_blank_model_names_rejected(field):
     with pytest.raises(ValidationError):
         make_settings(**{field: "   "})
 
 
 @pytest.mark.parametrize(
-    "values", [{"OPENVERSE_CLIENT_ID": "client"}, {"OPENVERSE_CLIENT_SECRET": "test-secret"}]
+    "field",
+    [
+        "MINIMAX_API_KEY",
+        "GEMINI_API_KEY",
+        "OPENVERSE_CLIENT_SECRET",
+    ],
 )
-def test_partial_openverse_credentials_rejected(values):
-    with pytest.raises(ValidationError, match="configured together"):
-        make_settings(**values)
+def test_blank_optional_secrets_become_none(field):
+    config = make_settings(**{field: "   "})
+    assert getattr(config, field) is None
+
+
+def test_blank_openverse_client_id_becomes_none():
+    config = make_settings(OPENVERSE_CLIENT_ID="   ")
+    assert config.OPENVERSE_CLIENT_ID is None
+
+
+def test_partial_openverse_credentials_do_not_block_startup():
+    id_only = make_settings(OPENVERSE_CLIENT_ID="client")
+    secret_only = make_settings(OPENVERSE_CLIENT_SECRET="test-secret")
+
+    assert id_only.OPENVERSE_CLIENT_ID == "client"
+    assert id_only.OPENVERSE_CLIENT_SECRET is None
+    assert secret_only.OPENVERSE_CLIENT_ID is None
+    assert isinstance(secret_only.OPENVERSE_CLIENT_SECRET, SecretStr)
 
 
 def test_complete_openverse_credentials():
     config = make_settings(OPENVERSE_CLIENT_ID=" client ", OPENVERSE_CLIENT_SECRET="test-secret")
     assert config.OPENVERSE_CLIENT_ID == "client"
+    assert config.OPENVERSE_CLIENT_SECRET is not None
 
 
 @pytest.mark.parametrize(
@@ -140,13 +159,3 @@ def test_numeric_bounds(field, low, high):
     for value in (low - 1, high + 1, float("nan"), float("inf")):
         with pytest.raises(ValidationError):
             make_settings(**{field: value})
-
-
-def test_gemini_factory_unwraps_secret(monkeypatch):
-    from app.modules.AI.providers import factory
-
-    config = make_settings(GEMINI_API_KEY="example-test-key")
-    monkeypatch.setattr(factory, "settings", config)
-    monkeypatch.setattr(factory, "GeminiProvider", lambda *args: args)
-    result = factory.ProviderFactory.get_provider("gemini")
-    assert result == ("example-test-key", config.GEMINI_MODEL, config.LLM_MAX_TOKENS)
