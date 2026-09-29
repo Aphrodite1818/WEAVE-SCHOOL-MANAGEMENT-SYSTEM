@@ -79,7 +79,6 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=120)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=60)
 
-    GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
     ANTHROPIC_API_KEY: str | None = None
@@ -469,33 +468,21 @@ class Settings(BaseSettings):
 
     @field_validator("MINIMAX_API_KEY", "GEMINI_API_KEY", "OPENVERSE_CLIENT_SECRET")
     @classmethod
-    def validate_cbt_ai_secret(cls, value: SecretStr | None) -> SecretStr | None:
+    def normalize_optional_cbt_ai_secret(cls, value: SecretStr | None) -> SecretStr | None:
         if value is None:
             return None
         normalized = value.get_secret_value().strip()
         if not normalized:
-            raise ValueError("CBT AI credentials cannot be blank; omit unused credentials.")
+            return None
         return SecretStr(normalized)
 
     @field_validator("OPENVERSE_CLIENT_ID")
     @classmethod
-    def validate_openverse_client_id(cls, value: str | None) -> str | None:
+    def normalize_optional_openverse_client_id(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
-        if not normalized:
-            raise ValueError("OPENVERSE_CLIENT_ID cannot be blank; omit unused credentials.")
-        return normalized
-
-    @model_validator(mode="after")
-    def validate_cbt_ai_provider_settings(self) -> "Settings":
-        # Anonymous image search is allowed; OAuth credentials must be a complete pair.
-        if (self.OPENVERSE_CLIENT_ID is None) != (self.OPENVERSE_CLIENT_SECRET is None):
-            raise ValueError(
-                "OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET must be configured together."
-            )
-        # AI keys remain optional at startup; providers enforce keys when invoked.
-        return self
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":
