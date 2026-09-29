@@ -79,7 +79,6 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=120)
     DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=60)
 
-    GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
@@ -380,6 +379,36 @@ class Settings(BaseSettings):
     MEDIA_MAX_PASSPORT_SIZE_BYTES: int = 2 * 1024 * 1024
     MEDIA_ALLOWED_IMAGE_TYPES: list[str] = ["image/jpeg", "image/png", "image/webp"]
 
+    # ==========================================================
+    # CBT AI QUESTION GENERATOR CONFIG
+    # Credits, feature flags, tenant balances, and generation limits
+    # belong to the CBT AI domain/configuration layer.
+    # ==========================================================
+    CBT_AI_QUESTION_PROVIDER: Literal["gemini", "minimax"] = "gemini"
+    CBT_AI_IMAGE_PROVIDER: Literal["gemini", "minimax"] = "gemini"
+    CBT_AI_IMAGE_SEARCH_PROVIDER: Literal["openverse"] = "openverse"
+
+    MINIMAX_API_KEY: SecretStr | None = None
+    MINIMAX_BASE_URL: str = "https://api.minimax.io"
+    MINIMAX_TEXT_MODEL: str = "MiniMax-M3"
+    MINIMAX_IMAGE_MODEL: str = "image-01"
+    MINIMAX_MAX_OUTPUT_TOKENS: int = Field(default=16384, ge=256, le=131072)
+    MINIMAX_IMAGE_TIMEOUT_SECONDS: float = Field(default=120.0, ge=1.0, le=300.0)
+    MINIMAX_REQUEST_TIMEOUT_SECONDS: float = Field(default=60.0, ge=1.0, le=300.0)
+
+    GEMINI_API_KEY: SecretStr | None = None
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    GEMINI_TEXT_MODEL: str = "gemini-flash-lite-latest"
+    GEMINI_IMAGE_MODEL: str = "gemini-3.1-flash-lite-image"
+    GEMINI_MAX_OUTPUT_TOKENS: int = Field(default=16384, ge=256, le=131072)
+    GEMINI_IMAGE_TIMEOUT_SECONDS: float = Field(default=120.0, ge=1.0, le=300.0)
+    GEMINI_REQUEST_TIMEOUT_SECONDS: float = Field(default=60.0, ge=1.0, le=300.0)
+
+    OPENVERSE_BASE_URL: str = "https://api.openverse.org/v1"
+    OPENVERSE_CLIENT_ID: str | None = None
+    OPENVERSE_CLIENT_SECRET: SecretStr | None = None
+    OPENVERSE_REQUEST_TIMEOUT_SECONDS: float = Field(default=15.0, ge=1.0, le=60.0)
+
     @field_validator(
         "CACHE_DEFAULT_TTL_SECONDS",
         "CACHE_SHORT_TTL_SECONDS",
@@ -400,6 +429,73 @@ class Settings(BaseSettings):
                 raise ValueError("Cache TTL values cannot be blank.")
             return int(float(raw_value))
         raise ValueError("Cache TTL values must be seconds.")
+
+    @field_validator("MINIMAX_BASE_URL", "GEMINI_BASE_URL", "OPENVERSE_BASE_URL")
+    @classmethod
+    def validate_cbt_api_service_url(cls, value: str) -> str:
+        normalized = value.strip().rstrip("/")
+        try:
+            parsed = urlparse(normalized)
+            port = parsed.port
+            valid = (
+                parsed.scheme == "https"
+                and bool(parsed.hostname)
+                and parsed.username is None
+                and parsed.password is None
+                and not parsed.query
+                and not parsed.fragment
+                and not any(char.isspace() for char in normalized)
+                and "\\" not in normalized
+                and (port is None or port > 0)
+            )
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError(
+                "CBT AI service URLs must be absolute HTTPS URLs without "
+                "credentials, query strings, or fragments."
+            )
+        return normalized
+
+    @field_validator(
+        "MINIMAX_TEXT_MODEL", "MINIMAX_IMAGE_MODEL", "GEMINI_TEXT_MODEL", "GEMINI_IMAGE_MODEL"
+    )
+    @classmethod
+    def validate_cbt_ai_model_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("CBT AI model names cannot be blank.")
+        return normalized
+
+    @field_validator("MINIMAX_API_KEY", "GEMINI_API_KEY", "OPENVERSE_CLIENT_SECRET")
+    @classmethod
+    def validate_cbt_ai_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
+        normalized = value.get_secret_value().strip()
+        if not normalized:
+            raise ValueError("CBT AI credentials cannot be blank; omit unused credentials.")
+        return SecretStr(normalized)
+
+    @field_validator("OPENVERSE_CLIENT_ID")
+    @classmethod
+    def validate_openverse_client_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("OPENVERSE_CLIENT_ID cannot be blank; omit unused credentials.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_cbt_ai_provider_settings(self) -> "Settings":
+        # Anonymous image search is allowed; OAuth credentials must be a complete pair.
+        if (self.OPENVERSE_CLIENT_ID is None) != (self.OPENVERSE_CLIENT_SECRET is None):
+            raise ValueError(
+                "OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET must be configured together."
+            )
+        # AI keys remain optional at startup; providers enforce keys when invoked.
+        return self
 
     @model_validator(mode="after")
     def validate_settings(self) -> "Settings":

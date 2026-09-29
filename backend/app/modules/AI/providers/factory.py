@@ -30,7 +30,7 @@ class ProviderFactory:
 
         providers = {
             "gemini": lambda: GeminiProvider(
-                settings.GEMINI_API_KEY,
+                settings.GEMINI_API_KEY.get_secret_value() if settings.GEMINI_API_KEY else None,
                 settings.GEMINI_MODEL,
                 settings.LLM_MAX_TOKENS,
             ),
