@@ -7,11 +7,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.config.settings import settings
-
+from app.config.logging import get_logger
 from app.modules.AI.providers.claude import ClaudeProvider
 from app.modules.AI.providers.openai import OpenAIProvider
-from app.modules.AI.providers.gemini import GeminiProvider
-from app.config.logging import get_logger
 
 if TYPE_CHECKING:
     from app.modules.AI.providers.base import BaseLLMProvider
@@ -21,19 +19,14 @@ logger = get_logger(__name__)
 
 
 class ProviderFactory:
-    """Factory for selecting AI providers."""
+    """Factory for selecting the legacy/general-purpose Weave AI providers."""
 
     @staticmethod
     def get_provider(provider_name: str) -> BaseLLMProvider:
-        """Return the configured AI provider."""
+        """Return the configured general-purpose AI provider."""
         provider_name = provider_name.lower()
 
         providers = {
-            "gemini": lambda: GeminiProvider(
-                settings.GEMINI_API_KEY.get_secret_value() if settings.GEMINI_API_KEY else None,
-                settings.GEMINI_MODEL,
-                settings.LLM_MAX_TOKENS,
-            ),
             "claude": lambda: ClaudeProvider(
                 settings.ANTHROPIC_API_KEY,
                 settings.ANTHROPIC_MODEL,
