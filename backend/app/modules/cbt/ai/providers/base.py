@@ -170,7 +170,7 @@ class BaseQuestionGenerationProvider(BaseProvider , ABC):
     async def regenerate_question(
         self,
         *,
-        request : Mapping[str . Any]
+        request : Mapping[str, Any]
     )->ProviderQuestionRegenerationResult:
         """
         Regenerate/transform a single existing draft question
