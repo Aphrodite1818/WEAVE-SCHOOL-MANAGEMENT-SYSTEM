@@ -181,9 +181,7 @@ def question_regeneration_schema_text() -> str:
 def build_question_generation_prompt() -> str:
     """Build the provider-neutral generation contract."""
     return (
-        f"{QUESTION_GENERATION_RULES}\n\n"
-        "RESPONSE JSON SCHEMA:\n"
-        f"{question_generation_schema_text()}"
+        f"{QUESTION_GENERATION_RULES}\n\nRESPONSE JSON SCHEMA:\n{question_generation_schema_text()}"
     )
 
 
@@ -198,8 +196,4 @@ def build_question_regeneration_prompt() -> str:
 
 def build_question_repair_prompt() -> str:
     """Build the provider-neutral repair contract."""
-    return (
-        f"{QUESTION_REPAIR_RULES}\n\n"
-        "RESPONSE JSON SCHEMA:\n"
-        f"{question_generation_schema_text()}"
-    )
+    return f"{QUESTION_REPAIR_RULES}\n\nRESPONSE JSON SCHEMA:\n{question_generation_schema_text()}"
