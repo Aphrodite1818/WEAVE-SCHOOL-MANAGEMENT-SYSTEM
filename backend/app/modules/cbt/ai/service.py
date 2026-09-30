@@ -15,7 +15,14 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-from app.modules.cbt.ai.authoring.providers.base import ImageResolutionResult
+from app.modules.cbt.ai.authoring.image_materializer import (
+    ImageMaterializationError,
+    ImageMaterializer,
+)
+from app.modules.cbt.ai.authoring.providers.base import (
+    ImageResolutionResult,
+    ProviderImageInput,
+)
 from app.modules.cbt.ai.authoring.providers.factory import CBTProviderFactory
 from app.modules.cbt.ai.authoring.service import (
     AuthoredQuestion,
@@ -72,12 +79,7 @@ T = TypeVar("T")
 
 
 class CBTAIService:
-    """Coordinate authenticated CBT actors, AI authoring, quota, and purchases.
-
-    This service is the application boundary for CBT AI. It does not authenticate
-    machine/actor tokens itself, manipulate quota rows directly, or call concrete
-    providers directly. Those responsibilities remain in their owning domains.
-    """
+    """Coordinate authenticated CBT actors, AI authoring, quota, and purchases."""
 
     CREDITS_PER_GENERATED_QUESTION = 1
     CREDITS_PER_REGENERATED_QUESTION = 1
@@ -137,6 +139,8 @@ class CBTAIService:
         actor: AuthenticatedCBTActor,
         request: AIRegenerateQuestionRequest,
     ) -> AIRegenerateQuestionResponse:
+        request_payload, reference_images = await cls._prepare_regeneration_request(request)
+
         actor_type, quota_actor_id = cls._resolve_quota_actor(actor)
         reservation = await cls._run_quota(
             AIQuotaService.reserve_credits(
@@ -151,8 +155,9 @@ class CBTAIService:
         authoring_service = cls._build_authoring_service()
         try:
             result = await authoring_service.regenerate_question(
-                request=request.model_dump(exclude_none=True),
+                request=request_payload,
                 expected_question_type=request.existing_question.question_type,
+                reference_images=reference_images,
             )
         except Exception:
             await cls._release_reservation_safely(
@@ -511,6 +516,49 @@ class CBTAIService:
         )
 
     @classmethod
+    async def _prepare_regeneration_request(
+        cls,
+        request: AIRegenerateQuestionRequest,
+    ) -> tuple[dict, list[ProviderImageInput]]:
+        payload = request.model_dump(exclude_none=True)
+        existing = payload["existing_question"]
+        reference_images: list[ProviderImageInput] = []
+        materializer = ImageMaterializer()
+
+        async def consume_image(container: dict, key: str, label: str) -> None:
+            raw_image = container.get(key)
+            if not isinstance(raw_image, dict):
+                return
+            try:
+                image = await materializer.materialize_transport_base64(
+                    data_base64=raw_image["data_base64"],
+                    content_type=raw_image["content_type"],
+                    expected_sha256=raw_image["sha256"],
+                    label=label,
+                    alt_text=raw_image.get("alt_text"),
+                )
+            except ImageMaterializationError as exc:
+                raise BadRequestException("Existing question contains an invalid image") from exc
+            reference_images.append(image)
+            container[key] = {
+                "reference_image_label": label,
+                "content_type": image.content_type,
+                "width": image.width,
+                "height": image.height,
+            }
+
+        await consume_image(existing, "image", "existing_question.image")
+        for index, option in enumerate(existing.get("options", [])):
+            if isinstance(option, dict):
+                await consume_image(
+                    option,
+                    "image",
+                    f"existing_question.options[{index}].image",
+                )
+
+        return payload, reference_images
+
+    @classmethod
     async def _release_reservation_safely(
         cls,
         db: AsyncSession,
@@ -619,33 +667,19 @@ class CBTAIService:
         if resolution is None:
             return None
 
-        if resolution.source == "search":
-            candidate = resolution.candidate
-            if candidate is None:
-                return None
-            return AIResolvedImageResponse(
-                source="search",
-                url=candidate.image_url or candidate.thumbnail_url,
-                content_type=candidate.mime_type,
-                width=candidate.width,
-                height=candidate.height,
-                source_url=candidate.source_url,
-                creator=candidate.creator,
-                attribution_text=candidate.attribution_text,
-                license_name=candidate.license_name,
-                license_url=candidate.license_url,
-            )
-
-        generation = resolution.generation
-        if generation is None:
-            return None
-        image = generation.image
+        image = resolution.image
+        candidate = resolution.candidate
         return AIResolvedImageResponse(
-            source="generated",
-            url=image.url,
-            data_base64=image.data_base64,
+            source=resolution.source,
             content_type=image.content_type,
+            data_base64=ImageMaterializer.encode_transport_base64(image),
+            sha256=image.sha256,
             width=image.width,
             height=image.height,
             alt_text=image.alt_text,
+            source_url=candidate.source_url if candidate is not None else None,
+            creator=candidate.creator if candidate is not None else None,
+            attribution_text=candidate.attribution_text if candidate is not None else None,
+            license_name=candidate.license_name if candidate is not None else None,
+            license_url=candidate.license_url if candidate is not None else None,
         )
