@@ -386,6 +386,8 @@ class Settings(BaseSettings):
     CBT_AI_QUESTION_PROVIDER: Literal["gemini", "minimax"] = "gemini"
     CBT_AI_IMAGE_PROVIDER: Literal["gemini", "minimax"] = "gemini"
     CBT_AI_IMAGE_SEARCH_PROVIDER: Literal["openverse"] = "openverse"
+    CBT_AI_CREDIT_UNIT_PRICE_KOBO: int = Field(default=0, ge=0)
+    CBT_AI_MINIMUM_PURCHASE_CREDITS: int = Field(default=1, gt=0)
 
     MINIMAX_API_KEY: SecretStr | None = None
     MINIMAX_BASE_URL: str = "https://api.minimax.io"
