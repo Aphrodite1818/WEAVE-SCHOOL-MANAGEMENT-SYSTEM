@@ -10,7 +10,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.modules.cbt.ai.models import (
+from app.modules.cbt.ai.quota.models import (
     AICreditAllocation,
     AICreditLedger,
     AICreditLedgerBucket,
