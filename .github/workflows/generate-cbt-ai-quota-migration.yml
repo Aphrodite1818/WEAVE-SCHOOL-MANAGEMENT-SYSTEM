@@ -1,0 +1,79 @@
+name: Generate CBT AI quota migration
+
+on:
+  push:
+    branches:
+      - refactor/shared-payment-engine
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: weave_migration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d weave_migration"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      ENV: dev
+      SECRET_KEY: ci-only-secret-key-that-is-longer-than-48-characters-for-tests
+      BULK_IMPORT_RESULT_ENCRYPTION_KEY: ci-only-bulk-import-encryption-key-32-characters
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/weave_migration
+      FRONTEND_APP_URL: http://localhost:5174
+      APP_SCRIPT_URL: http://localhost:3000/mock-app-script
+      ALLOWED_ORIGINS: '["http://localhost:5174"]'
+      CACHE_ENABLED: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/shared-payment-engine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --locked
+      - name: Register quota models and generate migration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/app/models.py")
+          text = path.read_text()
+          needle = "import app.modules.cbt.models\n"
+          addition = "import app.modules.cbt.ai.quota.models\n"
+          if addition not in text:
+              if needle not in text:
+                  raise SystemExit("CBT model registry insertion point was not found")
+              text = text.replace(needle, needle + addition, 1)
+              path.write_text(text)
+          PY
+          cd backend
+          uv run alembic upgrade head
+          uv run alembic revision \
+            --autogenerate \
+            --rev-id 20260930_cbt_ai_quota \
+            -m "add CBT AI quota accounting"
+          uv run ruff format app/models.py alembic/versions/20260930_cbt_ai_quota_add_cbt_ai_quota_accounting.py
+          uv run alembic upgrade head
+          uv run alembic check
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/app/models.py backend/alembic/versions/20260930_cbt_ai_quota_add_cbt_ai_quota_accounting.py
+          git commit -m "add CBT AI quota accounting migration"
+          git push origin HEAD:refactor/shared-payment-engine
