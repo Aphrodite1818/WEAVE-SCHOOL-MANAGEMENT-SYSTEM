@@ -28,7 +28,6 @@ SUPPORTED_VISUAL_MODES = frozenset(
     {
         "text_only",
         "auto",
-        "prefer_visuals",
     }
 )
 
@@ -176,6 +175,20 @@ def _question_fingerprint(
     )
 
 
+def _question_has_visual(
+    question: AIQuestionDraft,
+) -> bool:
+    """Return whether a question contains any resolvable image directive."""
+
+    if question.image is not None:
+        return True
+
+    return any(
+        option.image is not None
+        for option in question.options
+    )
+
+
 def _validate_expected_count(
     questions: Sequence[AIQuestionDraft],
     *,
@@ -314,7 +327,7 @@ def _validate_question_visual_policy(
     visual_mode: AIVisualMode | None,
     path: str,
 ) -> list[AIValidationIssue]:
-    """Validate enforceable visual-policy rules for one trusted question."""
+    """Validate per-question visual-policy rules."""
 
     _validate_visual_mode_value(visual_mode)
 
@@ -358,18 +371,61 @@ def _validate_batch_visual_policy(
     *,
     visual_mode: AIVisualMode | None,
 ) -> list[AIValidationIssue]:
+    """Validate visual policy across a complete generated batch."""
+
     _validate_visual_mode_value(visual_mode)
 
     issues: list[AIValidationIssue] = []
 
-    for index, question in enumerate(questions):
-        issues.extend(
-            _validate_question_visual_policy(
-                question,
-                visual_mode=visual_mode,
-                path=f"questions[{index}]",
+    if visual_mode == "text_only":
+        for index, question in enumerate(questions):
+            issues.extend(
+                _validate_question_visual_policy(
+                    question,
+                    visual_mode=visual_mode,
+                    path=f"questions[{index}]",
+                )
+            )
+
+        return issues
+
+    if visual_mode != "auto":
+        return issues
+
+    visual_count = sum(
+        1
+        for question in questions
+        if _question_has_visual(question)
+    )
+
+    if visual_count == 0:
+        issues.append(
+            AIValidationIssue(
+                path="questions",
+                code="visual_required",
+                message=(
+                    "At least one visual-bearing question is required "
+                    "when visual_mode is 'auto'."
+                ),
             )
         )
+
+        return issues
+
+    if len(questions) >= 3:
+        text_only_count = len(questions) - visual_count
+
+        if visual_count >= text_only_count:
+            issues.append(
+                AIValidationIssue(
+                    path="questions",
+                    code="text_questions_not_dominant",
+                    message=(
+                        "When visual_mode is 'auto', text-only questions "
+                        "must outnumber visual-bearing questions."
+                    ),
+                )
+            )
 
     return issues
 
@@ -391,7 +447,7 @@ def validate_generated_question_batch(
     3. exact requested-count validation
     4. requested question-type count validation
     5. duplicate-question detection
-    6. enforceable visual-policy validation
+    6. visual-policy validation
 
     No question should be returned to the CBT server before passing here.
     """
@@ -540,6 +596,21 @@ def validate_regenerated_question(
             path="question",
         )
     )
+
+    if (
+        visual_mode == "auto"
+        and not _question_has_visual(question)
+    ):
+        issues.append(
+            AIValidationIssue(
+                path="question",
+                code="visual_required",
+                message=(
+                    "A regenerated question must contain at least one "
+                    "image directive when visual_mode is 'auto'."
+                ),
+            )
+        )
 
     if issues:
         raise AIResponseValidationError(
