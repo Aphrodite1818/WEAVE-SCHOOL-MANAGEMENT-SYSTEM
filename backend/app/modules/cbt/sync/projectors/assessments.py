@@ -12,7 +12,9 @@ from app.modules.cbt.academics.schemas import (
     CBTAssessmentComponentSnapshot,
     CBTAssessmentSchemeSnapshot,
 )
-import app.modules.student_academics.assessment_examinability  # noqa: F401
+from app.modules.student_academics.assessment_examinability import (
+    is_assessment_component_examinable,
+)
 from app.modules.student_academics.models import (
     AssessmentComponent,
     AssessmentScheme,
@@ -62,7 +64,7 @@ def project_assessment_component(
     row, scheme = joined
     if (
         not row.is_active
-        or not row.is_examinable
+        or not is_assessment_component_examinable(row)
         or scheme.status != AssessmentSchemeStatus.ACTIVE
     ):
         return None
