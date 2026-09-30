@@ -22,7 +22,7 @@ def _png_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def _transport(raw: bytes) -> dict[str, str]:
+def _transport(raw: bytes) -> dict[str, object]:
     return {
         "content_type": "image/png",
         "data_base64": base64.b64encode(raw).decode("ascii"),
@@ -33,7 +33,15 @@ def _transport(raw: bytes) -> dict[str, str]:
 @pytest.mark.asyncio
 async def test_regeneration_decodes_images_before_authoring_provider_boundary() -> None:
     raw = _png_bytes()
-    image = _transport(raw)
+    image = {
+        **_transport(raw),
+        "source": "search",
+        "source_url": "https://example.com/source-page",
+        "creator": "Example creator",
+        "attribution_text": "Example attribution",
+        "license_name": "Example license",
+        "license_url": "https://example.com/license",
+    }
     request = AIRegenerateQuestionRequest(
         subject="Biology",
         academic_level="SS1",
