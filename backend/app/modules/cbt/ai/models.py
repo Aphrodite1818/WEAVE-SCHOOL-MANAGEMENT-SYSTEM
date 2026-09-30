@@ -1,25 +1,27 @@
-"""Database models for CBT AI quota , usage and credit accounting"""
+"""Database models for CBT AI quota, usage, and credit accounting."""
 
 from __future__ import annotations
 
-from typing import Any
-from datetime import datetime
 import uuid
+from datetime import date, datetime
 from enum import Enum as PyEnum
-from sqlalchemy.orm import Mapped, mapped_column
+
 from sqlalchemy import (
     CheckConstraint,
+    Date,
+    DateTime,
     Enum as SQLEnum,
     ForeignKey,
     Index,
     Integer,
-    UniqueConstraint,
-    DateTime,
-    Text,
     String,
+    Text,
+    UniqueConstraint,
+    text,
 )
-
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.shared.base_model import BaseModel, PUBLIC_SCHEMA
 
 
@@ -28,14 +30,14 @@ def enum_values(enum_cls: type[PyEnum]) -> list[str]:
 
 
 class AIQuotaActorType(str, PyEnum):
-    """Actor types that can own and consume CBT AI credits"""
+    """Actor types that can own and consume CBT AI credits."""
 
     TEACHER = "teacher"
     TENANT_ADMIN = "tenant_admin"
 
 
 class AICreditReservationStatus(str, PyEnum):
-    """Lifecycle states for an AI credit reservation"""
+    """Lifecycle states for an AI credit reservation."""
 
     PENDING = "pending"
     SETTLED = "settled"
@@ -76,25 +78,15 @@ class AICreditLedgerEventType(str, PyEnum):
     ALLOCATION_OUT = "allocation_out"
     ALLOCATION_IN = "allocation_in"
     CONSUMPTION = "consumption"
-    ADJUSTMENT = "adjustment"
 
 
 class AIQuotaAccount(BaseModel):
-    """
-    Canonical AI-credit identity for ont tenant actor
+    """Canonical AI-credit identity for one tenant actor.
 
-    Teacher and tenant admins live in different database tables.
-    This model gives the AI quota subsystem one common identity to
-    reference for:
-
-    -Weekly free credits
-    -personal extra credits
-    -reservations
-    -quota requests
-    -allocations
-    -usage ledger entries
-
-    Exactly one actor reference must be populated
+    Teacher memberships and tenant admins live in different tables. This model
+    gives the AI quota subsystem one tenant-scoped identity to reference from
+    weekly quota, top-up balance, reservations, requests, allocations, and
+    ledger entries.
     """
 
     __tablename__ = "cbt_ai_quota_accounts"
@@ -104,14 +96,17 @@ class AIQuotaAccount(BaseModel):
             AIQuotaActorType,
             name="ai_quota_actor_type",
             schema=PUBLIC_SCHEMA,
-            values_callable=enum_values(),
+            values_callable=enum_values,
         ),
         nullable=False,
     )
 
     teacher_membership_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.teacher_memberships.id", ondelete="CASCADE"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.teacher_memberships.id",
+            ondelete="CASCADE",
+        ),
         nullable=True,
     )
 
@@ -145,13 +140,13 @@ class AIQuotaAccount(BaseModel):
             "uq_cbt_ai_quota_accounts_teacher",
             "teacher_membership_id",
             unique=True,
-            postgresql_where=(teacher_membership_id.is_not(None)),
+            postgresql_where=text("teacher_membership_id IS NOT NULL"),
         ),
         Index(
             "uq_cbt_ai_quota_accounts_tenant_admin",
             "tenant_admin_id",
             unique=True,
-            postgresql_where=(tenant_admin_id.is_not(None)),
+            postgresql_where=text("tenant_admin_id IS NOT NULL"),
         ),
         Index(
             "ix_cbt_ai_quota_accounts_tenant_actor_type",
@@ -162,35 +157,29 @@ class AIQuotaAccount(BaseModel):
 
 
 class AIWeeklyQuota(BaseModel):
-    """
-    Weekly free-credit bucket for one AI quota account
+    """Weekly free-credit bucket for one AI quota account."""
 
-    A new row is created per quota account per week
-
-    Example:
-        quota_account_id = teacher/admin AI account
-        weekly_start = 2026-09-28
-        credit_limit = 100
-        used_credits = 35
-        reserved_credits  = 10
-
-
-    Available credits:
-        credit_limit - used_credits - reserved_credits
-    """
-
-    __tablename__ = "cbt_ai_weekly_quota"
+    __tablename__ = "cbt_ai_weekly_quotas"
 
     quota_account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.cbt_ai_quota_accounts.id", ondelete="CASCADE"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.cbt_ai_quota_accounts.id",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
 
-    week_start: Mapped[datetime] = mapped_column(nullable=False)
+    week_start: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+    )
 
     credit_limit: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=100, server_default="100"
+        Integer,
+        nullable=False,
+        default=100,
+        server_default="100",
     )
 
     used_credits: Mapped[int] = mapped_column(
@@ -234,24 +223,11 @@ class AIWeeklyQuota(BaseModel):
             "tenant_id",
             "week_start",
         ),
-        Index(
-            "ix_cbt_ai_weekly_quotas_account_week",
-            "quota_account_id",
-            "week_start",
-        ),
     )
 
 
 class AIExtraCreditBalance(BaseModel):
-    """
-    Persistent personal extra-credit balance for one AI quota account.
-
-    These credits are allocated from the tenant-wide reserve and do not
-    reset weekly.
-
-    Available credits:
-        available_credits - reserved_credits
-    """
+    """Persistent personal top-up balance for one AI quota account."""
 
     __tablename__ = "cbt_ai_extra_credit_balances"
 
@@ -303,15 +279,7 @@ class AIExtraCreditBalance(BaseModel):
 
 
 class AITenantCreditBalance(BaseModel):
-    """
-    Tenant-wide reserve of purchased AI credits.
-
-    These credits belong to the school itself and are not consumed
-    directly by generation requests.
-
-    They are allocated by a tenant admin into individual
-    AIExtraCreditBalance records.
-    """
+    """Tenant-wide reserve of purchased, unallocated AI credits."""
 
     __tablename__ = "cbt_ai_tenant_credit_balances"
 
@@ -335,30 +303,25 @@ class AITenantCreditBalance(BaseModel):
 
 
 class AICreditReservation(BaseModel):
-    """
-    Durable hold placed on AI credits before an external provider call
-
-    A reservation may draw from:
-    -the actor's currently weelky free quota
-    -the actor's personal extra-credit balance
-
-    The reservation is later either:
-    -settled against actual usage
-    - released when unused
-    - expired and recovered if the request dies
-    """
+    """Durable credit hold for one in-flight AI operation."""
 
     __tablename__ = "cbt_ai_credit_reservations"
 
     quota_account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.cbt_ai_quota_accounts.id", ondelete="CASCADE"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.cbt_ai_quota_accounts.id",
+            ondelete="CASCADE",
+        ),
         nullable=False,
     )
 
     weekly_quota_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.cbt_ai_weekly_quotas.id", ondelete="SET NULL"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.cbt_ai_weekly_quotas.id",
+            ondelete="SET NULL",
+        ),
         nullable=True,
     )
 
@@ -427,9 +390,7 @@ class AICreditReservation(BaseModel):
             name="ck_cbt_ai_credit_reservations_reserved_extra_nonnegative",
         ),
         CheckConstraint(
-            """
-            reserved_free_credits + reserved_extra_credits > 0
-            """,
+            "reserved_free_credits + reserved_extra_credits > 0",
             name="ck_cbt_ai_credit_reservations_positive_total",
         ),
         CheckConstraint(
@@ -441,15 +402,11 @@ class AICreditReservation(BaseModel):
             name="ck_cbt_ai_credit_reservations_settled_extra_nonnegative",
         ),
         CheckConstraint(
-            """
-            settled_free_credits <= reserved_free_credits
-            """,
+            "settled_free_credits <= reserved_free_credits",
             name="ck_cbt_ai_credit_reservations_settled_free_capacity",
         ),
         CheckConstraint(
-            """
-            settled_extra_credits <= reserved_extra_credits
-            """,
+            "settled_extra_credits <= reserved_extra_credits",
             name="ck_cbt_ai_credit_reservations_settled_extra_capacity",
         ),
         CheckConstraint(
@@ -463,10 +420,12 @@ class AICreditReservation(BaseModel):
             (
                 status = 'settled'
                 AND settled_at IS NOT NULL
+                AND released_at IS NULL
             )
             OR
             (
                 status IN ('released', 'expired')
+                AND settled_at IS NULL
                 AND released_at IS NOT NULL
             )
             """,
@@ -485,24 +444,13 @@ class AICreditReservation(BaseModel):
         Index(
             "ix_cbt_ai_credit_reservations_pending_expiry",
             "expires_at",
-            postgresql_where=(status == AICreditReservationStatus.PENDING),
+            postgresql_where=text("status = 'pending'"),
         ),
     )
 
 
 class AICreditAllocation(BaseModel):
-    """
-    Records an allocation of tenant-owned AI credits to an individual
-    AI quota account
-
-    Examples:
-        School reserve:5,000 credits
-        Admin allocated: 200 credits
-        Teacher top-up balance: +200
-        School reserve: -200
-
-    This table is the permanent audit record of that transfer
-    """
+    """Permanent audit record of tenant-reserve credit allocation to an actor."""
 
     __tablename__ = "cbt_ai_credit_allocations"
 
@@ -551,13 +499,7 @@ class AICreditAllocation(BaseModel):
 
 
 class AIQuotaRequest(BaseModel):
-    """
-    A request by a teacher for additional AI credits from the school's
-    tenant-wide credit reserve.
-
-    Approval does not create new credits. It transfers already-owned
-    tenant credits into the teacher's personal top-up balance.
-    """
+    """Teacher request for additional credits from the tenant reserve."""
 
     __tablename__ = "cbt_ai_quota_requests"
 
@@ -635,6 +577,10 @@ class AIQuotaRequest(BaseModel):
             name="ck_cbt_ai_quota_requests_approved_positive",
         ),
         CheckConstraint(
+            "approved_credits IS NULL OR approved_credits <= requested_credits",
+            name="ck_cbt_ai_quota_requests_approved_not_above_requested",
+        ),
+        CheckConstraint(
             """
             (
                 status = 'pending'
@@ -665,6 +611,7 @@ class AIQuotaRequest(BaseModel):
             OR
             (
                 status = 'cancelled'
+                AND reviewed_by_admin_id IS NULL
                 AND approved_credits IS NULL
                 AND allocation_id IS NULL
                 AND reviewed_at IS NULL
@@ -687,38 +634,40 @@ class AIQuotaRequest(BaseModel):
             "ix_cbt_ai_quota_requests_pending",
             "tenant_id",
             "created_at",
-            postgresql_where=(status == AIQuotaRequestStatus.PENDING),
+            postgresql_where=text("status = 'pending'"),
         ),
     )
 
 
 class AIQuotaPurchase(BaseModel):
-    """
-    Records a tenant purchase of AI credits.
-
-    The purchase starts as pending after Paystack initialization.
-
-    Once the Paystack webhook confirms successful payment, the purchased
-    credits are added to AITenantCreditBalalce and the purchase is marked
-    successful.
-
-    'credited_at' is used to prevent the same payment from crediting the
-    tenant more than once
-    """
+    """Tenant purchase of AI credits that later funds the tenant reserve."""
 
     __tablename__ = "cbt_ai_quota_purchases"
 
     initiated_by_admin_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey(f"{PUBLIC_SCHEMA}.tenant_admins.id", ondelete="RESTRICT"),
+        ForeignKey(
+            f"{PUBLIC_SCHEMA}.tenant_admins.id",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
     )
 
-    credits: Mapped[int] = mapped_column(Integer, nullable=False)
+    credits: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
 
-    amount_kobo: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount_kobo: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
 
-    reference: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    reference: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        unique=True,
+    )
 
     status: Mapped[AIQuotaPurchaseStatus] = mapped_column(
         SQLEnum(
@@ -777,41 +726,8 @@ class AIQuotaPurchase(BaseModel):
     )
 
 
-class AICreditLedgerEventType(str, PyEnum):
-    """Actual credit movements recorded by the AI accounting system."""
-
-    PURCHASE = "purchase"
-    ALLOCATION_OUT = "allocation_out"
-    ALLOCATION_IN = "allocation_in"
-    CONSUMPTION = "consumption"
-    ADJUSTMENT = "adjustment"
-
-
 class AICreditLedger(BaseModel):
-    """
-    Append-only audit ledger for real AI credit movements.
-
-    Reservations are intentionally excluded because they are temporary holds,
-    not actual credit movements.
-
-    Examples:
-        Tenant purchases 1,000 credits:
-            bucket = tenant_reserve
-            event_type = purchase
-            credit_delta = +1000
-
-        Admin allocates 100 credits:
-            tenant reserve:
-                credit_delta = -100
-
-            teacher top-up:
-                credit_delta = +100
-
-        Teacher consumes 6 weekly credits:
-            bucket = weekly_free
-            event_type = consumption
-            credit_delta = -6
-    """
+    """Append-only audit ledger for actual AI-credit movements."""
 
     __tablename__ = "cbt_ai_credit_ledger"
 
