@@ -2,9 +2,9 @@
 # cbt/auth/schemas.py
 # ==========================#
 
-
 """Schema definitions for CBT machine and staff authentication."""
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -37,7 +37,9 @@ class CBTStaffLoginRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
 
 
-class CBTStaffAuthResponse(BaseModel):
+class CBTStaffIdentity(BaseModel):
+    """Trusted staff identity resolved from a successful Weave authentication."""
+
     model_config = ConfigDict(frozen=True)
 
     actor_id: UUID
@@ -47,3 +49,45 @@ class CBTStaffAuthResponse(BaseModel):
     email: EmailStr
     first_name: str | None = None
     last_name: str | None = None
+
+
+class CBTActorTokenPair(BaseModel):
+    """Opaque cloud credentials attached to one local CBT staff session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    access_token: str
+    access_token_expires_at: datetime
+    refresh_token: str
+    refresh_token_expires_at: datetime
+    token_type: Literal["Bearer"] = "Bearer"
+
+
+class CBTStaffAuthResponse(CBTStaffIdentity):
+    """Staff identity plus the cloud actor credentials issued for this login."""
+
+    access_token: str
+    access_token_expires_at: datetime
+    refresh_token: str
+    refresh_token_expires_at: datetime
+    token_type: Literal["Bearer"] = "Bearer"
+
+
+class CBTActorRefreshRequest(BaseModel):
+    """Payload required to rotate one CBT actor cloud authorization."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    refresh_token: str = Field(..., min_length=32, max_length=512)
+
+
+class AuthenticatedCBTActor(BaseModel):
+    """Trusted human-actor context produced from an opaque CBT actor access token."""
+
+    model_config = ConfigDict(frozen=True)
+
+    authorization_id: UUID
+    tenant_id: UUID
+    actor_id: UUID
+    membership_id: UUID | None = None
+    role: Literal["admin", "teacher"]

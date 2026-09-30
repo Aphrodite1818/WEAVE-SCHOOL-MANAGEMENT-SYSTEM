@@ -30,6 +30,7 @@ from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.repository import AuthIdentityRepository
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
+from app.modules.cbt.auth.service import CBTActorAuthorizationService
 from app.modules.subjects.repository import SubjectRepository
 from app.modules.subscriptions.service import SubscriptionFeatureService
 from app.modules.subscriptions.subscription_enums import ResourceLimitCode
@@ -329,6 +330,11 @@ class TeacherAccountService:
                 revoked_reason="password_changed",
             )
         )
+        await CBTActorAuthorizationService.revoke_for_teacher_account(
+            db,
+            teacher_account_id=account.id,
+            reason="password_changed",
+        )
         await db.commit()
 
     @staticmethod
@@ -512,6 +518,12 @@ class TeacherMembershipService:
             membership=membership,
             reason="membership_suspended",
         )
+        await CBTActorAuthorizationService.revoke_for_teacher_membership(
+            db,
+            tenant_id=membership.tenant_id,
+            membership_id=membership.id,
+            reason="membership_suspended",
+        )
         await db.commit()
         await db.refresh(membership)
         return TeacherMembershipResponse.model_validate(membership)
@@ -543,6 +555,12 @@ class TeacherMembershipService:
         await TeacherMembershipService._revoke_membership_sessions(
             db,
             membership=membership,
+            reason="membership_ended",
+        )
+        await CBTActorAuthorizationService.revoke_for_teacher_membership(
+            db,
+            tenant_id=membership.tenant_id,
+            membership_id=membership.id,
             reason="membership_ended",
         )
         await db.commit()
