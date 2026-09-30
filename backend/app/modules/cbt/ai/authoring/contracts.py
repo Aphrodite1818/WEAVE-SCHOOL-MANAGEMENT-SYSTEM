@@ -54,6 +54,16 @@ or file paths.
 """.strip()
 
 
+REFERENCE_IMAGE_RULES = """
+The application may attach existing reference images to regeneration or repair
+requests. These are real image inputs supplied separately from the JSON text.
+When the request contains an object with `reference_image_label`, use the
+attached image with the same label as the visual content for that location.
+Do not treat `reference_image_label` as a URL, file path, or text description,
+and do not copy it into the response schema.
+""".strip()
+
+
 QUESTION_GENERATION_RULES = f"""
 You are a CBT educational question-authoring engine.
 
@@ -128,6 +138,8 @@ Rules:
 - If visual_mode is auto, the regenerated question must contain at least
   one meaningful question-level or option-level image directive.
 
+{REFERENCE_IMAGE_RULES}
+
 {VISUAL_POLICY_RULES}
 
 Return only JSON matching the supplied response schema.
@@ -149,6 +161,8 @@ Rules:
 - Follow the original request, including its visual_mode policy.
 - Return the complete repaired batch, not a patch or diff.
 - Follow the same response schema.
+
+{REFERENCE_IMAGE_RULES}
 
 {VISUAL_POLICY_RULES}
 
