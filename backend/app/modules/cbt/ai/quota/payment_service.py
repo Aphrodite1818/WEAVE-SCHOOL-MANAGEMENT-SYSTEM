@@ -10,6 +10,7 @@ from app.modules.cbt.ai.quota.payment_schemas import (
     AIQuotaPurchaseCheckoutResponse,
     AIQuotaPurchaseQuote,
 )
+from app.modules.cbt.ai.quota.pricing import ai_quota_pricing
 from app.modules.cbt.ai.quota.repository import AIQuotaPurchaseRepository
 from app.modules.cbt.ai.quota.schemas import AIQuotaPurchaseResponse
 from app.modules.cbt.ai.quota.service import (
@@ -30,12 +31,12 @@ class AIQuotaPaymentService:
     @staticmethod
     def quote_purchase(credits: int) -> AIQuotaPurchaseQuote:
         AIQuotaService._require_positive_credits(credits)
-        minimum = int(settings.CBT_AI_MINIMUM_PURCHASE_CREDITS)
+        minimum = int(ai_quota_pricing.CBT_AI_MINIMUM_PURCHASE_CREDITS)
         if credits < minimum:
             raise AIQuotaConflictError(
                 f"AI credit purchases must be at least {minimum} credits."
             )
-        unit_price_kobo = int(settings.CBT_AI_CREDIT_UNIT_PRICE_KOBO)
+        unit_price_kobo = int(ai_quota_pricing.CBT_AI_CREDIT_UNIT_PRICE_KOBO)
         if unit_price_kobo <= 0:
             raise AIQuotaConflictError("AI credit purchasing is not configured.")
         return AIQuotaPurchaseQuote(
@@ -177,7 +178,6 @@ class AIQuotaPaymentService:
             db,
             tenant_id=purchase.tenant_id,
             reference=purchase.reference,
-            commit=False,
         )
         return PaymentWebhookSettlementResult(
             message="AI credit purchase webhook processed successfully."
