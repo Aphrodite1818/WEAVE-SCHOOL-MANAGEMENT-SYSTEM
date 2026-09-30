@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 from typing import Literal, Self
 from uuid import UUID
 
@@ -16,13 +19,42 @@ MAX_PUBLIC_TOPIC_COUNT = 50
 MAX_PUBLIC_QUESTION_COUNT = 100
 MAX_PUBLIC_TEXT_LENGTH = 20_000
 MAX_PUBLIC_INSTRUCTION_LENGTH = 10_000
+MAX_PUBLIC_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_PUBLIC_IMAGE_BASE64_LENGTH = ((MAX_PUBLIC_IMAGE_BYTES + 2) // 3) * 4
+ALLOWED_PUBLIC_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
 class CBTAISchemaBase(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        str_strip_whitespace=True,
-    )
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class AIImageTransportPayload(CBTAISchemaBase):
+    """Image file bytes encoded only for JSON transport across CBT/Weave."""
+
+    content_type: str = Field(min_length=1, max_length=100)
+    data_base64: str = Field(min_length=1, max_length=MAX_PUBLIC_IMAGE_BASE64_LENGTH)
+    sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+    width: int | None = Field(default=None, gt=0)
+    height: int | None = Field(default=None, gt=0)
+    alt_text: str | None = Field(default=None, max_length=2_000)
+
+    @model_validator(mode="after")
+    def validate_binary_transport(self) -> Self:
+        normalized_type = self.content_type.casefold()
+        if normalized_type not in ALLOWED_PUBLIC_IMAGE_TYPES:
+            raise ValueError("Unsupported image content type")
+        self.content_type = normalized_type
+
+        try:
+            decoded = base64.b64decode(self.data_base64, validate=True)
+        except (binascii.Error, ValueError, TypeError) as exc:
+            raise ValueError("data_base64 must contain valid Base64 image data") from exc
+        if not decoded or len(decoded) > MAX_PUBLIC_IMAGE_BYTES:
+            raise ValueError("Image payload exceeds the maximum allowed size")
+        if hashlib.sha256(decoded).hexdigest().casefold() != self.sha256.casefold():
+            raise ValueError("Image SHA-256 does not match data_base64")
+        self.sha256 = self.sha256.casefold()
+        return self
 
 
 class AIGenerateQuestionsRequest(CBTAISchemaBase):
@@ -47,10 +79,7 @@ class AIGenerateQuestionsRequest(CBTAISchemaBase):
         self.topics = normalized_topics
 
         if self.question_type_counts is not None:
-            if any(
-                type(count) is not int or count < 0
-                for count in self.question_type_counts.values()
-            ):
+            if any(type(count) is not int or count < 0 for count in self.question_type_counts.values()):
                 raise ValueError("question_type_counts values must be non-negative integers")
             if sum(self.question_type_counts.values()) != self.question_count:
                 raise ValueError("question_type_counts must sum to question_count")
@@ -59,12 +88,13 @@ class AIGenerateQuestionsRequest(CBTAISchemaBase):
 
 class AIExistingQuestionOption(CBTAISchemaBase):
     text: str | None = Field(default=None, max_length=10_000)
+    image: AIImageTransportPayload | None = None
     is_correct: bool
 
     @model_validator(mode="after")
     def require_content(self) -> Self:
-        if not self.text:
-            raise ValueError("Existing question options must contain text")
+        if not self.text and self.image is None:
+            raise ValueError("Existing question options must contain text, an image, or both")
         return self
 
 
@@ -72,6 +102,7 @@ class AIExistingQuestion(CBTAISchemaBase):
     question_type: AIQuestionType
     prompt: str = Field(min_length=1, max_length=MAX_PUBLIC_TEXT_LENGTH)
     instruction: str | None = Field(default=None, max_length=MAX_PUBLIC_INSTRUCTION_LENGTH)
+    image: AIImageTransportPayload | None = None
     options: list[AIExistingQuestionOption] = Field(min_length=2, max_length=50)
 
     @model_validator(mode="after")
@@ -83,9 +114,7 @@ class AIExistingQuestion(CBTAISchemaBase):
             if correct_count < 2:
                 raise ValueError("A multiple-choice question must have at least two correct options")
             if correct_count == len(self.options):
-                raise ValueError(
-                    "A multiple-choice question must have at least one incorrect option"
-                )
+                raise ValueError("A multiple-choice question must have at least one incorrect option")
         return self
 
 
@@ -100,15 +129,21 @@ class AIRegenerateQuestionRequest(CBTAISchemaBase):
     visual_mode: AIVisualMode = "auto"
     context: str | None = Field(default=None, max_length=MAX_PUBLIC_TEXT_LENGTH)
 
+    @model_validator(mode="after")
+    def validate_topics(self) -> Self:
+        normalized_topics = [topic.strip() for topic in self.topics]
+        if any(not topic for topic in normalized_topics):
+            raise ValueError("topics cannot contain blank values")
+        if len({topic.casefold() for topic in normalized_topics}) != len(normalized_topics):
+            raise ValueError("topics must be unique")
+        self.topics = normalized_topics
+        return self
 
-class AIResolvedImageResponse(CBTAISchemaBase):
+
+class AIResolvedImageResponse(AIImageTransportPayload):
+    """Materialized image returned to CBT; no external URL is required to render it."""
+
     source: Literal["search", "generated"]
-    url: str | None = None
-    data_base64: str | None = None
-    content_type: str | None = None
-    width: int | None = Field(default=None, gt=0)
-    height: int | None = Field(default=None, gt=0)
-    alt_text: str | None = None
     source_url: str | None = None
     creator: str | None = None
     attribution_text: str | None = None
