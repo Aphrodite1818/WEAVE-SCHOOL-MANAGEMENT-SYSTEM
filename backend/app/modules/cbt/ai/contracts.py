@@ -166,7 +166,7 @@ def build_question_regeneration_prompt() -> str:
 
 
 
-def build_question_repair_prompt():
+def build_question_repair_prompt() -> str:
     return (
         f"{QUESTION_REPAIR_RULES}\n\n"
         "RESPONSE JSON SCHEMA:\n"
