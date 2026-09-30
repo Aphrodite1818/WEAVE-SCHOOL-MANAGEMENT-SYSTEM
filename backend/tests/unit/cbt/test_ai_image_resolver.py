@@ -141,9 +141,7 @@ async def test_resolver_generates_when_evaluator_rejects_search_results() -> Non
 @pytest.mark.asyncio
 async def test_resolver_generates_immediately_when_search_returns_nothing() -> None:
     search = FakeSearchProvider([])
-    evaluator = FakeEvaluationProvider(
-        ProviderImageEvaluationResult(decision="generate_image")
-    )
+    evaluator = FakeEvaluationProvider(ProviderImageEvaluationResult(decision="generate_image"))
     generator = FakeGenerationProvider()
 
     resolver = ImageResolver(

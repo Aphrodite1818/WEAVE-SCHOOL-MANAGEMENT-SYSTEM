@@ -517,7 +517,9 @@ class MiniMaxImageGenerationProvider(_MiniMaxHTTPProvider, BaseImageGenerationPr
                     raise ValueError("Unsupported MiniMax image aspect ratio.")
                 aspect_ratio = requested_aspect_ratio
 
-            prompt_metadata = {key: value for key, value in metadata.items() if key != "aspect_ratio"}
+            prompt_metadata = {
+                key: value for key, value in metadata.items() if key != "aspect_ratio"
+            }
             if prompt_metadata:
                 normalized_prompt += "\nImage context: " + json.dumps(
                     prompt_metadata, ensure_ascii=False

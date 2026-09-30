@@ -270,9 +270,7 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
             "contents": [
                 {
                     "role": "user",
-                    "parts": [
-                        {"text": json.dumps(dict(request), ensure_ascii=False)}
-                    ],
+                    "parts": [{"text": json.dumps(dict(request), ensure_ascii=False)}],
                 }
             ],
             "generationConfig": {
