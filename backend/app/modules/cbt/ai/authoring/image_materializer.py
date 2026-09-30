@@ -51,6 +51,7 @@ class ImageMaterializer:
     DOWNLOAD_TIMEOUT_SECONDS = 12.0
 
     ALLOWED_INPUT_FORMATS = {"JPEG", "PNG", "WEBP", "GIF"}
+    TRANSPORT_FORMATS = {"JPEG", "PNG", "WEBP"}
     MIME_BY_FORMAT = {
         "JPEG": "image/jpeg",
         "PNG": "image/png",
@@ -113,18 +114,29 @@ class ImageMaterializer:
         label: str | None = None,
         alt_text: str | None = None,
     ) -> ProviderImageInput:
-        """Decode a CBT transport image and normalize it into internal bytes."""
+        """Decode/validate CBT transport data while preserving encoded bytes.
+
+        Images already crossed the application boundary as complete encoded
+        files. Re-encoding them here would repeatedly recompress JPEG/WebP on
+        regeneration, so this path verifies the image and keeps its bytes intact.
+        """
 
         raw = self._decode_base64(data_base64)
-        if expected_sha256 is not None:
-            actual = hashlib.sha256(raw).hexdigest()
-            if actual.casefold() != expected_sha256.casefold():
-                raise InvalidImageError("Image SHA-256 does not match the supplied payload.")
+        if len(raw) > self.MAX_NORMALIZED_BYTES:
+            raise InvalidImageError("CBT image payload exceeds the maximum allowed size.")
+
+        actual_sha256 = hashlib.sha256(raw).hexdigest()
+        if (
+            expected_sha256 is not None
+            and actual_sha256.casefold() != expected_sha256.casefold()
+        ):
+            raise InvalidImageError("Image SHA-256 does not match the supplied payload.")
 
         return await asyncio.to_thread(
-            self._normalize_bytes,
+            self._validate_transport_bytes,
             raw,
             content_type,
+            actual_sha256,
             label,
             alt_text,
         )
@@ -240,6 +252,52 @@ class ImageMaterializer:
                 raise ImageDownloadError("Image URL resolves to a non-public network address.")
 
     @classmethod
+    def _validate_transport_bytes(
+        cls,
+        raw: bytes,
+        hinted_content_type: str,
+        sha256: str,
+        label: str | None,
+        alt_text: str | None,
+    ) -> ProviderImageInput:
+        """Validate an already-encoded CBT image without recompressing it."""
+
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(BytesIO(raw)) as image:
+                    image_format = (image.format or "").upper()
+                    width, height = image.size
+                    if image_format not in cls.TRANSPORT_FORMATS:
+                        raise InvalidImageError("Unsupported CBT transport image format.")
+                    cls._validate_dimensions(width, height)
+                    image.verify()
+        except InvalidImageError:
+            raise
+        except (
+            UnidentifiedImageError,
+            OSError,
+            ValueError,
+            Image.DecompressionBombWarning,
+            Image.DecompressionBombError,
+        ) as exc:
+            raise InvalidImageError("Payload is not a valid supported image.") from exc
+
+        actual_content_type = cls.MIME_BY_FORMAT[image_format]
+        if hinted_content_type.casefold() != actual_content_type:
+            raise InvalidImageError("Image content type does not match the encoded image bytes.")
+
+        return ProviderImageInput(
+            data=raw,
+            content_type=actual_content_type,
+            sha256=sha256,
+            width=width,
+            height=height,
+            label=label,
+            alt_text=alt_text,
+        )
+
+    @classmethod
     def _normalize_bytes(
         cls,
         raw: bytes,
@@ -271,7 +329,13 @@ class ImageMaterializer:
                     encoded, content_type = cls._encode_normalized(image, image_format)
         except InvalidImageError:
             raise
-        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombWarning) as exc:
+        except (
+            UnidentifiedImageError,
+            OSError,
+            ValueError,
+            Image.DecompressionBombWarning,
+            Image.DecompressionBombError,
+        ) as exc:
             raise InvalidImageError("Payload is not a valid supported image.") from exc
 
         if len(encoded) > cls.MAX_NORMALIZED_BYTES:
