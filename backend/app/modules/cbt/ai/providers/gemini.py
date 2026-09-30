@@ -24,7 +24,8 @@ from app.modules.cbt.ai.providers.base import (
 )
 from app.modules.cbt.ai.contracts import (
     build_question_generation_prompt,
-    build_question_regeneration_prompt
+    build_question_regeneration_prompt,
+    build_question_repair_prompt,
 )
 
 
@@ -250,6 +251,68 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
         ):
             raise GeminiProviderError(
                 "Gemini question-generation response does not "
+                "contain a valid 'questions' array of objects."
+            )
+
+        return ProviderQuestionGenerationResult(
+            questions=questions,
+            usage=self._extract_usage(response),
+            raw_response=response,
+        )
+
+    async def repair_questions(
+        self,
+        *,
+        request: Mapping[str, Any],
+    ) -> ProviderQuestionGenerationResult:
+        """Repair one invalid batch of generated CBT questions."""
+
+        request_payload = {
+            "systemInstruction": {
+                "parts": [
+                    {
+                        "text": build_question_repair_prompt(),
+                    }
+                ]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": json.dumps(
+                                dict(request),
+                                ensure_ascii=False,
+                            )
+                        }
+                    ],
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "maxOutputTokens": self.max_output_tokens,
+            },
+        }
+
+        response = await self._post(
+            model=self.model,
+            payload=request_payload,
+            timeout=self.timeout,
+        )
+
+        text = self._extract_text(response)
+        result = self._parse_json_text(text)
+        questions = result.get("questions")
+
+        if (
+            not isinstance(questions, list)
+            or any(
+                not isinstance(question, dict)
+                for question in questions
+            )
+        ):
+            raise GeminiProviderError(
+                "Gemini question-repair response does not "
                 "contain a valid 'questions' array of objects."
             )
 
