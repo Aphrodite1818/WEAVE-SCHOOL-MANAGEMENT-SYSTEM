@@ -12,8 +12,6 @@ class ProviderUsage:
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
-
-    # Optional provider-side calculated cost, if available.
     provider_cost: float | None = None
     currency: str | None = "USD"
 
@@ -43,7 +41,6 @@ class ProviderGeneratedImage:
     content_type: str
     data_base64: str | None = None
     url: str | None = None
-
     width: int | None = None
     height: int | None = None
     alt_text: str | None = None
@@ -64,19 +61,14 @@ class ImageCandidate:
 
     source: str
     source_url: str
-
     external_id: str | None = None
     title: str | None = None
-
     image_url: str | None = None
     thumbnail_url: str | None = None
-
     creator: str | None = None
     attribution_text: str | None = None
-
     license_name: str | None = None
     license_url: str | None = None
-
     width: int | None = None
     height: int | None = None
     mime_type: str | None = None
@@ -110,12 +102,6 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def is_configured(self) -> bool:
-        """
-        Return True when the provider has the minimum configuration required.
-
-        Missing optional AI credentials must not block application startup;
-        concrete providers should fail only when the capability is invoked.
-        """
         raise NotImplementedError
 
 
@@ -128,7 +114,6 @@ class BaseQuestionGenerationProvider(BaseProvider, ABC):
         *,
         request: Mapping[str, Any],
     ) -> ProviderQuestionGenerationResult:
-        """Generate a batch of draft questions."""
         raise NotImplementedError
 
     @abstractmethod
@@ -137,16 +122,14 @@ class BaseQuestionGenerationProvider(BaseProvider, ABC):
         *,
         request: Mapping[str, Any],
     ) -> ProviderQuestionRegenerationResult:
-        """Regenerate or transform one existing draft question."""
         raise NotImplementedError
 
     @abstractmethod
     async def repair_questions(
         self,
         *,
-        request : Mapping[str ,Any]
-    )->ProviderQuestionGenerationResult:
-        """repair invalid generated or regenerated question at runtime"""
+        request: Mapping[str, Any],
+    ) -> ProviderQuestionGenerationResult:
         raise NotImplementedError
 
 
@@ -161,7 +144,6 @@ class BaseImageGenerationProvider(BaseProvider, ABC):
         metadata: Mapping[str, Any] | None = None,
         reference_images: Sequence[str] | None = None,
     ) -> ProviderImageGenerationResult:
-        """Generate one image."""
         raise NotImplementedError
 
 
@@ -176,7 +158,6 @@ class BaseImageSearchProvider(BaseProvider, ABC):
         limit: int = 10,
         metadata: Mapping[str, Any] | None = None,
     ) -> list[ImageCandidate]:
-        """Search for candidate images."""
         raise NotImplementedError
 
 
@@ -190,10 +171,4 @@ class BaseImageEvaluationProvider(BaseProvider, ABC):
         requirement: str,
         candidates: Sequence[ImageCandidate],
     ) -> ProviderImageEvaluationResult:
-        """
-        Decide whether one candidate satisfies the requirement.
-
-        The selected index always refers to the position inside `candidates`.
-        If no candidate is suitable, return the `generate_image` decision.
-        """
         raise NotImplementedError

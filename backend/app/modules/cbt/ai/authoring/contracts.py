@@ -7,7 +7,7 @@ from functools import lru_cache
 
 from pydantic import BaseModel
 
-from app.modules.cbt.ai.schemas import (
+from app.modules.cbt.ai.authoring.schemas import (
     AIQuestionBatchDraft,
     AIRegeneratedQuestionDraft,
 )
@@ -159,7 +159,6 @@ Do not return markdown, code fences, commentary, or additional text.
 
 def _schema_to_json(model: type[BaseModel]) -> str:
     """Convert a Pydantic model into compact JSON Schema text."""
-
     return json.dumps(
         model.model_json_schema(),
         ensure_ascii=False,
@@ -170,30 +169,24 @@ def _schema_to_json(model: type[BaseModel]) -> str:
 @lru_cache(maxsize=1)
 def question_generation_schema_text() -> str:
     """Return the canonical schema for a generated question batch."""
-
     return _schema_to_json(AIQuestionBatchDraft)
 
 
 @lru_cache(maxsize=1)
 def question_regeneration_schema_text() -> str:
     """Return the canonical schema for one regenerated question."""
-
     return _schema_to_json(AIRegeneratedQuestionDraft)
 
 
 def build_question_generation_prompt() -> str:
     """Build the provider-neutral generation contract."""
-
     return (
-        f"{QUESTION_GENERATION_RULES}\n\n"
-        "RESPONSE JSON SCHEMA:\n"
-        f"{question_generation_schema_text()}"
+        f"{QUESTION_GENERATION_RULES}\n\nRESPONSE JSON SCHEMA:\n{question_generation_schema_text()}"
     )
 
 
 def build_question_regeneration_prompt() -> str:
     """Build the provider-neutral regeneration contract."""
-
     return (
         f"{QUESTION_REGENERATION_RULES}\n\n"
         "RESPONSE JSON SCHEMA:\n"
@@ -203,9 +196,4 @@ def build_question_regeneration_prompt() -> str:
 
 def build_question_repair_prompt() -> str:
     """Build the provider-neutral repair contract."""
-
-    return (
-        f"{QUESTION_REPAIR_RULES}\n\n"
-        "RESPONSE JSON SCHEMA:\n"
-        f"{question_generation_schema_text()}"
-    )
+    return f"{QUESTION_REPAIR_RULES}\n\nRESPONSE JSON SCHEMA:\n{question_generation_schema_text()}"

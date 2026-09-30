@@ -17,7 +17,7 @@ from redis.exceptions import RedisError
 
 from app.config.settings import settings
 from app.core.cache.redis import get_redis
-from app.modules.cbt.ai.providers.base import BaseImageSearchProvider, ImageCandidate
+from app.modules.cbt.ai.authoring.providers.base import BaseImageSearchProvider, ImageCandidate
 
 
 # EXCEPTIONS

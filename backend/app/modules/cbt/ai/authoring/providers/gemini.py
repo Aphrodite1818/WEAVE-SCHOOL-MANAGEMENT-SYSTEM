@@ -10,7 +10,7 @@ import httpx
 from pydantic import SecretStr
 
 from app.config.settings import settings
-from app.modules.cbt.ai.providers.base import (
+from app.modules.cbt.ai.authoring.providers.base import (
     BaseImageEvaluationProvider,
     BaseImageGenerationProvider,
     BaseQuestionGenerationProvider,
@@ -22,7 +22,7 @@ from app.modules.cbt.ai.providers.base import (
     ProviderQuestionRegenerationResult,
     ProviderUsage,
 )
-from app.modules.cbt.ai.contracts import (
+from app.modules.cbt.ai.authoring.contracts import (
     build_question_generation_prompt,
     build_question_regeneration_prompt,
     build_question_repair_prompt,
@@ -242,12 +242,8 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
 
         questions = result.get("questions")
 
-        if (
-            not isinstance(questions, list)
-            or any(
-                not isinstance(question, dict)
-                for question in questions
-            )
+        if not isinstance(questions, list) or any(
+            not isinstance(question, dict) for question in questions
         ):
             raise GeminiProviderError(
                 "Gemini question-generation response does not "
@@ -304,12 +300,8 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
         result = self._parse_json_text(text)
         questions = result.get("questions")
 
-        if (
-            not isinstance(questions, list)
-            or any(
-                not isinstance(question, dict)
-                for question in questions
-            )
+        if not isinstance(questions, list) or any(
+            not isinstance(question, dict) for question in questions
         ):
             raise GeminiProviderError(
                 "Gemini question-repair response does not "
@@ -369,8 +361,7 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
 
         if not isinstance(question, dict):
             raise GeminiProviderError(
-                "Gemini regeneration response does not contain "
-                "a valid 'question' object."
+                "Gemini regeneration response does not contain a valid 'question' object."
             )
 
         return ProviderQuestionRegenerationResult(

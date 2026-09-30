@@ -7,8 +7,8 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from app.modules.cbt.ai.providers import gemini
-from app.modules.cbt.ai.providers.base import (
+from app.modules.cbt.ai.authoring.providers import gemini
+from app.modules.cbt.ai.authoring.providers.base import (
     BaseQuestionGenerationProvider,
     ProviderImageGenerationResult,
     ProviderQuestionGenerationResult,

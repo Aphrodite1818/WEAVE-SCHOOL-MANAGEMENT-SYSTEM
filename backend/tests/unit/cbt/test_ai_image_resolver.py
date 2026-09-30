@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.cbt.ai.image_resolver import ImageResolver, ImageResolverError
-from app.modules.cbt.ai.providers.base import (
+from app.modules.cbt.ai.authoring.image_resolver import ImageResolver, ImageResolverError
+from app.modules.cbt.ai.authoring.providers.base import (
     ImageCandidate,
     ProviderGeneratedImage,
     ProviderImageEvaluationResult,

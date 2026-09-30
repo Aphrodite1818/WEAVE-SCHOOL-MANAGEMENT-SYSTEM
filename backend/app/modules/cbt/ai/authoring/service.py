@@ -6,18 +6,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from app.modules.cbt.ai.image_resolver import ImageResolver
-from app.modules.cbt.ai.providers.base import (
+from app.modules.cbt.ai.authoring.image_resolver import ImageResolver
+from app.modules.cbt.ai.authoring.providers.base import (
     BaseQuestionGenerationProvider,
     ImageResolutionResult,
     ProviderQuestionGenerationResult,
     ProviderUsage,
 )
-from app.modules.cbt.ai.schemas import (
+from app.modules.cbt.ai.authoring.schemas import (
     AIQuestionDraft,
     AIVisualMode,
 )
-from app.modules.cbt.ai.validation import (
+from app.modules.cbt.ai.authoring.validation import (
     AIResponseValidationError,
     SUPPORTED_VISUAL_MODES,
     validate_generated_question_batch,
@@ -52,9 +52,7 @@ class AuthoredQuestion:
 
     question_image: ImageResolutionResult | None = None
 
-    option_images: dict[int, ImageResolutionResult] = field(
-        default_factory=dict
-    )
+    option_images: dict[int, ImageResolutionResult] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -119,14 +117,10 @@ class QuestionAuthoringService:
         validation.
         """
 
-        request_payload, visual_mode = self._prepare_authoring_request(
-            request
-        )
+        request_payload, visual_mode = self._prepare_authoring_request(request)
 
-        provider_result = (
-            await self.question_provider.generate_questions(
-                request=request_payload,
-            )
+        provider_result = await self.question_provider.generate_questions(
+            request=request_payload,
         )
 
         repaired = False
@@ -168,15 +162,9 @@ class QuestionAuthoringService:
         image_usages: list[ProviderUsage] = []
 
         for question in questions:
-            authored_question, usages = (
-                await self._resolve_question_images(
-                    question
-                )
-            )
+            authored_question, usages = await self._resolve_question_images(question)
 
-            authored_questions.append(
-                authored_question
-            )
+            authored_questions.append(authored_question)
 
             image_usages.extend(usages)
 
@@ -204,14 +192,10 @@ class QuestionAuthoringService:
         resolution occurs.
         """
 
-        request_payload, visual_mode = self._prepare_authoring_request(
-            request
-        )
+        request_payload, visual_mode = self._prepare_authoring_request(request)
 
-        provider_result = (
-            await self.question_provider.regenerate_question(
-                request=request_payload,
-            )
+        provider_result = await self.question_provider.regenerate_question(
+            request=request_payload,
         )
 
         repaired = False
@@ -234,21 +218,15 @@ class QuestionAuthoringService:
                 operation="regeneration",
             )
 
-            repaired_questions = (
-                validate_generated_question_batch(
-                    repaired_result.questions,
-                    expected_count=1,
-                    expected_type_counts=(
-                        self._single_question_type_counts(
-                            expected_question_type
-                        )
-                    ),
-                    visual_mode=visual_mode,
-                )
+            repaired_questions = validate_generated_question_batch(
+                repaired_result.questions,
+                expected_count=1,
+                expected_type_counts=(self._single_question_type_counts(expected_question_type)),
+                visual_mode=visual_mode,
             )
 
             question = validate_regenerated_question(
-                repaired_questions[0],
+                repaired_questions[0].model_dump(),
                 expected_question_type=expected_question_type,
                 visual_mode=visual_mode,
             )
@@ -260,11 +238,7 @@ class QuestionAuthoringService:
 
             repaired = True
 
-        authored_question, image_usages = (
-            await self._resolve_question_images(
-                question
-            )
-        )
+        authored_question, image_usages = await self._resolve_question_images(question)
 
         total_usage = self._combine_usage(
             question_usage,
@@ -335,16 +309,10 @@ class QuestionAuthoringService:
             question_image = await self.image_resolver.resolve(
                 requirement=question.image.requirement,
                 search_query=question.image.search_query,
-                generation_prompt=(
-                    question.image.generation_prompt
-                ),
+                generation_prompt=(question.image.generation_prompt),
             )
 
-            usages.extend(
-                self._image_resolution_usages(
-                    question_image
-                )
-            )
+            usages.extend(self._image_resolution_usages(question_image))
 
         for index, option in enumerate(question.options):
             if option.image is None:
@@ -353,18 +321,12 @@ class QuestionAuthoringService:
             resolution = await self.image_resolver.resolve(
                 requirement=option.image.requirement,
                 search_query=option.image.search_query,
-                generation_prompt=(
-                    option.image.generation_prompt
-                ),
+                generation_prompt=(option.image.generation_prompt),
             )
 
             option_images[index] = resolution
 
-            usages.extend(
-                self._image_resolution_usages(
-                    resolution
-                )
-            )
+            usages.extend(self._image_resolution_usages(resolution))
 
         return (
             AuthoredQuestion(
@@ -391,14 +353,10 @@ class QuestionAuthoringService:
         usages: list[ProviderUsage] = []
 
         if resolution.evaluation is not None:
-            usages.append(
-                resolution.evaluation.usage
-            )
+            usages.append(resolution.evaluation.usage)
 
         if resolution.generation is not None:
-            usages.append(
-                resolution.generation.usage
-            )
+            usages.append(resolution.generation.usage)
 
         return usages
 
@@ -421,9 +379,7 @@ class QuestionAuthoringService:
         )
 
         if raw_visual_mode not in SUPPORTED_VISUAL_MODES:
-            raise ValueError(
-                f"Unsupported visual mode: {raw_visual_mode!r}."
-            )
+            raise ValueError(f"Unsupported visual mode: {raw_visual_mode!r}.")
 
         visual_mode = cast(
             AIVisualMode,
@@ -446,13 +402,9 @@ class QuestionAuthoringService:
 
         return {
             "operation": operation,
-            "original_request": dict(
-                original_request
-            ),
+            "original_request": dict(original_request),
             "invalid_questions": invalid_questions,
-            "validation_feedback": (
-                validation_error.to_repair_feedback()
-            ),
+            "validation_feedback": (validation_error.to_repair_feedback()),
         }
 
     @staticmethod
@@ -483,45 +435,24 @@ class QuestionAuthoringService:
         - fallback image generation
         """
 
-        input_tokens = sum(
-            usage.input_tokens
-            for usage in usages
-        )
+        input_tokens = sum(usage.input_tokens for usage in usages)
 
-        output_tokens = sum(
-            usage.output_tokens
-            for usage in usages
-        )
+        output_tokens = sum(usage.output_tokens for usage in usages)
 
-        cache_read_tokens = sum(
-            usage.cache_read_tokens
-            for usage in usages
-        )
+        cache_read_tokens = sum(usage.cache_read_tokens for usage in usages)
 
         provider_cost: float | None = None
         currency: str | None = None
 
-        cost_usages = [
-            usage
-            for usage in usages
-            if usage.provider_cost is not None
-        ]
+        cost_usages = [usage for usage in usages if usage.provider_cost is not None]
 
         if cost_usages:
-            currencies = {
-                usage.currency
-                for usage in cost_usages
-            }
+            currencies = {usage.currency for usage in cost_usages}
 
             if len(currencies) == 1:
-                currency = next(
-                    iter(currencies)
-                )
+                currency = next(iter(currencies))
 
-                provider_cost = sum(
-                    usage.provider_cost or 0
-                    for usage in cost_usages
-                )
+                provider_cost = sum(usage.provider_cost or 0 for usage in cost_usages)
 
         return ProviderUsage(
             input_tokens=input_tokens,

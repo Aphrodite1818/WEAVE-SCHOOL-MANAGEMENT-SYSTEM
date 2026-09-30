@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.modules.cbt.ai.providers import factory
+from app.modules.cbt.ai.authoring.providers import factory
 
 
 @pytest.fixture(autouse=True)

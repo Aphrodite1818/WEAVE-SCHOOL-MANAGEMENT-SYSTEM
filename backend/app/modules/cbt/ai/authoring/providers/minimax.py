@@ -10,7 +10,7 @@ import httpx
 from pydantic import SecretStr
 
 from app.config.settings import settings
-from app.modules.cbt.ai.providers.base import (
+from app.modules.cbt.ai.authoring.providers.base import (
     BaseImageEvaluationProvider,
     BaseImageGenerationProvider,
     BaseQuestionGenerationProvider,
@@ -23,7 +23,7 @@ from app.modules.cbt.ai.providers.base import (
     ProviderUsage,
 )
 
-from app.modules.cbt.ai.contracts import (
+from app.modules.cbt.ai.authoring.contracts import (
     build_question_generation_prompt,
     build_question_regeneration_prompt,
     build_question_repair_prompt,
@@ -251,10 +251,7 @@ class MiniMaxQuestionGenerationProvider(_MiniMaxHTTPProvider, BaseQuestionGenera
         request_payload = {
             "model": self.model,
             "messages": [
-                {
-                    "role": "system",
-                    "content": build_question_generation_prompt()
-                },
+                {"role": "system", "content": build_question_generation_prompt()},
                 {
                     "role": "user",
                     "content": json.dumps(dict(request), ensure_ascii=False),
@@ -316,17 +313,11 @@ class MiniMaxQuestionGenerationProvider(_MiniMaxHTTPProvider, BaseQuestionGenera
             timeout=self.timeout,
         )
 
-        result = self._parse_json_text(
-            self._extract_text(response)
-        )
+        result = self._parse_json_text(self._extract_text(response))
         questions = result.get("questions")
 
-        if (
-            not isinstance(questions, list)
-            or any(
-                not isinstance(question, dict)
-                for question in questions
-            )
+        if not isinstance(questions, list) or any(
+            not isinstance(question, dict) for question in questions
         ):
             raise MiniMaxProviderError(
                 "MiniMax question-repair response does not contain "
@@ -349,10 +340,7 @@ class MiniMaxQuestionGenerationProvider(_MiniMaxHTTPProvider, BaseQuestionGenera
         request_payload = {
             "model": self.model,
             "messages": [
-                {
-                    "role": "system",
-                    "content": build_question_regeneration_prompt()
-                },
+                {"role": "system", "content": build_question_regeneration_prompt()},
                 {
                     "role": "user",
                     "content": json.dumps(dict(request), ensure_ascii=False),
