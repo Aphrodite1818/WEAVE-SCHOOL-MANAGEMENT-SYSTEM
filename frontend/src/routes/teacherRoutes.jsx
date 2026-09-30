@@ -33,6 +33,7 @@ const TeacherClassesPage = lazy(() => import("../pages/teacher/MyClassesPage"));
 const TeacherCommentTemplatesPage = lazy(
   () => import("../pages/teacher/TeacherCommentTemplatesPage"),
 );
+const TeacherResultsPage = lazy(() => import("../pages/teacher/ResultsPage"));
 const TeacherStudentsPage = lazy(() => import("../pages/teacher/StudentsPage"));
 const TeacherStudentCommentsPage = lazy(
   () => import("../pages/teacher/TeacherStudentCommentsPage"),
@@ -63,6 +64,7 @@ export const teacherRoutes = (
         />
         <Route path="/teacher/students" element={<TeacherStudentsPage />} />
         <Route path="/teacher/subjects" element={<TeacherSubjectsPage />} />
+        <Route path="/teacher/results" element={<TeacherResultsPage />} />
         <Route element={<TeacherClassDutyRoute />}>
           <Route path="/teacher/classes" element={<TeacherClassesPage />} />
           <Route
