@@ -6,18 +6,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from app.modules.cbt.ai.image_resolver import ImageResolver
-from app.modules.cbt.ai.providers.base import (
+from app.modules.cbt.ai.authoring.image_resolver import ImageResolver
+from app.modules.cbt.ai.authoring.providers.base import (
     BaseQuestionGenerationProvider,
     ImageResolutionResult,
     ProviderQuestionGenerationResult,
     ProviderUsage,
 )
-from app.modules.cbt.ai.schemas import (
+from app.modules.cbt.ai.authoring.schemas import (
     AIQuestionDraft,
     AIVisualMode,
 )
-from app.modules.cbt.ai.validation import (
+from app.modules.cbt.ai.authoring.validation import (
     AIResponseValidationError,
     SUPPORTED_VISUAL_MODES,
     validate_generated_question_batch,
