@@ -255,7 +255,11 @@ class QuestionAuthoringService:
         usages: list[ProviderUsage] = []
         if resolution.evaluation is not None:
             usages.append(resolution.evaluation.usage)
-        if resolution.generation is not None:
+        if resolution.generation_attempts:
+            usages.extend(attempt.usage for attempt in resolution.generation_attempts)
+        elif resolution.generation is not None:
+            # Backward-compatible path for tests/alternate resolvers constructing
+            # a final generation result without the attempt history.
             usages.append(resolution.generation.usage)
         return usages
 
