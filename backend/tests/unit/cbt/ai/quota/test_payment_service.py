@@ -151,7 +151,9 @@ async def test_provider_initialization_failure_marks_pending_purchase_failed(mon
 
 
 @pytest.mark.asyncio
-async def test_browser_verification_uses_backend_purchase_expectation_before_crediting(monkeypatch) -> None:
+async def test_browser_verification_uses_backend_purchase_expectation_before_crediting(
+    monkeypatch,
+) -> None:
     tenant_id = uuid4()
     admin_id = uuid4()
     purchase = SimpleNamespace(

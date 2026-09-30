@@ -122,7 +122,9 @@ def test_verified_payload_rejects_amount_currency_reference_and_metadata_tamperi
 
 
 @pytest.mark.asyncio
-async def test_verify_transaction_uses_provider_then_validates_backend_expectation(monkeypatch) -> None:
+async def test_verify_transaction_uses_provider_then_validates_backend_expectation(
+    monkeypatch,
+) -> None:
     provider = SimpleNamespace(
         verify_transaction=AsyncMock(
             return_value={
