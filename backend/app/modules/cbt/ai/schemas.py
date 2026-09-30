@@ -1,0 +1,224 @@
+"""Strict internal schemas for CBT AI-generated question drafts."""
+
+from __future__ import annotations
+
+from typing import Annotated, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
+
+
+MAX_QUESTION_PROMPT_LENGTH = 20_000
+MAX_QUESTION_INSTRUCTION_LENGTH = 10_000
+MAX_OPTION_TEXT_LENGTH = 10_000
+MAX_OPTIONS_PER_QUESTION = 50
+
+MAX_IMAGE_REQUIREMENT_LENGTH = 2_000
+MAX_IMAGE_SEARCH_QUERY_LENGTH = 500
+MAX_IMAGE_GENERATION_PROMPT_LENGTH = 2_000
+
+
+class AIDraftBase(BaseModel):
+    """
+    Base configuration for untrusted AI-generated structured output.
+
+    `extra="forbid"` is intentional. If the provider invents fields,
+    validation must fail rather than silently discarding them.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        str_strip_whitespace=True,
+    )
+
+
+class AIImageDirective(AIDraftBase):
+    """
+    Description of an image that must later be resolved by ImageResolver.
+
+    This is NOT a final image asset and contains no local CBT asset ID.
+    """
+
+    requirement: str = Field(
+        min_length=1,
+        max_length=MAX_IMAGE_REQUIREMENT_LENGTH,
+    )
+
+    search_query: str = Field(
+        min_length=1,
+        max_length=MAX_IMAGE_SEARCH_QUERY_LENGTH,
+    )
+
+    generation_prompt: str | None = Field(
+        default=None,
+        max_length=MAX_IMAGE_GENERATION_PROMPT_LENGTH,
+    )
+
+
+class AIQuestionOptionDraft(AIDraftBase):
+    """
+    One generated answer option.
+
+    An option may contain:
+    - text only
+    - an image only
+    - both text and an image
+
+    This mirrors the local CBT question-option model.
+    """
+
+    text: str | None = Field(
+        default=None,
+        max_length=MAX_OPTION_TEXT_LENGTH,
+    )
+
+    image: AIImageDirective | None = None
+
+    is_correct: bool
+
+    @model_validator(mode="after")
+    def require_content(self) -> AIQuestionOptionDraft:
+        if not self.text and self.image is None:
+            raise ValueError(
+                "An answer option must include text, an image, or both."
+            )
+
+        return self
+
+
+class AIQuestionDraftBase(AIDraftBase):
+    """Fields shared by every supported AI-generated CBT question."""
+
+    prompt: str = Field(
+        min_length=1,
+        max_length=MAX_QUESTION_PROMPT_LENGTH,
+    )
+
+    instruction: str | None = Field(
+        default=None,
+        max_length=MAX_QUESTION_INSTRUCTION_LENGTH,
+    )
+
+    image: AIImageDirective | None = None
+
+    options: list[AIQuestionOptionDraft] = Field(
+        min_length=2,
+        max_length=MAX_OPTIONS_PER_QUESTION,
+    )
+
+    @model_validator(mode="after")
+    def validate_unique_options(self) -> AIQuestionDraftBase:
+        identities: set[tuple] = set()
+
+        for option in self.options:
+            normalized_text = (
+                " ".join(option.text.split()).casefold()
+                if option.text
+                else None
+            )
+
+            normalized_image = None
+
+            if option.image is not None:
+                normalized_image = (
+                    " ".join(
+                        option.image.requirement.split()
+                    ).casefold(),
+                    " ".join(
+                        option.image.search_query.split()
+                    ).casefold(),
+                )
+
+            identity = (
+                normalized_text,
+                normalized_image,
+            )
+
+            if identity in identities:
+                raise ValueError(
+                    "Question options must be unique."
+                )
+
+            identities.add(identity)
+
+        return self
+
+
+class AISingleChoiceQuestionDraft(AIQuestionDraftBase):
+    """Generated single-answer choice question."""
+
+    question_type: Literal["single_choice"]
+
+    @model_validator(mode="after")
+    def validate_correct_answer(
+        self,
+    ) -> AISingleChoiceQuestionDraft:
+        correct_count = sum(
+            1
+            for option in self.options
+            if option.is_correct
+        )
+
+        if correct_count != 1:
+            raise ValueError(
+                "A single-choice question must have exactly "
+                "one correct option."
+            )
+
+        return self
+
+
+class AIMultipleChoiceQuestionDraft(AIQuestionDraftBase):
+    """Generated multiple-answer choice question."""
+
+    question_type: Literal["multiple_choice"]
+
+    @model_validator(mode="after")
+    def validate_correct_answers(
+        self,
+    ) -> AIMultipleChoiceQuestionDraft:
+        correct_count = sum(
+            1
+            for option in self.options
+            if option.is_correct
+        )
+
+        if correct_count < 2:
+            raise ValueError(
+                "A multiple-choice question must have at least "
+                "two correct options."
+            )
+
+        if correct_count == len(self.options):
+            raise ValueError(
+                "A multiple-choice question must contain at least "
+                "one incorrect option."
+            )
+
+        return self
+
+
+AIQuestionDraft = Annotated[
+    AISingleChoiceQuestionDraft
+    | AIMultipleChoiceQuestionDraft,
+    Field(discriminator="question_type"),
+]
+
+
+class AIQuestionBatchDraft(AIDraftBase):
+    """Validated batch returned from AI question generation."""
+
+    questions: list[AIQuestionDraft] = Field(
+        min_length=1,
+    )
+
+
+class AIRegeneratedQuestionDraft(AIDraftBase):
+    """Validated envelope for targeted question regeneration."""
+
+    question: AIQuestionDraft
