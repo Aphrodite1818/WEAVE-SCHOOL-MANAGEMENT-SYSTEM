@@ -4,12 +4,18 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
+from app.modules.cbt.ai.authoring.image_materializer import (
+    ImageMaterializationError,
+    ImageMaterializer,
+)
 from app.modules.cbt.ai.authoring.providers.base import (
     BaseImageEvaluationProvider,
     BaseImageGenerationProvider,
     BaseImageSearchProvider,
+    ImageCandidate,
     ImageResolutionResult,
     ProviderImageEvaluationResult,
+    ProviderImageInput,
 )
 
 
@@ -18,13 +24,12 @@ class ImageResolverError(RuntimeError):
 
 
 class ImageResolver:
-    """
-    Resolve a CBT visual requirement through search, evaluation and generation.
+    """Resolve CBT visual requirements into fully materialized image bytes.
 
-    The engine does not know which concrete providers are in use. It preserves
-    the search provider's ranking, reviews only the first few candidates, and
-    generates an image only when search produces no candidates or the active
-    evaluation provider rejects every reviewed candidate.
+    URLs and provider Base64 are transient inputs only. If resolve() returns
+    successfully, ImageResolutionResult.image contains validated encoded image
+    file bytes that can be sent to CBT or another provider without performing
+    another external download.
     """
 
     DEFAULT_SEARCH_LIMIT = 10
@@ -36,6 +41,7 @@ class ImageResolver:
         search_provider: BaseImageSearchProvider,
         evaluation_provider: BaseImageEvaluationProvider,
         generation_provider: BaseImageGenerationProvider,
+        materializer: ImageMaterializer,
         search_limit: int = DEFAULT_SEARCH_LIMIT,
         review_limit: int = DEFAULT_REVIEW_LIMIT,
     ) -> None:
@@ -49,6 +55,7 @@ class ImageResolver:
         self.search_provider = search_provider
         self.evaluation_provider = evaluation_provider
         self.generation_provider = generation_provider
+        self.materializer = materializer
         self.search_limit = search_limit
         self.review_limit = review_limit
 
@@ -60,9 +67,9 @@ class ImageResolver:
         generation_prompt: str | None = None,
         search_metadata: Mapping[str, Any] | None = None,
         generation_metadata: Mapping[str, Any] | None = None,
-        reference_images: Sequence[str] | None = None,
+        reference_images: Sequence[ProviderImageInput] | None = None,
     ) -> ImageResolutionResult:
-        """Resolve one requested visual into a sourced or generated image."""
+        """Resolve one requested visual into sourced or generated image bytes."""
 
         normalized_requirement = requirement.strip()
         normalized_search_query = search_query.strip()
@@ -84,9 +91,11 @@ class ImageResolver:
             metadata=search_metadata,
         )
 
-        review_candidates = candidates[: self.review_limit]
+        materialized_candidates = await self._materialize_review_candidates(
+            candidates[: self.review_limit]
+        )
 
-        if not review_candidates:
+        if not materialized_candidates:
             return await self._generate(
                 prompt=normalized_generation_prompt,
                 metadata=generation_metadata,
@@ -96,7 +105,7 @@ class ImageResolver:
 
         evaluation = await self.evaluation_provider.evaluate_images(
             requirement=normalized_requirement,
-            candidates=review_candidates,
+            images=[image for _, image in materialized_candidates],
         )
 
         if evaluation.decision == "generate_image":
@@ -116,36 +125,61 @@ class ImageResolver:
         if (
             type(selected_index) is not int
             or selected_index < 0
-            or selected_index >= len(review_candidates)
+            or selected_index >= len(materialized_candidates)
         ):
             raise ImageResolverError(
                 "Image evaluation provider selected an invalid candidate index."
             )
 
+        selected_candidate, selected_image = materialized_candidates[selected_index]
         return ImageResolutionResult(
             source="search",
-            candidate=review_candidates[selected_index],
+            image=selected_image,
+            candidate=selected_candidate,
             evaluation=evaluation,
         )
+
+    async def _materialize_review_candidates(
+        self,
+        candidates: Sequence[ImageCandidate],
+    ) -> list[tuple[ImageCandidate, ProviderImageInput]]:
+        """Discard inaccessible/invalid candidates before vision evaluation."""
+
+        materialized: list[tuple[ImageCandidate, ProviderImageInput]] = []
+        for candidate in candidates:
+            try:
+                image = await self.materializer.materialize_candidate(
+                    candidate,
+                    label=f"search_candidate_{len(materialized)}",
+                )
+            except ImageMaterializationError:
+                continue
+            materialized.append((candidate, image))
+        return materialized
 
     async def _generate(
         self,
         *,
         prompt: str,
         metadata: Mapping[str, Any] | None,
-        reference_images: Sequence[str] | None,
+        reference_images: Sequence[ProviderImageInput] | None,
         evaluation: ProviderImageEvaluationResult | None,
     ) -> ImageResolutionResult:
-        """Generate the fallback image using the injected generation provider."""
+        """Generate and materialize the fallback visual asset."""
 
         generation = await self.generation_provider.generate_image(
             prompt=prompt,
             metadata=metadata,
             reference_images=reference_images,
         )
+        image = await self.materializer.materialize_generated(
+            generation.image,
+            label="generated_image",
+        )
 
         return ImageResolutionResult(
             source="generated",
+            image=image,
             generation=generation,
             evaluation=evaluation,
         )
