@@ -28,8 +28,8 @@ class CBTAISchemaBase(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
-class AIImageTransportPayload(CBTAISchemaBase):
-    """Image file bytes encoded only for JSON transport across CBT/Weave."""
+class AIImageBinaryEnvelope(CBTAISchemaBase):
+    """Common JSON representation of complete encoded image-file bytes."""
 
     content_type: str = Field(min_length=1, max_length=100)
     data_base64: str = Field(min_length=1, max_length=MAX_PUBLIC_IMAGE_BASE64_LENGTH)
@@ -37,6 +37,10 @@ class AIImageTransportPayload(CBTAISchemaBase):
     width: int | None = Field(default=None, gt=0)
     height: int | None = Field(default=None, gt=0)
     alt_text: str | None = Field(default=None, max_length=2_000)
+
+
+class AIImageTransportPayload(AIImageBinaryEnvelope):
+    """Untrusted CBT→Weave image payload validated at the HTTP boundary."""
 
     @model_validator(mode="after")
     def validate_binary_transport(self) -> Self:
@@ -55,6 +59,22 @@ class AIImageTransportPayload(CBTAISchemaBase):
             raise ValueError("Image SHA-256 does not match data_base64")
         self.sha256 = self.sha256.casefold()
         return self
+
+
+class AIExistingImagePayload(AIImageTransportPayload):
+    """Regeneration image input.
+
+    Attribution/source metadata is optional so CBT may either send the minimal
+    binary envelope or pass back the complete image object Weave returned from a
+    prior generation response without stripping fields first.
+    """
+
+    source: Literal["search", "generated"] | None = None
+    source_url: str | None = None
+    creator: str | None = None
+    attribution_text: str | None = None
+    license_name: str | None = None
+    license_url: str | None = None
 
 
 class AIGenerateQuestionsRequest(CBTAISchemaBase):
@@ -88,7 +108,7 @@ class AIGenerateQuestionsRequest(CBTAISchemaBase):
 
 class AIExistingQuestionOption(CBTAISchemaBase):
     text: str | None = Field(default=None, max_length=10_000)
-    image: AIImageTransportPayload | None = None
+    image: AIExistingImagePayload | None = None
     is_correct: bool
 
     @model_validator(mode="after")
@@ -102,7 +122,7 @@ class AIExistingQuestion(CBTAISchemaBase):
     question_type: AIQuestionType
     prompt: str = Field(min_length=1, max_length=MAX_PUBLIC_TEXT_LENGTH)
     instruction: str | None = Field(default=None, max_length=MAX_PUBLIC_INSTRUCTION_LENGTH)
-    image: AIImageTransportPayload | None = None
+    image: AIExistingImagePayload | None = None
     options: list[AIExistingQuestionOption] = Field(min_length=2, max_length=50)
 
     @model_validator(mode="after")
@@ -140,8 +160,8 @@ class AIRegenerateQuestionRequest(CBTAISchemaBase):
         return self
 
 
-class AIResolvedImageResponse(AIImageTransportPayload):
-    """Materialized image returned to CBT; no external URL is required to render it."""
+class AIResolvedImageResponse(AIImageBinaryEnvelope):
+    """Trusted materialized image returned to CBT; no fetch URL is required."""
 
     source: Literal["search", "generated"]
     source_url: str | None = None
