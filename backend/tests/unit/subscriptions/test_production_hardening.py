@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -50,80 +50,44 @@ async def test_resource_quota_lock_uses_stable_transaction_advisory_key() -> Non
 
 
 @pytest.mark.asyncio
-async def test_failed_paystack_webhook_rolls_back_before_recording_failure() -> None:
-    payload = {
-        "event": "charge.success",
-        "data": {"id": 123, "reference": "unknown"},
-    }
-    provider = SimpleNamespace(
-        verify_webhook_signature=lambda **_: True,
-        parse_webhook_body=lambda _body: payload,
-    )
-    first_event = SimpleNamespace(processed_at=None, payload=payload)
-    failure_event = SimpleNamespace(processed_at=None, payload=payload)
-    db = SimpleNamespace(rollback=AsyncMock(), commit=AsyncMock())
+async def test_subscription_webhook_compatibility_delegates_to_shared_engine() -> None:
+    db = AsyncMock()
+    shared = AsyncMock(side_effect=RuntimeError("Unknown payment reference."))
 
-    with (
-        patch(
-            "app.modules.subscriptions.payment_integrity.PaystackClient",
-            return_value=provider,
-        ),
-        patch(
-            "app.modules.subscriptions.payment_integrity._event_key",
-            return_value="charge.success:123",
-        ),
-        patch(
-            "app.modules.subscriptions.payment_integrity._acquire_webhook_lock",
-            new=AsyncMock(),
-        ),
-        patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionRepository.get_webhook_event_by_provider",
-            new=AsyncMock(side_effect=[None, None]),
-        ),
-        patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionRepository.create_webhook_event",
-            new=AsyncMock(side_effect=[first_event, failure_event]),
-        ) as create_event,
-        patch(
-            "app.modules.subscriptions.payment_integrity._transaction_for_update",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "app.modules.subscriptions.payment_integrity.SubscriptionRepository.mark_webhook_failed",
-            new=AsyncMock(),
-        ) as mark_failed,
-        patch(
-            "app.modules.subscriptions.payment_integrity.flush_cache_invalidation_events",
-            new=AsyncMock(),
-        ),
+    with patch(
+        "app.modules.subscriptions.payment_integrity.process_shared_paystack_webhook",
+        shared,
     ):
-        with pytest.raises(Exception, match="Unknown term payment reference"):
+        with pytest.raises(RuntimeError, match="Unknown payment reference"):
             await process_paystack_webhook_secure(
                 db,
                 body=b"{}",
                 signature="valid",
             )
 
-    db.rollback.assert_awaited_once()
-    db.commit.assert_awaited_once()
-    assert create_event.await_count == 2
-    mark_failed.assert_awaited_once_with(
-        db=db,
-        webhook_event=failure_event,
-        error_message="Unknown term payment reference.",
-    )
+    shared.assert_awaited_once()
+    assert shared.await_args.kwargs["body"] == b"{}"
+    assert shared.await_args.kwargs["signature"] == "valid"
+    assert callable(shared.await_args.kwargs["settle_charge"])
 
 
 @pytest.mark.asyncio
 async def test_browser_payment_verification_locks_transaction_before_settlement() -> None:
     tenant_id = uuid.uuid4()
+    term_id = uuid.uuid4()
+    plan = SimpleNamespace(value="professional")
     transaction = SimpleNamespace(
         tenant_id=tenant_id,
+        academic_term_id=term_id,
+        plan_code=plan,
         reference="term-ref",
+        amount_kobo=35_000,
+        currency="NGN",
         reconciliation_required=False,
         status=PaymentStatus.PENDING,
     )
     entitlement = SimpleNamespace()
+    verified = SimpleNamespace(raw_payload={"data": {"status": "success"}})
     admin = SimpleNamespace(tenant_id=tenant_id)
     db = AsyncMock()
 
@@ -133,13 +97,13 @@ async def test_browser_payment_verification_locks_transaction_before_settlement(
             new=AsyncMock(return_value=transaction),
         ) as lock_transaction,
         patch(
-            "app.modules.subscriptions.router.PaystackClient.verify_transaction",
-            new=AsyncMock(return_value={"data": {"status": "success"}}),
+            "app.modules.subscriptions.router.PaymentEngine.verify_transaction",
+            new=AsyncMock(return_value=verified),
         ) as verify_provider,
         patch(
-            "app.modules.subscriptions.router.TermPlanEntitlementService.activate_verified_transaction",
+            "app.modules.subscriptions.router.settle_verified_term_payment",
             new=AsyncMock(return_value=entitlement),
-        ) as activate,
+        ) as settle,
         patch(
             "app.modules.subscriptions.router.TermEntitlementResponse.model_validate",
             return_value=entitlement,
@@ -153,8 +117,18 @@ async def test_browser_payment_verification_locks_transaction_before_settlement(
 
     assert result is entitlement
     lock_transaction.assert_awaited_once_with(db, "term-ref")
-    verify_provider.assert_awaited_once_with(reference="term-ref")
-    activate.assert_awaited_once_with(db, transaction, ANY, commit=True)
+    verify_provider.assert_awaited_once_with(
+        reference="term-ref",
+        expected_amount_kobo=35_000,
+        expected_currency="NGN",
+        expected_metadata={
+            "payment_purpose": "term_subscription",
+            "tenant_id": str(tenant_id),
+            "academic_term_id": str(term_id),
+            "plan_code": "professional",
+        },
+    )
+    settle.assert_awaited_once_with(db, transaction, verified.raw_payload)
 
 
 @pytest.mark.asyncio

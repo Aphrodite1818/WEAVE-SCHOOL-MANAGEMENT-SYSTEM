@@ -19,7 +19,8 @@ from app.modules.student_academics.models import (
 from app.modules.subscriptions.cache import invalidate_tenant_subscription_cache
 from app.modules.subscriptions.models import PaymentTransaction, TermPlanEntitlement
 from app.modules.subscriptions.plans import coerce_subscription_plan, get_plan_entitlements
-from app.modules.subscriptions.providers.paystack import PaystackClient
+from app.modules.payments.enums import PaymentPurpose
+from app.modules.payments.service import PaymentEngine
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
     SubscriptionCheckoutResponse,
@@ -616,12 +617,13 @@ class TermPlanEntitlementService:
         db.add(transaction)
         await db.flush()
 
-        response = await PaystackClient().initialize_transaction(
+        checkout = await PaymentEngine.initialize_checkout(
             email=email,
             amount_kobo=amount_kobo,
             reference=reference,
             callback_url=callback_url,
             metadata={
+                "payment_purpose": PaymentPurpose.TERM_SUBSCRIPTION.value,
                 "tenant_id": str(tenant_id),
                 "academic_term_id": str(term_id),
                 "plan_code": target.value,
@@ -631,11 +633,8 @@ class TermPlanEntitlementService:
                 "transition": transition,
             },
         )
-        data = response.get("data") or {}
-        transaction.authorization_url = data.get("authorization_url")
-        transaction.access_code = data.get("access_code")
-        if not transaction.authorization_url or not transaction.access_code:
-            raise ConflictException("Paystack did not return a usable checkout session.")
+        transaction.authorization_url = checkout.authorization_url
+        transaction.access_code = checkout.access_code
 
         await db.commit()
         return TermPlanEntitlementService._checkout_response(transaction)

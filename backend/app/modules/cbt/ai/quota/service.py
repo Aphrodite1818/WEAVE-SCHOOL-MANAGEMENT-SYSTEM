@@ -687,6 +687,7 @@ class AIQuotaService:
         *,
         tenant_id: uuid.UUID,
         reference: str,
+        commit: bool = True,
     ) -> AIQuotaPurchaseResponse:
         """Credit tenant reserve exactly once after trusted payment verification."""
 
@@ -708,7 +709,8 @@ class AIQuotaService:
                 raise AIQuotaNotFoundError("Quota purchase was not found.")
             if purchase.status == AIQuotaPurchaseStatus.SUCCESS:
                 response = cls._purchase_response(purchase)
-                await db.commit()
+                if commit:
+                    await db.commit()
                 return response
             if purchase.status != AIQuotaPurchaseStatus.PENDING:
                 raise AIQuotaConflictError("Only pending quota purchases can be credited.")
@@ -736,7 +738,8 @@ class AIQuotaService:
                     description="Tenant AI credit purchase credited.",
                 ),
             )
-            await db.commit()
+            if commit:
+                await db.commit()
         except Exception:
             await db.rollback()
             raise

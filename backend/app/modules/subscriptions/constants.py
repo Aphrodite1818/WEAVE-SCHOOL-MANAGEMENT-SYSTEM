@@ -24,9 +24,7 @@ PAID_PLAN_CODES = {
     SubscriptionPlan.ENTERPRISE,
 }
 
-PAYSTACK_PLAN_SETTING_FIELDS: dict = {}
-
-PAYSTACK_AMOUNT_SETTING_FIELDS = {
+TERM_AMOUNT_SETTING_FIELDS = {
     SubscriptionPlan.PLUS: {
         BillingInterval.TERM: "PAYSTACK_PLUS_TERM_AMOUNT_KOBO",
     },
