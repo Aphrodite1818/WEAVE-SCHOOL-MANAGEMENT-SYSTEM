@@ -1,0 +1,122 @@
+name: Move payment webhook persistence
+
+on:
+  push:
+    branches:
+      - refactor/shared-payment-engine
+
+permissions:
+  contents: write
+
+jobs:
+  move:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/shared-payment-engine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Move webhook ORM ownership
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          Path("backend/app/modules/payments/models.py").write_text('''from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import DateTime, Enum as SQLEnum, Index, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.modules.payments.enums import PaymentProvider
+from app.shared.base_model import Base, PUBLIC_SCHEMA
+from app.shared.mixins import TimestampMixin, UUIDMixin
+
+
+class PaymentWebhookEvent(UUIDMixin, TimestampMixin, Base):
+    """Idempotency and audit record for inbound payment-provider webhooks."""
+
+    __tablename__ = "payment_webhook_events"
+
+    provider: Mapped[PaymentProvider] = mapped_column(
+        SQLEnum(
+            PaymentProvider,
+            name="payment_provider",
+            schema=PUBLIC_SCHEMA,
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=dict)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "event_type",
+            "event_key",
+            name="uq_payment_webhook_events_provider_type_key",
+        ),
+        Index(
+            "ix_payment_webhook_events_provider_type",
+            "provider",
+            "event_type",
+        ),
+    )
+''')
+
+          p = Path("backend/app/modules/subscriptions/models.py")
+          text = p.read_text()
+          marker = "\n\nclass PaymentWebhookEvent(UUIDMixin, TimestampMixin, Base):"
+          if marker not in text:
+              raise SystemExit("PaymentWebhookEvent class marker not found in subscriptions models")
+          text = text[: text.index(marker)].rstrip() + "\n"
+          text = text.replace("    UniqueConstraint,\n", "")
+          text = text.replace(
+              "from app.shared.base_model import Base, BaseModel, PUBLIC_SCHEMA",
+              "from app.shared.base_model import BaseModel, PUBLIC_SCHEMA",
+          )
+          text = text.replace("from app.shared.mixins import TimestampMixin, UUIDMixin\n", "")
+          p.write_text(text)
+
+          p = Path("backend/app/modules/subscriptions/repository.py")
+          text = p.read_text()
+          text = text.replace("    PaymentWebhookEvent,\n", "")
+          start_marker = "    @staticmethod\n    async def create_webhook_event("
+          end_marker = "    @staticmethod\n    async def get_expirable_subscriptions("
+          if start_marker not in text or end_marker not in text:
+              raise SystemExit("Subscription webhook repository block markers not found")
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          text = text[:start] + text[end:]
+          p.write_text(text)
+
+          p = Path("backend/app/models.py")
+          text = p.read_text()
+          needle = "import app.modules.parents.models\n"
+          if "import app.modules.payments.models\n" not in text:
+              text = text.replace(needle, needle + "import app.modules.payments.models\n", 1)
+          p.write_text(text)
+          PY
+
+          python -m pip install --quiet ruff==0.16.0
+          ruff format \
+            backend/app/modules/payments/models.py \
+            backend/app/modules/subscriptions/models.py \
+            backend/app/modules/subscriptions/repository.py \
+            backend/app/models.py
+
+      - name: Commit move
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/app/modules/payments/models.py backend/app/modules/subscriptions/models.py backend/app/modules/subscriptions/repository.py backend/app/models.py
+          git commit -m "move payment webhook persistence into payments domain"
+          git push origin HEAD:refactor/shared-payment-engine
