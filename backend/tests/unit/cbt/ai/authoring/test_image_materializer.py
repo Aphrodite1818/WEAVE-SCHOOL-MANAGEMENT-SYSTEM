@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from io import BytesIO
+from unittest.mock import AsyncMock, call
 
 import pytest
 from PIL import Image
@@ -12,7 +13,7 @@ from app.modules.cbt.ai.authoring.image_materializer import (
     ImageMaterializer,
     InvalidImageError,
 )
-from app.modules.cbt.ai.authoring.providers.base import ProviderGeneratedImage
+from app.modules.cbt.ai.authoring.providers.base import ImageCandidate, ProviderGeneratedImage
 
 
 def _encoded_image(format_name: str = "PNG") -> bytes:
@@ -79,6 +80,33 @@ async def test_generated_base64_is_materialized_to_real_image_file_bytes() -> No
     assert image.data.startswith(b"\x89PNG\r\n\x1a\n")
     assert image.content_type == "image/png"
     assert hashlib.sha256(image.data).hexdigest() == image.sha256
+
+
+@pytest.mark.asyncio
+async def test_candidate_falls_back_to_thumbnail_when_original_url_is_unusable() -> None:
+    raw = _encoded_image("PNG")
+    materializer = ImageMaterializer()
+    materializer._download = AsyncMock(
+        side_effect=[
+            ImageDownloadError("original unavailable"),
+            raw,
+        ]
+    )
+    candidate = ImageCandidate(
+        source="openverse",
+        source_url="https://example.com/source",
+        image_url="https://cdn.example.com/original.png",
+        thumbnail_url="https://cdn.example.com/thumbnail.png",
+        mime_type="image/png",
+    )
+
+    image = await materializer.materialize_candidate(candidate)
+
+    assert image.content_type == "image/png"
+    assert materializer._download.await_args_list == [
+        call("https://cdn.example.com/original.png"),
+        call("https://cdn.example.com/thumbnail.png"),
+    ]
 
 
 @pytest.mark.asyncio
