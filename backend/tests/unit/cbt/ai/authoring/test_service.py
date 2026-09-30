@@ -8,12 +8,24 @@ from app.modules.cbt.ai.authoring.providers.base import (
     ProviderGeneratedImage,
     ProviderImageEvaluationResult,
     ProviderImageGenerationResult,
+    ProviderImageInput,
     ProviderQuestionGenerationResult,
     ProviderQuestionRegenerationResult,
     ProviderUsage,
 )
 from app.modules.cbt.ai.authoring.service import QuestionAuthoringService
 from app.modules.cbt.ai.authoring.validation import AIResponseValidationError
+
+
+def _materialized(label: str = "image") -> ProviderImageInput:
+    return ProviderImageInput(
+        data=b"encoded-image",
+        content_type="image/png",
+        sha256="0" * 64,
+        width=100,
+        height=100,
+        label=label,
+    )
 
 
 def _image(label: str = "triangle") -> dict[str, str]:
@@ -71,6 +83,8 @@ class FakeQuestionProvider:
         self.generate_request = None
         self.repair_request = None
         self.regenerate_request = None
+        self.repair_reference_images = None
+        self.regenerate_reference_images = None
 
     def is_configured(self) -> bool:
         return True
@@ -83,17 +97,19 @@ class FakeQuestionProvider:
             usage=self.generation_usage,
         )
 
-    async def repair_questions(self, *, request):
+    async def repair_questions(self, *, request, reference_images=None):
         self.repair_calls += 1
         self.repair_request = dict(request)
+        self.repair_reference_images = reference_images
         return ProviderQuestionGenerationResult(
             questions=self.repaired,
             usage=self.repair_usage,
         )
 
-    async def regenerate_question(self, *, request):
+    async def regenerate_question(self, *, request, reference_images=None):
         self.regenerate_calls += 1
         self.regenerate_request = dict(request)
+        self.regenerate_reference_images = reference_images
         return ProviderQuestionRegenerationResult(
             question=self.regenerated,
             usage=self.regeneration_usage,
@@ -105,6 +121,7 @@ class FakeImageResolver:
         self.calls: list[dict] = []
         self.result = result or ImageResolutionResult(
             source="search",
+            image=_materialized(),
             candidate=ImageCandidate(
                 source="fake",
                 source_url="https://example.com/source",
@@ -157,10 +174,7 @@ async def test_valid_generation_does_not_repair_and_resolves_images_after_valida
 
 @pytest.mark.asyncio
 async def test_invalid_generation_gets_exactly_one_repair_then_images_resolve() -> None:
-    provider = FakeQuestionProvider(
-        generated=[_single()],
-        repaired=[_single(visual=True)],
-    )
+    provider = FakeQuestionProvider(generated=[_single()], repaired=[_single(visual=True)])
     service, resolver = _service(provider)
     result = await service.generate_questions(
         request={"visual_mode": "auto", "topic": "Geometry"},
@@ -180,10 +194,7 @@ async def test_invalid_repair_is_not_repaired_twice_and_never_resolves_images() 
     provider = FakeQuestionProvider(generated=[_single()], repaired=[_single()])
     service, resolver = _service(provider)
     with pytest.raises(AIResponseValidationError):
-        await service.generate_questions(
-            request={"visual_mode": "auto"},
-            expected_count=1,
-        )
+        await service.generate_questions(request={"visual_mode": "auto"}, expected_count=1)
     assert provider.repair_calls == 1
     assert resolver.calls == []
 
@@ -204,10 +215,7 @@ async def test_text_only_generation_never_invokes_image_resolver() -> None:
 async def test_question_and_option_directives_are_resolved_separately() -> None:
     provider = FakeQuestionProvider(generated=[_single(visual=True, option_visual=True)])
     service, resolver = _service(provider)
-    result = await service.generate_questions(
-        request={"visual_mode": "auto"},
-        expected_count=1,
-    )
+    result = await service.generate_questions(request={"visual_mode": "auto"}, expected_count=1)
     assert len(resolver.calls) == 2
     assert result.questions[0].question_image is not None
     assert 0 in result.questions[0].option_images
@@ -219,44 +227,30 @@ async def test_usage_aggregates_generation_repair_image_evaluation_and_generatio
         generated=[_single()],
         repaired=[_single(visual=True)],
         generation_usage=ProviderUsage(
-            input_tokens=10,
-            output_tokens=20,
-            provider_cost=0.10,
-            currency="USD",
+            input_tokens=10, output_tokens=20, provider_cost=0.10, currency="USD"
         ),
         repair_usage=ProviderUsage(
-            input_tokens=5,
-            output_tokens=7,
-            provider_cost=0.05,
-            currency="USD",
+            input_tokens=5, output_tokens=7, provider_cost=0.05, currency="USD"
         ),
     )
     image_result = ImageResolutionResult(
         source="generated",
+        image=_materialized("generated"),
         evaluation=ProviderImageEvaluationResult(
             decision="generate_image",
             usage=ProviderUsage(
-                input_tokens=3,
-                output_tokens=2,
-                provider_cost=0.02,
-                currency="USD",
+                input_tokens=3, output_tokens=2, provider_cost=0.02, currency="USD"
             ),
         ),
         generation=ProviderImageGenerationResult(
             image=ProviderGeneratedImage(content_type="image/png", data_base64="abc"),
             usage=ProviderUsage(
-                input_tokens=4,
-                output_tokens=1,
-                provider_cost=0.03,
-                currency="USD",
+                input_tokens=4, output_tokens=1, provider_cost=0.03, currency="USD"
             ),
         ),
     )
     service, _ = _service(provider, FakeImageResolver(image_result))
-    result = await service.generate_questions(
-        request={"visual_mode": "auto"},
-        expected_count=1,
-    )
+    result = await service.generate_questions(request={"visual_mode": "auto"}, expected_count=1)
     assert result.usage.input_tokens == 22
     assert result.usage.output_tokens == 30
     assert result.usage.provider_cost == pytest.approx(0.20)
@@ -278,31 +272,37 @@ def test_usage_does_not_mix_provider_cost_across_currencies() -> None:
 async def test_regeneration_valid_path_preserves_expected_type_and_resolves_visual() -> None:
     provider = FakeQuestionProvider(regenerated=_single("Regenerated", visual=True))
     service, resolver = _service(provider)
+    reference = _materialized("existing_question.image")
     result = await service.regenerate_question(
         request={"visual_mode": "auto"},
         expected_question_type="single_choice",
+        reference_images=[reference],
     )
     assert result.repaired is False
     assert provider.repair_calls == 0
+    assert provider.regenerate_reference_images == [reference]
     assert len(resolver.calls) == 1
     assert result.question.question.question_type == "single_choice"
 
 
 @pytest.mark.asyncio
-async def test_regeneration_repairs_once_with_regeneration_operation() -> None:
+async def test_regeneration_repairs_once_and_keeps_reference_images() -> None:
     provider = FakeQuestionProvider(
         regenerated=_single("Missing visual"),
         repaired=[_single("Repaired", visual=True)],
     )
     service, resolver = _service(provider)
+    reference = _materialized("existing_question.image")
     result = await service.regenerate_question(
         request={"visual_mode": "auto", "instruction": "make clearer"},
         expected_question_type="single_choice",
+        reference_images=[reference],
     )
     assert result.repaired is True
     assert provider.repair_calls == 1
     assert provider.repair_request["operation"] == "regeneration"
     assert provider.repair_request["original_request"]["visual_mode"] == "auto"
+    assert provider.repair_reference_images == [reference]
     assert len(resolver.calls) == 1
 
 
