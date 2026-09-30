@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -59,10 +59,6 @@ async def test_checkout_calculates_total_server_side_and_passes_trusted_amount(m
         "app.modules.cbt.ai.quota.payment_service.settings.PAYSTACK_CALLBACK_URL",
         "https://example.com/payments/callback",
     )
-    monkeypatch.setattr(
-        "app.modules.cbt.ai.quota.payment_service.settings.is_production_like",
-        False,
-    )
 
     async def create_pending(_db, **kwargs):
         return _purchase_response(
@@ -111,10 +107,6 @@ async def test_provider_initialization_failure_marks_pending_purchase_failed(mon
     monkeypatch.setattr(
         "app.modules.cbt.ai.quota.payment_service.settings.PAYSTACK_CALLBACK_URL",
         "https://example.com/payments/callback",
-    )
-    monkeypatch.setattr(
-        "app.modules.cbt.ai.quota.payment_service.settings.is_production_like",
-        False,
     )
 
     purchase = _purchase_response(
@@ -194,7 +186,7 @@ async def test_browser_verification_uses_backend_purchase_expectation_before_cre
     assert verify.await_args.kwargs["expected_amount_kobo"] == 25_000
     assert verify.await_args.kwargs["expected_metadata"]["credits"] == 500
     credit.assert_awaited_once_with(
-        pytest.ANY,
+        ANY,
         tenant_id=tenant_id,
         reference="ai-credit-ref",
     )
