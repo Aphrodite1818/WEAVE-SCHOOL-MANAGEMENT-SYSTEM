@@ -28,6 +28,10 @@ AuthoringOperation = Literal["generation", "regeneration"]
 DEFAULT_VISUAL_MODE: AIVisualMode = "auto"
 
 
+class AuthoringImageBudgetExceededError(RuntimeError):
+    """Raised when one authoring response would contain too many image bytes."""
+
+
 @dataclass(slots=True)
 class AuthoredQuestion:
     """One trusted CBT question together with resolved visual assets."""
@@ -53,6 +57,8 @@ class QuestionRegenerationResult:
 
 class QuestionAuthoringService:
     """Coordinate validated question authoring and image resolution."""
+
+    MAX_MATERIALIZED_IMAGE_BYTES = 24 * 1024 * 1024
 
     def __init__(
         self,
@@ -105,8 +111,11 @@ class QuestionAuthoringService:
 
         authored_questions: list[AuthoredQuestion] = []
         image_usages: list[ProviderUsage] = []
+        materialized_image_bytes = 0
         for question in questions:
             authored_question, usages = await self._resolve_question_images(question)
+            materialized_image_bytes += self._authored_question_image_bytes(authored_question)
+            self._enforce_image_budget(materialized_image_bytes)
             authored_questions.append(authored_question)
             image_usages.extend(usages)
 
@@ -165,6 +174,7 @@ class QuestionAuthoringService:
             repaired = True
 
         authored_question, image_usages = await self._resolve_question_images(question)
+        self._enforce_image_budget(self._authored_question_image_bytes(authored_question))
         return QuestionRegenerationResult(
             question=authored_question,
             usage=self._combine_usage(question_usage, *image_usages),
@@ -226,6 +236,19 @@ class QuestionAuthoringService:
             ),
             usages,
         )
+
+    @staticmethod
+    def _authored_question_image_bytes(question: AuthoredQuestion) -> int:
+        total = len(question.question_image.image.data) if question.question_image else 0
+        total += sum(len(resolution.image.data) for resolution in question.option_images.values())
+        return total
+
+    @classmethod
+    def _enforce_image_budget(cls, image_bytes: int) -> None:
+        if image_bytes > cls.MAX_MATERIALIZED_IMAGE_BYTES:
+            raise AuthoringImageBudgetExceededError(
+                "CBT AI image payload exceeds the maximum materialized response budget."
+            )
 
     @staticmethod
     def _image_resolution_usages(resolution: ImageResolutionResult) -> list[ProviderUsage]:
