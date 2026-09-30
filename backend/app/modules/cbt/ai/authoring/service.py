@@ -226,7 +226,7 @@ class QuestionAuthoringService:
             )
 
             question = validate_regenerated_question(
-                repaired_questions[0],
+                repaired_questions[0].model_dump(),
                 expected_question_type=expected_question_type,
                 visual_mode=visual_mode,
             )
