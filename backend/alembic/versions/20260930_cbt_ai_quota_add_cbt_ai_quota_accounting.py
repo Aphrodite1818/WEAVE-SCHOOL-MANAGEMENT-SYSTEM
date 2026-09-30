@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -759,4 +760,19 @@ def downgrade() -> None:
     )
     op.drop_table("cbt_ai_quota_accounts", schema="public")
     op.drop_table("cbt_ai_tenant_credit_balances", schema="public")
+
+    # PostgreSQL enum types survive table drops unless removed explicitly.
+    # Remove them so downgrade -> upgrade cycles are repeatable.
+    for enum_name in (
+        "cbt_ai_credit_ledger_event_type",
+        "cbt_ai_credit_ledger_bucket",
+        "cbt_ai_quota_request_status",
+        "cbt_ai_credit_reservation_status",
+        "cbt_ai_quota_purchase_status",
+        "ai_quota_actor_type",
+    ):
+        postgresql.ENUM(name=enum_name, schema="public").drop(
+            op.get_bind(),
+            checkfirst=True,
+        )
     # ### end Alembic commands ###
