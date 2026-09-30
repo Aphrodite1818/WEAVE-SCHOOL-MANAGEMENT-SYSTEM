@@ -22,6 +22,10 @@ from app.modules.cbt.ai.providers.base import (
     ProviderQuestionRegenerationResult,
     ProviderUsage,
 )
+from app.modules.cbt.ai.contracts import (
+    build_question_generation_prompt,
+    build_question_regeneration_prompt
+)
 
 
 # Exceptions
@@ -203,74 +207,21 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
             "systemInstruction": {
                 "parts": [
                     {
-                        "text": (
-                            "You are a CBT educational question "
-                            "authoring engine. Generate questions "
-                            "strictly from the supplied academic "
-                            "context and author instructions. "
-                            "Return only valid JSON. "
-                            "The top-level JSON object must contain "
-                            "a 'questions' array. Do not wrap the "
-                            "response in markdown or code fences"
-                        )
-                    }
-                ]
-            },
-            "contents": [
-                {"role": "user", "parts": [{"text": json.dumps(dict(request), ensure_ascii=False)}]}
-            ],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "maxOutputTokens": self.max_output_tokens,
-            },
-        }
-
-        response = await self._post(model=self.model, payload=request_payload, timeout=self.timeout)
-        text = self._extract_text(response)
-        result = self._parse_json_text(text)
-
-        questions = result.get("questions")
-        if not isinstance(questions, list) or any(not isinstance(q, dict) for q in questions):
-            raise GeminiProviderError(
-                "Gemini question-generation response does not "
-                "contain a valid 'questions' array of objects."
-            )
-
-        return ProviderQuestionGenerationResult(
-            questions=questions, usage=self._extract_usage(response), raw_response=response
-        )
-
-    async def regenerate_question(
-        self,
-        *,
-        request: Mapping[str, Any],
-    ) -> ProviderQuestionRegenerationResult:
-        """Regenerate or transform one existing CBT question draft."""
-
-        request_payload = {
-            "systemInstruction": {
-                "parts": [
-                    {
-                        "text": (
-                            "You are a CBT educational question "
-                            "editing engine. Transform exactly one "
-                            "existing question using the supplied "
-                            "academic context and transformation "
-                            "instruction. Preserve constraints such "
-                            "as subject, level, topic and question "
-                            "type unless the request explicitly "
-                            "allows a change. Return only valid JSON. "
-                            "The top-level JSON object must contain "
-                            "a 'question' object. Do not use markdown "
-                            "or code fences."
-                        )
+                        "text": build_question_generation_prompt(),
                     }
                 ]
             },
             "contents": [
                 {
                     "role": "user",
-                    "parts": [{"text": json.dumps(dict(request), ensure_ascii=False)}],
+                    "parts": [
+                        {
+                            "text": json.dumps(
+                                dict(request),
+                                ensure_ascii=False,
+                            )
+                        }
+                    ],
                 }
             ],
             "generationConfig": {
@@ -287,15 +238,82 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
 
         text = self._extract_text(response)
         result = self._parse_json_text(text)
+
+        questions = result.get("questions")
+
+        if (
+            not isinstance(questions, list)
+            or any(
+                not isinstance(question, dict)
+                for question in questions
+            )
+        ):
+            raise GeminiProviderError(
+                "Gemini question-generation response does not "
+                "contain a valid 'questions' array of objects."
+            )
+
+        return ProviderQuestionGenerationResult(
+            questions=questions,
+            usage=self._extract_usage(response),
+            raw_response=response,
+        )
+
+    async def regenerate_question(
+        self,
+        *,
+        request: Mapping[str, Any],
+    ) -> ProviderQuestionRegenerationResult:
+        """Regenerate or transform one existing CBT question draft."""
+
+        request_payload = {
+            "systemInstruction": {
+                "parts": [
+                    {
+                        "text": build_question_regeneration_prompt(),
+                    }
+                ]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": json.dumps(
+                                dict(request),
+                                ensure_ascii=False,
+                            )
+                        }
+                    ],
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "maxOutputTokens": self.max_output_tokens,
+            },
+        }
+
+        response = await self._post(
+            model=self.model,
+            payload=request_payload,
+            timeout=self.timeout,
+        )
+
+        text = self._extract_text(response)
+        result = self._parse_json_text(text)
+
         question = result.get("question")
 
         if not isinstance(question, dict):
             raise GeminiProviderError(
-                "Gemini regeneration response does not contain a valid 'question' object."
+                "Gemini regeneration response does not contain "
+                "a valid 'question' object."
             )
 
         return ProviderQuestionRegenerationResult(
-            question=question, usage=self._extract_usage(response), raw_response=response
+            question=question,
+            usage=self._extract_usage(response),
+            raw_response=response,
         )
 
 

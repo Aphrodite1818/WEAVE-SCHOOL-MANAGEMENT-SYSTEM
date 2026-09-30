@@ -140,6 +140,15 @@ class BaseQuestionGenerationProvider(BaseProvider, ABC):
         """Regenerate or transform one existing draft question."""
         raise NotImplementedError
 
+    @abstractmethod
+    async def repair_questions(
+        self,
+        *,
+        request : Mapping[str ,Any]
+    )->ProviderQuestionGenerationResult:
+        """repair invalid generated or regenerated question at runtime"""
+        raise NotImplementedError
+
 
 class BaseImageGenerationProvider(BaseProvider, ABC):
     """Contract for providers that generate new visual assets."""

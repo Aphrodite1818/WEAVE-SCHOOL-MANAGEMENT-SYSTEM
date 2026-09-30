@@ -23,6 +23,11 @@ from app.modules.cbt.ai.providers.base import (
     ProviderUsage,
 )
 
+from app.modules.cbt.ai.contracts import (
+    build_question_generation_prompt,
+    build_question_regeneration_prompt
+)
+
 
 class MiniMaxProviderError(RuntimeError):
     """Raised when MiniMax cannot successfully complete a provider request."""
@@ -247,13 +252,7 @@ class MiniMaxQuestionGenerationProvider(_MiniMaxHTTPProvider, BaseQuestionGenera
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a CBT educational question authoring engine. Generate questions "
-                        "strictly from the supplied academic context and author instructions. "
-                        "Return only valid JSON. The top-level JSON object must contain a "
-                        "'questions' array. Do not wrap the response in markdown, code fences, "
-                        "commentary, or explanation."
-                    ),
+                    "content": build_question_generation_prompt()
                 },
                 {
                     "role": "user",
@@ -295,14 +294,7 @@ class MiniMaxQuestionGenerationProvider(_MiniMaxHTTPProvider, BaseQuestionGenera
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a CBT educational question editing engine. Transform exactly one "
-                        "existing question using the supplied academic context and transformation "
-                        "instruction. Preserve subject, level, topic and question type unless the "
-                        "request explicitly allows a change. Return only valid JSON. The top-level "
-                        "JSON object must contain a 'question' object. Do not wrap the response in "
-                        "markdown, code fences, commentary, or explanation."
-                    ),
+                    "content": build_question_regeneration_prompt()
                 },
                 {
                     "role": "user",
