@@ -36,3 +36,16 @@ def test_safe_gunzip_rejects_incomplete_stream() -> None:
             compressed[:-3],
             max_output_bytes=1_024,
         )
+
+
+def test_safe_gunzip_rejects_concatenated_members() -> None:
+    payload = gzip.compress(b"first") + gzip.compress(b"second")
+
+    with pytest.raises(ValueError, match="concatenated"):
+        CBTGZipRoute._safe_gunzip(payload, max_output_bytes=1_024)
+
+
+def test_accept_encoding_respects_gzip_quality_zero() -> None:
+    assert CBTGZipRoute._accepts_gzip(b"br, gzip") is True
+    assert CBTGZipRoute._accepts_gzip(b"gzip;q=1.0") is True
+    assert CBTGZipRoute._accepts_gzip(b"gzip;q=0") is False
