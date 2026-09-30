@@ -30,23 +30,22 @@ When visual_mode is "text_only":
 
 When visual_mode is "auto":
 
-- Prefer text-only questions when a visual is unnecessary.
-- A visual-dependent question may be authored only when the visual
-  genuinely improves or is required by the assessment.
-- Every question that depends on a visual must contain a complete
-  question-level image directive.
-- Every answer option that depends on a visual must contain a complete
-  option-level image directive.
-- Never refer to a missing visual.
-
-When visual_mode is "prefer_visuals":
-
-- Prefer meaningful visual questions where appropriate for the supplied
-  subject, topic, academic level, and author instructions.
-- Do not add decorative or irrelevant visuals simply to satisfy the
-  preference.
-- Every question or answer option that depends on a visual must contain
-  the corresponding complete image directive.
+- The generated batch must contain at least one question that genuinely
+  uses a visual.
+- Text-only questions must remain dominant. When generating three or more
+  questions, the number of visual-bearing questions must be lower than the
+  number of text-only questions.
+- For a two-question batch, one visual-bearing question and one text-only
+  question is acceptable.
+- For a one-question batch, the single question must contain a meaningful
+  visual directive.
+- Do not attach decorative or irrelevant images just to satisfy the rule.
+  Instead, formulate visual questions where the image has real assessment
+  value for the supplied subject, topic, level, and author instructions.
+- A question counts as visual-bearing when the question itself or at least
+  one answer option contains an image directive.
+- Every question or answer option that depends on a visual must contain the
+  corresponding complete image directive.
 - Never refer to a missing visual.
 
 An image directive describes a visual that will be resolved later by the
@@ -123,8 +122,11 @@ Rules:
 - Do not add fields that are not defined by the response schema.
 
 - Follow the visual policy in the request even when the original question
-  used a different visual style. If visual_mode is text_only, rewrite the
-  regenerated question so it is fully answerable without a visual.
+  used a different visual style.
+- If visual_mode is text_only, rewrite the regenerated question so it is
+  fully answerable without a visual.
+- If visual_mode is auto, the regenerated question must contain at least
+  one meaningful question-level or option-level image directive.
 
 {VISUAL_POLICY_RULES}
 
