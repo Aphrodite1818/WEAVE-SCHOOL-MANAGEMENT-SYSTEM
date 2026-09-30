@@ -22,6 +22,13 @@ MAX_IMAGE_SEARCH_QUERY_LENGTH = 500
 MAX_IMAGE_GENERATION_PROMPT_LENGTH = 2_000
 
 
+AIVisualMode = Literal[
+    "text_only",
+    "auto",
+    "prefer_visuals",
+]
+
+
 class AIDraftBase(BaseModel):
     """
     Base configuration for untrusted AI-generated structured output.
