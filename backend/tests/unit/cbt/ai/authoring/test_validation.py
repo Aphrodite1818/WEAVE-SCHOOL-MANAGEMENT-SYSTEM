@@ -84,9 +84,7 @@ def test_multiple_choice_requires_two_correct_and_one_incorrect() -> None:
 
 def test_option_requires_text_image_or_both() -> None:
     with pytest.raises(ValidationError, match="must include text, an image, or both"):
-        AIQuestionOptionDraft.model_validate(
-            {"text": None, "image": None, "is_correct": False}
-        )
+        AIQuestionOptionDraft.model_validate({"text": None, "image": None, "is_correct": False})
 
 
 def test_question_rejects_normalized_duplicate_options() -> None:

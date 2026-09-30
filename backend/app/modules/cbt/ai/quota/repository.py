@@ -470,9 +470,7 @@ class AICreditAllocationRepository:
         total = int(
             (
                 await db.execute(
-                    select(func.count())
-                    .select_from(AICreditAllocation)
-                    .where(*filters)
+                    select(func.count()).select_from(AICreditAllocation).where(*filters)
                 )
             ).scalar_one()
         )
@@ -595,11 +593,7 @@ class AIQuotaRequestRepository:
 
         total = int(
             (
-                await db.execute(
-                    select(func.count())
-                    .select_from(AIQuotaRequest)
-                    .where(*filters)
-                )
+                await db.execute(select(func.count()).select_from(AIQuotaRequest).where(*filters))
             ).scalar_one()
         )
 
@@ -658,11 +652,7 @@ class AIQuotaRequestRepository:
         ]
         total = int(
             (
-                await db.execute(
-                    select(func.count())
-                    .select_from(AIQuotaRequest)
-                    .where(*filters)
-                )
+                await db.execute(select(func.count()).select_from(AIQuotaRequest).where(*filters))
             ).scalar_one()
         )
         result = await db.execute(
@@ -741,11 +731,7 @@ class AIQuotaPurchaseRepository:
 
         total = int(
             (
-                await db.execute(
-                    select(func.count())
-                    .select_from(AIQuotaPurchase)
-                    .where(*filters)
-                )
+                await db.execute(select(func.count()).select_from(AIQuotaPurchase).where(*filters))
             ).scalar_one()
         )
         result = await db.execute(
@@ -828,11 +814,7 @@ class AICreditLedgerRepository:
 
         total = int(
             (
-                await db.execute(
-                    select(func.count())
-                    .select_from(AICreditLedger)
-                    .where(*filters)
-                )
+                await db.execute(select(func.count()).select_from(AICreditLedger).where(*filters))
             ).scalar_one()
         )
         result = await db.execute(

@@ -80,9 +80,7 @@ class AIQuestionOptionDraft(AIDraftBase):
     @model_validator(mode="after")
     def require_content(self) -> AIQuestionOptionDraft:
         if not self.text and self.image is None:
-            raise ValueError(
-                "An answer option must include text, an image, or both."
-            )
+            raise ValueError("An answer option must include text, an image, or both.")
         return self
 
 
@@ -110,11 +108,7 @@ class AIQuestionDraftBase(AIDraftBase):
     def validate_unique_options(self) -> AIQuestionDraftBase:
         identities: set[tuple] = set()
         for option in self.options:
-            normalized_text = (
-                " ".join(option.text.split()).casefold()
-                if option.text
-                else None
-            )
+            normalized_text = " ".join(option.text.split()).casefold() if option.text else None
             normalized_image = None
             if option.image is not None:
                 normalized_image = (
@@ -137,9 +131,7 @@ class AISingleChoiceQuestionDraft(AIQuestionDraftBase):
     def validate_correct_answer(self) -> AISingleChoiceQuestionDraft:
         correct_count = sum(1 for option in self.options if option.is_correct)
         if correct_count != 1:
-            raise ValueError(
-                "A single-choice question must have exactly one correct option."
-            )
+            raise ValueError("A single-choice question must have exactly one correct option.")
         return self
 
 
@@ -152,9 +144,7 @@ class AIMultipleChoiceQuestionDraft(AIQuestionDraftBase):
     def validate_correct_answers(self) -> AIMultipleChoiceQuestionDraft:
         correct_count = sum(1 for option in self.options if option.is_correct)
         if correct_count < 2:
-            raise ValueError(
-                "A multiple-choice question must have at least two correct options."
-            )
+            raise ValueError("A multiple-choice question must have at least two correct options.")
         if correct_count == len(self.options):
             raise ValueError(
                 "A multiple-choice question must contain at least one incorrect option."

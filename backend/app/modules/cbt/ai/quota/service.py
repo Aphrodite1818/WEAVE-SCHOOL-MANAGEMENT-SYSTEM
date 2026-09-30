@@ -243,9 +243,7 @@ class AIQuotaService:
             if request is None or request.requester_quota_account_id != account.id:
                 raise AIQuotaNotFoundError("Quota request was not found.")
             if request.status != AIQuotaRequestStatus.PENDING:
-                raise AIQuotaConflictError(
-                    "Only pending quota requests can be cancelled."
-                )
+                raise AIQuotaConflictError("Only pending quota requests can be cancelled.")
             request.status = AIQuotaRequestStatus.CANCELLED
             request.cancelled_at = cls._now()
             await AIQuotaRequestRepository.save(db, request)
@@ -295,9 +293,7 @@ class AIQuotaService:
             extra_reserved_total += extra.reserved_credits
         return AITenantQuotaSummaryResponse(
             tenant_reserve_credits=(
-                tenant_balance.available_credits
-                if tenant_balance is not None
-                else 0
+                tenant_balance.available_credits if tenant_balance is not None else 0
             ),
             quota_actor_count=len(rows),
             pending_request_count=pending_count,
@@ -328,9 +324,7 @@ class AIQuotaService:
         items: list[AIActorQuotaBalance] = []
         for account, weekly, extra, _, teacher, admin in rows:
             weekly_limit = (
-                weekly.credit_limit
-                if weekly is not None
-                else DEFAULT_WEEKLY_FREE_CREDITS
+                weekly.credit_limit if weekly is not None else DEFAULT_WEEKLY_FREE_CREDITS
             )
             weekly_used = weekly.used_credits if weekly is not None else 0
             weekly_reserved = weekly.reserved_credits if weekly is not None else 0
@@ -339,9 +333,7 @@ class AIQuotaService:
                 0,
             )
             extra_available = (
-                max(extra.available_credits - extra.reserved_credits, 0)
-                if extra is not None
-                else 0
+                max(extra.available_credits - extra.reserved_credits, 0) if extra is not None else 0
             )
             display_name, email = cls._actor_display_identity(
                 teacher=teacher,
@@ -444,19 +436,13 @@ class AIQuotaService:
             if request is None:
                 raise AIQuotaNotFoundError("Quota request was not found.")
             if request.status != AIQuotaRequestStatus.PENDING:
-                raise AIQuotaConflictError(
-                    "Only pending quota requests can be approved."
-                )
+                raise AIQuotaConflictError("Only pending quota requests can be approved.")
             credits = (
-                approved_credits
-                if approved_credits is not None
-                else request.requested_credits
+                approved_credits if approved_credits is not None else request.requested_credits
             )
             cls._require_positive_credits(credits)
             if credits > request.requested_credits:
-                raise AIQuotaConflictError(
-                    "Approved credits cannot exceed requested credits."
-                )
+                raise AIQuotaConflictError("Approved credits cannot exceed requested credits.")
             tenant_balance = await AITenantCreditBalanceRepository.get_for_tenant(
                 db,
                 tenant_id=tenant_id,
@@ -519,9 +505,7 @@ class AIQuotaService:
             if request is None:
                 raise AIQuotaNotFoundError("Quota request was not found.")
             if request.status != AIQuotaRequestStatus.PENDING:
-                raise AIQuotaConflictError(
-                    "Only pending quota requests can be rejected."
-                )
+                raise AIQuotaConflictError("Only pending quota requests can be rejected.")
             request.status = AIQuotaRequestStatus.REJECTED
             request.reviewed_by_admin_id = tenant_admin_id
             request.reviewed_at = cls._now()
@@ -679,9 +663,7 @@ class AIQuotaService:
                 response = cls._purchase_response(existing)
                 await db.commit()
                 return response
-            raise AIQuotaConflictError(
-                "A different quota purchase already uses this reference."
-            )
+            raise AIQuotaConflictError("A different quota purchase already uses this reference.")
         purchase = AIQuotaPurchase(
             tenant_id=tenant_id,
             initiated_by_admin_id=tenant_admin_id,
@@ -729,9 +711,7 @@ class AIQuotaService:
                 await db.commit()
                 return response
             if purchase.status != AIQuotaPurchaseStatus.PENDING:
-                raise AIQuotaConflictError(
-                    "Only pending quota purchases can be credited."
-                )
+                raise AIQuotaConflictError("Only pending quota purchases can be credited.")
             tenant_balance = await AITenantCreditBalanceRepository.get_for_tenant(
                 db,
                 tenant_id=tenant_id,
@@ -785,9 +765,7 @@ class AIQuotaService:
                 await db.commit()
                 return response
             if purchase.status != AIQuotaPurchaseStatus.PENDING:
-                raise AIQuotaConflictError(
-                    "Only pending quota purchases can be marked failed."
-                )
+                raise AIQuotaConflictError("Only pending quota purchases can be marked failed.")
             purchase.status = AIQuotaPurchaseStatus.FAILED
             await AIQuotaPurchaseRepository.save(db, purchase)
             await db.commit()
@@ -820,9 +798,7 @@ class AIQuotaService:
                 await db.commit()
                 return response
             if purchase.status != AIQuotaPurchaseStatus.PENDING:
-                raise AIQuotaConflictError(
-                    "Only pending quota purchases can be cancelled."
-                )
+                raise AIQuotaConflictError("Only pending quota purchases can be cancelled.")
             purchase.status = AIQuotaPurchaseStatus.CANCELLED
             await AIQuotaPurchaseRepository.save(db, purchase)
             await db.commit()
@@ -944,15 +920,11 @@ class AIQuotaService:
             if weekly is None:
                 raise AIQuotaConflictError("Weekly quota state is missing.")
             free_available = max(
-                weekly.credit_limit
-                - weekly.used_credits
-                - weekly.reserved_credits,
+                weekly.credit_limit - weekly.used_credits - weekly.reserved_credits,
                 0,
             )
             extra_available = (
-                max(extra.available_credits - extra.reserved_credits, 0)
-                if extra is not None
-                else 0
+                max(extra.available_credits - extra.reserved_credits, 0) if extra is not None else 0
             )
             total_available = free_available + extra_available
             if total_available < credits:
@@ -1019,9 +991,7 @@ class AIQuotaService:
                 AICreditReservationStatus.RELEASED,
                 AICreditReservationStatus.EXPIRED,
             }:
-                raise AIQuotaConflictError(
-                    "This credit reservation is no longer pending."
-                )
+                raise AIQuotaConflictError("This credit reservation is no longer pending.")
             now = cls._now()
             if reservation.expires_at <= now:
                 await cls._release_locked_reservation(
@@ -1034,14 +1004,9 @@ class AIQuotaService:
                 raise AIQuotaReservationExpiredError(
                     "Credit reservation expired before settlement."
                 )
-            reserved_total = (
-                reservation.reserved_free_credits
-                + reservation.reserved_extra_credits
-            )
+            reserved_total = reservation.reserved_free_credits + reservation.reserved_extra_credits
             if actual_credits > reserved_total:
-                raise AIQuotaConflictError(
-                    "Actual credit usage exceeds the reserved amount."
-                )
+                raise AIQuotaConflictError("Actual credit usage exceeds the reserved amount.")
             weekly = await cls._locked_weekly_for_reservation(
                 db,
                 reservation=reservation,
@@ -1055,31 +1020,23 @@ class AIQuotaService:
                     lock=True,
                 )
                 if extra is None:
-                    raise AIQuotaConflictError(
-                        "Reserved extra-credit balance is missing."
-                    )
+                    raise AIQuotaConflictError("Reserved extra-credit balance is missing.")
             settled_free = min(
                 actual_credits,
                 reservation.reserved_free_credits,
             )
             settled_extra = actual_credits - settled_free
             if weekly.reserved_credits < reservation.reserved_free_credits:
-                raise AIQuotaConflictError(
-                    "Weekly reserved-credit state is inconsistent."
-                )
+                raise AIQuotaConflictError("Weekly reserved-credit state is inconsistent.")
             weekly.reserved_credits -= reservation.reserved_free_credits
             weekly.used_credits += settled_free
             await AIWeeklyQuotaRepository.save(db, weekly)
             if reservation.reserved_extra_credits:
                 assert extra is not None
                 if extra.reserved_credits < reservation.reserved_extra_credits:
-                    raise AIQuotaConflictError(
-                        "Extra reserved-credit state is inconsistent."
-                    )
+                    raise AIQuotaConflictError("Extra reserved-credit state is inconsistent.")
                 if extra.available_credits < settled_extra:
-                    raise AIQuotaConflictError(
-                        "Extra-credit balance cannot cover settlement."
-                    )
+                    raise AIQuotaConflictError("Extra-credit balance cannot cover settlement.")
                 extra.reserved_credits -= reservation.reserved_extra_credits
                 extra.available_credits -= settled_extra
                 await AIExtraCreditBalanceRepository.save(db, extra)
@@ -1149,9 +1106,7 @@ class AIQuotaService:
                 await db.commit()
                 return response
             if reservation.status == AICreditReservationStatus.SETTLED:
-                raise AIQuotaConflictError(
-                    "A settled credit reservation cannot be released."
-                )
+                raise AIQuotaConflictError("A settled credit reservation cannot be released.")
             await cls._release_locked_reservation(
                 db,
                 reservation=reservation,
@@ -1178,12 +1133,10 @@ class AIQuotaService:
             raise ValueError("limit must be positive.")
         now = as_of or cls._now()
         try:
-            reservations = (
-                await AICreditReservationRepository.list_expired_pending_for_recovery(
-                    db,
-                    as_of=now,
-                    limit=limit,
-                )
+            reservations = await AICreditReservationRepository.list_expired_pending_for_recovery(
+                db,
+                as_of=now,
+                limit=limit,
             )
             for reservation in reservations:
                 await cls._release_locked_reservation(
@@ -1270,9 +1223,7 @@ class AIQuotaService:
             reservation=reservation,
         )
         if weekly.reserved_credits < reservation.reserved_free_credits:
-            raise AIQuotaConflictError(
-                "Weekly reserved-credit state is inconsistent."
-            )
+            raise AIQuotaConflictError("Weekly reserved-credit state is inconsistent.")
         weekly.reserved_credits -= reservation.reserved_free_credits
         await AIWeeklyQuotaRepository.save(db, weekly)
         if reservation.reserved_extra_credits:
@@ -1283,19 +1234,13 @@ class AIQuotaService:
                 lock=True,
             )
             if extra is None:
-                raise AIQuotaConflictError(
-                    "Reserved extra-credit balance is missing."
-                )
+                raise AIQuotaConflictError("Reserved extra-credit balance is missing.")
             if extra.reserved_credits < reservation.reserved_extra_credits:
-                raise AIQuotaConflictError(
-                    "Extra reserved-credit state is inconsistent."
-                )
+                raise AIQuotaConflictError("Extra reserved-credit state is inconsistent.")
             extra.reserved_credits -= reservation.reserved_extra_credits
             await AIExtraCreditBalanceRepository.save(db, extra)
         reservation.status = (
-            AICreditReservationStatus.EXPIRED
-            if expired
-            else AICreditReservationStatus.RELEASED
+            AICreditReservationStatus.EXPIRED if expired else AICreditReservationStatus.RELEASED
         )
         reservation.released_at = released_at
         await AICreditReservationRepository.save(db, reservation)
@@ -1322,16 +1267,9 @@ class AIQuotaService:
             lock=True,
         )
         if weekly is None:
-            raise AIQuotaConflictError(
-                "Weekly quota backing this reservation is missing."
-            )
-        if (
-            reservation.weekly_quota_id is not None
-            and weekly.id != reservation.weekly_quota_id
-        ):
-            raise AIQuotaConflictError(
-                "Reservation weekly-quota reference is inconsistent."
-            )
+            raise AIQuotaConflictError("Weekly quota backing this reservation is missing.")
+        if reservation.weekly_quota_id is not None and weekly.id != reservation.weekly_quota_id:
+            raise AIQuotaConflictError("Reservation weekly-quota reference is inconsistent.")
         return weekly
 
     @classmethod
@@ -1544,9 +1482,7 @@ class AIQuotaService:
         extra: AIExtraCreditBalance | None,
     ) -> AIQuotaStatusResponse:
         weekly_available = max(
-            weekly.credit_limit
-            - weekly.used_credits
-            - weekly.reserved_credits,
+            weekly.credit_limit - weekly.used_credits - weekly.reserved_credits,
             0,
         )
         extra_balance = extra.available_credits if extra is not None else 0
@@ -1648,8 +1584,7 @@ class AIQuotaService:
             reserved_free_credits=reservation.reserved_free_credits,
             reserved_extra_credits=reservation.reserved_extra_credits,
             total_reserved_credits=(
-                reservation.reserved_free_credits
-                + reservation.reserved_extra_credits
+                reservation.reserved_free_credits + reservation.reserved_extra_credits
             ),
             expires_at=reservation.expires_at,
         )
@@ -1659,17 +1594,9 @@ class AIQuotaService:
         reservation: AICreditReservation,
     ) -> AICreditSettlementResponse:
         if reservation.settled_at is None:
-            raise AIQuotaConflictError(
-                "Settled reservation is missing settled_at."
-            )
-        reserved_total = (
-            reservation.reserved_free_credits
-            + reservation.reserved_extra_credits
-        )
-        settled_total = (
-            reservation.settled_free_credits
-            + reservation.settled_extra_credits
-        )
+            raise AIQuotaConflictError("Settled reservation is missing settled_at.")
+        reserved_total = reservation.reserved_free_credits + reservation.reserved_extra_credits
+        settled_total = reservation.settled_free_credits + reservation.settled_extra_credits
         return AICreditSettlementResponse(
             reservation_id=reservation.id,
             settled_free_credits=reservation.settled_free_credits,

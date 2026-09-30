@@ -191,8 +191,12 @@ async def test_reservation_rejects_insufficient_total_credits(monkeypatch) -> No
 
     monkeypatch.setattr(AIQuotaService, "_ensure_quota_account", AsyncMock(return_value=account))
     monkeypatch.setattr(AIQuotaService, "_ensure_weekly_quota", AsyncMock(return_value=weekly))
-    monkeypatch.setattr(AIWeeklyQuotaRepository, "get_for_account_week", AsyncMock(return_value=weekly))
-    monkeypatch.setattr(AIExtraCreditBalanceRepository, "get_for_account", AsyncMock(return_value=extra))
+    monkeypatch.setattr(
+        AIWeeklyQuotaRepository, "get_for_account_week", AsyncMock(return_value=weekly)
+    )
+    monkeypatch.setattr(
+        AIExtraCreditBalanceRepository, "get_for_account", AsyncMock(return_value=extra)
+    )
 
     with pytest.raises(AIInsufficientCreditsError) as error:
         await AIQuotaService.reserve_credits(
@@ -223,9 +227,15 @@ async def test_settlement_consumes_actual_usage_and_releases_unused_hold(monkeyp
     db = _db()
     ledger_entries = []
 
-    monkeypatch.setattr(AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation))
-    monkeypatch.setattr(AIQuotaService, "_locked_weekly_for_reservation", AsyncMock(return_value=weekly))
-    monkeypatch.setattr(AIExtraCreditBalanceRepository, "get_for_account", AsyncMock(return_value=extra))
+    monkeypatch.setattr(
+        AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation)
+    )
+    monkeypatch.setattr(
+        AIQuotaService, "_locked_weekly_for_reservation", AsyncMock(return_value=weekly)
+    )
+    monkeypatch.setattr(
+        AIExtraCreditBalanceRepository, "get_for_account", AsyncMock(return_value=extra)
+    )
     monkeypatch.setattr(AIWeeklyQuotaRepository, "save", AsyncMock(return_value=weekly))
     monkeypatch.setattr(AIExtraCreditBalanceRepository, "save", AsyncMock(return_value=extra))
     monkeypatch.setattr(AICreditReservationRepository, "save", AsyncMock(return_value=reservation))
@@ -271,7 +281,9 @@ async def test_settlement_is_idempotent_after_already_settled(monkeypatch) -> No
     reservation.settled_free_credits = 12
     reservation.settled_at = datetime.now(timezone.utc)
     db = _db()
-    monkeypatch.setattr(AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation))
+    monkeypatch.setattr(
+        AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation)
+    )
 
     result = await AIQuotaService.settle_reservation(
         db,
@@ -295,7 +307,9 @@ async def test_settlement_rejects_actual_usage_above_reserved(monkeypatch) -> No
         extra=5,
     )
     db = _db()
-    monkeypatch.setattr(AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation))
+    monkeypatch.setattr(
+        AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation)
+    )
     with pytest.raises(AIQuotaConflictError, match="exceeds the reserved"):
         await AIQuotaService.settle_reservation(
             db,
@@ -319,7 +333,9 @@ async def test_expired_reservation_is_released_before_expiry_error(monkeypatch) 
     )
     db = _db()
     release = AsyncMock()
-    monkeypatch.setattr(AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation))
+    monkeypatch.setattr(
+        AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation)
+    )
     monkeypatch.setattr(AIQuotaService, "_release_locked_reservation", release)
 
     with pytest.raises(AIQuotaReservationExpiredError):
@@ -346,7 +362,9 @@ async def test_release_reservation_is_idempotent(monkeypatch) -> None:
         status=AICreditReservationStatus.RELEASED,
     )
     db = _db()
-    monkeypatch.setattr(AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation))
+    monkeypatch.setattr(
+        AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation)
+    )
     result = await AIQuotaService.release_reservation(
         db,
         tenant_id=tenant_id,
@@ -369,7 +387,9 @@ async def test_cannot_release_settled_reservation(monkeypatch) -> None:
     )
     reservation.settled_at = datetime.now(timezone.utc)
     db = _db()
-    monkeypatch.setattr(AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation))
+    monkeypatch.setattr(
+        AICreditReservationRepository, "get_by_tenant_and_id", AsyncMock(return_value=reservation)
+    )
     with pytest.raises(AIQuotaConflictError, match="cannot be released"):
         await AIQuotaService.release_reservation(
             db,
@@ -400,7 +420,9 @@ async def test_stale_reservation_recovery_releases_every_locked_item(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_allocate_from_tenant_reserve_moves_credits_and_writes_double_entry_ledger(monkeypatch) -> None:
+async def test_allocate_from_tenant_reserve_moves_credits_and_writes_double_entry_ledger(
+    monkeypatch,
+) -> None:
     tenant_id = uuid4()
     admin_id = uuid4()
     account_id = uuid4()
@@ -513,7 +535,9 @@ async def test_approval_cannot_exceed_requested_credits(monkeypatch) -> None:
     monkeypatch.setattr(AIQuotaService, "_ensure_admin_account", AsyncMock())
     monkeypatch.setattr(AIQuotaService, "_ensure_extra_balance", AsyncMock())
     monkeypatch.setattr(AIQuotaService, "_ensure_tenant_balance", AsyncMock())
-    monkeypatch.setattr(AIQuotaRequestRepository, "get_by_tenant_and_id", AsyncMock(return_value=request))
+    monkeypatch.setattr(
+        AIQuotaRequestRepository, "get_by_tenant_and_id", AsyncMock(return_value=request)
+    )
 
     with pytest.raises(AIQuotaConflictError, match="cannot exceed requested"):
         await AIQuotaService.approve_quota_request(
@@ -551,8 +575,12 @@ async def test_verified_purchase_credits_tenant_once_and_is_idempotent(monkeypat
         return entry
 
     monkeypatch.setattr(AIQuotaPurchaseRepository, "get_by_reference", get_purchase)
-    monkeypatch.setattr(AIQuotaService, "_ensure_tenant_balance", AsyncMock(return_value=tenant_balance))
-    monkeypatch.setattr(AITenantCreditBalanceRepository, "get_for_tenant", AsyncMock(return_value=tenant_balance))
+    monkeypatch.setattr(
+        AIQuotaService, "_ensure_tenant_balance", AsyncMock(return_value=tenant_balance)
+    )
+    monkeypatch.setattr(
+        AITenantCreditBalanceRepository, "get_for_tenant", AsyncMock(return_value=tenant_balance)
+    )
     monkeypatch.setattr(AITenantCreditBalanceRepository, "save", AsyncMock())
     monkeypatch.setattr(AIQuotaPurchaseRepository, "save", AsyncMock())
     monkeypatch.setattr(AICreditLedgerRepository, "create", create_ledger)
@@ -594,7 +622,9 @@ async def test_purchase_reference_conflict_is_rejected(monkeypatch) -> None:
     )
     db = _db()
     monkeypatch.setattr(AIQuotaService, "_ensure_admin_account", AsyncMock())
-    monkeypatch.setattr(AIQuotaPurchaseRepository, "get_by_reference", AsyncMock(return_value=existing))
+    monkeypatch.setattr(
+        AIQuotaPurchaseRepository, "get_by_reference", AsyncMock(return_value=existing)
+    )
 
     with pytest.raises(AIQuotaConflictError, match="different quota purchase"):
         await AIQuotaService.create_pending_purchase(

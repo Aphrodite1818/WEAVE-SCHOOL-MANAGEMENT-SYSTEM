@@ -37,9 +37,7 @@ class CBTProviderFactory:
             return GeminiQuestionGenerationProvider()
         if provider == "minimax":
             return MiniMaxQuestionGenerationProvider()
-        raise CBTProviderFactoryError(
-            f"Unsupported CBT AI question provider: {provider!r}"
-        )
+        raise CBTProviderFactoryError(f"Unsupported CBT AI question provider: {provider!r}")
 
     @staticmethod
     def get_image_evaluation_provider() -> BaseImageEvaluationProvider:
@@ -48,9 +46,7 @@ class CBTProviderFactory:
             return GeminiImageEvaluationProvider()
         if provider == "minimax":
             return MiniMaxImageEvaluationProvider()
-        raise CBTProviderFactoryError(
-            f"Unsupported CBT AI image evaluation provider: {provider!r}"
-        )
+        raise CBTProviderFactoryError(f"Unsupported CBT AI image evaluation provider: {provider!r}")
 
     @staticmethod
     def get_image_generation_provider() -> BaseImageGenerationProvider:
@@ -59,18 +55,14 @@ class CBTProviderFactory:
             return GeminiImageGenerationProvider()
         if provider == "minimax":
             return MiniMaxImageGenerationProvider()
-        raise CBTProviderFactoryError(
-            f"Unsupported CBT AI image generation provider: {provider!r}"
-        )
+        raise CBTProviderFactoryError(f"Unsupported CBT AI image generation provider: {provider!r}")
 
     @staticmethod
     def get_image_search_provider() -> BaseImageSearchProvider:
         provider = settings.CBT_AI_IMAGE_SEARCH_PROVIDER
         if provider == "openverse":
             return OpenverseImageSearchProvider()
-        raise CBTProviderFactoryError(
-            f"Unsupported CBT AI image search provider: {provider!r}"
-        )
+        raise CBTProviderFactoryError(f"Unsupported CBT AI image search provider: {provider!r}")
 
     @classmethod
     def get_image_resolver(cls) -> ImageResolver:

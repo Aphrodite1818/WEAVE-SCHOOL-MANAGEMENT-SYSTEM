@@ -193,13 +193,9 @@ def _validate_expected_type_counts(
     normalized_expected: dict[str, int] = {}
     for question_type, count in expected_type_counts.items():
         if question_type not in SUPPORTED_QUESTION_TYPES:
-            raise ValueError(
-                f"Unsupported expected question type: {question_type!r}."
-            )
+            raise ValueError(f"Unsupported expected question type: {question_type!r}.")
         if type(count) is not int or count < 0:
-            raise ValueError(
-                "Expected question-type counts must be non-negative integers."
-            )
+            raise ValueError("Expected question-type counts must be non-negative integers.")
         normalized_expected[question_type] = count
     actual_counts = Counter(question.question_type for question in questions)
     for question_type in SUPPORTED_QUESTION_TYPES:
@@ -233,10 +229,7 @@ def _validate_no_duplicate_questions(
                 AIValidationIssue(
                     path=f"questions[{index}]",
                     code="duplicate_question",
-                    message=(
-                        "Generated question duplicates "
-                        f"questions[{original_index}]."
-                    ),
+                    message=(f"Generated question duplicates questions[{original_index}]."),
                 )
             )
             continue
@@ -281,8 +274,7 @@ def _validate_question_visual_policy(
                 path=f"{path}.options[{option_index}].image",
                 code="visual_not_allowed",
                 message=(
-                    "Option-level image directives are not allowed "
-                    "when visual_mode is 'text_only'."
+                    "Option-level image directives are not allowed when visual_mode is 'text_only'."
                 ),
             )
         )
@@ -316,8 +308,7 @@ def _validate_batch_visual_policy(
                 path="questions",
                 code="visual_required",
                 message=(
-                    "At least one visual-bearing question is required "
-                    "when visual_mode is 'auto'."
+                    "At least one visual-bearing question is required when visual_mode is 'auto'."
                 ),
             )
         )
@@ -378,9 +369,7 @@ def validate_generated_question_batch(
         ) from exc
     questions = list(batch.questions)
     issues: list[AIValidationIssue] = []
-    issues.extend(
-        _validate_expected_count(questions, expected_count=expected_count)
-    )
+    issues.extend(_validate_expected_count(questions, expected_count=expected_count))
     issues.extend(
         _validate_expected_type_counts(
             questions,
@@ -388,9 +377,7 @@ def validate_generated_question_batch(
         )
     )
     issues.extend(_validate_no_duplicate_questions(questions))
-    issues.extend(
-        _validate_batch_visual_policy(questions, visual_mode=visual_mode)
-    )
+    issues.extend(_validate_batch_visual_policy(questions, visual_mode=visual_mode))
     if issues:
         raise AIResponseValidationError(
             "AI-generated questions failed contract validation.",
@@ -422,9 +409,7 @@ def validate_regenerated_question(
             ],
         )
     try:
-        envelope = AIRegeneratedQuestionDraft.model_validate(
-            {"question": dict(raw_question)}
-        )
+        envelope = AIRegeneratedQuestionDraft.model_validate({"question": dict(raw_question)})
     except ValidationError as exc:
         raise AIResponseValidationError(
             "AI-regenerated question failed schema validation.",
@@ -432,10 +417,7 @@ def validate_regenerated_question(
         ) from exc
     question = envelope.question
     issues: list[AIValidationIssue] = []
-    if (
-        expected_question_type is not None
-        and question.question_type != expected_question_type
-    ):
+    if expected_question_type is not None and question.question_type != expected_question_type:
         issues.append(
             AIValidationIssue(
                 path="question.question_type",
