@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from app.modules.cbt.ai.image_resolver import ImageResolver
 from app.modules.cbt.ai.providers.base import (
@@ -13,9 +13,13 @@ from app.modules.cbt.ai.providers.base import (
     ProviderQuestionGenerationResult,
     ProviderUsage,
 )
-from app.modules.cbt.ai.schemas import AIQuestionDraft
+from app.modules.cbt.ai.schemas import (
+    AIQuestionDraft,
+    AIVisualMode,
+)
 from app.modules.cbt.ai.validation import (
     AIResponseValidationError,
+    SUPPORTED_VISUAL_MODES,
     validate_generated_question_batch,
     validate_regenerated_question,
 )
@@ -30,6 +34,8 @@ AuthoringOperation = Literal[
     "generation",
     "regeneration",
 ]
+
+DEFAULT_VISUAL_MODE: AIVisualMode = "auto"
 
 
 @dataclass(slots=True)
@@ -75,6 +81,7 @@ class QuestionAuthoringService:
 
     Responsibilities:
 
+    - normalize the visual authoring policy
     - generate question drafts
     - regenerate one question
     - validate provider output
@@ -112,9 +119,13 @@ class QuestionAuthoringService:
         validation.
         """
 
+        request_payload, visual_mode = self._prepare_authoring_request(
+            request
+        )
+
         provider_result = (
             await self.question_provider.generate_questions(
-                request=request,
+                request=request_payload,
             )
         )
 
@@ -126,11 +137,12 @@ class QuestionAuthoringService:
                 provider_result.questions,
                 expected_count=expected_count,
                 expected_type_counts=expected_type_counts,
+                visual_mode=visual_mode,
             )
 
         except AIResponseValidationError as validation_error:
             repaired_result = await self._repair_questions(
-                original_request=request,
+                original_request=request_payload,
                 invalid_questions=provider_result.questions,
                 validation_error=validation_error,
                 operation="generation",
@@ -142,6 +154,7 @@ class QuestionAuthoringService:
                 repaired_result.questions,
                 expected_count=expected_count,
                 expected_type_counts=expected_type_counts,
+                visual_mode=visual_mode,
             )
 
             question_usage = self._combine_usage(
@@ -191,9 +204,13 @@ class QuestionAuthoringService:
         resolution occurs.
         """
 
+        request_payload, visual_mode = self._prepare_authoring_request(
+            request
+        )
+
         provider_result = (
             await self.question_provider.regenerate_question(
-                request=request,
+                request=request_payload,
             )
         )
 
@@ -204,11 +221,12 @@ class QuestionAuthoringService:
             question = validate_regenerated_question(
                 provider_result.question,
                 expected_question_type=expected_question_type,
+                visual_mode=visual_mode,
             )
 
         except AIResponseValidationError as validation_error:
             repaired_result = await self._repair_questions(
-                original_request=request,
+                original_request=request_payload,
                 invalid_questions=[
                     provider_result.question,
                 ],
@@ -225,12 +243,14 @@ class QuestionAuthoringService:
                             expected_question_type
                         )
                     ),
+                    visual_mode=visual_mode,
                 )
             )
 
             question = validate_regenerated_question(
                 repaired_questions[0],
                 expected_question_type=expected_question_type,
+                visual_mode=visual_mode,
             )
 
             question_usage = self._combine_usage(
@@ -311,7 +331,6 @@ class QuestionAuthoringService:
 
         usages: list[ProviderUsage] = []
 
-        # Question-level image.
         if question.image is not None:
             question_image = await self.image_resolver.resolve(
                 requirement=question.image.requirement,
@@ -327,7 +346,6 @@ class QuestionAuthoringService:
                 )
             )
 
-        # Option-level images.
         for index, option in enumerate(question.options):
             if option.image is None:
                 continue
@@ -365,7 +383,6 @@ class QuestionAuthoringService:
         Extract billable/model usage from one image-resolution operation.
 
         Search itself currently has no ProviderUsage.
-
         Evaluation consumes model usage when candidates are reviewed.
         Generation consumes provider usage when a generated fallback
         image is required.
@@ -384,6 +401,38 @@ class QuestionAuthoringService:
             )
 
         return usages
+
+    @staticmethod
+    def _prepare_authoring_request(
+        request: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], AIVisualMode]:
+        """
+        Normalize the provider request and make visual policy explicit.
+
+        Until the router-facing request schema is introduced, omitted
+        visual_mode defaults to `auto`. Invalid modes fail before a
+        provider call is made.
+        """
+
+        request_payload = dict(request)
+        raw_visual_mode = request_payload.get(
+            "visual_mode",
+            DEFAULT_VISUAL_MODE,
+        )
+
+        if raw_visual_mode not in SUPPORTED_VISUAL_MODES:
+            raise ValueError(
+                f"Unsupported visual mode: {raw_visual_mode!r}."
+            )
+
+        visual_mode = cast(
+            AIVisualMode,
+            raw_visual_mode,
+        )
+
+        request_payload["visual_mode"] = visual_mode
+
+        return request_payload, visual_mode
 
     @staticmethod
     def _build_repair_request(
@@ -410,9 +459,7 @@ class QuestionAuthoringService:
     def _single_question_type_counts(
         expected_question_type: QuestionType | None,
     ) -> dict[str, int] | None:
-        """
-        Build expected type distribution for repaired regeneration.
-        """
+        """Build expected type distribution for repaired regeneration."""
 
         if expected_question_type is None:
             return None
