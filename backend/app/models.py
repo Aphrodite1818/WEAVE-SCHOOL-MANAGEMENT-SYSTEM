@@ -7,6 +7,7 @@ import app.modules.auth.models
 import app.modules.auth_identity.models
 import app.modules.bulk_imports.models
 import app.modules.cbt.models
+import app.modules.cbt.ai.quota.models
 import app.modules.cbt.sync.models
 import app.modules.classes.models
 import app.modules.email_outbox.models
