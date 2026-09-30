@@ -3,13 +3,14 @@ from __future__ import annotations
 import pytest
 
 from app.modules.cbt.ai.authoring.image_materializer import ImageMaterializationError
-from app.modules.cbt.ai.authoring.image_resolver import ImageResolver
+from app.modules.cbt.ai.authoring.image_resolver import ImageResolver, ImageResolverError
 from app.modules.cbt.ai.authoring.providers.base import (
     ImageCandidate,
     ProviderGeneratedImage,
     ProviderImageEvaluationResult,
     ProviderImageGenerationResult,
     ProviderImageInput,
+    ProviderUsage,
 )
 
 
@@ -70,14 +71,16 @@ class FakeGenerationProvider:
         return ProviderImageGenerationResult(
             image=ProviderGeneratedImage(
                 content_type="image/png",
-                data_base64="ignored-by-fake-materializer",
-            )
+                data_base64=f"attempt-{self.calls}",
+            ),
+            usage=ProviderUsage(input_tokens=self.calls),
         )
 
 
 class FakeMaterializer:
-    def __init__(self, *, failing_sources=()):
+    def __init__(self, *, failing_sources=(), generated_failures_before_success=0):
         self.failing_sources = set(failing_sources)
+        self.generated_failures_before_success = generated_failures_before_success
         self.candidate_calls = []
         self.generated_calls = 0
 
@@ -89,6 +92,8 @@ class FakeMaterializer:
 
     async def materialize_generated(self, image, *, label=None):
         self.generated_calls += 1
+        if self.generated_calls <= self.generated_failures_before_success:
+            raise ImageMaterializationError("generated image cannot be materialized")
         return _binary("generated")
 
 
@@ -152,4 +157,50 @@ async def test_all_unusable_search_candidates_fall_back_to_generated_materialize
     assert result.image.label == "generated"
     assert generator.calls == 1
     assert materializer.generated_calls == 1
+    assert len(result.generation_attempts) == 1
     assert evaluator.images is None
+
+
+@pytest.mark.asyncio
+async def test_unusable_generated_payload_is_regenerated_once_before_succeeding() -> None:
+    generator = FakeGenerationProvider()
+    materializer = FakeMaterializer(generated_failures_before_success=1)
+    resolver = ImageResolver(
+        search_provider=FakeSearchProvider([]),
+        evaluation_provider=FakeEvaluator(),
+        generation_provider=generator,
+        materializer=materializer,
+    )
+
+    result = await resolver.resolve(
+        requirement="A useful diagram",
+        search_query="useful diagram",
+    )
+
+    assert result.source == "generated"
+    assert generator.calls == 2
+    assert materializer.generated_calls == 2
+    assert len(result.generation_attempts) == 2
+    assert [attempt.usage.input_tokens for attempt in result.generation_attempts] == [1, 2]
+    assert result.generation is result.generation_attempts[-1]
+
+
+@pytest.mark.asyncio
+async def test_unusable_generated_payload_fails_after_exactly_two_attempts() -> None:
+    generator = FakeGenerationProvider()
+    materializer = FakeMaterializer(generated_failures_before_success=2)
+    resolver = ImageResolver(
+        search_provider=FakeSearchProvider([]),
+        evaluation_provider=FakeEvaluator(),
+        generation_provider=generator,
+        materializer=materializer,
+    )
+
+    with pytest.raises(ImageResolverError, match="after retry"):
+        await resolver.resolve(
+            requirement="A useful diagram",
+            search_query="useful diagram",
+        )
+
+    assert generator.calls == 2
+    assert materializer.generated_calls == 2
