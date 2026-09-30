@@ -9,7 +9,13 @@ import { getErrorMessage } from "../../services/api";
 import { Input, WorkspacePanel } from "./AcademicWorkspacePrimitives";
 import TypedConfirmationDialog from "./TypedConfirmationDialog";
 
-const blankComponent = (position) => ({ name: "", code: "", maximum_score: "", position });
+const blankComponent = (position) => ({
+  name: "",
+  code: "",
+  maximum_score: "",
+  position,
+  is_examinable: true,
+});
 const newDraft = () => ({ id: null, name: "", components: [blankComponent(0)] });
 
 function AssessmentConfigWorkspace() {
@@ -44,7 +50,11 @@ function AssessmentConfigWorkspace() {
     setDraft({
       id: scheme.id,
       name: scheme.name,
-      components: scheme.components.map((item, position) => ({ ...item, position })),
+      components: scheme.components.map((item, position) => ({
+        ...item,
+        position,
+        is_examinable: item.is_examinable !== false,
+      })),
     });
   };
 
@@ -92,6 +102,7 @@ function AssessmentConfigWorkspace() {
             code: item.code?.trim() || null,
             maximum_score: Number(item.maximum_score),
             position,
+            is_examinable: item.is_examinable !== false,
           })),
         });
       } else {
@@ -111,6 +122,7 @@ function AssessmentConfigWorkspace() {
               name: item.name.trim(),
               code: item.code?.trim() || null,
               maximum_score: Number(item.maximum_score),
+              is_examinable: item.is_examinable !== false,
             });
             orderedIds.push(item.id);
           } else {
@@ -119,6 +131,7 @@ function AssessmentConfigWorkspace() {
               code: item.code?.trim() || null,
               maximum_score: Number(item.maximum_score),
               position: 1000 + position,
+              is_examinable: item.is_examinable !== false,
             });
             const created = saved.components.find((component) =>
               component.name === item.name.trim() && !orderedIds.includes(component.id));
@@ -158,7 +171,7 @@ function AssessmentConfigWorkspace() {
 
   return (
     <div className="space-y-4">
-      <WorkspacePanel title="Active assessment scheme" description="The component order and maximums used throughout result entry and report cards.">
+      <WorkspacePanel title="Active assessment scheme" description="The component order and maximums used throughout result entry and report cards. Only examinable components are projected to CBT.">
         {loading ? <p className="text-sm text-text-muted">Loading assessment schemes...</p> : active ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3"><p className="font-semibold text-text">{active.name}</p><Badge variant="success">Active</Badge></div>
@@ -167,15 +180,24 @@ function AssessmentConfigWorkspace() {
         ) : <p className="text-sm text-text-muted">No assessment scheme is active yet.</p>}
       </WorkspacePanel>
 
-      <WorkspacePanel title={draft.id ? "Edit draft scheme" : "Create assessment scheme"} description="Build the scoring structure in its persisted order. Activation requires a total of 100.">
+      <WorkspacePanel title={draft.id ? "Edit draft scheme" : "Create assessment scheme"} description="Build the scoring structure in its persisted order. Examinable components sync to CBT; manual components remain in Weave for teacher/admin score entry. Activation requires a total of 100.">
         <div className="space-y-4">
           <Input label="Scheme name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
           <div className="space-y-2">
             {draft.components.map((item, index) => (
-              <div key={item.id || `new-${index}`} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[minmax(0,1fr)_8rem_7rem_auto] sm:items-end">
+              <div key={item.id || `new-${index}`} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-[minmax(0,1fr)_8rem_7rem_9rem_auto] sm:items-end">
                 <Input label="Component" value={item.name} onChange={(event) => updateComponent(index, "name", event.target.value)} />
                 <Input label="Code" value={item.code || ""} onChange={(event) => updateComponent(index, "code", event.target.value)} />
                 <Input label="Maximum" type="number" min="0.01" max="100" step="0.01" value={item.maximum_score} onChange={(event) => updateComponent(index, "maximum_score", event.target.value)} />
+                <label className="flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm text-text">
+                  <input
+                    type="checkbox"
+                    checked={item.is_examinable !== false}
+                    onChange={(event) => updateComponent(index, "is_examinable", event.target.checked)}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                  Examinable
+                </label>
                 <div className="flex gap-1">
                   <Button type="button" variant="ghost" aria-label="Move up" onClick={() => moveComponent(index, -1)}><ArrowUp className="h-4 w-4" /></Button>
                   <Button type="button" variant="ghost" aria-label="Move down" onClick={() => moveComponent(index, 1)}><ArrowDown className="h-4 w-4" /></Button>
@@ -184,6 +206,7 @@ function AssessmentConfigWorkspace() {
               </div>
             ))}
           </div>
+          <p className="text-xs text-text-muted">Examinable components are CBT/admin-managed. Turn this off for teacher-entered components such as note marks, classwork, or other manual assessments.</p>
           <div className={`rounded-xl border px-4 py-3 text-sm ${total === 100 ? "border-success/30 bg-success/5 text-success" : "border-error/30 bg-error/5 text-error"}`}>Configured total: <strong>{total} / 100</strong></div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" onClick={() => setDraft((current) => ({ ...current, components: [...current.components, blankComponent(current.components.length)] }))}><Plus className="mr-2 h-4 w-4" />Add component</Button>
@@ -204,7 +227,7 @@ function AssessmentConfigWorkspace() {
 }
 
 function ComponentSummary({ components = [] }) {
-  return <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{components.map((item) => <div key={item.id} className="rounded-xl bg-surface-muted/40 px-4 py-3"><p className="text-xs uppercase tracking-wide text-text-muted">{item.name}</p><p className="mt-1 text-xl font-semibold text-text">{item.maximum_score}</p></div>)}</div>;
+  return <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{components.map((item) => <div key={item.id} className="rounded-xl bg-surface-muted/40 px-4 py-3"><div className="flex items-start justify-between gap-2"><p className="text-xs uppercase tracking-wide text-text-muted">{item.name}</p><Badge variant={item.is_examinable === false ? "default" : "info"}>{item.is_examinable === false ? "Manual" : "CBT"}</Badge></div><p className="mt-1 text-xl font-semibold text-text">{item.maximum_score}</p></div>)}</div>;
 }
 
 export default AssessmentConfigWorkspace;
