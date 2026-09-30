@@ -115,13 +115,16 @@ class ImageResolutionResult:
 
     A successful resolution always contains fully materialized, validated
     encoded image bytes in `image`. Candidate/generation objects are retained
-    only for attribution and provider usage metadata.
+    only for attribution and provider usage metadata. `generation_attempts`
+    records every billable generation call when materialization required a
+    controlled retry.
     """
 
     source: Literal["search", "generated"]
     image: ProviderImageInput
     candidate: ImageCandidate | None = None
     generation: ProviderImageGenerationResult | None = None
+    generation_attempts: list[ProviderImageGenerationResult] = field(default_factory=list)
     evaluation: ProviderImageEvaluationResult | None = None
 
 
