@@ -1,0 +1,71 @@
+name: Cleanup shared payment refactor tests
+
+on:
+  push:
+    branches:
+      - refactor/shared-payment-engine
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/shared-payment-engine
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Update stale subscription payment tests
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path("backend/tests/unit/subscriptions/test_production_hardening.py")
+          text = p.read_text()
+          text = text.replace("from unittest.mock import ANY, AsyncMock, patch", "from unittest.mock import AsyncMock, patch")
+
+          start = text.index("@pytest.mark.asyncio\nasync def test_failed_paystack_webhook_rolls_back_before_recording_failure")
+          end = text.index("@pytest.mark.asyncio\nasync def test_browser_payment_verification_locks_transaction_before_settlement", start)
+          replacement = '''@pytest.mark.asyncio\nasync def test_subscription_webhook_compatibility_delegates_to_shared_engine() -> None:\n    db = AsyncMock()\n    shared = AsyncMock(side_effect=RuntimeError("Unknown payment reference."))\n\n    with patch(\n        "app.modules.subscriptions.payment_integrity.process_shared_paystack_webhook",\n        shared,\n    ):\n        with pytest.raises(RuntimeError, match="Unknown payment reference"):\n            await process_paystack_webhook_secure(\n                db,\n                body=b"{}",\n                signature="valid",\n            )\n\n    shared.assert_awaited_once()\n    assert shared.await_args.kwargs["body"] == b"{}"\n    assert shared.await_args.kwargs["signature"] == "valid"\n    assert callable(shared.await_args.kwargs["settle_charge"])\n\n\n'''
+          text = text[:start] + replacement + text[end:]
+
+          start = text.index("@pytest.mark.asyncio\nasync def test_browser_payment_verification_locks_transaction_before_settlement")
+          end = text.index("@pytest.mark.asyncio\nasync def test_tenant_status_change_invalidates_active_tenant_authorization_cache", start)
+          replacement = '''@pytest.mark.asyncio\nasync def test_browser_payment_verification_locks_transaction_before_settlement() -> None:\n    tenant_id = uuid.uuid4()\n    term_id = uuid.uuid4()\n    plan = SimpleNamespace(value="professional")\n    transaction = SimpleNamespace(\n        tenant_id=tenant_id,\n        academic_term_id=term_id,\n        plan_code=plan,\n        reference="term-ref",\n        amount_kobo=35_000,\n        currency="NGN",\n        reconciliation_required=False,\n        status=PaymentStatus.PENDING,\n    )\n    entitlement = SimpleNamespace()\n    verified = SimpleNamespace(raw_payload={"data": {"status": "success"}})\n    admin = SimpleNamespace(tenant_id=tenant_id)\n    db = AsyncMock()\n\n    with (\n        patch(\n            "app.modules.subscriptions.router.lock_payment_transaction",\n            new=AsyncMock(return_value=transaction),\n        ) as lock_transaction,\n        patch(\n            "app.modules.subscriptions.router.PaymentEngine.verify_transaction",\n            new=AsyncMock(return_value=verified),\n        ) as verify_provider,\n        patch(\n            "app.modules.subscriptions.router.settle_verified_term_payment",\n            new=AsyncMock(return_value=entitlement),\n        ) as settle,\n        patch(\n            "app.modules.subscriptions.router.TermEntitlementResponse.model_validate",\n            return_value=entitlement,\n        ),\n    ):\n        result = await verify_term_plan_checkout(\n            reference="term-ref",\n            db=db,\n            current_admin=admin,\n        )\n\n    assert result is entitlement\n    lock_transaction.assert_awaited_once_with(db, "term-ref")\n    verify_provider.assert_awaited_once_with(\n        reference="term-ref",\n        expected_amount_kobo=35_000,\n        expected_currency="NGN",\n        expected_metadata={\n            "payment_purpose": "term_subscription",\n            "tenant_id": str(tenant_id),\n            "academic_term_id": str(term_id),\n            "plan_code": "professional",\n        },\n    )\n    settle.assert_awaited_once_with(db, transaction, verified.raw_payload)\n\n\n'''
+          text = text[:start] + replacement + text[end:]
+          p.write_text(text)
+
+          p = Path("backend/tests/unit/subscriptions/test_term_entitlements.py")
+          text = p.read_text()
+          old_target = "app.modules.subscriptions.term_entitlement_service.PaystackClient.initialize_transaction"
+          new_target = "app.modules.subscriptions.term_entitlement_service.PaymentEngine.initialize_checkout"
+          if old_target not in text:
+              raise SystemExit("Expected legacy Paystack test target was not found")
+          text = text.replace(old_target, new_target)
+          old_response = '''            new=AsyncMock(\n                return_value={\n                    "data": {\n                        "authorization_url": "https://paystack.test/checkout",\n                        "access_code": "access-code",\n                    }\n                }\n            ),'''
+          new_response = '''            new=AsyncMock(\n                return_value=SimpleNamespace(\n                    authorization_url="https://paystack.test/checkout",\n                    access_code="access-code",\n                )\n            ),'''
+          if old_response not in text:
+              raise SystemExit("Expected Paystack checkout mock response was not found")
+          text = text.replace(old_response, new_response, 1)
+          p.write_text(text)
+          PY
+
+          python -m pip install --quiet ruff==0.16.0
+          ruff format \
+            backend/tests/unit/subscriptions/test_production_hardening.py \
+            backend/tests/unit/subscriptions/test_term_entitlements.py
+
+      - name: Commit test cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/tests/unit/subscriptions/test_production_hardening.py backend/tests/unit/subscriptions/test_term_entitlements.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "update subscription tests for shared payment engine"
+          git push origin HEAD:refactor/shared-payment-engine
