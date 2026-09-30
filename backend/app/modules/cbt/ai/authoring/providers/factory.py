@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.config.settings import settings
+from app.modules.cbt.ai.authoring.image_materializer import ImageMaterializer
 from app.modules.cbt.ai.authoring.image_resolver import ImageResolver
 from app.modules.cbt.ai.authoring.providers.base import (
     BaseImageEvaluationProvider,
@@ -70,4 +71,5 @@ class CBTProviderFactory:
             search_provider=cls.get_image_search_provider(),
             evaluation_provider=cls.get_image_evaluation_provider(),
             generation_provider=cls.get_image_generation_provider(),
+            materializer=ImageMaterializer(),
         )
