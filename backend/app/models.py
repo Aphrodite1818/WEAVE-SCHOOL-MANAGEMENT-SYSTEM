@@ -34,6 +34,10 @@ import app.modules.user_guides.models
 # Install canonical academic-level dependency accounting before request services execute.
 import app.modules.classes.academic_level_dependency_contract  # noqa: E402,F401
 
+# Extend the canonical assessment-component mapper with the examinability flag
+# before projectors/services inspect SQLAlchemy metadata.
+import app.modules.student_academics.assessment_examinability  # noqa: E402,F401
+
 import app.modules.bulk_imports.model_events  # noqa: E402,F401
 import app.modules.cbt.sync.model_events  # noqa: E402,F401
 import app.modules.report_cards.model_events  # noqa: E402,F401
