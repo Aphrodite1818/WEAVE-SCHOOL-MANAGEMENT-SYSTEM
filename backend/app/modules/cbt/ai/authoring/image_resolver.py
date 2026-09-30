@@ -91,9 +91,7 @@ class ImageResolver:
             metadata=search_metadata,
         )
 
-        materialized_candidates = await self._materialize_review_candidates(
-            candidates[: self.review_limit]
-        )
+        materialized_candidates = await self._materialize_review_candidates(candidates)
 
         if not materialized_candidates:
             return await self._generate(
@@ -143,10 +141,12 @@ class ImageResolver:
         self,
         candidates: Sequence[ImageCandidate],
     ) -> list[tuple[ImageCandidate, ProviderImageInput]]:
-        """Discard inaccessible/invalid candidates before vision evaluation."""
+        """Collect up to review_limit downloadable/valid candidates in rank order."""
 
         materialized: list[tuple[ImageCandidate, ProviderImageInput]] = []
         for candidate in candidates:
+            if len(materialized) >= self.review_limit:
+                break
             try:
                 image = await self.materializer.materialize_candidate(
                     candidate,
