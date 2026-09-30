@@ -16,6 +16,25 @@ class ProviderUsage:
     currency: str | None = "USD"
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderImageInput:
+    """Canonical provider-agnostic image representation used inside Weave.
+
+    `data` contains complete encoded image-file bytes (PNG/JPEG/WebP), never
+    raw Pillow pixel buffers, URLs, local file paths, or Base64 transport text.
+    Concrete provider adapters translate this contract only at their own API
+    boundary.
+    """
+
+    data: bytes
+    content_type: str
+    sha256: str
+    width: int
+    height: int
+    label: str | None = None
+    alt_text: str | None = None
+
+
 @dataclass(slots=True)
 class ProviderQuestionGenerationResult:
     """Result returned when a provider generates a batch of draft questions."""
@@ -36,7 +55,12 @@ class ProviderQuestionRegenerationResult:
 
 @dataclass(slots=True)
 class ProviderGeneratedImage:
-    """Normalized image returned by an image-generation provider."""
+    """Normalized image returned directly by an image-generation provider.
+
+    Providers may return Base64 data or a temporary URL. ImageResolver must
+    materialize this into ProviderImageInput before the result can leave the
+    authoring layer.
+    """
 
     content_type: str
     data_base64: str | None = None
@@ -87,9 +111,15 @@ class ProviderImageEvaluationResult:
 
 @dataclass(slots=True)
 class ImageResolutionResult:
-    """Final result produced by the provider-agnostic image resolver."""
+    """Final result produced by the provider-agnostic image resolver.
+
+    A successful resolution always contains fully materialized, validated
+    encoded image bytes in `image`. Candidate/generation objects are retained
+    only for attribution and provider usage metadata.
+    """
 
     source: Literal["search", "generated"]
+    image: ProviderImageInput
     candidate: ImageCandidate | None = None
     generation: ProviderImageGenerationResult | None = None
     evaluation: ProviderImageEvaluationResult | None = None
@@ -121,6 +151,7 @@ class BaseQuestionGenerationProvider(BaseProvider, ABC):
         self,
         *,
         request: Mapping[str, Any],
+        reference_images: Sequence[ProviderImageInput] | None = None,
     ) -> ProviderQuestionRegenerationResult:
         raise NotImplementedError
 
@@ -129,6 +160,7 @@ class BaseQuestionGenerationProvider(BaseProvider, ABC):
         self,
         *,
         request: Mapping[str, Any],
+        reference_images: Sequence[ProviderImageInput] | None = None,
     ) -> ProviderQuestionGenerationResult:
         raise NotImplementedError
 
@@ -142,7 +174,7 @@ class BaseImageGenerationProvider(BaseProvider, ABC):
         *,
         prompt: str,
         metadata: Mapping[str, Any] | None = None,
-        reference_images: Sequence[str] | None = None,
+        reference_images: Sequence[ProviderImageInput] | None = None,
     ) -> ProviderImageGenerationResult:
         raise NotImplementedError
 
@@ -162,13 +194,13 @@ class BaseImageSearchProvider(BaseProvider, ABC):
 
 
 class BaseImageEvaluationProvider(BaseProvider, ABC):
-    """Contract for vision-capable providers that judge retrieved images."""
+    """Contract for vision-capable providers that judge materialized images."""
 
     @abstractmethod
     async def evaluate_images(
         self,
         *,
         requirement: str,
-        candidates: Sequence[ImageCandidate],
+        images: Sequence[ProviderImageInput],
     ) -> ProviderImageEvaluationResult:
         raise NotImplementedError
