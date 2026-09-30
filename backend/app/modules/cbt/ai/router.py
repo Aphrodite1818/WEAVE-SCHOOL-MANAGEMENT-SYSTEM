@@ -35,51 +35,36 @@ from app.modules.cbt.ai.schemas import (
     AIRegenerateQuestionResponse,
 )
 from app.modules.cbt.ai.service import CBTAIService
+from app.modules.cbt.ai.transport import CBTGZipRoute
 from app.modules.cbt.dependencies import CurrentCBTActor
 
 
 router = APIRouter(
     prefix="/ai",
     tags=["CBT AI"],
+    route_class=CBTGZipRoute,
 )
 
 
-@router.post(
-    "/questions/generate",
-    response_model=AIGenerateQuestionsResponse,
-)
+@router.post("/questions/generate", response_model=AIGenerateQuestionsResponse)
 async def generate_questions(
     payload: AIGenerateQuestionsRequest,
     db: DbSession,
     current_actor: CurrentCBTActor,
 ) -> AIGenerateQuestionsResponse:
-    return await CBTAIService.generate_questions(
-        db,
-        actor=current_actor,
-        request=payload,
-    )
+    return await CBTAIService.generate_questions(db, actor=current_actor, request=payload)
 
 
-@router.post(
-    "/questions/regenerate",
-    response_model=AIRegenerateQuestionResponse,
-)
+@router.post("/questions/regenerate", response_model=AIRegenerateQuestionResponse)
 async def regenerate_question(
     payload: AIRegenerateQuestionRequest,
     db: DbSession,
     current_actor: CurrentCBTActor,
 ) -> AIRegenerateQuestionResponse:
-    return await CBTAIService.regenerate_question(
-        db,
-        actor=current_actor,
-        request=payload,
-    )
+    return await CBTAIService.regenerate_question(db, actor=current_actor, request=payload)
 
 
-@router.get(
-    "/quota",
-    response_model=AIQuotaStatusResponse,
-)
+@router.get("/quota", response_model=AIQuotaStatusResponse)
 async def get_my_quota(
     db: DbSession,
     current_actor: CurrentCBTActor,
@@ -87,26 +72,16 @@ async def get_my_quota(
     return await CBTAIService.get_quota_status(db, actor=current_actor)
 
 
-@router.post(
-    "/quota/requests",
-    response_model=AIQuotaRequestResponse,
-)
+@router.post("/quota/requests", response_model=AIQuotaRequestResponse)
 async def request_credits(
     payload: AIQuotaRequestCreate,
     db: DbSession,
     current_actor: CurrentCBTActor,
 ) -> AIQuotaRequestResponse:
-    return await CBTAIService.request_credits(
-        db,
-        actor=current_actor,
-        credits=payload.credits,
-    )
+    return await CBTAIService.request_credits(db, actor=current_actor, credits=payload.credits)
 
 
-@router.get(
-    "/quota/requests",
-    response_model=AIQuotaRequestListResponse,
-)
+@router.get("/quota/requests", response_model=AIQuotaRequestListResponse)
 async def list_my_credit_requests(
     db: DbSession,
     current_actor: CurrentCBTActor,
@@ -121,10 +96,7 @@ async def list_my_credit_requests(
     )
 
 
-@router.post(
-    "/quota/requests/{request_id}/cancel",
-    response_model=AIQuotaRequestResponse,
-)
+@router.post("/quota/requests/{request_id}/cancel", response_model=AIQuotaRequestResponse)
 async def cancel_my_credit_request(
     request_id: UUID,
     db: DbSession,
@@ -137,10 +109,7 @@ async def cancel_my_credit_request(
     )
 
 
-@router.get(
-    "/admin/quota/summary",
-    response_model=AITenantQuotaSummaryResponse,
-)
+@router.get("/admin/quota/summary", response_model=AITenantQuotaSummaryResponse)
 async def get_tenant_quota_summary(
     db: DbSession,
     current_actor: CurrentCBTActor,
@@ -148,10 +117,7 @@ async def get_tenant_quota_summary(
     return await CBTAIService.get_tenant_quota_summary(db, actor=current_actor)
 
 
-@router.get(
-    "/admin/quota/actors",
-    response_model=AIActorQuotaBalanceListResponse,
-)
+@router.get("/admin/quota/actors", response_model=AIActorQuotaBalanceListResponse)
 async def list_actor_quota_balances(
     db: DbSession,
     current_actor: CurrentCBTActor,
@@ -159,10 +125,7 @@ async def list_actor_quota_balances(
     return await CBTAIService.list_actor_quota_balances(db, actor=current_actor)
 
 
-@router.get(
-    "/admin/quota/requests",
-    response_model=AIQuotaRequestListResponse,
-)
+@router.get("/admin/quota/requests", response_model=AIQuotaRequestListResponse)
 async def list_credit_requests(
     db: DbSession,
     current_actor: CurrentCBTActor,
@@ -216,10 +179,7 @@ async def reject_credit_request(
     )
 
 
-@router.post(
-    "/admin/quota/allocations",
-    response_model=AICreditAllocationResponse,
-)
+@router.post("/admin/quota/allocations", response_model=AICreditAllocationResponse)
 async def allocate_credits(
     payload: AICreditAllocationCreate,
     db: DbSession,
@@ -234,10 +194,7 @@ async def allocate_credits(
     )
 
 
-@router.get(
-    "/admin/quota/allocations",
-    response_model=AICreditAllocationListResponse,
-)
+@router.get("/admin/quota/allocations", response_model=AICreditAllocationListResponse)
 async def list_credit_allocations(
     db: DbSession,
     current_actor: CurrentCBTActor,
@@ -252,18 +209,12 @@ async def list_credit_allocations(
     )
 
 
-@router.post(
-    "/admin/quota/purchases/quote",
-    response_model=AIQuotaPurchaseQuote,
-)
+@router.post("/admin/quota/purchases/quote", response_model=AIQuotaPurchaseQuote)
 async def quote_credit_purchase(
     payload: AIQuotaTopUpRequest,
     current_actor: CurrentCBTActor,
 ) -> AIQuotaPurchaseQuote:
-    return CBTAIService.quote_credit_purchase(
-        actor=current_actor,
-        credits=payload.credits,
-    )
+    return CBTAIService.quote_credit_purchase(actor=current_actor, credits=payload.credits)
 
 
 @router.post(
@@ -298,10 +249,7 @@ async def verify_credit_purchase(
     )
 
 
-@router.get(
-    "/admin/quota/purchases",
-    response_model=AIQuotaPurchaseListResponse,
-)
+@router.get("/admin/quota/purchases", response_model=AIQuotaPurchaseListResponse)
 async def list_credit_purchases(
     db: DbSession,
     current_actor: CurrentCBTActor,
@@ -318,10 +266,7 @@ async def list_credit_purchases(
     )
 
 
-@router.get(
-    "/admin/quota/purchases/{purchase_id}",
-    response_model=AIQuotaPurchaseResponse,
-)
+@router.get("/admin/quota/purchases/{purchase_id}", response_model=AIQuotaPurchaseResponse)
 async def get_credit_purchase(
     purchase_id: UUID,
     db: DbSession,
