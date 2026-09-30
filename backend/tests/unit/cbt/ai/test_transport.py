@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import zlib
 
 import pytest
 
@@ -8,7 +9,7 @@ from app.modules.cbt.ai.transport import CBTGZipRoute
 
 
 def test_safe_gunzip_round_trip() -> None:
-    raw = (b'{"data_base64":"AAAA"}' * 2_000)
+    raw = b'{"data_base64":"AAAA"}' * 2_000
     compressed = gzip.compress(raw)
 
     restored = CBTGZipRoute._safe_gunzip(
@@ -30,7 +31,7 @@ def test_safe_gunzip_rejects_output_over_limit() -> None:
 def test_safe_gunzip_rejects_incomplete_stream() -> None:
     compressed = gzip.compress(b"payload")
 
-    with pytest.raises((ValueError, Exception)):
+    with pytest.raises((ValueError, zlib.error)):
         CBTGZipRoute._safe_gunzip(
             compressed[:-3],
             max_output_bytes=1_024,
