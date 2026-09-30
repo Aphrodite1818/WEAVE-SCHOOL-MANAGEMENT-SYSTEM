@@ -71,6 +71,8 @@ async def settle_verified_term_payment(
     if payment_requires_reconciliation(transaction):
         return None
 
+    validated_data = _validate_verified_payment(transaction, provider_data)
+
     if transaction.status != PaymentStatus.ABANDONED:
         return await TermPlanEntitlementService.activate_verified_transaction(
             db,
@@ -82,7 +84,6 @@ async def settle_verified_term_payment(
     if transaction.academic_term_id is None:
         raise ConflictException("Payment is not attached to an academic term.")
 
-    data = _validate_verified_payment(transaction, provider_data)
     already_activated = await TermPlanEntitlementService._get_entitlement_for_transaction(
         db,
         transaction.id,
@@ -96,11 +97,13 @@ async def settle_verified_term_payment(
     transaction.status = PaymentStatus.SUCCESS
     transaction.paid_at = now
     transaction.provider_transaction_id = (
-        str(data.get("id")) if data.get("id") is not None else transaction.provider_transaction_id
+        str(validated_data.get("id"))
+        if validated_data.get("id") is not None
+        else transaction.provider_transaction_id
     )
     transaction.failure_reason = LATE_PAYMENT_RECONCILIATION_REASON
     transaction.raw_payload = {
-        **data,
+        **validated_data,
         "weave_quote": quote_snapshot,
         RECONCILIATION_REQUIRED_KEY: True,
         RECONCILIATION_REASON_KEY: LATE_PAYMENT_RECONCILIATION_REASON,
