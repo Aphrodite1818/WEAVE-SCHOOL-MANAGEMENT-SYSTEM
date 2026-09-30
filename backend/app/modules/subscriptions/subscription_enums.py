@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+from app.modules.payments.enums import PaymentProvider
+
 
 class FeatureCode(StrEnum):
     """Feature switches controlled by subscription plan."""
@@ -59,15 +61,8 @@ class TermEntitlementStatus(StrEnum):
     FAILED = "failed"
 
 
-class PaymentProvider(StrEnum):
-    """Supported payment providers."""
-
-    PAYSTACK = "paystack"
-    MANUAL = "manual"
-
-
 class PaymentStatus(StrEnum):
-    """Lifecycle states for payment attempts."""
+    """Lifecycle states for subscription payment attempts."""
 
     PENDING = "pending"
     SUCCESS = "success"
