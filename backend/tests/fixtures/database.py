@@ -16,6 +16,7 @@ from app.modules.communications import models as _communication_models  # noqa: 
 from app.modules.auth_identity import models as _auth_identity_models  # noqa: F401
 from app.modules.attendance import models as _attendance_models  # noqa: F401
 from app.modules.cbt import models as _cbt_models  # noqa: F401
+from app.modules.cbt.ai.quota import models as _cbt_ai_quota_models  # noqa: F401
 from app.modules.classes import models as _classes_models  # noqa: F401
 from app.modules.student_academics import models as _exams_models  # noqa: F401
 from app.modules.finance import models as _finance_models  # noqa: F401
