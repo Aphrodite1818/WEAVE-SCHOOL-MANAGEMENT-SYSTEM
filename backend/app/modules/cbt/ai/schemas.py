@@ -25,7 +25,6 @@ MAX_IMAGE_GENERATION_PROMPT_LENGTH = 2_000
 AIVisualMode = Literal[
     "text_only",
     "auto",
-    "prefer_visuals",
 ]
 
 
