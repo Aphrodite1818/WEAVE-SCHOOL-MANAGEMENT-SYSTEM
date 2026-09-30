@@ -9,7 +9,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from app.modules.cbt.ai.providers import openverse as module
+from app.modules.cbt.ai.authoring.providers import openverse as module
 
 
 def provider(**kwargs):
