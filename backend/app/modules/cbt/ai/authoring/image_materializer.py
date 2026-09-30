@@ -65,20 +65,35 @@ class ImageMaterializer:
         *,
         label: str | None = None,
     ) -> ProviderImageInput:
-        """Download and normalize one searched image candidate."""
+        """Download and normalize one searched image candidate.
 
-        url = candidate.image_url or candidate.thumbnail_url
-        if not url:
+        Search providers often expose both an original image URL and a thumbnail.
+        Either can be stale or protected independently, so the candidate is only
+        discarded after both distinct URLs fail materialization.
+        """
+
+        urls: list[str] = []
+        for url in (candidate.image_url, candidate.thumbnail_url):
+            if url and url not in urls:
+                urls.append(url)
+        if not urls:
             raise ImageDownloadError("Image candidate contains no downloadable URL.")
 
-        image_bytes = await self._download(url)
-        return await asyncio.to_thread(
-            self._normalize_bytes,
-            image_bytes,
-            candidate.mime_type,
-            label,
-            candidate.title,
-        )
+        last_error: ImageMaterializationError | None = None
+        for url in urls:
+            try:
+                image_bytes = await self._download(url)
+                return await asyncio.to_thread(
+                    self._normalize_bytes,
+                    image_bytes,
+                    candidate.mime_type,
+                    label,
+                    candidate.title,
+                )
+            except ImageMaterializationError as exc:
+                last_error = exc
+
+        raise ImageDownloadError("Image candidate contains no usable downloadable image.") from last_error
 
     async def materialize_generated(
         self,
