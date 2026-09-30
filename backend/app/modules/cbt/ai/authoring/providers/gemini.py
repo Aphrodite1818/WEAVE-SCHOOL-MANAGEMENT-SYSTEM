@@ -10,7 +10,7 @@ import httpx
 from pydantic import SecretStr
 
 from app.config.settings import settings
-from app.modules.cbt.ai.providers.base import (
+from app.modules.cbt.ai.authoring.providers.base import (
     BaseImageEvaluationProvider,
     BaseImageGenerationProvider,
     BaseQuestionGenerationProvider,
@@ -22,7 +22,7 @@ from app.modules.cbt.ai.providers.base import (
     ProviderQuestionRegenerationResult,
     ProviderUsage,
 )
-from app.modules.cbt.ai.contracts import (
+from app.modules.cbt.ai.authoring.contracts import (
     build_question_generation_prompt,
     build_question_regeneration_prompt,
     build_question_repair_prompt,
