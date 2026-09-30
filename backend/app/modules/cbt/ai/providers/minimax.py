@@ -25,7 +25,8 @@ from app.modules.cbt.ai.providers.base import (
 
 from app.modules.cbt.ai.contracts import (
     build_question_generation_prompt,
-    build_question_regeneration_prompt
+    build_question_regeneration_prompt,
+    build_question_repair_prompt,
 )
 
 
@@ -274,6 +275,62 @@ class MiniMaxQuestionGenerationProvider(_MiniMaxHTTPProvider, BaseQuestionGenera
             raise MiniMaxProviderError(
                 "MiniMax question-generation response does not contain a valid "
                 "'questions' array of objects."
+            )
+
+        return ProviderQuestionGenerationResult(
+            questions=questions,
+            usage=self._extract_usage(response),
+            raw_response=response,
+        )
+
+    async def repair_questions(
+        self,
+        *,
+        request: Mapping[str, Any],
+    ) -> ProviderQuestionGenerationResult:
+        """Repair one invalid batch of generated CBT questions."""
+
+        request_payload = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": build_question_repair_prompt(),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        dict(request),
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            "max_tokens": self.max_output_tokens,
+            "stream": False,
+            "thinking": {"type": "disabled"},
+        }
+
+        response = await self._post(
+            url=self._build_text_url(),
+            payload=request_payload,
+            timeout=self.timeout,
+        )
+
+        result = self._parse_json_text(
+            self._extract_text(response)
+        )
+        questions = result.get("questions")
+
+        if (
+            not isinstance(questions, list)
+            or any(
+                not isinstance(question, dict)
+                for question in questions
+            )
+        ):
+            raise MiniMaxProviderError(
+                "MiniMax question-repair response does not contain "
+                "a valid 'questions' array of objects."
             )
 
         return ProviderQuestionGenerationResult(
