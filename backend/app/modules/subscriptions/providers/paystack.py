@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.modules.payments.enums import PaymentPurpose
 from app.modules.payments.providers.paystack import (
     PaystackClient as SharedPaystackClient,
     PaystackProviderError,
@@ -28,12 +29,16 @@ class PaystackClient:
             raise PaystackProviderError(
                 "Paystack recurring plan codes are no longer supported by Weave checkout."
             )
+        payment_metadata = {
+            **metadata,
+            "payment_purpose": PaymentPurpose.TERM_SUBSCRIPTION.value,
+        }
         checkout = await PaymentEngine.initialize_checkout(
             email=email,
             amount_kobo=amount_kobo,
             reference=reference,
             callback_url=callback_url,
-            metadata=metadata,
+            metadata=payment_metadata,
         )
         return {
             "status": True,
