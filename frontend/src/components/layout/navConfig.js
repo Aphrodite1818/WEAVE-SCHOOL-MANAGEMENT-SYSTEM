@@ -67,7 +67,7 @@ export const onboardingModalCopy = {
     onboardingTitle: "Complete Parent Profile",
     editTitle: "Edit Parent Profile",
     onboardingDescription:
-      "Complete the parent profile fields required for onboarding. School-managed settings stay here, not in a personal profile form.",
+      "Complete the parent profile fields required by the backend before continuing.",
     editDescription: "Update your parent profile details.",
   },
   student: {
