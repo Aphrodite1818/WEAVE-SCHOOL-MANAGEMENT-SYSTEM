@@ -15,6 +15,7 @@ from app.modules.cbt.ai.authoring.providers.base import (
     ImageCandidate,
     ImageResolutionResult,
     ProviderImageEvaluationResult,
+    ProviderImageGenerationResult,
     ProviderImageInput,
 )
 
@@ -34,6 +35,7 @@ class ImageResolver:
 
     DEFAULT_SEARCH_LIMIT = 10
     DEFAULT_REVIEW_LIMIT = 3
+    MAX_GENERATION_MATERIALIZATION_ATTEMPTS = 2
 
     def __init__(
         self,
@@ -165,21 +167,36 @@ class ImageResolver:
         reference_images: Sequence[ProviderImageInput] | None,
         evaluation: ProviderImageEvaluationResult | None,
     ) -> ImageResolutionResult:
-        """Generate and materialize the fallback visual asset."""
+        """Generate a fallback visual and retry once if its payload is unusable."""
 
-        generation = await self.generation_provider.generate_image(
-            prompt=prompt,
-            metadata=metadata,
-            reference_images=reference_images,
-        )
-        image = await self.materializer.materialize_generated(
-            generation.image,
-            label="generated_image",
-        )
+        generation_attempts: list[ProviderImageGenerationResult] = []
+        last_error: ImageMaterializationError | None = None
 
-        return ImageResolutionResult(
-            source="generated",
-            image=image,
-            generation=generation,
-            evaluation=evaluation,
-        )
+        for _ in range(self.MAX_GENERATION_MATERIALIZATION_ATTEMPTS):
+            generation = await self.generation_provider.generate_image(
+                prompt=prompt,
+                metadata=metadata,
+                reference_images=reference_images,
+            )
+            generation_attempts.append(generation)
+
+            try:
+                image = await self.materializer.materialize_generated(
+                    generation.image,
+                    label="generated_image",
+                )
+            except ImageMaterializationError as exc:
+                last_error = exc
+                continue
+
+            return ImageResolutionResult(
+                source="generated",
+                image=image,
+                generation=generation,
+                generation_attempts=generation_attempts,
+                evaluation=evaluation,
+            )
+
+        raise ImageResolverError(
+            "Image generation provider returned unusable image data after retry."
+        ) from last_error
