@@ -13,6 +13,7 @@ from app.modules.cbt.ai.schemas import (
     AIQuestionBatchDraft,
     AIQuestionDraft,
     AIRegeneratedQuestionDraft,
+    AIVisualMode,
 )
 
 
@@ -20,6 +21,14 @@ SUPPORTED_QUESTION_TYPES = frozenset(
     {
         "single_choice",
         "multiple_choice",
+    }
+)
+
+SUPPORTED_VISUAL_MODES = frozenset(
+    {
+        "text_only",
+        "auto",
+        "prefer_visuals",
     }
 )
 
@@ -54,9 +63,7 @@ class AIResponseValidationError(ValueError):
         self.issues = tuple(issues or ())
 
     def to_repair_feedback(self) -> dict[str, Any]:
-        """
-        Return bounded structured feedback suitable for one repair attempt.
-        """
+        """Return bounded structured feedback suitable for one repair attempt."""
 
         return {
             "error": "invalid_generated_questions",
@@ -130,13 +137,7 @@ def _normalized_text(value: str) -> str:
 def _question_fingerprint(
     question: AIQuestionDraft,
 ) -> tuple[Any, ...]:
-    """
-    Build a semantic fingerprint used to reject duplicate generated questions.
-
-    Correct-answer flags are intentionally included because two otherwise
-    identical prompts/options with different answer keys must not silently
-    collapse into the same identity.
-    """
+    """Build a semantic fingerprint used to reject duplicate questions."""
 
     option_fingerprints: list[tuple[Any, ...]] = []
 
@@ -145,12 +146,8 @@ def _question_fingerprint(
 
         if option.image is not None:
             image_fingerprint = (
-                _normalized_text(
-                    option.image.requirement
-                ),
-                _normalized_text(
-                    option.image.search_query
-                ),
+                _normalized_text(option.image.requirement),
+                _normalized_text(option.image.search_query),
             )
 
         option_fingerprints.append(
@@ -167,12 +164,8 @@ def _question_fingerprint(
 
     if question.image is not None:
         question_image = (
-            _normalized_text(
-                question.image.requirement
-            ),
-            _normalized_text(
-                question.image.search_query
-            ),
+            _normalized_text(question.image.requirement),
+            _normalized_text(question.image.search_query),
         )
 
     return (
@@ -283,7 +276,6 @@ def _validate_no_duplicate_questions(
 
     for index, question in enumerate(questions):
         fingerprint = _question_fingerprint(question)
-
         original_index = seen.get(fingerprint)
 
         if original_index is not None:
@@ -304,11 +296,90 @@ def _validate_no_duplicate_questions(
     return issues
 
 
+def _validate_visual_mode_value(
+    visual_mode: AIVisualMode | None,
+) -> None:
+    if visual_mode is None:
+        return
+
+    if visual_mode not in SUPPORTED_VISUAL_MODES:
+        raise ValueError(
+            f"Unsupported visual mode: {visual_mode!r}."
+        )
+
+
+def _validate_question_visual_policy(
+    question: AIQuestionDraft,
+    *,
+    visual_mode: AIVisualMode | None,
+    path: str,
+) -> list[AIValidationIssue]:
+    """Validate enforceable visual-policy rules for one trusted question."""
+
+    _validate_visual_mode_value(visual_mode)
+
+    if visual_mode != "text_only":
+        return []
+
+    issues: list[AIValidationIssue] = []
+
+    if question.image is not None:
+        issues.append(
+            AIValidationIssue(
+                path=f"{path}.image",
+                code="visual_not_allowed",
+                message=(
+                    "Question-level image directives are not allowed "
+                    "when visual_mode is 'text_only'."
+                ),
+            )
+        )
+
+    for option_index, option in enumerate(question.options):
+        if option.image is None:
+            continue
+
+        issues.append(
+            AIValidationIssue(
+                path=f"{path}.options[{option_index}].image",
+                code="visual_not_allowed",
+                message=(
+                    "Option-level image directives are not allowed "
+                    "when visual_mode is 'text_only'."
+                ),
+            )
+        )
+
+    return issues
+
+
+def _validate_batch_visual_policy(
+    questions: Sequence[AIQuestionDraft],
+    *,
+    visual_mode: AIVisualMode | None,
+) -> list[AIValidationIssue]:
+    _validate_visual_mode_value(visual_mode)
+
+    issues: list[AIValidationIssue] = []
+
+    for index, question in enumerate(questions):
+        issues.extend(
+            _validate_question_visual_policy(
+                question,
+                visual_mode=visual_mode,
+                path=f"questions[{index}]",
+            )
+        )
+
+    return issues
+
+
 def validate_generated_question_batch(
     raw_questions: Sequence[Mapping[str, Any]],
     *,
     expected_count: int | None = None,
     expected_type_counts: Mapping[str, int] | None = None,
+    visual_mode: AIVisualMode | None = None,
 ) -> list[AIQuestionDraft]:
     """
     Validate a provider-generated batch and return trusted question drafts.
@@ -320,6 +391,7 @@ def validate_generated_question_batch(
     3. exact requested-count validation
     4. requested question-type count validation
     5. duplicate-question detection
+    6. enforceable visual-policy validation
 
     No question should be returned to the CBT server before passing here.
     """
@@ -331,9 +403,7 @@ def validate_generated_question_batch(
                 AIValidationIssue(
                     path="questions",
                     code="invalid_questions_container",
-                    message=(
-                        "Expected an array of question objects."
-                    ),
+                    message="Expected an array of question objects.",
                 )
             ],
         )
@@ -345,9 +415,7 @@ def validate_generated_question_batch(
                 AIValidationIssue(
                     path="questions",
                     code="invalid_questions_container",
-                    message=(
-                        "Expected an array of question objects."
-                    ),
+                    message="Expected an array of question objects.",
                 )
             ],
         )
@@ -367,7 +435,6 @@ def validate_generated_question_batch(
         ) from exc
 
     questions = list(batch.questions)
-
     issues: list[AIValidationIssue] = []
 
     issues.extend(
@@ -390,6 +457,13 @@ def validate_generated_question_batch(
         )
     )
 
+    issues.extend(
+        _validate_batch_visual_policy(
+            questions,
+            visual_mode=visual_mode,
+        )
+    )
+
     if issues:
         raise AIResponseValidationError(
             "AI-generated questions failed contract validation.",
@@ -407,12 +481,12 @@ def validate_regenerated_question(
         "multiple_choice",
     ]
     | None = None,
+    visual_mode: AIVisualMode | None = None,
 ) -> AIQuestionDraft:
     """
     Validate one regenerated question.
 
     By default the provider may return either supported question type.
-
     When regeneration is intended to preserve the current question type,
     pass `expected_question_type`.
     """
@@ -442,25 +516,35 @@ def validate_regenerated_question(
         ) from exc
 
     question = envelope.question
+    issues: list[AIValidationIssue] = []
 
     if (
         expected_question_type is not None
-        and question.question_type
-        != expected_question_type
+        and question.question_type != expected_question_type
     ):
+        issues.append(
+            AIValidationIssue(
+                path="question.question_type",
+                code="question_type_changed",
+                message=(
+                    f"Expected {expected_question_type!r} "
+                    f"but provider returned {question.question_type!r}."
+                ),
+            )
+        )
+
+    issues.extend(
+        _validate_question_visual_policy(
+            question,
+            visual_mode=visual_mode,
+            path="question",
+        )
+    )
+
+    if issues:
         raise AIResponseValidationError(
-            "AI-regenerated question changed question type unexpectedly.",
-            issues=[
-                AIValidationIssue(
-                    path="question.question_type",
-                    code="question_type_changed",
-                    message=(
-                        f"Expected {expected_question_type!r} "
-                        f"but provider returned "
-                        f"{question.question_type!r}."
-                    ),
-                )
-            ],
+            "AI-regenerated question failed contract validation.",
+            issues=issues,
         )
 
     return question
