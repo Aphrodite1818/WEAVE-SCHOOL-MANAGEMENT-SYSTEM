@@ -30,6 +30,25 @@ def _route_keys(router) -> set[tuple[str, str]]:
     }
 
 
+def _api_route(router, path: str, method: str) -> APIRoute:
+    for route in router.routes:
+        if isinstance(route, APIRoute) and route.path == path and method in route.methods:
+            return route
+    raise AssertionError(f"Route {method} {path} was not found")
+
+
+def _dependency_names(route: APIRoute) -> set[str]:
+    names: set[str] = set()
+    pending = list(route.dependant.dependencies)
+    while pending:
+        dependency = pending.pop()
+        call = dependency.call
+        if call is not None:
+            names.add(getattr(call, "__name__", type(call).__name__))
+        pending.extend(dependency.dependencies)
+    return names
+
+
 def test_ai_router_exposes_only_ai_group_routes() -> None:
     routes = _route_keys(ai_router)
 
@@ -59,12 +78,27 @@ def test_ai_router_exposes_only_ai_group_routes() -> None:
     assert not any("/auth/" in path for _, path in routes)
 
 
+def test_every_ai_route_requires_authenticated_cbt_actor() -> None:
+    for route in ai_router.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        assert "get_current_cbt_actor" in _dependency_names(route), route.path
+
+
 def test_auth_router_owns_login_and_refresh_routes() -> None:
     routes = _route_keys(auth_router)
 
     assert ("POST", "/auth/staff/login") in routes
     assert ("POST", "/auth/staff/refresh") in routes
     assert not any(path.startswith("/ai/") for _, path in routes)
+
+
+def test_refresh_requires_machine_auth_but_not_actor_access_token() -> None:
+    refresh_route = _api_route(auth_router, "/auth/staff/refresh", "POST")
+    dependencies = _dependency_names(refresh_route)
+
+    assert "get_current_cbt_server" in dependencies
+    assert "get_current_cbt_actor" not in dependencies
 
 
 def test_main_mounts_ai_and_auth_under_cbt_prefix() -> None:
