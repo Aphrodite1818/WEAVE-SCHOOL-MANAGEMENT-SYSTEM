@@ -19,7 +19,9 @@ from app.core.exceptions import (
     ForbiddenException,
     NotFoundException,
 )
-import app.modules.student_academics.assessment_examinability  # noqa: F401
+from app.modules.student_academics.assessment_examinability import (
+    is_assessment_component_examinable,
+)
 from app.modules.student_academics.assessment_repository import AssessmentRepository
 from app.modules.student_academics.curriculum_service import CurriculumResolutionService
 from app.modules.student_academics.models import (
@@ -152,7 +154,7 @@ class TeacherResultService:
         protected = [
             component_by_id[component_id].name
             for component_id in requested_ids
-            if component_by_id[component_id].is_examinable
+            if is_assessment_component_examinable(component_by_id[component_id])
         ]
         if protected:
             raise ForbiddenException(
