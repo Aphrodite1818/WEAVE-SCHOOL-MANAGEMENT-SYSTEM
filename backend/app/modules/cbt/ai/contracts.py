@@ -14,8 +14,9 @@ from app.modules.cbt.ai.schemas import (
 
 
 VISUAL_POLICY_RULES = """
-The request contains a `visual_mode` field that controls whether
-visual-dependent questions may be authored.
+The authoring request contains a `visual_mode` field that controls whether
+visual-dependent questions may be authored. During repair, read this policy
+from `original_request.visual_mode`.
 
 When visual_mode is "text_only":
 
