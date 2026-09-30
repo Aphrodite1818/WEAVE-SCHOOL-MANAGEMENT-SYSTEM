@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.cbt.ai.models import (
+from app.modules.cbt.ai.quota.models import (
     AICreditAllocation,
     AICreditLedger,
     AICreditLedgerBucket,
@@ -25,7 +25,7 @@ from app.modules.cbt.ai.models import (
     AITenantCreditBalance,
     AIWeeklyQuota,
 )
-from app.modules.cbt.ai.repository import (
+from app.modules.cbt.ai.quota.repository import (
     AICreditAllocationRepository,
     AICreditLedgerRepository,
     AICreditReservationRepository,
@@ -36,7 +36,7 @@ from app.modules.cbt.ai.repository import (
     AITenantCreditBalanceRepository,
     AIWeeklyQuotaRepository,
 )
-from app.modules.cbt.ai.schemas import (
+from app.modules.cbt.ai.quota.schemas import (
     AIActorQuotaBalance,
     AIActorQuotaBalanceListResponse,
     AICreditAllocationListResponse,
