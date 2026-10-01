@@ -168,7 +168,7 @@ Do not return markdown, code fences, commentary, or additional text.
 QUESTION_REPAIR_RULES = f"""
 You previously generated an invalid CBT question batch.
 
-Repair the supplied batch using the validation feedback.
+Repair the supplied output using the validation feedback.
 
 Rules:
 
@@ -179,6 +179,12 @@ Rules:
 - Follow the original request, including its visual_mode policy.
 - Return the complete repaired batch, not a patch or diff.
 - Follow the same response schema.
+- If `invalid_questions` is empty because the previous provider response could
+  not be parsed as structured JSON, regenerate the complete batch once from
+  `original_request` and the supplied validation feedback.
+- A malformed or structurally unusable prior response is not permission to
+  change the requested question count, question-type distribution, topics,
+  academic level, visual policy, or author instructions.
 
 {REFERENCE_IMAGE_RULES}
 
