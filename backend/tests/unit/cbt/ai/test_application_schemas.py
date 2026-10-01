@@ -42,6 +42,30 @@ def test_generation_schema_accepts_exact_question_type_distribution() -> None:
     }
 
 
+def test_generation_schema_accepts_fifty_questions() -> None:
+    payload = AIGenerateQuestionsRequest(
+        subject="Chemistry",
+        academic_level="JSS1",
+        topics=["Atoms"],
+        question_count=50,
+        question_type_counts={"single_choice": 50, "multiple_choice": 0},
+        visual_mode="text_only",
+    )
+    assert payload.question_count == 50
+
+
+def test_generation_schema_rejects_more_than_fifty_questions() -> None:
+    with pytest.raises(ValidationError):
+        AIGenerateQuestionsRequest(
+            subject="Chemistry",
+            academic_level="JSS1",
+            topics=["Atoms"],
+            question_count=51,
+            question_type_counts={"single_choice": 51, "multiple_choice": 0},
+            visual_mode="text_only",
+        )
+
+
 def test_generation_schema_rejects_distribution_that_does_not_match_count() -> None:
     with pytest.raises(ValidationError, match="must sum to question_count"):
         AIGenerateQuestionsRequest(
