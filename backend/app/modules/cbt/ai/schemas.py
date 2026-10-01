@@ -14,6 +14,7 @@ from app.modules.cbt.ai.authoring.schemas import AIVisualMode
 
 
 AIQuestionType = Literal["single_choice", "multiple_choice"]
+AIQuestionDifficulty = Literal["easy", "medium", "difficult"]
 
 MAX_PUBLIC_TOPIC_COUNT = 50
 MAX_PUBLIC_QUESTION_COUNT = 50
@@ -85,6 +86,7 @@ class AIGenerateQuestionsRequest(CBTAISchemaBase):
     topics: list[str] = Field(min_length=1, max_length=MAX_PUBLIC_TOPIC_COUNT)
     question_count: int = Field(ge=1, le=MAX_PUBLIC_QUESTION_COUNT)
     question_type_counts: dict[AIQuestionType, int] | None = None
+    difficulty: AIQuestionDifficulty = "medium"
     visual_mode: AIVisualMode = "auto"
     instructions: str | None = Field(default=None, max_length=MAX_PUBLIC_INSTRUCTION_LENGTH)
     context: str | None = Field(default=None, max_length=MAX_PUBLIC_TEXT_LENGTH)
@@ -146,6 +148,7 @@ class AIRegenerateQuestionRequest(CBTAISchemaBase):
     topics: list[str] = Field(min_length=1, max_length=MAX_PUBLIC_TOPIC_COUNT)
     existing_question: AIExistingQuestion
     instruction: str = Field(min_length=1, max_length=MAX_PUBLIC_INSTRUCTION_LENGTH)
+    difficulty: AIQuestionDifficulty = "medium"
     visual_mode: AIVisualMode = "auto"
     context: str | None = Field(default=None, max_length=MAX_PUBLIC_TEXT_LENGTH)
 
