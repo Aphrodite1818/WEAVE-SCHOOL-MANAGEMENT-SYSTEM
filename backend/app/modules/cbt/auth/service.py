@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import BackgroundTasks, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.settings import settings
 from app.core.exceptions import AppException, ForbiddenException, UnauthorizedException
 from app.modules.auth.login_service import AuthService
 from app.modules.auth.models import AuthSessionActorType
@@ -52,6 +53,7 @@ from app.modules.tenant_admins.repository import TenantAdminRepository
 
 
 CBT_ACTOR_ACCESS_TOKEN_TTL = timedelta(minutes=60)
+CBT_ACTOR_PRODUCTION_LIKE_ACCESS_TOKEN_TTL = timedelta(minutes=20)
 CBT_ACTOR_AUTHORIZATION_TTL = timedelta(hours=12)
 INVALID_CBT_ACTOR_AUTHORIZATION = "Invalid or expired CBT actor authorization"
 CBT_REFRESH_RECOVERY_UNAVAILABLE = (
@@ -62,6 +64,14 @@ CBT_REFRESH_RECOVERY_UNAVAILABLE = (
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _actor_access_token_ttl() -> timedelta:
+    """Return the environment-specific lifetime for CBT actor access tokens."""
+
+    if settings.is_development:
+        return CBT_ACTOR_ACCESS_TOKEN_TTL
+    return CBT_ACTOR_PRODUCTION_LIKE_ACCESS_TOKEN_TTL
 
 
 def _refresh_recovery_unavailable(exc: Exception) -> AppException:
@@ -129,7 +139,7 @@ class CBTActorAuthorizationService:
         issued_at = now or _utc_now()
         absolute_expires_at = issued_at + CBT_ACTOR_AUTHORIZATION_TTL
         access_expires_at = min(
-            issued_at + CBT_ACTOR_ACCESS_TOKEN_TTL,
+            issued_at + _actor_access_token_ttl(),
             absolute_expires_at,
         )
 
@@ -272,7 +282,7 @@ class CBTActorAuthorizationService:
         raw_access_token = generate_actor_access_token()
         raw_refresh_token = generate_actor_refresh_token()
         access_expires_at = min(
-            rotated_at + CBT_ACTOR_ACCESS_TOKEN_TTL,
+            rotated_at + _actor_access_token_ttl(),
             authorization.absolute_expires_at,
         )
         token_pair = CBTActorTokenPair(
