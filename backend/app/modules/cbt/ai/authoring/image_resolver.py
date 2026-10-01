@@ -54,8 +54,46 @@ _GENERIC_SEARCH_TERMS = frozenset(
         "science",
         "showing",
         "study",
+        "structure",
         "system",
         "visual",
+    }
+)
+
+_SEARCH_STOP_TERMS = _GENERIC_SEARCH_TERMS | frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "central",
+        "containing",
+        "directed",
+        "for",
+        "from",
+        "in",
+        "into",
+        "is",
+        "it",
+        "major",
+        "of",
+        "on",
+        "or",
+        "pointer",
+        "show",
+        "shown",
+        "shows",
+        "specifically",
+        "surrounded",
+        "the",
+        "to",
+        "various",
+        "where",
+        "which",
+        "with",
     }
 )
 
@@ -100,48 +138,19 @@ def _search_terms(value: str) -> list[str]:
     ]
 
 
-def _rank_search_candidates(
-    query: str,
-    candidates: Sequence[ImageCandidate],
-) -> list[tuple[int, ImageCandidate, int]]:
-    """Prioritize cheap metadata relevance without rejecting any candidate.
-
-    Openverse already supplies a relevance ranking, so this only promotes titles
-    that contain the concrete search terms. Original provider order remains the
-    tie-breaker and every candidate remains eligible for materialization.
-    """
-
-    query_terms = [
-        term for term in _search_terms(query) if term not in _GENERIC_SEARCH_TERMS
-    ]
-    query_term_set = set(query_terms)
-
-    ranked: list[tuple[int, ImageCandidate, int]] = []
-    for original_index, candidate in enumerate(candidates):
-        title_terms = set(_search_terms(candidate.title or ""))
-        score = sum(1 for term in query_term_set if term in title_terms)
-        ranked.append((original_index, candidate, score))
-
-    ranked.sort(key=lambda item: (-item[2], item[0]))
-    return ranked
+def _significant_search_terms(value: str) -> list[str]:
+    terms: list[str] = []
+    for term in _search_terms(value):
+        if term in _SEARCH_STOP_TERMS or term in terms:
+            continue
+        terms.append(term)
+    return terms
 
 
 def _build_broader_search_query(query: str) -> str | None:
-    """Build one deliberately broad retry query for strict AND-style search.
+    """Build a deliberately broader query for strict AND-style search."""
 
-    The primary query should already be concise because the authoring contract
-    asks the model for 2-4 retrieval keywords. This helper is only a safety net
-    for over-specific output or a zero-result first search. The evaluator remains
-    responsible for semantic precision, so the retry intentionally favors recall.
-    """
-
-    terms = _search_terms(query)
-    significant: list[str] = []
-    for term in terms:
-        if term in _GENERIC_SEARCH_TERMS or term in significant:
-            continue
-        significant.append(term)
-
+    significant = _significant_search_terms(query)
     if len(significant) <= 2:
         return None
 
@@ -149,6 +158,100 @@ def _build_broader_search_query(query: str) -> str | None:
     if broader.casefold() == query.strip().casefold():
         return None
     return broader
+
+
+def _build_secondary_search_query(requirement: str, primary_query: str) -> str | None:
+    """Build one semantic alternate without another AI/provider call.
+
+    Openverse uses strict AND-style keyword matching. The primary authoring query
+    remains the first retrieval path. The alternate keeps the subject anchor from
+    the primary query but replaces generic phrasing with concrete requirement
+    terms that the authoring model may have omitted.
+    """
+
+    primary_terms = _significant_search_terms(primary_query)
+    requirement_terms = _significant_search_terms(requirement)
+    primary_set = set(primary_terms)
+    novel_terms = [term for term in requirement_terms if term not in primary_set]
+
+    if novel_terms:
+        secondary_terms = list(primary_terms[:2])
+        for term in novel_terms[-2:]:
+            if term not in secondary_terms:
+                secondary_terms.append(term)
+        secondary = " ".join(secondary_terms[:4]).strip()
+        if secondary and secondary.casefold() != primary_query.strip().casefold():
+            return secondary
+
+    return _build_broader_search_query(primary_query)
+
+
+def _build_parallel_search_queries(requirement: str, primary_query: str) -> list[str]:
+    queries = [primary_query.strip()]
+    alternate = _build_secondary_search_query(requirement, primary_query)
+    if alternate and alternate.casefold() != queries[0].casefold():
+        queries.append(alternate)
+    return queries[:2]
+
+
+def _candidate_identity(candidate: ImageCandidate) -> tuple[str, ...]:
+    """Return a stable dedupe key for candidates merged from parallel searches."""
+
+    source = candidate.source.casefold()
+    if candidate.external_id:
+        return ("external_id", source, candidate.external_id.casefold())
+    if candidate.image_url:
+        return ("image_url", candidate.image_url.strip().casefold())
+    if candidate.source_url:
+        return ("source_url", candidate.source_url.strip().casefold())
+    return ("fallback", source, (candidate.title or "").strip().casefold())
+
+
+def _dedupe_candidates(candidate_groups: Sequence[Sequence[ImageCandidate]]) -> list[ImageCandidate]:
+    merged: list[ImageCandidate] = []
+    seen: set[tuple[str, ...]] = set()
+    for group in candidate_groups:
+        for candidate in group:
+            identity = _candidate_identity(candidate)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            merged.append(candidate)
+    return merged
+
+
+def _rank_search_candidates(
+    queries: Sequence[str],
+    candidates: Sequence[ImageCandidate],
+) -> list[tuple[int, ImageCandidate, int]]:
+    """Prioritize metadata relevance while preserving every candidate.
+
+    The first concrete primary-query term is treated as the strongest subject
+    anchor. Other primary terms and alternate-query terms add weaker evidence.
+    Provider order remains the final tie-breaker. Vision evaluation is still the
+    semantic authority and can reject every ranked candidate.
+    """
+
+    term_weights: dict[str, int] = {}
+    for query_index, query in enumerate(queries):
+        terms = _significant_search_terms(query)
+        for term_index, term in enumerate(terms):
+            if query_index == 0 and term_index == 0:
+                weight = 4
+            elif query_index == 0:
+                weight = 2
+            else:
+                weight = 1
+            term_weights[term] = max(term_weights.get(term, 0), weight)
+
+    ranked: list[tuple[int, ImageCandidate, int]] = []
+    for original_index, candidate in enumerate(candidates):
+        title_terms = set(_search_terms(candidate.title or ""))
+        score = sum(weight for term, weight in term_weights.items() if term in title_terms)
+        ranked.append((original_index, candidate, score))
+
+    ranked.sort(key=lambda item: (-item[2], item[0]))
+    return ranked
 
 
 def _is_transient_provider_error(exc: BaseException) -> bool:
@@ -179,8 +282,9 @@ class ImageResolver:
     """
 
     DEFAULT_SEARCH_LIMIT = 10
-    DEFAULT_REVIEW_LIMIT = 3
-    MATERIALIZATION_CONCURRENCY = 3
+    DEFAULT_REVIEW_LIMIT = 4
+    MATERIALIZATION_CONCURRENCY = 4
+    MAX_MATERIALIZATION_ATTEMPTS = 8
     MAX_EVALUATION_ATTEMPTS = 2
     EVALUATION_RETRY_DELAY_SECONDS = 0.5
     MAX_GENERATION_MATERIALIZATION_ATTEMPTS = 2
@@ -209,6 +313,54 @@ class ImageResolver:
         self.search_limit = search_limit
         self.review_limit = review_limit
 
+    async def _search_one(
+        self,
+        *,
+        query: str,
+        search_index: int,
+        metadata: Mapping[str, Any] | None,
+    ) -> list[ImageCandidate]:
+        logger.debug(
+            "cbt.ai.image_resolution.search.started",
+            extra={
+                "image_search_provider": _provider_name(self.search_provider),
+                "image_search_query": query,
+                "image_search_attempt": search_index + 1,
+                "image_search_parallel": True,
+            },
+        )
+        try:
+            candidates = await self.search_provider.search(
+                query=query,
+                limit=self.search_limit,
+                metadata=metadata,
+            )
+        except Exception as exc:
+            logger.exception(
+                "cbt.ai.image_resolution.search.failed",
+                extra={
+                    "image_search_provider": _provider_name(self.search_provider),
+                    "image_search_query": query,
+                    "image_search_attempt": search_index + 1,
+                    "image_search_parallel": True,
+                    "image_error_type": type(exc).__name__,
+                    "image_error_message": str(exc),
+                },
+            )
+            raise
+
+        logger.info(
+            "cbt.ai.image_resolution.search.completed",
+            extra={
+                "image_search_provider": _provider_name(self.search_provider),
+                "image_search_query": query,
+                "image_search_attempt": search_index + 1,
+                "image_search_parallel": True,
+                "image_candidate_count": len(candidates),
+            },
+        )
+        return candidates
+
     async def resolve(
         self,
         *,
@@ -234,6 +386,10 @@ class ImageResolver:
             if isinstance(generation_prompt, str) and generation_prompt.strip()
             else normalized_requirement
         )
+        search_queries = _build_parallel_search_queries(
+            normalized_requirement,
+            normalized_search_query,
+        )
 
         logger.info(
             "cbt.ai.image_resolution.started",
@@ -242,98 +398,55 @@ class ImageResolver:
                 "image_evaluation_provider": _provider_name(self.evaluation_provider),
                 "image_generation_provider": _provider_name(self.generation_provider),
                 "image_search_query": normalized_search_query,
+                "image_search_queries": search_queries,
+                "image_parallel_search_query_count": len(search_queries),
                 "image_requirement": normalized_requirement,
-                "image_search_limit": self.search_limit,
+                "image_search_limit_per_query": self.search_limit,
                 "image_review_limit": self.review_limit,
                 "image_materialization_concurrency": self.MATERIALIZATION_CONCURRENCY,
+                "image_materialization_attempt_limit": self.MAX_MATERIALIZATION_ATTEMPTS,
             },
         )
 
-        logger.debug(
-            "cbt.ai.image_resolution.search.started",
-            extra={
-                "image_search_provider": _provider_name(self.search_provider),
-                "image_search_query": normalized_search_query,
-                "image_search_attempt": 1,
-            },
+        search_results = await asyncio.gather(
+            *(
+                self._search_one(
+                    query=query,
+                    search_index=index,
+                    metadata=search_metadata,
+                )
+                for index, query in enumerate(search_queries)
+            ),
+            return_exceptions=True,
         )
-        try:
-            candidates = await self.search_provider.search(
-                query=normalized_search_query,
-                limit=self.search_limit,
-                metadata=search_metadata,
-            )
-        except Exception as exc:
-            logger.exception(
-                "cbt.ai.image_resolution.search.failed",
-                extra={
-                    "image_search_provider": _provider_name(self.search_provider),
-                    "image_search_query": normalized_search_query,
-                    "image_search_attempt": 1,
-                    "image_error_type": type(exc).__name__,
-                    "image_error_message": str(exc),
-                },
-            )
-            raise
 
+        candidate_groups: list[list[ImageCandidate]] = []
+        search_failures: list[BaseException] = []
+        raw_candidate_count = 0
+        for result in search_results:
+            if isinstance(result, BaseException):
+                search_failures.append(result)
+                continue
+            raw_candidate_count += len(result)
+            candidate_groups.append(result)
+
+        if not candidate_groups and search_failures:
+            raise search_failures[0]
+
+        candidates = _dedupe_candidates(candidate_groups)
         logger.info(
-            "cbt.ai.image_resolution.search.completed",
+            "cbt.ai.image_resolution.parallel_search.completed",
             extra={
                 "image_search_provider": _provider_name(self.search_provider),
                 "image_search_query": normalized_search_query,
-                "image_search_attempt": 1,
+                "image_search_queries": search_queries,
+                "image_parallel_search_query_count": len(search_queries),
+                "image_search_failure_count": len(search_failures),
+                "image_raw_candidate_count": raw_candidate_count,
                 "image_candidate_count": len(candidates),
+                "image_deduplicated_candidate_count": raw_candidate_count - len(candidates),
             },
         )
-
-        active_search_query = normalized_search_query
-        search_retry_attempted = False
-
-        if not candidates:
-            broader_query = _build_broader_search_query(normalized_search_query)
-            if broader_query is not None:
-                search_retry_attempted = True
-                active_search_query = broader_query
-                logger.warning(
-                    "cbt.ai.image_resolution.search_retry.started",
-                    extra={
-                        "image_search_provider": _provider_name(self.search_provider),
-                        "image_original_search_query": normalized_search_query,
-                        "image_search_query": broader_query,
-                        "image_search_attempt": 2,
-                        "image_retry_reason": "initial_search_returned_no_candidates",
-                    },
-                )
-                try:
-                    candidates = await self.search_provider.search(
-                        query=broader_query,
-                        limit=self.search_limit,
-                        metadata=search_metadata,
-                    )
-                except Exception as exc:
-                    logger.exception(
-                        "cbt.ai.image_resolution.search_retry.failed",
-                        extra={
-                            "image_search_provider": _provider_name(self.search_provider),
-                            "image_original_search_query": normalized_search_query,
-                            "image_search_query": broader_query,
-                            "image_search_attempt": 2,
-                            "image_error_type": type(exc).__name__,
-                            "image_error_message": str(exc),
-                        },
-                    )
-                    raise
-
-                logger.info(
-                    "cbt.ai.image_resolution.search_retry.completed",
-                    extra={
-                        "image_search_provider": _provider_name(self.search_provider),
-                        "image_original_search_query": normalized_search_query,
-                        "image_search_query": broader_query,
-                        "image_search_attempt": 2,
-                        "image_candidate_count": len(candidates),
-                    },
-                )
 
         (
             materialized_candidates,
@@ -341,14 +454,14 @@ class ImageResolver:
             failed_candidate_count,
         ) = await self._materialize_review_candidates(
             candidates,
-            search_query=active_search_query,
+            search_queries=search_queries,
         )
 
         logger.info(
             "cbt.ai.image_resolution.materialization.completed",
             extra={
-                "image_search_query": active_search_query,
-                "image_original_search_query": normalized_search_query,
+                "image_search_query": normalized_search_query,
+                "image_search_queries": search_queries,
                 "image_candidate_count": len(candidates),
                 "image_attempted_candidate_count": attempted_candidate_count,
                 "image_failed_candidate_count": failed_candidate_count,
@@ -357,28 +470,23 @@ class ImageResolver:
                 ),
                 "image_materialized_candidate_count": len(materialized_candidates),
                 "image_materialization_concurrency": self.MATERIALIZATION_CONCURRENCY,
-                "image_search_retry_attempted": search_retry_attempted,
+                "image_materialization_attempt_limit": self.MAX_MATERIALIZATION_ATTEMPTS,
             },
         )
 
         if not materialized_candidates:
-            if not candidates:
-                fallback_reason = (
-                    "search_returned_no_candidates_after_broad_retry"
-                    if search_retry_attempted
-                    else "search_returned_no_candidates"
-                )
-            else:
-                fallback_reason = "all_search_candidates_failed_materialization"
-
+            fallback_reason = (
+                "parallel_search_returned_no_candidates"
+                if not candidates
+                else "all_attempted_search_candidates_failed_materialization"
+            )
             logger.warning(
                 "cbt.ai.image_resolution.fallback_to_generation",
                 extra={
                     "image_fallback_reason": fallback_reason,
-                    "image_search_query": active_search_query,
-                    "image_original_search_query": normalized_search_query,
+                    "image_search_query": normalized_search_query,
+                    "image_search_queries": search_queries,
                     "image_candidate_count": len(candidates),
-                    "image_search_retry_attempted": search_retry_attempted,
                     "image_generation_provider": _provider_name(self.generation_provider),
                 },
             )
@@ -395,10 +503,9 @@ class ImageResolver:
                 "cbt.ai.image_resolution.evaluation.started",
                 extra={
                     "image_evaluation_provider": _provider_name(self.evaluation_provider),
-                    "image_search_query": active_search_query,
-                    "image_original_search_query": normalized_search_query,
+                    "image_search_query": normalized_search_query,
+                    "image_search_queries": search_queries,
                     "image_review_candidate_count": len(materialized_candidates),
-                    "image_search_retry_attempted": search_retry_attempted,
                     "image_evaluation_attempt": evaluation_attempt,
                     "image_evaluation_max_attempts": self.MAX_EVALUATION_ATTEMPTS,
                 },
@@ -420,7 +527,7 @@ class ImageResolver:
                             "image_evaluation_provider": _provider_name(
                                 self.evaluation_provider
                             ),
-                            "image_search_query": active_search_query,
+                            "image_search_query": normalized_search_query,
                             "image_evaluation_attempt": evaluation_attempt,
                             "image_error_type": type(exc).__name__,
                             "image_error_message": str(exc),
@@ -436,8 +543,8 @@ class ImageResolver:
                         "image_evaluation_provider": _provider_name(
                             self.evaluation_provider
                         ),
-                        "image_search_query": active_search_query,
-                        "image_original_search_query": normalized_search_query,
+                        "image_search_query": normalized_search_query,
+                        "image_search_queries": search_queries,
                         "image_review_candidate_count": len(materialized_candidates),
                         "image_evaluation_attempt": evaluation_attempt,
                         "image_error_type": type(exc).__name__,
@@ -453,12 +560,11 @@ class ImageResolver:
             "cbt.ai.image_resolution.evaluation.completed",
             extra={
                 "image_evaluation_provider": _provider_name(self.evaluation_provider),
-                "image_search_query": active_search_query,
-                "image_original_search_query": normalized_search_query,
+                "image_search_query": normalized_search_query,
+                "image_search_queries": search_queries,
                 "image_evaluation_decision": evaluation.decision,
                 "image_selected_index": evaluation.selected_index,
                 "image_evaluation_reason": evaluation.reason,
-                "image_search_retry_attempted": search_retry_attempted,
             },
         )
 
@@ -467,8 +573,8 @@ class ImageResolver:
                 "cbt.ai.image_resolution.fallback_to_generation",
                 extra={
                     "image_fallback_reason": "evaluation_requested_generation",
-                    "image_search_query": active_search_query,
-                    "image_original_search_query": normalized_search_query,
+                    "image_search_query": normalized_search_query,
+                    "image_search_queries": search_queries,
                     "image_evaluation_reason": evaluation.reason,
                     "image_generation_provider": _provider_name(self.generation_provider),
                 },
@@ -499,9 +605,8 @@ class ImageResolver:
         logger.info(
             "cbt.ai.image_resolution.search_candidate.selected",
             extra={
-                "image_search_query": active_search_query,
-                "image_original_search_query": normalized_search_query,
-                "image_search_retry_attempted": search_retry_attempted,
+                "image_search_query": normalized_search_query,
+                "image_search_queries": search_queries,
                 "image_selected_index": selected_index,
                 "image_candidate_source": selected_candidate.source,
                 "image_candidate_external_id": selected_candidate.external_id,
@@ -581,20 +686,20 @@ class ImageResolver:
         self,
         candidates: Sequence[ImageCandidate],
         *,
-        search_query: str,
+        search_queries: Sequence[str],
     ) -> tuple[list[tuple[ImageCandidate, ProviderImageInput]], int, int]:
         """Materialize likely candidates in bounded concurrent batches.
 
-        Metadata ranking only changes download order. The vision evaluator remains
-        the authority on whether any materialized candidate actually satisfies the
-        detailed visual requirement.
+        The larger parallel-search pool improves recall, but download latency is
+        bounded: at most MAX_MATERIALIZATION_ATTEMPTS candidates are attempted and
+        no more than MATERIALIZATION_CONCURRENCY run at once.
         """
 
-        ranked_candidates = _rank_search_candidates(search_query, candidates)
+        ranked_candidates = _rank_search_candidates(search_queries, candidates)
         logger.debug(
             "cbt.ai.image_resolution.candidates.ranked",
             extra={
-                "image_search_query": search_query,
+                "image_search_queries": list(search_queries),
                 "image_ranked_candidates": [
                     {
                         "rank": rank_index,
@@ -615,13 +720,14 @@ class ImageResolver:
         attempted_count = 0
         failed_count = 0
         cursor = 0
+        attempt_limit = min(len(ranked_candidates), self.MAX_MATERIALIZATION_ATTEMPTS)
 
-        while cursor < len(ranked_candidates) and len(materialized) < self.review_limit:
+        while cursor < attempt_limit and len(materialized) < self.review_limit:
             remaining_slots = self.review_limit - len(materialized)
             batch_size = min(
                 self.MATERIALIZATION_CONCURRENCY,
                 remaining_slots,
-                len(ranked_candidates) - cursor,
+                attempt_limit - cursor,
             )
             batch = ranked_candidates[cursor : cursor + batch_size]
 
