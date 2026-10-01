@@ -37,7 +37,7 @@ from app.modules.cbt.ai.schemas import (
     AIRegenerateQuestionRequest,
     AIRegenerateQuestionResponse,
 )
-from app.modules.cbt.ai.service import AI_CREDIT_COST_PER_QUESTION, CBTAIService
+from app.modules.cbt.ai.service import CBTAIService
 
 ResponseT = TypeVar("ResponseT", bound=BaseModel)
 STALE_UNRESERVED_OPERATION_AFTER = timedelta(minutes=5)
@@ -140,9 +140,9 @@ class CBTAIIdempotentAuthoringService:
             )
 
         requested_credits = (
-            request.question_count * AI_CREDIT_COST_PER_QUESTION
+            request.question_count * CBTAIService.CREDITS_PER_GENERATED_QUESTION
             if isinstance(request, AIGenerateQuestionsRequest)
-            else AI_CREDIT_COST_PER_QUESTION
+            else CBTAIService.CREDITS_PER_REGENERATED_QUESTION
         )
         reservation = None
         settled = False
@@ -163,8 +163,14 @@ class CBTAIIdempotentAuthoringService:
 
             authoring_service = CBTAIService._build_authoring_service()
             if isinstance(request, AIGenerateQuestionsRequest):
-                authoring_result = await authoring_service.generate_questions(request)
-                actual_credits = len(authoring_result.questions) * AI_CREDIT_COST_PER_QUESTION
+                authoring_result = await authoring_service.generate_questions(
+                    request=request.model_dump(exclude_none=True),
+                    expected_count=request.question_count,
+                    expected_type_counts=request.question_type_counts,
+                )
+                actual_credits = (
+                    len(authoring_result.questions) * CBTAIService.CREDITS_PER_GENERATED_QUESTION
+                )
                 provisional = AIGenerateQuestionsResponse(
                     questions=[
                         CBTAIService._build_question_response(question)
@@ -182,10 +188,11 @@ class CBTAIIdempotentAuthoringService:
                     await CBTAIService._prepare_regeneration_request(request)
                 )
                 authoring_result = await authoring_service.regenerate_question(
-                    prepared_request,
+                    request=prepared_request,
+                    expected_question_type=request.existing_question.question_type,
                     reference_images=reference_images,
                 )
-                actual_credits = AI_CREDIT_COST_PER_QUESTION
+                actual_credits = CBTAIService.CREDITS_PER_REGENERATED_QUESTION
                 provisional = AIRegenerateQuestionResponse(
                     question=CBTAIService._build_question_response(authoring_result.question),
                     repaired=authoring_result.repaired,
@@ -208,9 +215,11 @@ class CBTAIIdempotentAuthoringService:
             )
             settled = True
             final_response = (
-                CBTAIService._build_generation_response(authoring_result, settlement)
+                CBTAIService._build_generation_response(result=authoring_result, settlement=settlement)
                 if isinstance(request, AIGenerateQuestionsRequest)
-                else CBTAIService._build_regeneration_response(authoring_result, settlement)
+                else CBTAIService._build_regeneration_response(
+                    result=authoring_result, settlement=settlement
+                )
             )
             await cls._mark_succeeded(
                 db,
