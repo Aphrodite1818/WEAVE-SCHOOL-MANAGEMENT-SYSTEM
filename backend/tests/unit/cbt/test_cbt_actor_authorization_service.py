@@ -7,8 +7,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.exceptions import UnauthorizedException
+from app.core.exceptions import AppException, UnauthorizedException
 from app.modules.auth.models import AuthSessionActorType
+from app.modules.cbt.auth.refresh_recovery import CBTRefreshRecoveryUnavailable
 from app.modules.cbt.auth.schemas import (
     AuthenticatedCBTServer,
     CBTActorTokenPair,
@@ -117,6 +118,7 @@ async def test_refresh_rotates_both_tokens_without_extending_absolute_lifetime(m
     authorization_id = uuid4()
     old_refresh_id = uuid4()
     replacement_id = uuid4()
+    idempotency_key = uuid4()
     server = _server(tenant_id=tenant_id)
 
     authorization = SimpleNamespace(
@@ -162,6 +164,11 @@ async def test_refresh_rotates_both_tokens_without_extending_absolute_lifetime(m
         "app.modules.cbt.auth.service.generate_actor_refresh_token",
         lambda: "wcbt_ref_new-refresh",
     )
+    recovery_store = AsyncMock()
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshRecoveryService.store",
+        recovery_store,
+    )
 
     async def create_replacement(_db, replacement):
         replacement.id = replacement_id
@@ -181,11 +188,13 @@ async def test_refresh_rotates_both_tokens_without_extending_absolute_lifetime(m
         "app.modules.cbt.auth.service.CBTActorAuthorizationRepository.save",
         authorization_save,
     )
+    db = SimpleNamespace(commit=AsyncMock())
 
     result = await CBTActorAuthorizationService.refresh_actor_authorization(
-        AsyncMock(),
+        db,
         current_server=server,
         refresh_token="wcbt_ref_old-refresh",
+        idempotency_key=idempotency_key,
         now=now,
     )
 
@@ -197,12 +206,106 @@ async def test_refresh_rotates_both_tokens_without_extending_absolute_lifetime(m
     assert stored_refresh.replaced_by_token_id == replacement_id
     assert authorization.access_token_hash == hash_actor_token("wcbt_acc_new-access")
     assert authorization.absolute_expires_at == hard_expiry
-    refresh_save.assert_awaited_once_with(pytest.ANY if False else refresh_save.call_args.args[0], stored_refresh)
-    authorization_save.assert_awaited_once()
+    recovery_store.assert_awaited_once_with(
+        server_id=server.server_id,
+        authorization_id=authorization_id,
+        refresh_token_hash=hash_actor_token("wcbt_ref_old-refresh"),
+        idempotency_key=idempotency_key,
+        token_pair=result,
+        ttl_seconds=4 * 60 * 60,
+    )
+    refresh_save.assert_awaited_once_with(db, stored_refresh)
+    authorization_save.assert_awaited_once_with(db, authorization)
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_refresh_token_reuse_revokes_entire_family_before_raising(monkeypatch) -> None:
+async def test_same_refresh_operation_recovers_exact_committed_pair(monkeypatch) -> None:
+    now = datetime(2026, 9, 30, 13, 30, tzinfo=timezone.utc)
+    hard_expiry = now + timedelta(hours=4)
+    tenant_id = uuid4()
+    authorization_id = uuid4()
+    replacement_id = uuid4()
+    idempotency_key = uuid4()
+    server = _server(tenant_id=tenant_id)
+    recovered_pair = CBTActorTokenPair(
+        access_token="wcbt_acc_recovered",
+        access_token_expires_at=now + timedelta(minutes=45),
+        refresh_token="wcbt_ref_recovered",
+        refresh_token_expires_at=hard_expiry,
+    )
+    authorization = SimpleNamespace(
+        id=authorization_id,
+        tenant_id=tenant_id,
+        absolute_expires_at=hard_expiry,
+        access_token_hash=hash_actor_token(recovered_pair.access_token),
+        access_token_expires_at=recovered_pair.access_token_expires_at,
+        revoked_at=None,
+        revocation_reason=None,
+    )
+    stored_refresh = SimpleNamespace(
+        authorization_id=authorization_id,
+        expires_at=hard_expiry,
+        consumed_at=now - timedelta(seconds=10),
+        revoked_at=None,
+        reuse_detected_at=None,
+        replaced_by_token_id=replacement_id,
+    )
+    replacement = SimpleNamespace(
+        id=replacement_id,
+        authorization_id=authorization_id,
+        expires_at=hard_expiry,
+        consumed_at=None,
+        revoked_at=None,
+    )
+
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshTokenRepository.get_by_hash",
+        AsyncMock(side_effect=[stored_refresh, stored_refresh, replacement]),
+    )
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorAuthorizationRepository.get_by_id",
+        AsyncMock(return_value=authorization),
+    )
+    recover = AsyncMock(return_value=recovered_pair)
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshRecoveryService.recover",
+        recover,
+    )
+    eligibility = AsyncMock()
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorAuthorizationService._assert_actor_still_eligible",
+        eligibility,
+    )
+    revoke_children = AsyncMock()
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshTokenRepository.revoke_active_for_authorization",
+        revoke_children,
+    )
+    db = SimpleNamespace(commit=AsyncMock())
+
+    result = await CBTActorAuthorizationService.refresh_actor_authorization(
+        db,
+        current_server=server,
+        refresh_token="wcbt_ref_original",
+        idempotency_key=idempotency_key,
+        now=now,
+    )
+
+    assert result == recovered_pair
+    recover.assert_awaited_once_with(
+        server_id=server.server_id,
+        authorization_id=authorization_id,
+        refresh_token_hash=hash_actor_token("wcbt_ref_original"),
+        idempotency_key=idempotency_key,
+    )
+    eligibility.assert_awaited_once_with(db, authorization=authorization)
+    revoke_children.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_reuse_with_different_operation_revokes_family(monkeypatch) -> None:
     now = datetime(2026, 9, 30, 14, 0, tzinfo=timezone.utc)
     tenant_id = uuid4()
     authorization_id = uuid4()
@@ -231,6 +334,10 @@ async def test_refresh_token_reuse_revokes_entire_family_before_raising(monkeypa
         "app.modules.cbt.auth.service.CBTActorAuthorizationRepository.get_by_id",
         AsyncMock(return_value=authorization),
     )
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshRecoveryService.recover",
+        AsyncMock(return_value=None),
+    )
     refresh_save = AsyncMock()
     authorization_save = AsyncMock()
     revoke_children = AsyncMock(return_value=1)
@@ -252,6 +359,7 @@ async def test_refresh_token_reuse_revokes_entire_family_before_raising(monkeypa
             db,
             current_server=server,
             refresh_token="wcbt_ref_reused",
+            idempotency_key=uuid4(),
             now=now,
         )
 
@@ -264,6 +372,126 @@ async def test_refresh_token_reuse_revokes_entire_family_before_raising(monkeypa
         revoked_at=now,
     )
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_redis_outage_on_consumed_token_does_not_trigger_reuse_revocation(monkeypatch) -> None:
+    now = datetime(2026, 9, 30, 14, 30, tzinfo=timezone.utc)
+    tenant_id = uuid4()
+    authorization_id = uuid4()
+    server = _server(tenant_id=tenant_id)
+    authorization = SimpleNamespace(
+        id=authorization_id,
+        tenant_id=tenant_id,
+        absolute_expires_at=now + timedelta(hours=5),
+        revoked_at=None,
+    )
+    stored_refresh = SimpleNamespace(
+        authorization_id=authorization_id,
+        expires_at=now + timedelta(hours=5),
+        consumed_at=now - timedelta(seconds=30),
+        revoked_at=None,
+        reuse_detected_at=None,
+    )
+    db = SimpleNamespace(commit=AsyncMock())
+
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshTokenRepository.get_by_hash",
+        AsyncMock(side_effect=[stored_refresh, stored_refresh]),
+    )
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorAuthorizationRepository.get_by_id",
+        AsyncMock(return_value=authorization),
+    )
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshRecoveryService.recover",
+        AsyncMock(side_effect=CBTRefreshRecoveryUnavailable("redis down")),
+    )
+    revoke_children = AsyncMock()
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshTokenRepository.revoke_active_for_authorization",
+        revoke_children,
+    )
+
+    with pytest.raises(AppException) as exc_info:
+        await CBTActorAuthorizationService.refresh_actor_authorization(
+            db,
+            current_server=server,
+            refresh_token="wcbt_ref_reused",
+            idempotency_key=uuid4(),
+            now=now,
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.payload["same_idempotency_key_required"] is True
+    assert stored_refresh.reuse_detected_at is None
+    revoke_children.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_redis_outage_before_rotation_leaves_old_refresh_unconsumed(monkeypatch) -> None:
+    now = datetime(2026, 9, 30, 14, 45, tzinfo=timezone.utc)
+    hard_expiry = now + timedelta(hours=4)
+    tenant_id = uuid4()
+    authorization_id = uuid4()
+    server = _server(tenant_id=tenant_id)
+    authorization = SimpleNamespace(
+        id=authorization_id,
+        tenant_id=tenant_id,
+        role="teacher",
+        teacher_account_id=uuid4(),
+        teacher_membership_id=uuid4(),
+        tenant_admin_id=None,
+        access_token_hash="old",
+        access_token_expires_at=now + timedelta(minutes=5),
+        absolute_expires_at=hard_expiry,
+        revoked_at=None,
+    )
+    stored_refresh = SimpleNamespace(
+        authorization_id=authorization_id,
+        expires_at=hard_expiry,
+        consumed_at=None,
+        revoked_at=None,
+        replaced_by_token_id=None,
+    )
+    db = SimpleNamespace(commit=AsyncMock())
+
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshTokenRepository.get_by_hash",
+        AsyncMock(side_effect=[stored_refresh, stored_refresh]),
+    )
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorAuthorizationRepository.get_by_id",
+        AsyncMock(return_value=authorization),
+    )
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorAuthorizationService._assert_actor_still_eligible",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshRecoveryService.store",
+        AsyncMock(side_effect=CBTRefreshRecoveryUnavailable("redis down")),
+    )
+    create_replacement = AsyncMock()
+    monkeypatch.setattr(
+        "app.modules.cbt.auth.service.CBTActorRefreshTokenRepository.create",
+        create_replacement,
+    )
+
+    with pytest.raises(AppException) as exc_info:
+        await CBTActorAuthorizationService.refresh_actor_authorization(
+            db,
+            current_server=server,
+            refresh_token="wcbt_ref_valid",
+            idempotency_key=uuid4(),
+            now=now,
+        )
+
+    assert exc_info.value.status_code == 503
+    assert stored_refresh.consumed_at is None
+    create_replacement.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
