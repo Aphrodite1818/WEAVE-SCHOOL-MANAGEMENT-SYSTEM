@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, Mapping, Sequence
+
+import httpx
 
 from app.modules.cbt.ai.authoring.flow_logging import get_question_generation_logger
 from app.modules.cbt.ai.authoring.image_materializer import (
@@ -79,6 +82,50 @@ def _exception_chain(exc: BaseException, *, limit: int = 5) -> list[str]:
     return chain
 
 
+def _normalize_search_token(token: str) -> str:
+    """Apply tiny plural normalization for cheap title/query matching."""
+
+    normalized = token.casefold()
+    if len(normalized) > 4 and normalized.endswith("ies"):
+        return f"{normalized[:-3]}y"
+    if len(normalized) > 3 and normalized.endswith("s") and not normalized.endswith("ss"):
+        return normalized[:-1]
+    return normalized
+
+
+def _search_terms(value: str) -> list[str]:
+    return [
+        _normalize_search_token(term)
+        for term in re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)?", value.casefold())
+    ]
+
+
+def _rank_search_candidates(
+    query: str,
+    candidates: Sequence[ImageCandidate],
+) -> list[tuple[int, ImageCandidate, int]]:
+    """Prioritize cheap metadata relevance without rejecting any candidate.
+
+    Openverse already supplies a relevance ranking, so this only promotes titles
+    that contain the concrete search terms. Original provider order remains the
+    tie-breaker and every candidate remains eligible for materialization.
+    """
+
+    query_terms = [
+        term for term in _search_terms(query) if term not in _GENERIC_SEARCH_TERMS
+    ]
+    query_term_set = set(query_terms)
+
+    ranked: list[tuple[int, ImageCandidate, int]] = []
+    for original_index, candidate in enumerate(candidates):
+        title_terms = set(_search_terms(candidate.title or ""))
+        score = sum(1 for term in query_term_set if term in title_terms)
+        ranked.append((original_index, candidate, score))
+
+    ranked.sort(key=lambda item: (-item[2], item[0]))
+    return ranked
+
+
 def _build_broader_search_query(query: str) -> str | None:
     """Build one deliberately broad retry query for strict AND-style search.
 
@@ -88,7 +135,7 @@ def _build_broader_search_query(query: str) -> str | None:
     responsible for semantic precision, so the retry intentionally favors recall.
     """
 
-    terms = re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)?", query.casefold())
+    terms = _search_terms(query)
     significant: list[str] = []
     for term in terms:
         if term in _GENERIC_SEARCH_TERMS or term in significant:
@@ -104,6 +151,24 @@ def _build_broader_search_query(query: str) -> str | None:
     return broader
 
 
+def _is_transient_provider_error(exc: BaseException) -> bool:
+    """Identify retryable provider/network failures without retrying quota 429s."""
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+
+        status_code = getattr(current, "status_code", None)
+        if type(status_code) is int and (status_code == 408 or 500 <= status_code < 600):
+            return True
+        if isinstance(current, httpx.RequestError):
+            return True
+
+        current = current.__cause__ or current.__context__
+    return False
+
+
 class ImageResolver:
     """Resolve CBT visual requirements into fully materialized image bytes.
 
@@ -115,6 +180,9 @@ class ImageResolver:
 
     DEFAULT_SEARCH_LIMIT = 10
     DEFAULT_REVIEW_LIMIT = 3
+    MATERIALIZATION_CONCURRENCY = 3
+    MAX_EVALUATION_ATTEMPTS = 2
+    EVALUATION_RETRY_DELAY_SECONDS = 0.5
     MAX_GENERATION_MATERIALIZATION_ATTEMPTS = 2
 
     def __init__(
@@ -177,6 +245,7 @@ class ImageResolver:
                 "image_requirement": normalized_requirement,
                 "image_search_limit": self.search_limit,
                 "image_review_limit": self.review_limit,
+                "image_materialization_concurrency": self.MATERIALIZATION_CONCURRENCY,
             },
         )
 
@@ -266,7 +335,14 @@ class ImageResolver:
                     },
                 )
 
-        materialized_candidates = await self._materialize_review_candidates(candidates)
+        (
+            materialized_candidates,
+            attempted_candidate_count,
+            failed_candidate_count,
+        ) = await self._materialize_review_candidates(
+            candidates,
+            search_query=active_search_query,
+        )
 
         logger.info(
             "cbt.ai.image_resolution.materialization.completed",
@@ -274,8 +350,13 @@ class ImageResolver:
                 "image_search_query": active_search_query,
                 "image_original_search_query": normalized_search_query,
                 "image_candidate_count": len(candidates),
+                "image_attempted_candidate_count": attempted_candidate_count,
+                "image_failed_candidate_count": failed_candidate_count,
+                "image_skipped_candidate_count": max(
+                    0, len(candidates) - attempted_candidate_count
+                ),
                 "image_materialized_candidate_count": len(materialized_candidates),
-                "image_failed_candidate_count": len(candidates) - len(materialized_candidates),
+                "image_materialization_concurrency": self.MATERIALIZATION_CONCURRENCY,
                 "image_search_retry_attempted": search_retry_attempted,
             },
         )
@@ -308,34 +389,65 @@ class ImageResolver:
                 evaluation=None,
             )
 
-        logger.info(
-            "cbt.ai.image_resolution.evaluation.started",
-            extra={
-                "image_evaluation_provider": _provider_name(self.evaluation_provider),
-                "image_search_query": active_search_query,
-                "image_original_search_query": normalized_search_query,
-                "image_review_candidate_count": len(materialized_candidates),
-                "image_search_retry_attempted": search_retry_attempted,
-            },
-        )
-        try:
-            evaluation = await self.evaluation_provider.evaluate_images(
-                requirement=normalized_requirement,
-                images=[image for _, image in materialized_candidates],
-            )
-        except Exception as exc:
-            logger.exception(
-                "cbt.ai.image_resolution.evaluation.failed",
+        evaluation: ProviderImageEvaluationResult | None = None
+        for evaluation_attempt in range(1, self.MAX_EVALUATION_ATTEMPTS + 1):
+            logger.info(
+                "cbt.ai.image_resolution.evaluation.started",
                 extra={
                     "image_evaluation_provider": _provider_name(self.evaluation_provider),
                     "image_search_query": active_search_query,
                     "image_original_search_query": normalized_search_query,
                     "image_review_candidate_count": len(materialized_candidates),
-                    "image_error_type": type(exc).__name__,
-                    "image_error_message": str(exc),
+                    "image_search_retry_attempted": search_retry_attempted,
+                    "image_evaluation_attempt": evaluation_attempt,
+                    "image_evaluation_max_attempts": self.MAX_EVALUATION_ATTEMPTS,
                 },
             )
-            raise
+            try:
+                evaluation = await self.evaluation_provider.evaluate_images(
+                    requirement=normalized_requirement,
+                    images=[image for _, image in materialized_candidates],
+                )
+                break
+            except Exception as exc:
+                if (
+                    evaluation_attempt < self.MAX_EVALUATION_ATTEMPTS
+                    and _is_transient_provider_error(exc)
+                ):
+                    logger.warning(
+                        "cbt.ai.image_resolution.evaluation.retrying",
+                        extra={
+                            "image_evaluation_provider": _provider_name(
+                                self.evaluation_provider
+                            ),
+                            "image_search_query": active_search_query,
+                            "image_evaluation_attempt": evaluation_attempt,
+                            "image_error_type": type(exc).__name__,
+                            "image_error_message": str(exc),
+                            "image_error_chain": _exception_chain(exc),
+                        },
+                    )
+                    await asyncio.sleep(self.EVALUATION_RETRY_DELAY_SECONDS)
+                    continue
+
+                logger.exception(
+                    "cbt.ai.image_resolution.evaluation.failed",
+                    extra={
+                        "image_evaluation_provider": _provider_name(
+                            self.evaluation_provider
+                        ),
+                        "image_search_query": active_search_query,
+                        "image_original_search_query": normalized_search_query,
+                        "image_review_candidate_count": len(materialized_candidates),
+                        "image_evaluation_attempt": evaluation_attempt,
+                        "image_error_type": type(exc).__name__,
+                        "image_error_message": str(exc),
+                    },
+                )
+                raise
+
+        if evaluation is None:
+            raise ImageResolverError("Image evaluation provider returned no decision.")
 
         logger.info(
             "cbt.ai.image_resolution.evaluation.completed",
@@ -407,61 +519,134 @@ class ImageResolver:
             evaluation=evaluation,
         )
 
+    async def _materialize_one_candidate(
+        self,
+        *,
+        original_index: int,
+        rank_index: int,
+        relevance_score: int,
+        candidate: ImageCandidate,
+    ) -> tuple[ImageCandidate, ProviderImageInput] | None:
+        logger.debug(
+            "cbt.ai.image_resolution.candidate_materialization.started",
+            extra={
+                "image_candidate_index": original_index,
+                "image_candidate_rank": rank_index,
+                "image_candidate_relevance_score": relevance_score,
+                "image_candidate_source": candidate.source,
+                "image_candidate_external_id": candidate.external_id,
+                "image_candidate_title": candidate.title,
+            },
+        )
+        try:
+            image = await self.materializer.materialize_candidate(
+                candidate,
+                label=f"search_candidate_{rank_index}",
+            )
+        except ImageMaterializationError as exc:
+            logger.debug(
+                "cbt.ai.image_resolution.candidate_materialization.failed",
+                extra={
+                    "image_candidate_index": original_index,
+                    "image_candidate_rank": rank_index,
+                    "image_candidate_relevance_score": relevance_score,
+                    "image_candidate_source": candidate.source,
+                    "image_candidate_external_id": candidate.external_id,
+                    "image_candidate_title": candidate.title,
+                    "image_error_type": type(exc).__name__,
+                    "image_error_message": str(exc),
+                    "image_error_chain": _exception_chain(exc),
+                },
+            )
+            return None
+
+        logger.debug(
+            "cbt.ai.image_resolution.candidate_materialization.succeeded",
+            extra={
+                "image_candidate_index": original_index,
+                "image_candidate_rank": rank_index,
+                "image_candidate_relevance_score": relevance_score,
+                "image_candidate_source": candidate.source,
+                "image_candidate_external_id": candidate.external_id,
+                "image_candidate_title": candidate.title,
+                "image_content_type": image.content_type,
+                "image_width": image.width,
+                "image_height": image.height,
+                "image_bytes": len(image.data),
+            },
+        )
+        return candidate, image
+
     async def _materialize_review_candidates(
         self,
         candidates: Sequence[ImageCandidate],
-    ) -> list[tuple[ImageCandidate, ProviderImageInput]]:
-        """Collect up to review_limit downloadable/valid candidates in rank order."""
+        *,
+        search_query: str,
+    ) -> tuple[list[tuple[ImageCandidate, ProviderImageInput]], int, int]:
+        """Materialize likely candidates in bounded concurrent batches.
+
+        Metadata ranking only changes download order. The vision evaluator remains
+        the authority on whether any materialized candidate actually satisfies the
+        detailed visual requirement.
+        """
+
+        ranked_candidates = _rank_search_candidates(search_query, candidates)
+        logger.debug(
+            "cbt.ai.image_resolution.candidates.ranked",
+            extra={
+                "image_search_query": search_query,
+                "image_ranked_candidates": [
+                    {
+                        "rank": rank_index,
+                        "original_index": original_index,
+                        "score": score,
+                        "source": candidate.source,
+                        "external_id": candidate.external_id,
+                        "title": candidate.title,
+                    }
+                    for rank_index, (original_index, candidate, score) in enumerate(
+                        ranked_candidates
+                    )
+                ],
+            },
+        )
 
         materialized: list[tuple[ImageCandidate, ProviderImageInput]] = []
-        for candidate_index, candidate in enumerate(candidates):
-            if len(materialized) >= self.review_limit:
-                break
+        attempted_count = 0
+        failed_count = 0
+        cursor = 0
 
-            logger.debug(
-                "cbt.ai.image_resolution.candidate_materialization.started",
-                extra={
-                    "image_candidate_index": candidate_index,
-                    "image_candidate_source": candidate.source,
-                    "image_candidate_external_id": candidate.external_id,
-                    "image_candidate_title": candidate.title,
-                },
+        while cursor < len(ranked_candidates) and len(materialized) < self.review_limit:
+            remaining_slots = self.review_limit - len(materialized)
+            batch_size = min(
+                self.MATERIALIZATION_CONCURRENCY,
+                remaining_slots,
+                len(ranked_candidates) - cursor,
             )
-            try:
-                image = await self.materializer.materialize_candidate(
-                    candidate,
-                    label=f"search_candidate_{len(materialized)}",
-                )
-            except ImageMaterializationError as exc:
-                logger.debug(
-                    "cbt.ai.image_resolution.candidate_materialization.failed",
-                    extra={
-                        "image_candidate_index": candidate_index,
-                        "image_candidate_source": candidate.source,
-                        "image_candidate_external_id": candidate.external_id,
-                        "image_candidate_title": candidate.title,
-                        "image_error_type": type(exc).__name__,
-                        "image_error_message": str(exc),
-                        "image_error_chain": _exception_chain(exc),
-                    },
-                )
-                continue
+            batch = ranked_candidates[cursor : cursor + batch_size]
 
-            logger.debug(
-                "cbt.ai.image_resolution.candidate_materialization.succeeded",
-                extra={
-                    "image_candidate_index": candidate_index,
-                    "image_candidate_source": candidate.source,
-                    "image_candidate_external_id": candidate.external_id,
-                    "image_candidate_title": candidate.title,
-                    "image_content_type": image.content_type,
-                    "image_width": image.width,
-                    "image_height": image.height,
-                    "image_bytes": len(image.data),
-                },
+            results = await asyncio.gather(
+                *(
+                    self._materialize_one_candidate(
+                        original_index=original_index,
+                        rank_index=cursor + offset,
+                        relevance_score=score,
+                        candidate=candidate,
+                    )
+                    for offset, (original_index, candidate, score) in enumerate(batch)
+                )
             )
-            materialized.append((candidate, image))
-        return materialized
+
+            attempted_count += len(batch)
+            for result in results:
+                if result is None:
+                    failed_count += 1
+                else:
+                    materialized.append(result)
+
+            cursor += len(batch)
+
+        return materialized, attempted_count, failed_count
 
     async def _generate(
         self,
