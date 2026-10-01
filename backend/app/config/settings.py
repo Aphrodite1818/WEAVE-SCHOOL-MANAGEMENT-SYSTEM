@@ -400,7 +400,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: SecretStr | None = None
     GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
     GEMINI_TEXT_MODEL: str = "gemini-flash-lite-latest"
-    GEMINI_IMAGE_MODEL: str = "gemini-3.1-flash-lite-image"
+    GEMINI_IMAGE_MODEL: str = "gemini-2.5-flash-image"
     GEMINI_MAX_OUTPUT_TOKENS: int = Field(default=16384, ge=256, le=131072)
     GEMINI_IMAGE_TIMEOUT_SECONDS: float = Field(default=120.0, ge=1.0, le=300.0)
     GEMINI_REQUEST_TIMEOUT_SECONDS: float = Field(default=60.0, ge=1.0, le=300.0)
