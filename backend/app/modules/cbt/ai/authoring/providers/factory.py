@@ -11,6 +11,7 @@ from app.modules.cbt.ai.authoring.providers.base import (
     BaseImageSearchProvider,
     BaseQuestionGenerationProvider,
 )
+from app.modules.cbt.ai.authoring.providers.combined_search import CombinedImageSearchProvider
 from app.modules.cbt.ai.authoring.providers.gemini import (
     GeminiImageEvaluationProvider,
     GeminiImageGenerationProvider,
@@ -22,6 +23,7 @@ from app.modules.cbt.ai.authoring.providers.minimax import (
     MiniMaxQuestionGenerationProvider,
 )
 from app.modules.cbt.ai.authoring.providers.openverse import OpenverseImageSearchProvider
+from app.modules.cbt.ai.authoring.providers.wikimedia import WikimediaCommonsImageSearchProvider
 
 
 class CBTProviderFactoryError(RuntimeError):
@@ -62,7 +64,16 @@ class CBTProviderFactory:
     def get_image_search_provider() -> BaseImageSearchProvider:
         provider = settings.CBT_AI_IMAGE_SEARCH_PROVIDER
         if provider == "openverse":
-            return OpenverseImageSearchProvider()
+            # Keep the existing configuration value for backward compatibility,
+            # but treat it as the free online-search bundle. Wikimedia goes first
+            # so educational Commons results get the first slot during interleave;
+            # Openverse still contributes broader Flickr/Wellcome/NASA coverage.
+            return CombinedImageSearchProvider(
+                providers=(
+                    WikimediaCommonsImageSearchProvider(),
+                    OpenverseImageSearchProvider(),
+                )
+            )
         raise CBTProviderFactoryError(f"Unsupported CBT AI image search provider: {provider!r}")
 
     @classmethod
