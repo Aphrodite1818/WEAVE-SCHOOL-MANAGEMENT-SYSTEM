@@ -9,7 +9,6 @@ from urllib.parse import quote, urlparse
 
 import httpx
 
-from app.config.settings import settings
 from app.modules.cbt.ai.authoring.flow_logging import get_question_generation_logger
 from app.modules.cbt.ai.authoring.providers.base import BaseImageSearchProvider, ImageCandidate
 
@@ -28,6 +27,9 @@ class WikimediaCommonsImageSearchProvider(BaseImageSearchProvider):
     """Search Wikimedia Commons for freely reusable educational images."""
 
     provider_name = "wikimedia_commons"
+    DEFAULT_API_URL = "https://commons.wikimedia.org/w/api.php"
+    DEFAULT_TIMEOUT_SECONDS = 15.0
+    DEFAULT_USER_AGENT = "WEAVE-CBT-Bot/1.0 (+https://weavecloudspace.com)"
     FILE_NAMESPACE = 6
     MAX_SEARCH_RESULTS = 50
     THUMBNAIL_WIDTH = 1600
@@ -39,9 +41,9 @@ class WikimediaCommonsImageSearchProvider(BaseImageSearchProvider):
         timeout: float | None = None,
         user_agent: str | None = None,
     ) -> None:
-        self.api_url = api_url or settings.WIKIMEDIA_COMMONS_API_URL
-        self.timeout = timeout or settings.WIKIMEDIA_REQUEST_TIMEOUT_SECONDS
-        self.user_agent = user_agent or settings.WIKIMEDIA_USER_AGENT
+        self.api_url = (api_url or self.DEFAULT_API_URL).strip()
+        self.timeout = timeout or self.DEFAULT_TIMEOUT_SECONDS
+        self.user_agent = (user_agent or self.DEFAULT_USER_AGENT).strip()
 
     def is_configured(self) -> bool:
         return bool(self.api_url and self.user_agent)
