@@ -15,9 +15,12 @@ import httpx
 from pydantic import SecretStr
 from redis.exceptions import RedisError
 
+from app.config.logging import get_logger
 from app.config.settings import settings
 from app.core.cache.redis import get_redis
 from app.modules.cbt.ai.authoring.providers.base import BaseImageSearchProvider, ImageCandidate
+
+logger = get_logger(__name__)
 
 
 # EXCEPTIONS
@@ -301,6 +304,17 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
 
         params = self._build_search_params(query=normalized_query, limit=limit, metadata=metadata)
 
+        logger.info(
+            "cbt.ai.openverse.search.started",
+            extra={
+                "openverse_query": normalized_query,
+                "openverse_limit": limit,
+                "openverse_page_size": params.get("page_size"),
+                "openverse_authenticated": self._has_complete_credentials(),
+                "openverse_license_type": params.get("license_type"),
+            },
+        )
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
@@ -308,12 +322,35 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
                 )
 
         except httpx.TimeoutException as exc:
+            logger.warning(
+                "cbt.ai.openverse.search.failed",
+                extra={
+                    "openverse_query": normalized_query,
+                    "openverse_error_type": type(exc).__name__,
+                    "openverse_error_message": str(exc),
+                },
+            )
             raise OpenverseProviderError("Openverse image search timed out.") from exc
 
         except httpx.RequestError as exc:
+            logger.warning(
+                "cbt.ai.openverse.search.failed",
+                extra={
+                    "openverse_query": normalized_query,
+                    "openverse_error_type": type(exc).__name__,
+                    "openverse_error_message": str(exc),
+                },
+            )
             raise OpenverseProviderError("Unable to connect to Openverse.") from exc
 
         if response.is_error:
+            logger.warning(
+                "cbt.ai.openverse.search.failed",
+                extra={
+                    "openverse_query": normalized_query,
+                    "openverse_status_code": response.status_code,
+                },
+            )
             raise OpenverseProviderError(
                 (f"Openverse image search failed with HTTP {response.status_code}."),
                 status_code=response.status_code,
@@ -335,10 +372,30 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
                 "Openverse response does not contain a valid results list."
             )
 
+        logger.info(
+            "cbt.ai.openverse.search.response_received",
+            extra={
+                "openverse_query": normalized_query,
+                "openverse_status_code": response.status_code,
+                "openverse_raw_result_count": len(results),
+            },
+        )
+
         candidates: list[ImageCandidate] = []
+        processed_results = 0
+        malformed_results = 0
 
         for result in results:
+            processed_results += 1
             if not isinstance(result, dict):
+                malformed_results += 1
+                logger.debug(
+                    "cbt.ai.openverse.result.filtered",
+                    extra={
+                        "openverse_query": normalized_query,
+                        "openverse_filter_reason": "result_not_object",
+                    },
+                )
                 continue
 
             candidate = self._normalize_candidate(result, metadata=metadata)
@@ -350,6 +407,18 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
 
             if len(candidates) >= limit:
                 break
+
+        logger.info(
+            "cbt.ai.openverse.search.completed",
+            extra={
+                "openverse_query": normalized_query,
+                "openverse_raw_result_count": len(results),
+                "openverse_processed_result_count": processed_results,
+                "openverse_candidate_count": len(candidates),
+                "openverse_filtered_result_count": processed_results - len(candidates),
+                "openverse_malformed_result_count": malformed_results,
+            },
+        )
 
         return candidates
 
@@ -444,17 +513,17 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
         image_url = self._clean_url(result.get("url"))
 
         if image_url is None:
-            return None
+            return self._reject_candidate(result, "missing_or_invalid_image_url")
 
         license_slug = self._clean_string(result.get("license"))
 
         if license_slug is None:
-            return None
+            return self._reject_candidate(result, "missing_license")
 
         mature = result.get("mature")
 
         if mature is True:
-            return None
+            return self._reject_candidate(result, "mature_content")
 
         width = self._positive_int(result.get("width"))
 
@@ -465,10 +534,20 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
         min_height = self._positive_int(metadata.get("min_height"))
 
         if min_width is not None and (width is None or width < min_width):
-            return None
+            return self._reject_candidate(
+                result,
+                "below_min_width",
+                openverse_candidate_width=width,
+                openverse_min_width=min_width,
+            )
 
         if min_height is not None and (height is None or height < min_height):
-            return None
+            return self._reject_candidate(
+                result,
+                "below_min_height",
+                openverse_candidate_height=height,
+                openverse_min_height=min_height,
+            )
 
         mime_type = self._normalize_mime_type(result.get("filetype"))
 
@@ -477,7 +556,11 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
             allowed_mime_types = {allowed_mime_types}
 
         if allowed_mime_types and (mime_type is None or mime_type not in allowed_mime_types):
-            return None
+            return self._reject_candidate(
+                result,
+                "disallowed_mime_type",
+                openverse_candidate_mime_type=mime_type,
+            )
 
         source_url = self._clean_url(result.get("foreign_landing_url")) or self._clean_url(
             result.get("detail_url")
@@ -485,7 +568,7 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
 
         # We want a traceable source page for attribution and licensing.
         if source_url is None:
-            return None
+            return self._reject_candidate(result, "missing_or_invalid_source_url")
 
         source = (
             self._clean_string(result.get("source"))
@@ -512,6 +595,28 @@ class OpenverseImageSearchProvider(BaseImageSearchProvider):
             height=height,
             mime_type=mime_type,
         )
+
+    @classmethod
+    def _reject_candidate(
+        cls,
+        result: Mapping[str, Any],
+        reason: str,
+        **details: Any,
+    ) -> None:
+        """Record why a raw Openverse result could not become a candidate."""
+
+        logger.debug(
+            "cbt.ai.openverse.result.filtered",
+            extra={
+                "openverse_filter_reason": reason,
+                "openverse_external_id": cls._clean_string(result.get("id")),
+                "openverse_title": cls._clean_string(result.get("title")),
+                "openverse_source": cls._clean_string(result.get("source"))
+                or cls._clean_string(result.get("provider")),
+                **details,
+            },
+        )
+        return None
 
     # NORMALIZATION HELPERS
 
