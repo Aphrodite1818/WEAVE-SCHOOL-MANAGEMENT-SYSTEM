@@ -107,7 +107,7 @@ async def test_generation_reserves_by_question_count_authors_then_settles(monkey
     request = AIGenerateQuestionsRequest(
         subject="Mathematics",
         academic_level="SS2",
-        topics=["Algebra"],
+        generation_prompt="Generate questions about algebra.",
         question_count=2,
         question_type_counts={"single_choice": 2},
         visual_mode="text_only",
@@ -127,6 +127,9 @@ async def test_generation_reserves_by_question_count_authors_then_settles(monkey
     assert authoring.generate_questions.await_args.kwargs["expected_type_counts"] == {
         "single_choice": 2
     }
+    assert authoring.generate_questions.await_args.kwargs["request"]["generation_prompt"] == (
+        "Generate questions about algebra."
+    )
     settle.assert_awaited_once()
     assert settle.await_args.kwargs["actual_credits"] == 2
     release.assert_not_awaited()
@@ -155,7 +158,7 @@ async def test_generation_provider_failure_releases_reservation(monkeypatch) -> 
     request = AIGenerateQuestionsRequest(
         subject="Mathematics",
         academic_level="SS2",
-        topics=["Algebra"],
+        generation_prompt="Generate questions about algebra.",
         question_count=1,
         visual_mode="text_only",
     )
@@ -203,7 +206,7 @@ async def test_successful_authoring_does_not_release_when_settlement_fails(monke
     request = AIGenerateQuestionsRequest(
         subject="Mathematics",
         academic_level="SS2",
-        topics=["Algebra"],
+        generation_prompt="Generate questions about algebra.",
         question_count=1,
         visual_mode="text_only",
     )
@@ -230,7 +233,7 @@ async def test_insufficient_generation_credits_are_translated(monkeypatch) -> No
     request = AIGenerateQuestionsRequest(
         subject="Biology",
         academic_level="SS2",
-        topics=["Cells"],
+        generation_prompt="Generate questions about cells.",
         question_count=5,
         visual_mode="text_only",
     )
@@ -270,7 +273,7 @@ async def test_regeneration_uses_one_admin_credit(monkeypatch) -> None:
     request = AIRegenerateQuestionRequest(
         subject="Mathematics",
         academic_level="SS2",
-        topics=["Algebra"],
+        generation_prompt="Keep the question focused on algebra.",
         existing_question={
             "question_type": "single_choice",
             "prompt": "Old question",
@@ -292,6 +295,9 @@ async def test_regeneration_uses_one_admin_credit(monkeypatch) -> None:
     assert reserve.await_args.kwargs["actor_id"] == actor.actor_id
     assert reserve.await_args.kwargs["credits"] == 1
     assert settle.await_args.kwargs["actual_credits"] == 1
+    assert authoring.regenerate_question.await_args.kwargs["request"]["generation_prompt"] == (
+        "Keep the question focused on algebra."
+    )
 
 
 @pytest.mark.asyncio
