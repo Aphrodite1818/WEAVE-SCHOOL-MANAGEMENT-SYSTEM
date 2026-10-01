@@ -45,7 +45,7 @@ async def test_regeneration_decodes_images_before_authoring_provider_boundary() 
     request = AIRegenerateQuestionRequest(
         subject="Biology",
         academic_level="SS1",
-        topics=["Cells"],
+        generation_prompt="Keep the question focused on cell structures.",
         existing_question={
             "question_type": "single_choice",
             "prompt": "Identify the structure.",
@@ -66,6 +66,7 @@ async def test_regeneration_decodes_images_before_authoring_provider_boundary() 
     assert reference_images[0].label == "existing_question.image"
     assert reference_images[1].data == raw
     assert reference_images[1].label == "existing_question.options[0].image"
+    assert payload["generation_prompt"] == "Keep the question focused on cell structures."
 
     question_image_marker = payload["existing_question"]["image"]
     assert "data_base64" not in question_image_marker
