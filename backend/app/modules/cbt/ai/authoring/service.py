@@ -15,7 +15,11 @@ from app.modules.cbt.ai.authoring.providers.base import (
     ProviderQuestionGenerationResult,
     ProviderUsage,
 )
-from app.modules.cbt.ai.authoring.schemas import AIQuestionDraft, AIVisualMode
+from app.modules.cbt.ai.authoring.schemas import (
+    AIQuestionDifficulty,
+    AIQuestionDraft,
+    AIVisualMode,
+)
 from app.modules.cbt.ai.authoring.validation import (
     AIResponseValidationError,
     SUPPORTED_VISUAL_MODES,
@@ -26,6 +30,8 @@ from app.modules.cbt.ai.authoring.validation import (
 
 QuestionType = Literal["single_choice", "multiple_choice"]
 AuthoringOperation = Literal["generation", "regeneration"]
+DEFAULT_QUESTION_DIFFICULTY: AIQuestionDifficulty = "medium"
+SUPPORTED_QUESTION_DIFFICULTIES = frozenset({"easy", "medium", "difficult"})
 DEFAULT_VISUAL_MODE: AIVisualMode = "auto"
 
 REPAIRABLE_STRUCTURED_OUTPUT_ERROR_MARKERS = (
@@ -358,6 +364,13 @@ class QuestionAuthoringService:
         request: Mapping[str, Any],
     ) -> tuple[dict[str, Any], AIVisualMode]:
         request_payload = dict(request)
+
+        raw_difficulty = request_payload.get("difficulty", DEFAULT_QUESTION_DIFFICULTY)
+        if raw_difficulty not in SUPPORTED_QUESTION_DIFFICULTIES:
+            raise ValueError(f"Unsupported question difficulty: {raw_difficulty!r}.")
+        difficulty = cast(AIQuestionDifficulty, raw_difficulty)
+        request_payload["difficulty"] = difficulty
+
         raw_visual_mode = request_payload.get("visual_mode", DEFAULT_VISUAL_MODE)
         if raw_visual_mode not in SUPPORTED_VISUAL_MODES:
             raise ValueError(f"Unsupported visual mode: {raw_visual_mode!r}.")
