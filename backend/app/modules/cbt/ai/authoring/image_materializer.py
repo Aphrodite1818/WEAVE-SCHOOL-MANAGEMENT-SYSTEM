@@ -15,7 +15,8 @@ import ipaddress
 import socket
 import warnings
 from io import BytesIO
-from urllib.parse import urljoin, urlparse
+from pathlib import PurePosixPath
+from urllib.parse import unquote, urlencode, urljoin, urlparse
 
 import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -62,6 +63,32 @@ def _safe_url_diagnostics(url: str) -> tuple[str | None, str | None]:
     return parsed.hostname, parsed.path or "/"
 
 
+def _build_wikimedia_raster_url(url: str, *, width: int) -> str | None:
+    """Build a MediaWiki raster-render URL for a Wikimedia SVG original.
+
+    Raw SVG files are deliberately not parsed inside WEAVE. MediaWiki can render
+    SVG files to a normal bitmap when Special:Redirect/file is requested with a
+    width, which keeps SVG parsing outside the application boundary.
+    """
+
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").casefold()
+    if hostname != "upload.wikimedia.org":
+        return None
+
+    filename = unquote(PurePosixPath(parsed.path).name)
+    if not filename.casefold().endswith(".svg"):
+        return None
+
+    query = urlencode(
+        {
+            "title": f"Special:Redirect/file/{filename}",
+            "width": width,
+        }
+    )
+    return f"https://commons.wikimedia.org/w/index.php?{query}"
+
+
 class ImageMaterializer:
     """Download/decode, validate, normalize and fingerprint image assets."""
 
@@ -72,6 +99,11 @@ class ImageMaterializer:
     TARGET_MAX_DIMENSION = 2_048
     MAX_REDIRECTS = 3
     DOWNLOAD_TIMEOUT_SECONDS = 12.0
+    WIKIMEDIA_RASTER_WIDTH = 1_600
+
+    # Wikimedia requires automated clients to identify themselves. Keep this
+    # descriptive and non-secret; it is intentionally sent to external servers.
+    DOWNLOAD_USER_AGENT = "WEAVE-CBT-Bot/1.0 (+https://weavecloudspace.com)"
 
     ALLOWED_INPUT_FORMATS = {"JPEG", "PNG", "WEBP", "GIF"}
     TRANSPORT_FORMATS = {"JPEG", "PNG", "WEBP"}
@@ -82,6 +114,37 @@ class ImageMaterializer:
         "GIF": "image/gif",
     }
 
+    def _candidate_download_urls(self, candidate: ImageCandidate) -> list[tuple[str, str]]:
+        """Return ordered download options, rasterizing Wikimedia SVGs remotely."""
+
+        urls: list[tuple[str, str]] = []
+        original_url = candidate.image_url
+        if original_url:
+            wikimedia_raster_url = _build_wikimedia_raster_url(
+                original_url,
+                width=self.WIKIMEDIA_RASTER_WIDTH,
+            )
+            if wikimedia_raster_url is not None:
+                urls.append(("wikimedia_raster", wikimedia_raster_url))
+                logger.debug(
+                    "cbt.ai.image_materialization.wikimedia_raster.selected",
+                    extra={
+                        "image_candidate_source": candidate.source,
+                        "image_candidate_external_id": candidate.external_id,
+                        "image_candidate_title": candidate.title,
+                        "image_wikimedia_raster_width": self.WIKIMEDIA_RASTER_WIDTH,
+                    },
+                )
+            else:
+                urls.append(("original", original_url))
+
+        if candidate.thumbnail_url and all(
+            existing_url != candidate.thumbnail_url for _, existing_url in urls
+        ):
+            urls.append(("thumbnail", candidate.thumbnail_url))
+
+        return urls
+
     async def materialize_candidate(
         self,
         candidate: ImageCandidate,
@@ -91,17 +154,12 @@ class ImageMaterializer:
         """Download and normalize one searched image candidate.
 
         Search providers often expose both an original image URL and a thumbnail.
-        Either can be stale or protected independently, so the candidate is only
-        discarded after both distinct URLs fail materialization.
+        Wikimedia SVG originals are requested through MediaWiki's raster-render
+        route instead of being parsed as SVG inside WEAVE. Other candidates keep
+        their normal original-then-thumbnail fallback order.
         """
 
-        urls: list[tuple[str, str]] = []
-        for url_kind, url in (
-            ("original", candidate.image_url),
-            ("thumbnail", candidate.thumbnail_url),
-        ):
-            if url and all(existing_url != url for _, existing_url in urls):
-                urls.append((url_kind, url))
+        urls = self._candidate_download_urls(candidate)
         if not urls:
             raise ImageDownloadError("Image candidate contains no downloadable URL.")
 
@@ -287,6 +345,10 @@ class ImageMaterializer:
         async with httpx.AsyncClient(
             timeout=self.DOWNLOAD_TIMEOUT_SECONDS,
             follow_redirects=False,
+            headers={
+                "User-Agent": self.DOWNLOAD_USER_AGENT,
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            },
         ) as client:
             for redirect_count in range(self.MAX_REDIRECTS + 1):
                 await self._validate_public_url(current_url)
