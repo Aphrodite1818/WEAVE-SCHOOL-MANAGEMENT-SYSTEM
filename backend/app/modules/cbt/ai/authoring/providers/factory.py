@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from app.config.settings import settings
-from app.modules.cbt.ai.authoring.image_materializer import ImageMaterializer
+from app.modules.cbt.ai.authoring.contact_sheet_resolver import ContactSheetImageResolver
 from app.modules.cbt.ai.authoring.image_resolver import ImageResolver
+from app.modules.cbt.ai.authoring.preview_materializer import PreviewImageMaterializer
 from app.modules.cbt.ai.authoring.providers.base import (
     BaseImageEvaluationProvider,
     BaseImageGenerationProvider,
@@ -13,14 +14,18 @@ from app.modules.cbt.ai.authoring.providers.base import (
 )
 from app.modules.cbt.ai.authoring.providers.combined_search import CombinedImageSearchProvider
 from app.modules.cbt.ai.authoring.providers.gemini import (
-    GeminiImageEvaluationProvider,
     GeminiImageGenerationProvider,
     GeminiQuestionGenerationProvider,
 )
+from app.modules.cbt.ai.authoring.providers.gemini_contact_sheet import (
+    GeminiContactSheetImageEvaluationProvider,
+)
 from app.modules.cbt.ai.authoring.providers.minimax import (
-    MiniMaxImageEvaluationProvider,
     MiniMaxImageGenerationProvider,
     MiniMaxQuestionGenerationProvider,
+)
+from app.modules.cbt.ai.authoring.providers.minimax_contact_sheet import (
+    MiniMaxContactSheetImageEvaluationProvider,
 )
 from app.modules.cbt.ai.authoring.providers.openverse import OpenverseImageSearchProvider
 from app.modules.cbt.ai.authoring.providers.wikimedia import WikimediaCommonsImageSearchProvider
@@ -46,9 +51,9 @@ class CBTProviderFactory:
     def get_image_evaluation_provider() -> BaseImageEvaluationProvider:
         provider = settings.CBT_AI_QUESTION_PROVIDER
         if provider == "gemini":
-            return GeminiImageEvaluationProvider()
+            return GeminiContactSheetImageEvaluationProvider()
         if provider == "minimax":
-            return MiniMaxImageEvaluationProvider()
+            return MiniMaxContactSheetImageEvaluationProvider()
         raise CBTProviderFactoryError(f"Unsupported CBT AI image evaluation provider: {provider!r}")
 
     @staticmethod
@@ -78,9 +83,9 @@ class CBTProviderFactory:
 
     @classmethod
     def get_image_resolver(cls) -> ImageResolver:
-        return ImageResolver(
+        return ContactSheetImageResolver(
             search_provider=cls.get_image_search_provider(),
             evaluation_provider=cls.get_image_evaluation_provider(),
             generation_provider=cls.get_image_generation_provider(),
-            materializer=ImageMaterializer(),
+            materializer=PreviewImageMaterializer(),
         )
