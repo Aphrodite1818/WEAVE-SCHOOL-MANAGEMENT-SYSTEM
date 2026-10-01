@@ -1,13 +1,27 @@
+import WeaveIcon from "../../components/brand/WeaveIcon";
+
 export default function AICreditCompletePage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <section aria-labelledby="ai-credit-completion-title" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10 dark:border-slate-800 dark:bg-slate-900">
-        <p className="mb-4 text-sm font-semibold">Weave</p>
-        <h1 id="ai-credit-completion-title" className="text-2xl font-semibold">Return to Weave CBT</h1>
-        <p className="mt-4 text-slate-600 dark:text-slate-300">
-          Check your AI credits in Weave CBT. Your balance may take a few moments to update.
+    <main className="flex min-h-screen min-h-[100svh] items-center justify-center bg-slate-50 px-5 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <section
+        aria-labelledby="ai-credit-completion-title"
+        className="w-full max-w-md rounded-3xl border border-slate-200 bg-white px-6 pb-7 pt-9 text-center shadow-sm sm:px-10 sm:pb-8 sm:pt-10 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <div className="mb-8 flex items-center justify-center gap-2">
+          <WeaveIcon className="h-12 w-12 shrink-0" decorative />
+          <span className="brand-wordmark text-2xl font-semibold tracking-tight">Weave</span>
+        </div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+          AI credits
         </p>
-        <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+        <h1 id="ai-credit-completion-title" className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
+          Return to Weave CBT
+        </h1>
+        <div className="mx-auto mt-4 max-w-xs text-base leading-7 text-slate-600 dark:text-slate-300">
+          <p>Check your AI credits in Weave CBT.</p>
+          <p className="mt-2">Your balance may take a few moments to update.</p>
+        </div>
+        <p className="mt-8 border-t border-slate-100 pt-5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
           You can close this tab now.
         </p>
       </section>

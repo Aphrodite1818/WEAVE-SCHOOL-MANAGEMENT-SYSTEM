@@ -9,7 +9,8 @@ test("AI completion is public and cannot trigger payment verification or settlem
   const page = await read("src/pages/public/AICreditCompletePage.jsx");
   assert.match(routes, /path="\/payments\/ai-credits\/complete" element={<AICreditCompletePage \/>}/);
   // Keep this informational page independent of authenticated payment code.
-  assert.doesNotMatch(page, /\bimport\b|\bfetch\s*\(|\buseEffect\b|localStorage|sessionStorage/);
+  assert.deepEqual([...page.matchAll(/from "([^"]+)"/g)].map((match) => match[1]), ["../../components/brand/WeaveIcon"]);
+  assert.doesNotMatch(page, /\bfetch\s*\(|\buseEffect\b|localStorage|sessionStorage/);
   assert.doesNotMatch(page, /SubscriptionVerify|verifyTermPayment|authorization|access_token/);
   assert.doesNotMatch(page, /Payment successful|Payment confirmed|Credits added/i);
   assert.match(page, /Return to Weave CBT/);
