@@ -53,6 +53,10 @@ class AIImageDirective(AIDraftBase):
     search_query: str = Field(
         min_length=1,
         max_length=MAX_IMAGE_SEARCH_QUERY_LENGTH,
+        description=(
+            "A concise web-image retrieval query containing 2 to 4 concrete, "
+            "noun-heavy keywords rather than a descriptive generation prompt."
+        ),
     )
 
     generation_prompt: str | None = Field(
