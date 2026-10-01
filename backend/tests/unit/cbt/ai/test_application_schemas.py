@@ -26,15 +26,20 @@ def _png_transport() -> dict[str, str]:
     }
 
 
-def test_generation_schema_accepts_exact_question_type_distribution() -> None:
+def test_generation_schema_accepts_natural_language_authoring_brief_and_distribution() -> None:
+    authoring_brief = (
+        "Generate questions on algebra and geometry. Focus more on linear equations, "
+        "use practical examples, and avoid advanced trigonometry."
+    )
     payload = AIGenerateQuestionsRequest(
         subject="Mathematics",
         academic_level="SS2",
-        topics=["Algebra", "Geometry"],
+        generation_prompt=authoring_brief,
         question_count=5,
         question_type_counts={"single_choice": 3, "multiple_choice": 2},
         visual_mode="auto",
     )
+    assert payload.generation_prompt == authoring_brief
     assert payload.question_count == 5
     assert payload.question_type_counts == {
         "single_choice": 3,
@@ -46,7 +51,7 @@ def test_generation_schema_accepts_fifty_questions() -> None:
     payload = AIGenerateQuestionsRequest(
         subject="Chemistry",
         academic_level="JSS1",
-        topics=["Atoms"],
+        generation_prompt="Generate questions about atoms and their basic structure.",
         question_count=50,
         question_type_counts={"single_choice": 50, "multiple_choice": 0},
         visual_mode="text_only",
@@ -59,7 +64,7 @@ def test_generation_schema_rejects_more_than_fifty_questions() -> None:
         AIGenerateQuestionsRequest(
             subject="Chemistry",
             academic_level="JSS1",
-            topics=["Atoms"],
+            generation_prompt="Generate questions about atoms.",
             question_count=51,
             question_type_counts={"single_choice": 51, "multiple_choice": 0},
             visual_mode="text_only",
@@ -71,19 +76,33 @@ def test_generation_schema_rejects_distribution_that_does_not_match_count() -> N
         AIGenerateQuestionsRequest(
             subject="Mathematics",
             academic_level="SS2",
-            topics=["Algebra"],
+            generation_prompt="Focus on algebra.",
             question_count=5,
             question_type_counts={"single_choice": 4},
         )
 
 
-def test_generation_schema_rejects_duplicate_topics_case_insensitively() -> None:
-    with pytest.raises(ValidationError, match="topics must be unique"):
+def test_generation_schema_rejects_blank_generation_prompt() -> None:
+    with pytest.raises(ValidationError):
         AIGenerateQuestionsRequest(
             subject="Mathematics",
             academic_level="SS2",
-            topics=["Algebra", " algebra "],
+            generation_prompt="   ",
             question_count=2,
+        )
+
+
+def test_generation_schema_rejects_legacy_topics_and_instructions_fields() -> None:
+    with pytest.raises(ValidationError):
+        AIGenerateQuestionsRequest.model_validate(
+            {
+                "subject": "Mathematics",
+                "academic_level": "SS2",
+                "generation_prompt": "Focus on algebra.",
+                "topics": ["Algebra"],
+                "instructions": "Use practical examples.",
+                "question_count": 2,
+            }
         )
 
 
@@ -106,7 +125,7 @@ def test_regeneration_schema_validates_existing_question_correct_answers() -> No
         AIRegenerateQuestionRequest(
             subject="Mathematics",
             academic_level="SS2",
-            topics=["Algebra"],
+            generation_prompt="Keep the question focused on algebra.",
             existing_question={
                 "question_type": "single_choice",
                 "prompt": "Which is correct?",
@@ -124,7 +143,7 @@ def test_regeneration_schema_accepts_question_and_option_images() -> None:
     payload = AIRegenerateQuestionRequest(
         subject="Biology",
         academic_level="SS1",
-        topics=["Cells"],
+        generation_prompt="Keep the question focused on cell structure.",
         existing_question={
             "question_type": "single_choice",
             "prompt": "Identify the structure shown.",
@@ -141,29 +160,12 @@ def test_regeneration_schema_accepts_question_and_option_images() -> None:
     assert payload.existing_question.options[0].image is not None
 
 
-def test_regeneration_schema_rejects_duplicate_topics() -> None:
-    with pytest.raises(ValidationError, match="topics must be unique"):
-        AIRegenerateQuestionRequest(
-            subject="Biology",
-            academic_level="SS1",
-            topics=["Cells", " cells "],
-            existing_question={
-                "question_type": "single_choice",
-                "prompt": "What is the basic unit of life?",
-                "options": [
-                    {"text": "Cell", "is_correct": True},
-                    {"text": "Tissue", "is_correct": False},
-                ],
-            },
-            instruction="Rewrite this question",
-        )
-
-
-def test_regeneration_schema_accepts_valid_text_only_question() -> None:
+def test_regeneration_schema_accepts_natural_language_content_scope() -> None:
+    brief = "Keep the question on basic cell biology and avoid tissue-level anatomy."
     payload = AIRegenerateQuestionRequest(
         subject="Biology",
         academic_level="SS1",
-        topics=["Cells"],
+        generation_prompt=brief,
         existing_question={
             "question_type": "single_choice",
             "prompt": "What is the basic unit of life?",
@@ -175,5 +177,6 @@ def test_regeneration_schema_accepts_valid_text_only_question() -> None:
         instruction="Make the wording less obvious",
         visual_mode="text_only",
     )
+    assert payload.generation_prompt == brief
     assert payload.existing_question.question_type == "single_choice"
     assert payload.visual_mode == "text_only"
