@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 from io import BytesIO
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import AsyncMock, call
 
 import pytest
@@ -12,6 +13,7 @@ from app.modules.cbt.ai.authoring.image_materializer import (
     ImageDownloadError,
     ImageMaterializer,
     InvalidImageError,
+    _build_wikimedia_raster_url,
 )
 from app.modules.cbt.ai.authoring.providers.base import ImageCandidate, ProviderGeneratedImage
 
@@ -107,6 +109,103 @@ async def test_candidate_falls_back_to_thumbnail_when_original_url_is_unusable()
         call("https://cdn.example.com/original.png"),
         call("https://cdn.example.com/thumbnail.png"),
     ]
+
+
+def test_wikimedia_svg_builds_raster_render_url() -> None:
+    raster_url = _build_wikimedia_raster_url(
+        "https://upload.wikimedia.org/wikipedia/commons/4/40/"
+        "Simple_diagram_of_animal_cell_%28en%29.svg",
+        width=1600,
+    )
+
+    assert raster_url is not None
+    parsed = urlparse(raster_url)
+    query = parse_qs(parsed.query)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "commons.wikimedia.org"
+    assert parsed.path == "/w/index.php"
+    assert query["title"] == [
+        "Special:Redirect/file/Simple_diagram_of_animal_cell_(en).svg"
+    ]
+    assert query["width"] == ["1600"]
+
+
+def test_non_wikimedia_or_non_svg_urls_do_not_build_raster_render_url() -> None:
+    assert (
+        _build_wikimedia_raster_url(
+            "https://upload.wikimedia.org/wikipedia/commons/a/a0/photo.jpg",
+            width=1600,
+        )
+        is None
+    )
+    assert (
+        _build_wikimedia_raster_url(
+            "https://example.com/diagram.svg",
+            width=1600,
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_wikimedia_svg_uses_raster_render_before_openverse_thumbnail() -> None:
+    raw = _encoded_image("PNG")
+    materializer = ImageMaterializer()
+    materializer._download = AsyncMock(return_value=raw)
+    candidate = ImageCandidate(
+        source="wikimedia",
+        source_url="https://commons.wikimedia.org/wiki/File:Simple_diagram.svg",
+        image_url=(
+            "https://upload.wikimedia.org/wikipedia/commons/4/40/"
+            "Simple_diagram_of_animal_cell_%28en%29.svg"
+        ),
+        thumbnail_url=(
+            "https://api.openverse.org/v1/images/"
+            "54719370-bce5-4f80-bcd9-8abbe3993bab/thumb/"
+        ),
+        mime_type="image/svg+xml",
+    )
+
+    image = await materializer.materialize_candidate(candidate)
+
+    assert image.content_type == "image/png"
+    assert materializer._download.await_count == 1
+    requested_url = materializer._download.await_args.args[0]
+    parsed = urlparse(requested_url)
+    query = parse_qs(parsed.query)
+    assert parsed.netloc == "commons.wikimedia.org"
+    assert query["title"] == [
+        "Special:Redirect/file/Simple_diagram_of_animal_cell_(en).svg"
+    ]
+    assert query["width"] == ["1600"]
+
+
+@pytest.mark.asyncio
+async def test_wikimedia_svg_falls_back_to_openverse_thumbnail_if_raster_fails() -> None:
+    raw = _encoded_image("PNG")
+    materializer = ImageMaterializer()
+    thumbnail_url = "https://api.openverse.org/v1/images/example/thumb/"
+    materializer._download = AsyncMock(
+        side_effect=[ImageDownloadError("raster unavailable"), raw]
+    )
+    candidate = ImageCandidate(
+        source="wikimedia",
+        source_url="https://commons.wikimedia.org/wiki/File:Example.svg",
+        image_url="https://upload.wikimedia.org/wikipedia/commons/a/ab/Example.svg",
+        thumbnail_url=thumbnail_url,
+        mime_type="image/svg+xml",
+    )
+
+    image = await materializer.materialize_candidate(candidate)
+
+    assert image.content_type == "image/png"
+    assert materializer._download.await_count == 2
+    assert materializer._download.await_args_list[1] == call(thumbnail_url)
+
+
+def test_image_download_user_agent_is_informative() -> None:
+    assert ImageMaterializer.DOWNLOAD_USER_AGENT.startswith("WEAVE-CBT-Bot/")
+    assert "weavecloudspace.com" in ImageMaterializer.DOWNLOAD_USER_AGENT
 
 
 @pytest.mark.asyncio
