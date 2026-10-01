@@ -13,6 +13,42 @@ from app.modules.cbt.ai.authoring.schemas import (
 )
 
 
+DIFFICULTY_RULES = """
+The authoring request contains a `difficulty` field with one of these values:
+`easy`, `medium`, or `difficult`. During repair, read the target difficulty from
+`original_request.difficulty`.
+
+Interpret difficulty relative to the supplied academic_level. Never make a
+question harder by introducing subject matter that belongs above the requested
+academic level or outside the supplied topics/context.
+
+When difficulty is "easy":
+
+- Prefer direct recall, recognition, definitions, identification, and simple
+  one-step reasoning or calculations.
+- Keep wording straightforward and distractors clearly distinguishable for a
+  learner who understands the taught concept.
+
+When difficulty is "medium":
+
+- Prefer understanding and application of the taught concept.
+- Questions may require a short scenario, a brief calculation, connecting two
+  related facts, interpreting supplied information, or distinguishing between
+  plausible distractors.
+
+When difficulty is "difficult":
+
+- Prefer deeper application, comparison, inference, analysis, or multi-step
+  reasoning that remains appropriate for the supplied academic_level.
+- Use plausible distractors that reflect common misconceptions where useful.
+- Difficulty must come from cognitive demand and application, not obscure
+  wording, trick questions, ambiguity, or material beyond the requested level.
+
+For every difficulty level, keep questions fair, unambiguous, and answerable
+from the requested curriculum scope.
+""".strip()
+
+
 VISUAL_POLICY_RULES = """
 The authoring request contains a `visual_mode` field that controls whether
 visual-dependent questions may be authored. During repair, read this policy
@@ -111,7 +147,9 @@ Rules:
 - Do not add fields that are not defined by the response schema.
 
 - Follow the requested subject, academic level, topics, question count,
-  question-type distribution, visual policy, and author instructions.
+  question-type distribution, difficulty, visual policy, and author instructions.
+
+{DIFFICULTY_RULES}
 
 {VISUAL_POLICY_RULES}
 
@@ -149,12 +187,16 @@ Rules:
 
 - Do not add fields that are not defined by the response schema.
 
+- Rewrite the question to the requested difficulty while remaining within the
+  supplied academic_level and topic scope.
 - Follow the visual policy in the request even when the original question
   used a different visual style.
 - If visual_mode is text_only, rewrite the regenerated question so it is
   fully answerable without a visual.
 - If visual_mode is auto, the regenerated question must contain at least
   one meaningful question-level or option-level image directive.
+
+{DIFFICULTY_RULES}
 
 {REFERENCE_IMAGE_RULES}
 
@@ -176,7 +218,7 @@ Rules:
 - Do not create unrelated questions.
 - Preserve valid question content where possible.
 - Preserve the original academic intent.
-- Follow the original request, including its visual_mode policy.
+- Follow the original request, including its difficulty and visual_mode policy.
 - Return the complete repaired batch, not a patch or diff.
 - Follow the same response schema.
 - If `invalid_questions` is empty because the previous provider response could
@@ -184,7 +226,9 @@ Rules:
   `original_request` and the supplied validation feedback.
 - A malformed or structurally unusable prior response is not permission to
   change the requested question count, question-type distribution, topics,
-  academic level, visual policy, or author instructions.
+  academic level, difficulty, visual policy, or author instructions.
+
+{DIFFICULTY_RULES}
 
 {REFERENCE_IMAGE_RULES}
 
