@@ -20,7 +20,7 @@ from app.shared.base_model import Base
 
 # Fresh installs are created directly from current ORM metadata, so their Alembic
 # stamp must be the current schema head rather than the historical root revision.
-BASELINE_REVISION = "20260930_cbt_ai_quota"
+BASELINE_REVISION = "20261001_cbt_ai_idempotency"
 _BOOTSTRAP_LOCK_KEY = 8_733_241_109_202_609_11
 _ALEMBIC_VERSION_TABLE = "alembic_version"
 
