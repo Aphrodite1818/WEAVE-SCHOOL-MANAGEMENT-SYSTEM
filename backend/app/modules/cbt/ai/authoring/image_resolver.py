@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping, Sequence
 
 from app.modules.cbt.ai.authoring.flow_logging import get_question_generation_logger
@@ -27,6 +28,35 @@ class ImageResolverError(RuntimeError):
     """Raised when providers return an invalid image-resolution decision."""
 
 
+_GENERIC_SEARCH_TERMS = frozenset(
+    {
+        "anatomy",
+        "biology",
+        "clear",
+        "diagram",
+        "diagrams",
+        "educational",
+        "figure",
+        "figures",
+        "image",
+        "images",
+        "illustration",
+        "illustrations",
+        "labelled",
+        "labeled",
+        "photo",
+        "photograph",
+        "picture",
+        "pictures",
+        "science",
+        "showing",
+        "study",
+        "system",
+        "visual",
+    }
+)
+
+
 def _provider_name(provider: object) -> str:
     """Return a stable provider label for diagnostic logs."""
 
@@ -47,6 +77,31 @@ def _exception_chain(exc: BaseException, *, limit: int = 5) -> list[str]:
         chain.append(f"{type(current).__name__}: {current}")
         current = current.__cause__ or current.__context__
     return chain
+
+
+def _build_broader_search_query(query: str) -> str | None:
+    """Build one deliberately broad retry query for strict AND-style search.
+
+    The primary query should already be concise because the authoring contract
+    asks the model for 2-4 retrieval keywords. This helper is only a safety net
+    for over-specific output or a zero-result first search. The evaluator remains
+    responsible for semantic precision, so the retry intentionally favors recall.
+    """
+
+    terms = re.findall(r"[a-z0-9]+(?:[-'][a-z0-9]+)?", query.casefold())
+    significant: list[str] = []
+    for term in terms:
+        if term in _GENERIC_SEARCH_TERMS or term in significant:
+            continue
+        significant.append(term)
+
+    if len(significant) <= 2:
+        return None
+
+    broader = f"{significant[0]} {significant[-1]}"
+    if broader.casefold() == query.strip().casefold():
+        return None
+    return broader
 
 
 class ImageResolver:
@@ -130,6 +185,7 @@ class ImageResolver:
             extra={
                 "image_search_provider": _provider_name(self.search_provider),
                 "image_search_query": normalized_search_query,
+                "image_search_attempt": 1,
             },
         )
         try:
@@ -144,6 +200,7 @@ class ImageResolver:
                 extra={
                     "image_search_provider": _provider_name(self.search_provider),
                     "image_search_query": normalized_search_query,
+                    "image_search_attempt": 1,
                     "image_error_type": type(exc).__name__,
                     "image_error_message": str(exc),
                 },
@@ -155,34 +212,92 @@ class ImageResolver:
             extra={
                 "image_search_provider": _provider_name(self.search_provider),
                 "image_search_query": normalized_search_query,
+                "image_search_attempt": 1,
                 "image_candidate_count": len(candidates),
             },
         )
+
+        active_search_query = normalized_search_query
+        search_retry_attempted = False
+
+        if not candidates:
+            broader_query = _build_broader_search_query(normalized_search_query)
+            if broader_query is not None:
+                search_retry_attempted = True
+                active_search_query = broader_query
+                logger.warning(
+                    "cbt.ai.image_resolution.search_retry.started",
+                    extra={
+                        "image_search_provider": _provider_name(self.search_provider),
+                        "image_original_search_query": normalized_search_query,
+                        "image_search_query": broader_query,
+                        "image_search_attempt": 2,
+                        "image_retry_reason": "initial_search_returned_no_candidates",
+                    },
+                )
+                try:
+                    candidates = await self.search_provider.search(
+                        query=broader_query,
+                        limit=self.search_limit,
+                        metadata=search_metadata,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "cbt.ai.image_resolution.search_retry.failed",
+                        extra={
+                            "image_search_provider": _provider_name(self.search_provider),
+                            "image_original_search_query": normalized_search_query,
+                            "image_search_query": broader_query,
+                            "image_search_attempt": 2,
+                            "image_error_type": type(exc).__name__,
+                            "image_error_message": str(exc),
+                        },
+                    )
+                    raise
+
+                logger.info(
+                    "cbt.ai.image_resolution.search_retry.completed",
+                    extra={
+                        "image_search_provider": _provider_name(self.search_provider),
+                        "image_original_search_query": normalized_search_query,
+                        "image_search_query": broader_query,
+                        "image_search_attempt": 2,
+                        "image_candidate_count": len(candidates),
+                    },
+                )
 
         materialized_candidates = await self._materialize_review_candidates(candidates)
 
         logger.info(
             "cbt.ai.image_resolution.materialization.completed",
             extra={
-                "image_search_query": normalized_search_query,
+                "image_search_query": active_search_query,
+                "image_original_search_query": normalized_search_query,
                 "image_candidate_count": len(candidates),
                 "image_materialized_candidate_count": len(materialized_candidates),
                 "image_failed_candidate_count": len(candidates) - len(materialized_candidates),
+                "image_search_retry_attempted": search_retry_attempted,
             },
         )
 
         if not materialized_candidates:
-            fallback_reason = (
-                "search_returned_no_candidates"
-                if not candidates
-                else "all_search_candidates_failed_materialization"
-            )
+            if not candidates:
+                fallback_reason = (
+                    "search_returned_no_candidates_after_broad_retry"
+                    if search_retry_attempted
+                    else "search_returned_no_candidates"
+                )
+            else:
+                fallback_reason = "all_search_candidates_failed_materialization"
+
             logger.warning(
                 "cbt.ai.image_resolution.fallback_to_generation",
                 extra={
                     "image_fallback_reason": fallback_reason,
-                    "image_search_query": normalized_search_query,
+                    "image_search_query": active_search_query,
+                    "image_original_search_query": normalized_search_query,
                     "image_candidate_count": len(candidates),
+                    "image_search_retry_attempted": search_retry_attempted,
                     "image_generation_provider": _provider_name(self.generation_provider),
                 },
             )
@@ -197,8 +312,10 @@ class ImageResolver:
             "cbt.ai.image_resolution.evaluation.started",
             extra={
                 "image_evaluation_provider": _provider_name(self.evaluation_provider),
-                "image_search_query": normalized_search_query,
+                "image_search_query": active_search_query,
+                "image_original_search_query": normalized_search_query,
                 "image_review_candidate_count": len(materialized_candidates),
+                "image_search_retry_attempted": search_retry_attempted,
             },
         )
         try:
@@ -211,7 +328,8 @@ class ImageResolver:
                 "cbt.ai.image_resolution.evaluation.failed",
                 extra={
                     "image_evaluation_provider": _provider_name(self.evaluation_provider),
-                    "image_search_query": normalized_search_query,
+                    "image_search_query": active_search_query,
+                    "image_original_search_query": normalized_search_query,
                     "image_review_candidate_count": len(materialized_candidates),
                     "image_error_type": type(exc).__name__,
                     "image_error_message": str(exc),
@@ -223,10 +341,12 @@ class ImageResolver:
             "cbt.ai.image_resolution.evaluation.completed",
             extra={
                 "image_evaluation_provider": _provider_name(self.evaluation_provider),
-                "image_search_query": normalized_search_query,
+                "image_search_query": active_search_query,
+                "image_original_search_query": normalized_search_query,
                 "image_evaluation_decision": evaluation.decision,
                 "image_selected_index": evaluation.selected_index,
                 "image_evaluation_reason": evaluation.reason,
+                "image_search_retry_attempted": search_retry_attempted,
             },
         )
 
@@ -235,7 +355,8 @@ class ImageResolver:
                 "cbt.ai.image_resolution.fallback_to_generation",
                 extra={
                     "image_fallback_reason": "evaluation_requested_generation",
-                    "image_search_query": normalized_search_query,
+                    "image_search_query": active_search_query,
+                    "image_original_search_query": normalized_search_query,
                     "image_evaluation_reason": evaluation.reason,
                     "image_generation_provider": _provider_name(self.generation_provider),
                 },
@@ -266,7 +387,9 @@ class ImageResolver:
         logger.info(
             "cbt.ai.image_resolution.search_candidate.selected",
             extra={
-                "image_search_query": normalized_search_query,
+                "image_search_query": active_search_query,
+                "image_original_search_query": normalized_search_query,
+                "image_search_retry_attempted": search_retry_attempted,
                 "image_selected_index": selected_index,
                 "image_candidate_source": selected_candidate.source,
                 "image_candidate_external_id": selected_candidate.external_id,
