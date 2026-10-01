@@ -13,6 +13,7 @@ from app.config.settings import settings
 
 logger = get_logger(__name__)
 _redis_client: Redis | None = None
+_runtime_redis_client: Redis | None = None
 
 
 def _build_redis_client() -> Redis | None:
@@ -29,9 +30,14 @@ def _build_redis_client() -> Redis | None:
 
 
 async def connect_redis() -> None:
-    """Verify Redis and retain a shared client when caching is enabled."""
+    """Verify Redis and retain the runtime client.
 
-    global _redis_client
+    The general application cache remains optional. Security-sensitive runtime
+    features such as CBT refresh recovery can use Redis independently of
+    ``CACHE_ENABLED`` without accidentally enabling normal application caching.
+    """
+
+    global _redis_client, _runtime_redis_client
 
     client = _build_redis_client()
     if client is None:
@@ -50,13 +56,15 @@ async def connect_redis() -> None:
             raise RuntimeError("Redis is unavailable during application startup.") from exc
         return
 
+    _runtime_redis_client = client
+
     if settings.CACHE_ENABLED:
         _redis_client = client
-        logger.info("Successfully connected to Redis cache.")
+        logger.info("Successfully connected to Redis cache and runtime services.")
         return
 
-    await client.aclose()
-    logger.info("Redis verified; shared application cache is disabled.")
+    _redis_client = None
+    logger.info("Redis connected for runtime services; shared application cache is disabled.")
 
 
 async def create_redis_health_client() -> Redis | None:
@@ -66,27 +74,36 @@ async def create_redis_health_client() -> Redis | None:
 
 
 def get_redis() -> Redis | None:
-    """Return the active shared Redis client, when cache is enabled."""
+    """Return the active shared Redis client when application caching is enabled."""
 
     return _redis_client
+
+
+def get_runtime_redis() -> Redis | None:
+    """Return Redis for runtime features that must not depend on CACHE_ENABLED."""
+
+    return _runtime_redis_client
 
 
 async def close_redis() -> None:
     """Close the shared Redis connection."""
 
-    global _redis_client
-    if _redis_client is None:
+    global _redis_client, _runtime_redis_client
+    client = _runtime_redis_client
+    _redis_client = None
+    _runtime_redis_client = None
+
+    if client is None:
         return
 
-    await _redis_client.aclose()
-    _redis_client = None
+    await client.aclose()
     logger.info("Redis connection closed.")
 
 
 async def redis_health_check() -> bool:
-    """Check Redis even when the optional shared cache client is disabled."""
+    """Check the runtime Redis connection or create a temporary health client."""
 
-    client = _redis_client
+    client = _runtime_redis_client
     temporary_client = False
     if client is None:
         client = await create_redis_health_client()
