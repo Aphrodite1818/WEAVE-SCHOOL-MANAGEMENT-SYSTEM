@@ -11,6 +11,6 @@ test("AI completion is public and cannot trigger payment verification or settlem
   // Keep this informational page independent of authenticated payment code.
   assert.doesNotMatch(page, /\bimport\b|\bfetch\s*\(|\buseEffect\b|localStorage|sessionStorage/);
   assert.doesNotMatch(page, /SubscriptionVerify|verifyTermPayment|authorization|access_token/);
-  assert.match(page, /does not confirm payment success/);
-  assert.match(page, /return to Weave CBT/);
+  assert.doesNotMatch(page, /Payment successful|Payment confirmed|Credits added/i);
+  assert.match(page, /Return to Weave CBT/);
 });
