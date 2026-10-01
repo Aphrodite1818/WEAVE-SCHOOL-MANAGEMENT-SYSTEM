@@ -28,14 +28,18 @@ def _binary(label: str) -> ProviderImageInput:
 class FakeSearchProvider:
     provider_name = "search"
 
-    def __init__(self, candidates):
+    def __init__(self, candidates, *, results_by_query=None):
         self.candidates = candidates
+        self.results_by_query = dict(results_by_query or {})
+        self.queries = []
 
     def is_configured(self):
         return True
 
     async def search(self, **kwargs):
-        return self.candidates
+        query = kwargs["query"]
+        self.queries.append(query)
+        return self.results_by_query.get(query, self.candidates)
 
 
 class FakeEvaluator:
@@ -128,6 +132,44 @@ async def test_unmaterializable_search_candidate_is_removed_before_evaluation() 
     assert result.candidate is second
     assert result.image.label == "usable"
     assert [image.label for image in evaluator.images] == ["usable"]
+    assert generator.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_zero_result_search_retries_once_with_broader_keywords() -> None:
+    candidate = ImageCandidate(
+        source="tree-rings",
+        source_url="https://example.com/tree-rings-source",
+        image_url="https://example.com/tree-rings.png",
+    )
+    original_query = "tree trunk cross section annual rings biology diagram"
+    broader_query = "tree rings"
+    search = FakeSearchProvider(
+        [],
+        results_by_query={
+            original_query: [],
+            broader_query: [candidate],
+        },
+    )
+    evaluator = FakeEvaluator()
+    generator = FakeGenerationProvider()
+    resolver = ImageResolver(
+        search_provider=search,
+        evaluation_provider=evaluator,
+        generation_provider=generator,
+        materializer=FakeMaterializer(),
+    )
+
+    result = await resolver.resolve(
+        requirement="A tree trunk cross-section showing annual rings",
+        search_query=original_query,
+    )
+
+    assert search.queries == [original_query, broader_query]
+    assert result.source == "search"
+    assert result.candidate is candidate
+    assert result.image.label == "tree-rings"
+    assert [image.label for image in evaluator.images] == ["tree-rings"]
     assert generator.calls == 0
 
 
