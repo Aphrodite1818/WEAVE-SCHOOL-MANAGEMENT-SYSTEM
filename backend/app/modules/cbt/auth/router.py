@@ -2,9 +2,12 @@
 #          cbt/auth/router.py            #
 # ====================================== #
 
+from uuid import UUID
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Header,
     Request,
 )
 
@@ -100,6 +103,7 @@ async def refresh_staff_authorization(
     payload: CBTActorRefreshRequest,
     db: DbSession,
     current_server: CurrentCBTServer,
+    idempotency_key: UUID = Header(..., alias="Idempotency-Key"),
 ) -> CBTActorTokenPair:
     """Rotate one CBT staff cloud authorization without extending its hard expiry."""
 
@@ -107,4 +111,5 @@ async def refresh_staff_authorization(
         db,
         current_server=current_server,
         refresh_token=payload.refresh_token,
+        idempotency_key=idempotency_key,
     )
