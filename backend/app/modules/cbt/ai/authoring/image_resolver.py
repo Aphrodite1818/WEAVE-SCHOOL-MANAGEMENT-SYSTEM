@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from app.config.logging import get_logger
+from app.modules.cbt.ai.authoring.flow_logging import get_question_generation_logger
 from app.modules.cbt.ai.authoring.image_materializer import (
     ImageMaterializationError,
     ImageMaterializer,
@@ -20,7 +20,7 @@ from app.modules.cbt.ai.authoring.providers.base import (
     ProviderImageInput,
 )
 
-logger = get_logger(__name__)
+logger = get_question_generation_logger("image_resolver")
 
 
 class ImageResolverError(RuntimeError):
