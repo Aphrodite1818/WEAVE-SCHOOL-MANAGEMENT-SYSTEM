@@ -178,8 +178,8 @@ class CBTAIIdempotentAuthoringService:
                     ),
                 )
             else:
-                prepared_request, reference_images = await CBTAIService._prepare_regeneration_request(
-                    request
+                prepared_request, reference_images = (
+                    await CBTAIService._prepare_regeneration_request(request)
                 )
                 authoring_result = await authoring_service.regenerate_question(
                     prepared_request,
@@ -242,7 +242,10 @@ class CBTAIIdempotentAuthoringService:
             )
             raise AppException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="AI generation could not be safely recorded for recovery. No credits were charged.",
+                detail=(
+                    "AI generation could not be safely recorded for recovery. "
+                    "No credits were charged."
+                ),
                 payload={"code": "AI_REPLAY_UNAVAILABLE", "retryable": True},
             ) from exc
         except Exception as exc:
@@ -362,6 +365,35 @@ class CBTAIIdempotentAuthoringService:
                 reservation_id=record.reservation_id,
             )
             await db.commit()
+
+            if reservation is not None and reservation.status == AICreditReservationStatus.PENDING:
+                payload = await cls._load_replay(record.id)
+                if payload is not None:
+                    replay_response = response_model.model_validate(payload)
+                    settlement = await AIQuotaService.settle_reservation(
+                        db,
+                        tenant_id=record.tenant_id,
+                        reservation_id=reservation.id,
+                        actual_credits=replay_response.charge.credits_charged,
+                    )
+                    payload["charge"] = {
+                        "reservation_id": str(reservation.id),
+                        "credits_charged": settlement.total_settled_credits,
+                        "credits_released": settlement.released_credits,
+                    }
+                    await cls._mark_succeeded(
+                        db,
+                        tenant_id=record.tenant_id,
+                        record_id=record.id,
+                        credits_charged=settlement.total_settled_credits,
+                        credits_released=settlement.released_credits,
+                    )
+                    try:
+                        await AIReplayCache.store(record.id, payload)
+                    except AIReplayStoreUnavailableError:
+                        pass
+                    return response_model.model_validate(payload)
+
             if reservation is not None and reservation.status == AICreditReservationStatus.SETTLED:
                 payload = await cls._load_replay(record.id)
                 if payload is None:
