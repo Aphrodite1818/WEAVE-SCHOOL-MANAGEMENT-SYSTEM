@@ -100,11 +100,21 @@ class AIQuestionDraftBase(AIDraftBase):
     prompt: str = Field(
         min_length=1,
         max_length=MAX_QUESTION_PROMPT_LENGTH,
+        description=(
+            "The actual candidate-facing question, stem, or task to answer. Keep generic "
+            "directions about how to answer out of this field and put them in instruction. "
+            "Do not prefix the prompt with presentation labels such as 'Question:'."
+        ),
     )
 
     instruction: str | None = Field(
         default=None,
         max_length=MAX_QUESTION_INSTRUCTION_LENGTH,
+        description=(
+            "Optional candidate-facing direction explaining how to answer the question, for "
+            "example 'Select TWO correct answers.' or 'Read the passage carefully.' Do not "
+            "repeat or embed the actual question in this field."
+        ),
     )
 
     image: AIImageDirective | None = None
