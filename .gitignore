@@ -63,10 +63,13 @@ Thumbs.db
 *.db-journal
 
 # Runtime logs
-*.log
-*.log.*
+*.[lL][oO][gG]
+*.[lL][oO][gG].*
+[lL][oO][gG]
+[lL][oO][gG][sS]
+*-[lL][oO][gG].*
+*_[lL][oO][gG].*
 *.pid
-backend/logs/
 
 # Certificates and private keys
 *.key
