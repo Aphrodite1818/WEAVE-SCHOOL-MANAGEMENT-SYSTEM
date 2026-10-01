@@ -16,7 +16,7 @@ from app.modules.cbt.ai.authoring.schemas import AIVisualMode
 AIQuestionType = Literal["single_choice", "multiple_choice"]
 
 MAX_PUBLIC_TOPIC_COUNT = 50
-MAX_PUBLIC_QUESTION_COUNT = 100
+MAX_PUBLIC_QUESTION_COUNT = 50
 MAX_PUBLIC_TEXT_LENGTH = 20_000
 MAX_PUBLIC_INSTRUCTION_LENGTH = 10_000
 MAX_PUBLIC_IMAGE_BYTES = 5 * 1024 * 1024
