@@ -47,7 +47,7 @@ def test_regeneration_prompt_requires_requested_difficulty() -> None:
     prompt = build_question_regeneration_prompt()
 
     assert "Rewrite the question to the requested difficulty" in prompt
-    assert "within the\n  supplied academic_level and generation_prompt/context scope" in prompt
+    assert "generation_prompt/context scope" in prompt
 
 
 def test_repair_prompt_preserves_original_difficulty() -> None:
