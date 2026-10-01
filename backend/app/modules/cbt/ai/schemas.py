@@ -15,9 +15,9 @@ from app.modules.cbt.ai.authoring.schemas import AIQuestionDifficulty, AIVisualM
 
 AIQuestionType = Literal["single_choice", "multiple_choice"]
 
-MAX_PUBLIC_TOPIC_COUNT = 50
 MAX_PUBLIC_QUESTION_COUNT = 50
 MAX_PUBLIC_TEXT_LENGTH = 20_000
+MAX_PUBLIC_GENERATION_PROMPT_LENGTH = 10_000
 MAX_PUBLIC_INSTRUCTION_LENGTH = 10_000
 MAX_PUBLIC_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_PUBLIC_IMAGE_BASE64_LENGTH = ((MAX_PUBLIC_IMAGE_BYTES + 2) // 3) * 4
@@ -78,27 +78,26 @@ class AIExistingImagePayload(AIImageTransportPayload):
 
 
 class AIGenerateQuestionsRequest(CBTAISchemaBase):
-    """Generate a validated batch of questions for one academic context."""
+    """Generate a validated batch of questions from a natural-language authoring brief."""
 
     subject: str = Field(min_length=1, max_length=200)
     academic_level: str = Field(min_length=1, max_length=200)
-    topics: list[str] = Field(min_length=1, max_length=MAX_PUBLIC_TOPIC_COUNT)
+    generation_prompt: str = Field(
+        min_length=1,
+        max_length=MAX_PUBLIC_GENERATION_PROMPT_LENGTH,
+        description=(
+            "Natural-language authoring brief describing the content to assess, including "
+            "topics, emphasis, exclusions, examples, or other generation guidance."
+        ),
+    )
     question_count: int = Field(ge=1, le=MAX_PUBLIC_QUESTION_COUNT)
     question_type_counts: dict[AIQuestionType, int] | None = None
     difficulty: AIQuestionDifficulty = "medium"
     visual_mode: AIVisualMode = "auto"
-    instructions: str | None = Field(default=None, max_length=MAX_PUBLIC_INSTRUCTION_LENGTH)
     context: str | None = Field(default=None, max_length=MAX_PUBLIC_TEXT_LENGTH)
 
     @model_validator(mode="after")
     def validate_generation_shape(self) -> Self:
-        normalized_topics = [topic.strip() for topic in self.topics]
-        if any(not topic for topic in normalized_topics):
-            raise ValueError("topics cannot contain blank values")
-        if len({topic.casefold() for topic in normalized_topics}) != len(normalized_topics):
-            raise ValueError("topics must be unique")
-        self.topics = normalized_topics
-
         if self.question_type_counts is not None:
             if any(type(count) is not int or count < 0 for count in self.question_type_counts.values()):
                 raise ValueError("question_type_counts values must be non-negative integers")
@@ -144,22 +143,23 @@ class AIRegenerateQuestionRequest(CBTAISchemaBase):
 
     subject: str = Field(min_length=1, max_length=200)
     academic_level: str = Field(min_length=1, max_length=200)
-    topics: list[str] = Field(min_length=1, max_length=MAX_PUBLIC_TOPIC_COUNT)
+    generation_prompt: str = Field(
+        min_length=1,
+        max_length=MAX_PUBLIC_GENERATION_PROMPT_LENGTH,
+        description=(
+            "Natural-language content brief defining the subject scope and authoring intent "
+            "that the regenerated question must remain within."
+        ),
+    )
     existing_question: AIExistingQuestion
-    instruction: str = Field(min_length=1, max_length=MAX_PUBLIC_INSTRUCTION_LENGTH)
+    instruction: str = Field(
+        min_length=1,
+        max_length=MAX_PUBLIC_INSTRUCTION_LENGTH,
+        description="Transformation instruction describing how to rewrite the existing question.",
+    )
     difficulty: AIQuestionDifficulty = "medium"
     visual_mode: AIVisualMode = "auto"
     context: str | None = Field(default=None, max_length=MAX_PUBLIC_TEXT_LENGTH)
-
-    @model_validator(mode="after")
-    def validate_topics(self) -> Self:
-        normalized_topics = [topic.strip() for topic in self.topics]
-        if any(not topic for topic in normalized_topics):
-            raise ValueError("topics cannot contain blank values")
-        if len({topic.casefold() for topic in normalized_topics}) != len(normalized_topics):
-            raise ValueError("topics must be unique")
-        self.topics = normalized_topics
-        return self
 
 
 class AIResolvedImageResponse(AIImageBinaryEnvelope):
