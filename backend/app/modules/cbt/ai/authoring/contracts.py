@@ -51,6 +51,24 @@ When visual_mode is "auto":
 An image directive describes a visual that will be resolved later by the
 application. Never invent image URLs, media IDs, asset IDs, database IDs,
 or file paths.
+
+For every image directive:
+
+- `requirement` is the detailed semantic description of the visual the
+  question actually needs. Be precise here.
+- `search_query` is NOT an image-generation prompt. It is a strict keyword
+  retrieval query for web-image search. Use only 2 to 4 concrete, noun-heavy
+  content keywords that are likely to exist in image titles, descriptions,
+  or tags. Keep it broad enough to retrieve candidates for later visual
+  evaluation.
+- Do not pad `search_query` with generic words such as "clear", "educational",
+  "study", "biology", "science", "image", "picture", "illustration", or
+  "diagram" unless that word is essential to the subject itself.
+- Prefer `search_query` values like "tree rings", "animal cell", or
+  "human skeleton" over descriptive phrases like "clear educational biology
+  diagram showing a tree trunk cross section with annual rings".
+- `generation_prompt` may be detailed and descriptive because it is used only
+  when web retrieval cannot supply a suitable image.
 """.strip()
 
 
