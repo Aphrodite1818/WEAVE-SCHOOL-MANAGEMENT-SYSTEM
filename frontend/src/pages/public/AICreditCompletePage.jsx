@@ -21,7 +21,7 @@ export default function AICreditCompletePage() {
           <p>Check your AI credits in Weave CBT.</p>
           <p className="mt-2">Your balance may take a few moments to update.</p>
         </div>
-        <p className="mt-8 border-t border-slate-100 pt-5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+        <p className="mt-8 border-t border-slate-100 pt-5 text-xs font-medium text-blue-600 dark:border-slate-800 dark:text-blue-400">
           You can close this tab and return to Weave CBT.
         </p>
       </section>
