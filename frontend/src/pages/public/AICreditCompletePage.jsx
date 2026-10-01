@@ -1,6 +1,15 @@
+import { useState } from "react";
 import WeaveIcon from "../../components/brand/WeaveIcon";
+import Button from "../../components/ui/Button";
 
 export default function AICreditCompletePage() {
+  const [closeAttempted, setCloseAttempted] = useState(false);
+
+  function handleCloseTab() {
+    setCloseAttempted(true);
+    window.close();
+  }
+
   return (
     <main className="flex min-h-screen min-h-[100svh] items-center justify-center bg-slate-50 px-5 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <section
@@ -21,9 +30,16 @@ export default function AICreditCompletePage() {
           <p>Check your AI credits in Weave CBT.</p>
           <p className="mt-2">Your balance may take a few moments to update.</p>
         </div>
-        <p className="mt-8 border-t border-slate-100 pt-5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-          You can close this tab now.
-        </p>
+        <div className="mt-8 border-t border-slate-100 pt-5 dark:border-slate-800">
+          <Button onClick={handleCloseTab} size="large" className="w-full">
+            Close tab
+          </Button>
+          <p role="status" className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+            {closeAttempted
+              ? "Still here? You can close this tab using your browser."
+              : "You can close this tab now."}
+          </p>
+        </div>
       </section>
     </main>
   );
