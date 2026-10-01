@@ -20,11 +20,14 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from app.modules.cbt.ai.authoring.flow_logging import get_question_generation_logger
 from app.modules.cbt.ai.authoring.providers.base import (
     ImageCandidate,
     ProviderGeneratedImage,
     ProviderImageInput,
 )
+
+logger = get_question_generation_logger("image_materializer")
 
 
 class ImageMaterializationError(RuntimeError):
@@ -37,6 +40,26 @@ class ImageDownloadError(ImageMaterializationError):
 
 class InvalidImageError(ImageMaterializationError):
     """Raised when supplied bytes are not a supported, safe image."""
+
+
+def _exception_chain(exc: BaseException, *, limit: int = 5) -> list[str]:
+    """Render a bounded exception chain for image URL diagnostics."""
+
+    chain: list[str] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen and len(chain) < limit:
+        seen.add(id(current))
+        chain.append(f"{type(current).__name__}: {current}")
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def _safe_url_diagnostics(url: str) -> tuple[str | None, str | None]:
+    """Return URL host/path without exposing query strings or fragments."""
+
+    parsed = urlparse(url)
+    return parsed.hostname, parsed.path or "/"
 
 
 class ImageMaterializer:
@@ -72,18 +95,66 @@ class ImageMaterializer:
         discarded after both distinct URLs fail materialization.
         """
 
-        urls: list[str] = []
-        for url in (candidate.image_url, candidate.thumbnail_url):
-            if url and url not in urls:
-                urls.append(url)
+        urls: list[tuple[str, str]] = []
+        for url_kind, url in (
+            ("original", candidate.image_url),
+            ("thumbnail", candidate.thumbnail_url),
+        ):
+            if url and all(existing_url != url for _, existing_url in urls):
+                urls.append((url_kind, url))
         if not urls:
             raise ImageDownloadError("Image candidate contains no downloadable URL.")
 
         last_error: ImageMaterializationError | None = None
-        for url in urls:
+        for url_kind, url in urls:
+            host, path = _safe_url_diagnostics(url)
+            logger.debug(
+                "cbt.ai.image_materialization.url.started",
+                extra={
+                    "image_candidate_source": candidate.source,
+                    "image_candidate_external_id": candidate.external_id,
+                    "image_candidate_title": candidate.title,
+                    "image_url_kind": url_kind,
+                    "image_url_host": host,
+                    "image_url_path": path,
+                },
+            )
+
             try:
                 image_bytes = await self._download(url)
-                return await asyncio.to_thread(
+            except ImageMaterializationError as exc:
+                last_error = exc
+                logger.debug(
+                    "cbt.ai.image_materialization.url.download_failed",
+                    extra={
+                        "image_candidate_source": candidate.source,
+                        "image_candidate_external_id": candidate.external_id,
+                        "image_candidate_title": candidate.title,
+                        "image_url_kind": url_kind,
+                        "image_url_host": host,
+                        "image_url_path": path,
+                        "image_error_type": type(exc).__name__,
+                        "image_error_message": str(exc),
+                        "image_error_chain": _exception_chain(exc),
+                    },
+                )
+                continue
+
+            logger.debug(
+                "cbt.ai.image_materialization.url.downloaded",
+                extra={
+                    "image_candidate_source": candidate.source,
+                    "image_candidate_external_id": candidate.external_id,
+                    "image_candidate_title": candidate.title,
+                    "image_url_kind": url_kind,
+                    "image_url_host": host,
+                    "image_url_path": path,
+                    "image_download_bytes": len(image_bytes),
+                },
+            )
+
+            try:
+                image = await asyncio.to_thread(
                     self._normalize_bytes,
                     image_bytes,
                     candidate.mime_type,
@@ -92,8 +163,42 @@ class ImageMaterializer:
                 )
             except ImageMaterializationError as exc:
                 last_error = exc
+                logger.debug(
+                    "cbt.ai.image_materialization.url.normalization_failed",
+                    extra={
+                        "image_candidate_source": candidate.source,
+                        "image_candidate_external_id": candidate.external_id,
+                        "image_candidate_title": candidate.title,
+                        "image_url_kind": url_kind,
+                        "image_url_host": host,
+                        "image_url_path": path,
+                        "image_error_type": type(exc).__name__,
+                        "image_error_message": str(exc),
+                        "image_error_chain": _exception_chain(exc),
+                    },
+                )
+                continue
 
-        raise ImageDownloadError("Image candidate contains no usable downloadable image.") from last_error
+            logger.debug(
+                "cbt.ai.image_materialization.url.succeeded",
+                extra={
+                    "image_candidate_source": candidate.source,
+                    "image_candidate_external_id": candidate.external_id,
+                    "image_candidate_title": candidate.title,
+                    "image_url_kind": url_kind,
+                    "image_url_host": host,
+                    "image_url_path": path,
+                    "image_content_type": image.content_type,
+                    "image_width": image.width,
+                    "image_height": image.height,
+                    "image_bytes": len(image.data),
+                },
+            )
+            return image
+
+        raise ImageDownloadError(
+            "Image candidate contains no usable downloadable image."
+        ) from last_error
 
     async def materialize_generated(
         self,
@@ -228,6 +333,10 @@ class ImageMaterializer:
                     raise
                 except httpx.TimeoutException as exc:
                     raise ImageDownloadError("Image download timed out.") from exc
+                except httpx.HTTPStatusError as exc:
+                    raise ImageDownloadError(
+                        f"Image server returned HTTP {exc.response.status_code}."
+                    ) from exc
                 except httpx.HTTPError as exc:
                     raise ImageDownloadError("Unable to download image.") from exc
 
