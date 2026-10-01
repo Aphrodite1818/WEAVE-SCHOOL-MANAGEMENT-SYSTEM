@@ -13,6 +13,54 @@ from app.modules.cbt.ai.authoring.schemas import (
 )
 
 
+AUTHORING_BRIEF_RULES = """
+The request contains a `generation_prompt` field. It is the teacher's natural-language
+authoring brief: it may describe topics, emphasis, exclusions, examples, desired
+coverage, or other content guidance.
+
+- Treat `generation_prompt` as authoring input, never as candidate-facing text.
+- Do not quote, copy, paraphrase, or expose the teacher's `generation_prompt` merely
+  because it appears in the request.
+- Use it to decide what knowledge and skills the generated questions should assess.
+- The structured request fields such as subject, academic_level, question_count,
+  question_type_counts, difficulty, and visual_mode remain authoritative constraints.
+- `context`, when supplied, is source/background material for authoring and is not
+  automatically candidate-facing text either.
+""".strip()
+
+
+QUESTION_TEXT_FIELD_RULES = """
+Use the generated question's `instruction` and `prompt` fields deliberately.
+
+`instruction` is optional candidate-facing guidance about HOW to answer. Examples:
+"Choose the correct verb to fill in the gap.", "Select TWO correct answers.",
+"Read the passage carefully and answer the question.", or "Study the diagram before
+answering." If no separate answer direction is useful, set `instruction` to null.
+
+`prompt` is the actual candidate-facing assessment content: the question, stem,
+sentence with a blank, or task that must be answered. Any source text that is itself
+necessary for the candidate to answer the item may appear in the prompt, but generic
+answer directions belong in `instruction`.
+
+Never concatenate a generic direction and the actual question into one `prompt` when
+they can be represented separately. Do not prefix `prompt` with presentation labels
+such as "Question:", "Prompt:", or "Q:". Do not repeat the same wording in both
+fields.
+
+Examples:
+
+- Prefer `instruction="Choose the correct verb to fill in the gap."` with
+  `prompt="Every student in the classroom __________ expected to submit an essay tomorrow."`
+  instead of putting both pieces into `prompt`.
+- Prefer `instruction=null` with `prompt="Which substance is acidic?"` for a direct
+  question that needs no separate direction.
+
+These rules concern generated question fields. They are distinct from the request's
+`generation_prompt`, which is a teacher authoring brief, and from regeneration's
+request-level `instruction`, which describes how to transform an existing question.
+""".strip()
+
+
 DIFFICULTY_RULES = """
 The authoring request contains a `difficulty` field with one of these values:
 `easy`, `medium`, or `difficult`. During repair, read the target difficulty from
@@ -20,7 +68,7 @@ The authoring request contains a `difficulty` field with one of these values:
 
 Interpret difficulty relative to the supplied academic_level. Never make a
 question harder by introducing subject matter that belongs above the requested
-academic level or outside the supplied topics/context.
+academic level or outside the supplied generation_prompt/context.
 
 When difficulty is "easy":
 
@@ -77,7 +125,7 @@ When visual_mode is "auto":
   visual directive.
 - Do not attach decorative or irrelevant images just to satisfy the rule.
   Instead, formulate visual questions where the image has real assessment
-  value for the supplied subject, topic, level, and author instructions.
+  value for the supplied subject, authoring brief, level, and context.
 - A question counts as visual-bearing when the question itself or at least
   one answer option contains an image directive.
 - Every question or answer option that depends on a visual must contain the
@@ -103,8 +151,9 @@ For every image directive:
 - Prefer `search_query` values like "tree rings", "animal cell", or
   "human skeleton" over descriptive phrases like "clear educational biology
   diagram showing a tree trunk cross section with annual rings".
-- `generation_prompt` may be detailed and descriptive because it is used only
-  when web retrieval cannot supply a suitable image.
+- `generation_prompt` inside an image directive may be detailed and descriptive
+  because it is used only when web retrieval cannot supply a suitable image.
+  This image-directive field is distinct from the request-level `generation_prompt`.
 """.strip()
 
 
@@ -121,8 +170,8 @@ and do not copy it into the response schema.
 QUESTION_GENERATION_RULES = f"""
 You are a CBT educational question-authoring engine.
 
-Generate questions strictly from the supplied academic context and
-author instructions.
+Generate questions strictly from the supplied academic context and teacher
+authoring brief.
 
 Rules:
 
@@ -146,8 +195,12 @@ Rules:
 
 - Do not add fields that are not defined by the response schema.
 
-- Follow the requested subject, academic level, topics, question count,
-  question-type distribution, difficulty, visual policy, and author instructions.
+- Follow the requested subject, academic level, generation_prompt, question count,
+  question-type distribution, difficulty, visual policy, and optional context.
+
+{AUTHORING_BRIEF_RULES}
+
+{QUESTION_TEXT_FIELD_RULES}
 
 {DIFFICULTY_RULES}
 
@@ -161,8 +214,8 @@ Do not return markdown, code fences, commentary, or additional text.
 QUESTION_REGENERATION_RULES = f"""
 You are a CBT educational question-editing engine.
 
-Regenerate exactly one existing CBT question according to the supplied
-academic context and transformation instruction.
+Regenerate exactly one existing CBT question according to the supplied academic
+context, `generation_prompt`, and request-level transformation `instruction`.
 
 Rules:
 
@@ -188,13 +241,19 @@ Rules:
 - Do not add fields that are not defined by the response schema.
 
 - Rewrite the question to the requested difficulty while remaining within the
-  supplied academic_level and topic scope.
+  supplied academic_level and generation_prompt/context scope.
+- Treat the request-level `instruction` as an editing directive. Do not blindly
+  copy it into the regenerated question's candidate-facing `instruction` field.
 - Follow the visual policy in the request even when the original question
   used a different visual style.
 - If visual_mode is text_only, rewrite the regenerated question so it is
   fully answerable without a visual.
 - If visual_mode is auto, the regenerated question must contain at least
   one meaningful question-level or option-level image directive.
+
+{AUTHORING_BRIEF_RULES}
+
+{QUESTION_TEXT_FIELD_RULES}
 
 {DIFFICULTY_RULES}
 
@@ -217,16 +276,23 @@ Rules:
 - Correct every reported validation issue.
 - Do not create unrelated questions.
 - Preserve valid question content where possible.
-- Preserve the original academic intent.
-- Follow the original request, including its difficulty and visual_mode policy.
+- Preserve the original academic intent and teacher authoring brief.
+- Follow `original_request.generation_prompt`, `original_request.difficulty`,
+  and `original_request.visual_mode`.
+- Keep candidate-facing `instruction` separate from the actual question `prompt`
+  according to the field rules below.
 - Return the complete repaired batch, not a patch or diff.
 - Follow the same response schema.
 - If `invalid_questions` is empty because the previous provider response could
   not be parsed as structured JSON, regenerate the complete batch once from
   `original_request` and the supplied validation feedback.
 - A malformed or structurally unusable prior response is not permission to
-  change the requested question count, question-type distribution, topics,
-  academic level, difficulty, visual policy, or author instructions.
+  change the requested question count, question-type distribution,
+  generation_prompt, academic level, difficulty, visual policy, or context.
+
+{AUTHORING_BRIEF_RULES}
+
+{QUESTION_TEXT_FIELD_RULES}
 
 {DIFFICULTY_RULES}
 
