@@ -15,12 +15,12 @@ import httpx
 from pydantic import SecretStr
 from redis.exceptions import RedisError
 
-from app.config.logging import get_logger
 from app.config.settings import settings
 from app.core.cache.redis import get_redis
+from app.modules.cbt.ai.authoring.flow_logging import get_question_generation_logger
 from app.modules.cbt.ai.authoring.providers.base import BaseImageSearchProvider, ImageCandidate
 
-logger = get_logger(__name__)
+logger = get_question_generation_logger("openverse")
 
 
 # EXCEPTIONS
