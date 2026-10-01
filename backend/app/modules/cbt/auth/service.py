@@ -5,16 +5,20 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ForbiddenException, UnauthorizedException
+from app.core.exceptions import AppException, ForbiddenException, UnauthorizedException
 from app.modules.auth.login_service import AuthService
 from app.modules.auth.models import AuthSessionActorType
 from app.modules.auth.schemas import LoginRequest
 from app.modules.cbt.auth.models import (
     CBTActorAuthorization,
     CBTActorRefreshToken,
+)
+from app.modules.cbt.auth.refresh_recovery import (
+    CBTActorRefreshRecoveryService,
+    CBTRefreshRecoveryUnavailable,
 )
 from app.modules.cbt.auth.repository import (
     CBTActorAuthorizationRepository,
@@ -50,10 +54,23 @@ from app.modules.tenant_admins.repository import TenantAdminRepository
 CBT_ACTOR_ACCESS_TOKEN_TTL = timedelta(minutes=60)
 CBT_ACTOR_AUTHORIZATION_TTL = timedelta(hours=12)
 INVALID_CBT_ACTOR_AUTHORIZATION = "Invalid or expired CBT actor authorization"
+CBT_REFRESH_RECOVERY_UNAVAILABLE = (
+    "CBT cloud authorization refresh is temporarily unavailable. "
+    "Retry with the same idempotency key."
+)
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _refresh_recovery_unavailable(exc: Exception) -> AppException:
+    return AppException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=CBT_REFRESH_RECOVERY_UNAVAILABLE,
+        headers={"Retry-After": "5"},
+        payload={"retryable": True, "same_idempotency_key_required": True},
+    )
 
 
 class CBTMachineAuthService:
@@ -165,9 +182,10 @@ class CBTActorAuthorizationService:
         *,
         current_server: AuthenticatedCBTServer,
         refresh_token: str,
+        idempotency_key: UUID,
         now: datetime | None = None,
     ) -> CBTActorTokenPair:
-        """Rotate a CBT actor access/refresh pair without extending its hard lifetime."""
+        """Rotate a CBT actor pair, safely recovering an ambiguous prior response."""
 
         try:
             refresh_hash = hash_actor_token(refresh_token)
@@ -212,6 +230,22 @@ class CBTActorAuthorizationService:
             raise UnauthorizedException(detail=INVALID_CBT_ACTOR_AUTHORIZATION)
 
         if stored_refresh.consumed_at is not None:
+            recovered = await CBTActorAuthorizationService._recover_consumed_refresh(
+                db,
+                current_server=current_server,
+                authorization=authorization,
+                stored_refresh=stored_refresh,
+                refresh_hash=refresh_hash,
+                idempotency_key=idempotency_key,
+                now=rotated_at,
+            )
+            if recovered is not None:
+                await CBTActorAuthorizationService._assert_actor_still_eligible(
+                    db,
+                    authorization=authorization,
+                )
+                return recovered
+
             stored_refresh.reuse_detected_at = rotated_at
             await CBTActorRefreshTokenRepository.save(db, stored_refresh)
 
@@ -241,6 +275,30 @@ class CBTActorAuthorizationService:
             rotated_at + CBT_ACTOR_ACCESS_TOKEN_TTL,
             authorization.absolute_expires_at,
         )
+        token_pair = CBTActorTokenPair(
+            access_token=raw_access_token,
+            access_token_expires_at=access_expires_at,
+            refresh_token=raw_refresh_token,
+            refresh_token_expires_at=authorization.absolute_expires_at,
+        )
+
+        recovery_ttl = max(
+            1,
+            int((authorization.absolute_expires_at - rotated_at).total_seconds()),
+        )
+        try:
+            # Store the recoverable response before consuming the one-time token.
+            # If Redis is unavailable, abort while the old token is still valid.
+            await CBTActorRefreshRecoveryService.store(
+                server_id=current_server.server_id,
+                authorization_id=authorization.id,
+                refresh_token_hash=refresh_hash,
+                idempotency_key=idempotency_key,
+                token_pair=token_pair,
+                ttl_seconds=recovery_ttl,
+            )
+        except CBTRefreshRecoveryUnavailable as exc:
+            raise _refresh_recovery_unavailable(exc) from exc
 
         replacement = CBTActorRefreshToken(
             authorization_id=authorization.id,
@@ -260,12 +318,73 @@ class CBTActorAuthorizationService:
         authorization.access_token_expires_at = access_expires_at
         await CBTActorAuthorizationRepository.save(db, authorization)
 
-        return CBTActorTokenPair(
-            access_token=raw_access_token,
-            access_token_expires_at=access_expires_at,
-            refresh_token=raw_refresh_token,
-            refresh_token_expires_at=authorization.absolute_expires_at,
+        # Commit before the token pair is returned. The Redis receipt was already
+        # written, so a lost HTTP response can now be replayed safely.
+        await db.commit()
+        return token_pair
+
+    @staticmethod
+    async def _recover_consumed_refresh(
+        db: AsyncSession,
+        *,
+        current_server: AuthenticatedCBTServer,
+        authorization: CBTActorAuthorization,
+        stored_refresh: CBTActorRefreshToken,
+        refresh_hash: str,
+        idempotency_key: UUID,
+        now: datetime,
+    ) -> CBTActorTokenPair | None:
+        """Recover the exact committed rotation associated with a consumed token."""
+
+        try:
+            recovered = await CBTActorRefreshRecoveryService.recover(
+                server_id=current_server.server_id,
+                authorization_id=authorization.id,
+                refresh_token_hash=refresh_hash,
+                idempotency_key=idempotency_key,
+            )
+        except CBTRefreshRecoveryUnavailable as exc:
+            # Redis unavailability is ambiguous: the receipt may exist but simply
+            # be unreadable right now. Never convert that into a reuse revocation.
+            raise _refresh_recovery_unavailable(exc) from exc
+
+        if recovered is None:
+            return None
+
+        try:
+            replacement_hash = hash_actor_token(recovered.refresh_token)
+            recovered_access_hash = hash_actor_token(recovered.access_token)
+        except ValueError:
+            await CBTActorRefreshRecoveryService.delete_best_effort(
+                authorization_id=authorization.id
+            )
+            return None
+
+        replacement = await CBTActorRefreshTokenRepository.get_by_hash(
+            db,
+            replacement_hash,
+            lock=True,
         )
+        committed = (
+            replacement is not None
+            and replacement.authorization_id == authorization.id
+            and stored_refresh.replaced_by_token_id == replacement.id
+            and replacement.revoked_at is None
+            and replacement.consumed_at is None
+            and replacement.expires_at > now
+            and authorization.access_token_hash == recovered_access_hash
+            and authorization.access_token_expires_at == recovered.access_token_expires_at
+            and authorization.absolute_expires_at == recovered.refresh_token_expires_at
+        )
+        if committed:
+            return recovered
+
+        # A Redis write can succeed before the SQL transaction later fails. Such
+        # a stale receipt must never become an authorization source of truth.
+        await CBTActorRefreshRecoveryService.delete_best_effort(
+            authorization_id=authorization.id
+        )
+        return None
 
     @staticmethod
     async def authenticate_actor(
@@ -366,7 +485,7 @@ class CBTActorAuthorizationService:
         reason: str,
         revoked_at: datetime | None = None,
     ) -> int:
-        """Revoke every active CBT cloud authorization owned by a tenant admin."""
+        """Revoke every active CBT cloud authorization owned by one tenant admin."""
 
         return await CBTActorAuthorizationRepository.revoke_for_tenant_admin(
             db,
