@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query
 
 from app.core.dependencies.db import DbSession
+from app.modules.cbt.ai.idempotency.service import CBTAIIdempotentAuthoringService
 from app.modules.cbt.ai.quota.models import AIQuotaPurchaseStatus, AIQuotaRequestStatus
 from app.modules.cbt.ai.quota.payment_schemas import (
     AIQuotaPurchaseCheckoutResponse,
@@ -51,8 +52,14 @@ async def generate_questions(
     payload: AIGenerateQuestionsRequest,
     db: DbSession,
     current_actor: CurrentCBTActor,
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=128),
 ) -> AIGenerateQuestionsResponse:
-    return await CBTAIService.generate_questions(db, actor=current_actor, request=payload)
+    return await CBTAIIdempotentAuthoringService.generate_questions(
+        db,
+        actor=current_actor,
+        request=payload,
+        idempotency_key=idempotency_key,
+    )
 
 
 @router.post("/questions/regenerate", response_model=AIRegenerateQuestionResponse)
@@ -60,8 +67,14 @@ async def regenerate_question(
     payload: AIRegenerateQuestionRequest,
     db: DbSession,
     current_actor: CurrentCBTActor,
+    idempotency_key: str = Header(..., alias="Idempotency-Key", min_length=1, max_length=128),
 ) -> AIRegenerateQuestionResponse:
-    return await CBTAIService.regenerate_question(db, actor=current_actor, request=payload)
+    return await CBTAIIdempotentAuthoringService.regenerate_question(
+        db,
+        actor=current_actor,
+        request=payload,
+        idempotency_key=idempotency_key,
+    )
 
 
 @router.get("/quota", response_model=AIQuotaStatusResponse)
