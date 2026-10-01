@@ -10,11 +10,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.cbt.ai.authoring.schemas import AIVisualMode
+from app.modules.cbt.ai.authoring.schemas import AIQuestionDifficulty, AIVisualMode
 
 
 AIQuestionType = Literal["single_choice", "multiple_choice"]
-AIQuestionDifficulty = Literal["easy", "medium", "difficult"]
 
 MAX_PUBLIC_TOPIC_COUNT = 50
 MAX_PUBLIC_QUESTION_COUNT = 50
