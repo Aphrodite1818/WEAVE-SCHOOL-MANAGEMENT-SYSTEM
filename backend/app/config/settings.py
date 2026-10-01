@@ -340,6 +340,7 @@ class Settings(BaseSettings):
     PAYSTACK_SECRET_KEY: str | None = None
     PAYSTACK_BASE_URL: str = "https://api.paystack.co"
     PAYSTACK_CALLBACK_URL: str | None = None
+    PAYSTACK_AI_CREDIT_CALLBACK_URL: str | None = None
     PAYSTACK_PLUS_TERM_AMOUNT_KOBO: int = Field(default=1500000, ge=0)
     PAYSTACK_PROFESSIONAL_TERM_AMOUNT_KOBO: int = Field(default=3500000, ge=0)
     PAYSTACK_ENTERPRISE_TERM_AMOUNT_KOBO: int = Field(default=8000000, ge=0)
@@ -386,7 +387,7 @@ class Settings(BaseSettings):
     CBT_AI_QUESTION_PROVIDER: Literal["gemini", "minimax"] = "gemini"
     CBT_AI_IMAGE_PROVIDER: Literal["gemini", "minimax"] = "gemini"
     CBT_AI_IMAGE_SEARCH_PROVIDER: Literal["openverse"] = "openverse"
-    CBT_AI_CREDIT_UNIT_PRICE_KOBO: int = Field(default=0, ge=0)
+    CBT_AI_CREDIT_UNIT_PRICE_KOBO: int = Field(default=2000, ge=0)
     CBT_AI_MINIMUM_PURCHASE_CREDITS: int = Field(default=1, gt=0)
 
     MINIMAX_API_KEY: SecretStr | None = None

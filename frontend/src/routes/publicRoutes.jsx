@@ -3,6 +3,7 @@
 import { lazy } from "react";
 import { Route } from "react-router-dom";
 
+const AICreditCompletePage = lazy(() => import("../pages/public/AICreditCompletePage"));
 const AccountRegisterPage = lazy(() => import("../pages/public/AccountRegisterPage"));
 const ForgotPasswordPage = lazy(() => import("../pages/public/ForgotPasswordPage"));
 const InvitationAcceptancePage = lazy(() => import("../pages/public/InvitationAcceptancePage"));
@@ -18,6 +19,7 @@ const RegisterPage = lazy(() => import("../pages/public/RegisterPage"));
 export const publicRoutes = (
   <>
     <Route path="/" element={<PwaAwareLandingPage />} />
+    <Route path="/payments/ai-credits/complete" element={<AICreditCompletePage />} />
     <Route path="/pricing" element={<PricingPage />} />
     <Route path="/join" element={<JoinPage />} />
     <Route path="/login" element={<LoginPage />} />

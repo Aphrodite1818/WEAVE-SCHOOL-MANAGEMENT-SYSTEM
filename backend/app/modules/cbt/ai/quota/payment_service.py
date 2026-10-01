@@ -55,10 +55,10 @@ class AIQuotaPaymentService:
         credits: int,
     ) -> AIQuotaPurchaseCheckoutResponse:
         quote = cls.quote_purchase(credits)
-        callback_url = str(settings.PAYSTACK_CALLBACK_URL or "").strip()
+        callback_url = str(settings.PAYSTACK_AI_CREDIT_CALLBACK_URL or "").strip()
         if settings.is_production_like and not callback_url:
             raise AIQuotaConflictError(
-                "Paystack callback URL is not configured for this environment."
+                "PAYSTACK_AI_CREDIT_CALLBACK_URL is not configured for this environment."
             )
 
         reference = f"ai-credit-{tenant_id.hex[:12]}-{uuid.uuid4().hex[:16]}"
