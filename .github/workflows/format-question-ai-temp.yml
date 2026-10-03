@@ -1,0 +1,58 @@
+name: Temporary format question-ai
+
+on:
+  push:
+    branches:
+      - question-ai
+    paths:
+      - ".github/workflows/format-question-ai-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout question-ai
+        uses: actions/checkout@v4
+        with:
+          ref: question-ai
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Format changed backend Python files
+        shell: bash
+        run: |
+          git fetch origin staging
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR origin/staging...HEAD -- ../backend \
+              | sed 's#^backend/##' \
+              | grep -E '\.py$' || true
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed Python files to format."
+            exit 0
+          fi
+          uv run ruff format "${files[@]}"
+      - name: Commit formatting
+        working-directory: .
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend
+          git commit -m "style: format question-ai backend changes"
+          git push origin HEAD:question-ai
