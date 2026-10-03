@@ -8,6 +8,7 @@ from app.modules.cbt.ai.authoring.providers.base import (
     ProviderGeneratedImage,
     ProviderImageEvaluationResult,
     ProviderImageGenerationResult,
+    ProviderImageInput,
 )
 
 
@@ -31,15 +32,15 @@ class FakeEvaluationProvider:
 
     def __init__(self, result: ProviderImageEvaluationResult) -> None:
         self.result = result
-        self.received_candidates: list[ImageCandidate] = []
+        self.received_images: list[ProviderImageInput] = []
         self.calls = 0
 
     def is_configured(self) -> bool:
         return True
 
-    async def evaluate_images(self, *, requirement: str, candidates):
+    async def evaluate_images(self, *, requirement: str, images):
         self.calls += 1
-        self.received_candidates = list(candidates)
+        self.received_images = list(images)
         return self.result
 
 
@@ -70,6 +71,31 @@ class FakeGenerationProvider:
         )
 
 
+class FakeMaterializer:
+    def __init__(self) -> None:
+        self.candidate_calls: list[ImageCandidate] = []
+        self.generated_calls = 0
+
+    @staticmethod
+    def _image(label: str) -> ProviderImageInput:
+        return ProviderImageInput(
+            data=f"image-{label}".encode(),
+            content_type="image/png",
+            sha256="0" * 64,
+            width=100,
+            height=80,
+            label=label,
+        )
+
+    async def materialize_candidate(self, candidate: ImageCandidate, *, label=None):
+        self.candidate_calls.append(candidate)
+        return self._image(label or candidate.source)
+
+    async def materialize_generated(self, image: ProviderGeneratedImage, *, label=None):
+        self.generated_calls += 1
+        return self._image(label or "generated")
+
+
 def _candidate(index: int) -> ImageCandidate:
     return ImageCandidate(
         source="openverse",
@@ -90,11 +116,14 @@ async def test_resolver_preserves_search_ranking_and_reviews_only_top_three() ->
         )
     )
     generator = FakeGenerationProvider()
+    materializer = FakeMaterializer()
 
     resolver = ImageResolver(
         search_provider=search,
         evaluation_provider=evaluator,
         generation_provider=generator,
+        materializer=materializer,
+        review_limit=3,
     )
 
     result = await resolver.resolve(
@@ -103,7 +132,8 @@ async def test_resolver_preserves_search_ranking_and_reviews_only_top_three() ->
     )
 
     assert search.last_limit == 10
-    assert evaluator.received_candidates == candidates[:3]
+    assert materializer.candidate_calls == candidates[:3]
+    assert len(evaluator.received_images) == 3
     assert result.source == "search"
     assert result.candidate is candidates[1]
     assert generator.calls == 0
@@ -119,11 +149,13 @@ async def test_resolver_generates_when_evaluator_rejects_search_results() -> Non
         )
     )
     generator = FakeGenerationProvider()
+    materializer = FakeMaterializer()
 
     resolver = ImageResolver(
         search_provider=search,
         evaluation_provider=evaluator,
         generation_provider=generator,
+        materializer=materializer,
     )
 
     result = await resolver.resolve(
@@ -136,6 +168,7 @@ async def test_resolver_generates_when_evaluator_rejects_search_results() -> Non
     assert result.generation is not None
     assert result.evaluation is evaluator.result
     assert generator.calls == 1
+    assert materializer.generated_calls == 1
 
 
 @pytest.mark.asyncio
@@ -143,11 +176,13 @@ async def test_resolver_generates_immediately_when_search_returns_nothing() -> N
     search = FakeSearchProvider([])
     evaluator = FakeEvaluationProvider(ProviderImageEvaluationResult(decision="generate_image"))
     generator = FakeGenerationProvider()
+    materializer = FakeMaterializer()
 
     resolver = ImageResolver(
         search_provider=search,
         evaluation_provider=evaluator,
         generation_provider=generator,
+        materializer=materializer,
     )
 
     result = await resolver.resolve(
@@ -159,6 +194,7 @@ async def test_resolver_generates_immediately_when_search_returns_nothing() -> N
     assert evaluator.calls == 0
     assert generator.calls == 1
     assert generator.last_prompt == "A photograph of a hibiscus flower"
+    assert materializer.generated_calls == 1
 
 
 @pytest.mark.asyncio
@@ -176,6 +212,7 @@ async def test_resolver_rejects_invalid_selected_candidate_index() -> None:
         search_provider=search,
         evaluation_provider=evaluator,
         generation_provider=generator,
+        materializer=FakeMaterializer(),
     )
 
     with pytest.raises(ImageResolverError):
