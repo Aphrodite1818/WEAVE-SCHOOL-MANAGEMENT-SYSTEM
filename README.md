@@ -1,4 +1,4 @@
-# Weave School Management SaaS
+# Weave CLOUD SPACE
 
 Weave is a multi-tenant school management SaaS for running core school operations across administrators, teachers, parents, students, and platform superadmins. The repository is a monorepo with a FastAPI backend and a React/Vite frontend.
 
