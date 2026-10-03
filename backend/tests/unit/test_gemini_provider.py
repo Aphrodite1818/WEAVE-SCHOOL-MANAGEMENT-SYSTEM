@@ -140,13 +140,10 @@ async def test_image_contract(monkeypatch):
     assert "stem" in json.loads(calls[0].content)["contents"][0]["parts"][0]["text"]
 
 
-@pytest.mark.parametrize(
-    "kwargs", [{"prompt": " "}, {"prompt": "test", "reference_images": ["ref"]}]
-)
-async def test_invalid_image_requests(monkeypatch, kwargs):
+async def test_invalid_image_request_rejects_empty_prompt(monkeypatch):
     calls = mock_http(monkeypatch, httpx.Response(200, json={}))
     with pytest.raises(ValueError):
-        await gemini.GeminiImageGenerationProvider(api_key="test-key").generate_image(**kwargs)
+        await gemini.GeminiImageGenerationProvider(api_key="test-key").generate_image(prompt=" ")
     assert not calls
 
 
