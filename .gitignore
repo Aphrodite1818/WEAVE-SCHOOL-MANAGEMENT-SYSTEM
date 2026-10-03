@@ -112,3 +112,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Local deployment trigger markers
+.vercel-deploy-trigger
+frontend/.vercel-deploy-trigger
+
+# Local agent and browser tooling state
+.codex/
+.agents/
+.playwright/
+test-results/
+playwright-report/

@@ -1,4 +1,8 @@
-"""initial production schema
+"""Complete fresh-database schema, consolidated for repository migration.
+
+Includes elective selection, CBT AI accounting, actor authorization,
+assessment examinability, and AI idempotency as of 2026-10-03.
+This baseline must only provision an empty database.
 
 Revision ID: 20260911_initial_schema
 Revises:
@@ -37,6 +41,7 @@ CBT_SYNC_ENTITY_VALUES = (
     "teacher",
     "teacher_assignment",
     "student_enrollment",
+    "student_elective_selection",
 )
 
 STUDENT_ENROLLMENT_OUTCOME_VALUES = (
@@ -754,6 +759,7 @@ def upgrade() -> None:
                 "teacher",
                 "teacher_assignment",
                 "student_enrollment",
+                "student_elective_selection",
                 name="cbt_sync_entity_type",
                 schema="public",
             ),
@@ -6793,8 +6799,1223 @@ def upgrade() -> None:
     )
 
 
+    # 20260927_add_elective_groups_and_selections
+    op.create_table(
+        "curriculum_elective_groups",
+        sa.Column("curriculum_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("minimum_choices", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("maximum_choices", sa.Integer(), nullable=False),
+        sa.Column("lifecycle", sa.String(length=16), server_default="ACTIVE", nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint("minimum_choices >= 0", name="ck_elective_group_min_nonnegative"),
+        sa.CheckConstraint("maximum_choices >= 1", name="ck_elective_group_max_positive"),
+        sa.CheckConstraint(
+            "minimum_choices <= maximum_choices", name="ck_elective_group_min_lte_max"
+        ),
+        sa.CheckConstraint(
+            "lifecycle IN ('ACTIVE', 'ARCHIVED')", name="ck_elective_group_lifecycle"
+        ),
+        sa.ForeignKeyConstraint(["curriculum_id"], ["curricula.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("tenant_id", "id", name="uq_curriculum_elective_groups_tenant_id"),
+        sa.UniqueConstraint(
+            "tenant_id", "curriculum_id", "name", name="uq_curriculum_elective_group_name"
+        ),
+    )
+    op.create_index(
+        "ix_curriculum_elective_groups_tenant_curriculum",
+        "curriculum_elective_groups",
+        ["tenant_id", "curriculum_id"],
+        unique=False,
+    )
+
+    # Compulsory subjects have no elective group; services validate elective rows.
+    op.add_column(
+        "curriculum_subjects",
+        sa.Column("elective_group_id", postgresql.UUID(as_uuid=True), nullable=True),
+    )
+    op.create_foreign_key(
+        "fk_curriculum_subjects_elective_group",
+        "curriculum_subjects",
+        "curriculum_elective_groups",
+        ["elective_group_id"],
+        ["id"],
+        ondelete="RESTRICT",
+    )
+    op.create_check_constraint(
+        "ck_compulsory_subject_has_no_elective_group",
+        "curriculum_subjects",
+        "is_elective OR elective_group_id IS NULL",
+    )
+    op.create_index(
+        "ix_curriculum_subjects_elective_group",
+        "curriculum_subjects",
+        ["tenant_id", "elective_group_id"],
+        unique=False,
+    )
+
+    op.create_table(
+        "student_elective_selections",
+        sa.Column("student_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("elective_group_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("curriculum_subject_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["student_id"], ["students.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["elective_group_id"], ["curriculum_elective_groups.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["curriculum_subject_id"], ["curriculum_subjects.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "student_id",
+            "curriculum_subject_id",
+            name="uq_student_elective_selection_subject",
+        ),
+    )
+    op.create_index(
+        "ix_student_elective_selections_student_group",
+        "student_elective_selections",
+        ["tenant_id", "student_id", "elective_group_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_student_elective_selections_curriculum_subject",
+        "student_elective_selections",
+        ["tenant_id", "curriculum_subject_id"],
+        unique=False,
+    )
+
+    # 20260930_cbt_ai_quota_add_cbt_ai_quota_accounting
+    """Upgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table(
+        "cbt_ai_tenant_credit_balances",
+        sa.Column("available_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "available_credits >= 0", name="ck_cbt_ai_tenant_credit_balances_nonnegative"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("tenant_id", name="uq_cbt_ai_tenant_credit_balances_tenant"),
+        schema="public",
+    )
+    op.create_table(
+        "cbt_ai_quota_accounts",
+        sa.Column(
+            "actor_type",
+            sa.Enum("teacher", "tenant_admin", name="ai_quota_actor_type", schema="public"),
+            nullable=False,
+        ),
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_admin_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                actor_type = 'teacher'\n                AND teacher_membership_id IS NOT NULL\n                AND tenant_admin_id IS NULL\n            )\n            OR\n            (\n                actor_type = 'tenant_admin'\n                AND tenant_admin_id IS NOT NULL\n                AND teacher_membership_id IS NULL\n            )\n            ",
+            name="ck_cbt_ai_quota_accounts_actor_consistency",
+        ),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"], ["public.teacher_memberships.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_admin_id"], ["public.tenant_admins.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_quota_accounts_tenant_actor_type",
+        "cbt_ai_quota_accounts",
+        ["tenant_id", "actor_type"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "uq_cbt_ai_quota_accounts_teacher",
+        "cbt_ai_quota_accounts",
+        ["teacher_membership_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("teacher_membership_id IS NOT NULL"),
+    )
+    op.create_index(
+        "uq_cbt_ai_quota_accounts_tenant_admin",
+        "cbt_ai_quota_accounts",
+        ["tenant_admin_id"],
+        unique=True,
+        schema="public",
+        postgresql_where=sa.text("tenant_admin_id IS NOT NULL"),
+    )
+    op.create_table(
+        "cbt_ai_quota_purchases",
+        sa.Column("initiated_by_admin_id", sa.UUID(), nullable=False),
+        sa.Column("credits", sa.Integer(), nullable=False),
+        sa.Column("amount_kobo", sa.Integer(), nullable=False),
+        sa.Column("reference", sa.String(length=255), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "success",
+                "failed",
+                "cancelled",
+                name="cbt_ai_quota_purchase_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("credited_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'success'\n                AND credited_at IS NOT NULL\n            )\n            OR\n            (\n                status <> 'success'\n                AND credited_at IS NULL\n            )\n            ",
+            name="ck_cbt_ai_quota_purchases_credit_status_consistency",
+        ),
+        sa.CheckConstraint("amount_kobo > 0", name="ck_cbt_ai_quota_purchases_positive_amount"),
+        sa.CheckConstraint("credits > 0", name="ck_cbt_ai_quota_purchases_positive_credits"),
+        sa.ForeignKeyConstraint(
+            ["initiated_by_admin_id"], ["public.tenant_admins.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("reference"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_quota_purchases_admin",
+        "cbt_ai_quota_purchases",
+        ["initiated_by_admin_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_quota_purchases_created",
+        "cbt_ai_quota_purchases",
+        ["tenant_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_quota_purchases_tenant_status",
+        "cbt_ai_quota_purchases",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "cbt_ai_credit_allocations",
+        sa.Column("recipient_quota_account_id", sa.UUID(), nullable=False),
+        sa.Column("allocated_by_admin_id", sa.UUID(), nullable=False),
+        sa.Column("credits", sa.Integer(), nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint("credits > 0", name="ck_cbt_ai_credit_allocations_positive_credits"),
+        sa.ForeignKeyConstraint(
+            ["allocated_by_admin_id"], ["public.tenant_admins.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["recipient_quota_account_id"], ["public.cbt_ai_quota_accounts.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_allocations_admin",
+        "cbt_ai_credit_allocations",
+        ["allocated_by_admin_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_allocations_recipient",
+        "cbt_ai_credit_allocations",
+        ["recipient_quota_account_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_allocations_tenant_created",
+        "cbt_ai_credit_allocations",
+        ["tenant_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "cbt_ai_extra_credit_balances",
+        sa.Column("quota_account_id", sa.UUID(), nullable=False),
+        sa.Column("available_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("reserved_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "available_credits >= 0", name="ck_cbt_ai_extra_credit_balances_available_nonnegative"
+        ),
+        sa.CheckConstraint(
+            "reserved_credits <= available_credits",
+            name="ck_cbt_ai_extra_credit_balances_reserved_capacity",
+        ),
+        sa.CheckConstraint(
+            "reserved_credits >= 0", name="ck_cbt_ai_extra_credit_balances_reserved_nonnegative"
+        ),
+        sa.ForeignKeyConstraint(
+            ["quota_account_id"], ["public.cbt_ai_quota_accounts.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("quota_account_id", name="uq_cbt_ai_extra_credit_balances_account"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_extra_credit_balances_tenant",
+        "cbt_ai_extra_credit_balances",
+        ["tenant_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "cbt_ai_weekly_quotas",
+        sa.Column("quota_account_id", sa.UUID(), nullable=False),
+        sa.Column("week_start", sa.Date(), nullable=False),
+        sa.Column("credit_limit", sa.Integer(), server_default="100", nullable=False),
+        sa.Column("used_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("reserved_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint("credit_limit >= 0", name="ck_cbt_ai_weekly_quotas_limit_nonnegative"),
+        sa.CheckConstraint(
+            "reserved_credits >= 0", name="ck_cbt_ai_weekly_quotas_reserved_nonnegative"
+        ),
+        sa.CheckConstraint(
+            "used_credits + reserved_credits <= credit_limit",
+            name="ck_cbt_ai_weekly_quotas_capacity",
+        ),
+        sa.CheckConstraint("used_credits >= 0", name="ck_cbt_ai_weekly_quotas_used_nonnegative"),
+        sa.ForeignKeyConstraint(
+            ["quota_account_id"], ["public.cbt_ai_quota_accounts.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "quota_account_id", "week_start", name="uq_cbt_ai_weekly_quotas_account_week"
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_weekly_quotas_tenant_week",
+        "cbt_ai_weekly_quotas",
+        ["tenant_id", "week_start"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "cbt_ai_credit_reservations",
+        sa.Column("quota_account_id", sa.UUID(), nullable=False),
+        sa.Column("weekly_quota_id", sa.UUID(), nullable=True),
+        sa.Column("reserved_free_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("reserved_extra_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("settled_free_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("settled_extra_credits", sa.Integer(), server_default="0", nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "settled",
+                "released",
+                "expired",
+                name="cbt_ai_credit_reservation_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("settled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("released_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'pending'\n                AND settled_at IS NULL\n                AND released_at IS NULL\n            )\n            OR\n            (\n                status = 'settled'\n                AND settled_at IS NOT NULL\n                AND released_at IS NULL\n            )\n            OR\n            (\n                status IN ('released', 'expired')\n                AND settled_at IS NULL\n                AND released_at IS NOT NULL\n            )\n            ",
+            name="ck_cbt_ai_credit_reservations_status_consistency",
+        ),
+        sa.CheckConstraint(
+            "reserved_extra_credits >= 0",
+            name="ck_cbt_ai_credit_reservations_reserved_extra_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "reserved_free_credits + reserved_extra_credits > 0",
+            name="ck_cbt_ai_credit_reservations_positive_total",
+        ),
+        sa.CheckConstraint(
+            "reserved_free_credits >= 0",
+            name="ck_cbt_ai_credit_reservations_reserved_free_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "settled_extra_credits <= reserved_extra_credits",
+            name="ck_cbt_ai_credit_reservations_settled_extra_capacity",
+        ),
+        sa.CheckConstraint(
+            "settled_extra_credits >= 0",
+            name="ck_cbt_ai_credit_reservations_settled_extra_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "settled_free_credits <= reserved_free_credits",
+            name="ck_cbt_ai_credit_reservations_settled_free_capacity",
+        ),
+        sa.CheckConstraint(
+            "settled_free_credits >= 0",
+            name="ck_cbt_ai_credit_reservations_settled_free_nonnegative",
+        ),
+        sa.ForeignKeyConstraint(
+            ["quota_account_id"], ["public.cbt_ai_quota_accounts.id"], ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["weekly_quota_id"], ["public.cbt_ai_weekly_quotas.id"], ondelete="SET NULL"
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_reservations_account_status",
+        "cbt_ai_credit_reservations",
+        ["quota_account_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_reservations_pending_expiry",
+        "cbt_ai_credit_reservations",
+        ["expires_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_reservations_tenant_status",
+        "cbt_ai_credit_reservations",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "cbt_ai_quota_requests",
+        sa.Column("requester_quota_account_id", sa.UUID(), nullable=False),
+        sa.Column("requested_credits", sa.Integer(), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "approved",
+                "rejected",
+                "cancelled",
+                name="cbt_ai_quota_request_status",
+                schema="public",
+            ),
+            server_default="pending",
+            nullable=False,
+        ),
+        sa.Column("reviewed_by_admin_id", sa.UUID(), nullable=True),
+        sa.Column("approved_credits", sa.Integer(), nullable=True),
+        sa.Column("allocation_id", sa.UUID(), nullable=True),
+        sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("admin_note", sa.Text(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                status = 'pending'\n                AND reviewed_by_admin_id IS NULL\n                AND approved_credits IS NULL\n                AND allocation_id IS NULL\n                AND reviewed_at IS NULL\n                AND cancelled_at IS NULL\n            )\n            OR\n            (\n                status = 'approved'\n                AND reviewed_by_admin_id IS NOT NULL\n                AND approved_credits IS NOT NULL\n                AND allocation_id IS NOT NULL\n                AND reviewed_at IS NOT NULL\n                AND cancelled_at IS NULL\n            )\n            OR\n            (\n                status = 'rejected'\n                AND reviewed_by_admin_id IS NOT NULL\n                AND approved_credits IS NULL\n                AND allocation_id IS NULL\n                AND reviewed_at IS NOT NULL\n                AND cancelled_at IS NULL\n            )\n            OR\n            (\n                status = 'cancelled'\n                AND reviewed_by_admin_id IS NULL\n                AND approved_credits IS NULL\n                AND allocation_id IS NULL\n                AND reviewed_at IS NULL\n                AND cancelled_at IS NOT NULL\n            )\n            ",
+            name="ck_cbt_ai_quota_requests_status_consistency",
+        ),
+        sa.CheckConstraint(
+            "approved_credits IS NULL OR approved_credits <= requested_credits",
+            name="ck_cbt_ai_quota_requests_approved_not_above_requested",
+        ),
+        sa.CheckConstraint(
+            "approved_credits IS NULL OR approved_credits > 0",
+            name="ck_cbt_ai_quota_requests_approved_positive",
+        ),
+        sa.CheckConstraint(
+            "requested_credits > 0", name="ck_cbt_ai_quota_requests_requested_positive"
+        ),
+        sa.ForeignKeyConstraint(
+            ["allocation_id"], ["public.cbt_ai_credit_allocations.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["requester_quota_account_id"], ["public.cbt_ai_quota_accounts.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["reviewed_by_admin_id"], ["public.tenant_admins.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_quota_requests_pending",
+        "cbt_ai_quota_requests",
+        ["tenant_id", "created_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.create_index(
+        "ix_cbt_ai_quota_requests_requester_status",
+        "cbt_ai_quota_requests",
+        ["requester_quota_account_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_quota_requests_tenant_status",
+        "cbt_ai_quota_requests",
+        ["tenant_id", "status"],
+        unique=False,
+        schema="public",
+    )
+    op.create_table(
+        "cbt_ai_credit_ledger",
+        sa.Column("quota_account_id", sa.UUID(), nullable=True),
+        sa.Column(
+            "bucket",
+            sa.Enum(
+                "weekly_free",
+                "top_up",
+                "tenant_reserve",
+                name="cbt_ai_credit_ledger_bucket",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column(
+            "event_type",
+            sa.Enum(
+                "purchase",
+                "allocation_out",
+                "allocation_in",
+                "consumption",
+                name="cbt_ai_credit_ledger_event_type",
+                schema="public",
+            ),
+            nullable=False,
+        ),
+        sa.Column("credit_delta", sa.Integer(), nullable=False),
+        sa.Column("reservation_id", sa.UUID(), nullable=True),
+        sa.Column("allocation_id", sa.UUID(), nullable=True),
+        sa.Column("purchase_id", sa.UUID(), nullable=True),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "\n            (\n                bucket = 'tenant_reserve'\n                AND quota_account_id IS NULL\n            )\n            OR\n            (\n                bucket IN ('weekly_free', 'top_up')\n                AND quota_account_id IS NOT NULL\n            )\n            ",
+            name="ck_cbt_ai_credit_ledger_bucket_owner",
+        ),
+        sa.CheckConstraint("credit_delta <> 0", name="ck_cbt_ai_credit_ledger_nonzero_delta"),
+        sa.ForeignKeyConstraint(
+            ["allocation_id"], ["public.cbt_ai_credit_allocations.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["purchase_id"], ["public.cbt_ai_quota_purchases.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["quota_account_id"], ["public.cbt_ai_quota_accounts.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["reservation_id"], ["public.cbt_ai_credit_reservations.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_ledger_account_created",
+        "cbt_ai_credit_ledger",
+        ["quota_account_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_ledger_allocation",
+        "cbt_ai_credit_ledger",
+        ["allocation_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_ledger_purchase",
+        "cbt_ai_credit_ledger",
+        ["purchase_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_ledger_reservation",
+        "cbt_ai_credit_ledger",
+        ["reservation_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_credit_ledger_tenant_created",
+        "cbt_ai_credit_ledger",
+        ["tenant_id", "created_at"],
+        unique=False,
+        schema="public",
+    )
+
+    # 20260930_cbt_actor_auth_add_cbt_actor_authorization
+    op.create_table(
+        "cbt_actor_authorizations",
+        sa.Column("role", sa.String(length=16), nullable=False),
+        sa.Column("teacher_account_id", sa.UUID(), nullable=True),
+        sa.Column("teacher_membership_id", sa.UUID(), nullable=True),
+        sa.Column("tenant_admin_id", sa.UUID(), nullable=True),
+        sa.Column("access_token_hash", sa.String(length=64), nullable=False),
+        sa.Column("access_token_expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("absolute_expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revocation_reason", sa.String(length=255), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            """
+            (
+                role = 'teacher'
+                AND teacher_account_id IS NOT NULL
+                AND teacher_membership_id IS NOT NULL
+                AND tenant_admin_id IS NULL
+            )
+            OR
+            (
+                role = 'admin'
+                AND teacher_account_id IS NULL
+                AND teacher_membership_id IS NULL
+                AND tenant_admin_id IS NOT NULL
+            )
+            """,
+            name="ck_cbt_actor_authorizations_actor_consistency",
+        ),
+        sa.CheckConstraint(
+            "access_token_expires_at <= absolute_expires_at",
+            name="ck_cbt_actor_authorizations_access_within_absolute_expiry",
+        ),
+        sa.CheckConstraint(
+            "revoked_at IS NULL OR revoked_at >= created_at",
+            name="ck_cbt_actor_authorizations_valid_revocation",
+        ),
+        sa.ForeignKeyConstraint(
+            ["teacher_account_id"],
+            ["public.teacher_accounts.id"],
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["teacher_membership_id"],
+            ["public.teacher_memberships.id"],
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_admin_id"],
+            ["public.tenant_admins.id"],
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id"],
+            ["public.tenants.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("access_token_hash"),
+        sa.UniqueConstraint("id"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_actor_authorizations_tenant_role",
+        "cbt_actor_authorizations",
+        ["tenant_id", "role"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_actor_authorizations_teacher_membership_revoked",
+        "cbt_actor_authorizations",
+        ["teacher_membership_id", "revoked_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("teacher_membership_id IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_cbt_actor_authorizations_teacher_account_revoked",
+        "cbt_actor_authorizations",
+        ["teacher_account_id", "revoked_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("teacher_account_id IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_cbt_actor_authorizations_admin_revoked",
+        "cbt_actor_authorizations",
+        ["tenant_admin_id", "revoked_at"],
+        unique=False,
+        schema="public",
+        postgresql_where=sa.text("tenant_admin_id IS NOT NULL"),
+    )
+    op.create_index(
+        "ix_cbt_actor_authorizations_absolute_expiry",
+        "cbt_actor_authorizations",
+        ["absolute_expires_at"],
+        unique=False,
+        schema="public",
+    )
+
+    op.create_table(
+        "cbt_actor_refresh_tokens",
+        sa.Column("authorization_id", sa.UUID(), nullable=False),
+        sa.Column("token_hash", sa.String(length=64), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("reuse_detected_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("replaced_by_token_id", sa.UUID(), nullable=True),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint(
+            "expires_at > created_at",
+            name="ck_cbt_actor_refresh_tokens_valid_expiry",
+        ),
+        sa.CheckConstraint(
+            "consumed_at IS NULL OR consumed_at >= created_at",
+            name="ck_cbt_actor_refresh_tokens_valid_consumed_at",
+        ),
+        sa.CheckConstraint(
+            "revoked_at IS NULL OR revoked_at >= created_at",
+            name="ck_cbt_actor_refresh_tokens_valid_revocation",
+        ),
+        sa.CheckConstraint(
+            "reuse_detected_at IS NULL OR reuse_detected_at >= created_at",
+            name="ck_cbt_actor_refresh_tokens_valid_reuse",
+        ),
+        sa.CheckConstraint(
+            "replaced_by_token_id IS NULL OR replaced_by_token_id <> id",
+            name="ck_cbt_actor_refresh_tokens_not_self_replaced",
+        ),
+        sa.ForeignKeyConstraint(
+            ["authorization_id"],
+            ["public.cbt_actor_authorizations.id"],
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["replaced_by_token_id"],
+            ["public.cbt_actor_refresh_tokens.id"],
+            ondelete="SET NULL",
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint("token_hash"),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_actor_refresh_tokens_authorization_id",
+        "cbt_actor_refresh_tokens",
+        ["authorization_id"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_actor_refresh_tokens_authorization_expiry",
+        "cbt_actor_refresh_tokens",
+        ["authorization_id", "expires_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_actor_refresh_tokens_authorization_consumed",
+        "cbt_actor_refresh_tokens",
+        ["authorization_id", "consumed_at"],
+        unique=False,
+        schema="public",
+    )
+
+    # 20260930_assessment_component_examinable
+    # Existing assessment components historically flowed to CBT, so defaulting
+    # to true preserves deployed behaviour. Schools opt manual components out.
+    op.add_column(
+        "assessment_components",
+        sa.Column(
+            "is_examinable",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("true"),
+        ),
+        schema="public",
+    )
+
+    # 20261001_cbt_ai_idempotency
+    op.create_table(
+        "cbt_ai_idempotency_records",
+        sa.Column("actor_type", sa.String(length=32), nullable=False),
+        sa.Column("actor_id", sa.UUID(), nullable=False),
+        sa.Column("operation", sa.String(length=32), nullable=False),
+        sa.Column("idempotency_key", sa.String(length=128), nullable=False),
+        sa.Column("request_hash", sa.String(length=64), nullable=False),
+        sa.Column(
+            "status",
+            sa.String(length=32),
+            server_default="in_progress",
+            nullable=False,
+        ),
+        sa.Column("reservation_id", sa.UUID(), nullable=True),
+        sa.Column("credits_charged", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("credits_released", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("failure_code", sa.String(length=64), nullable=True),
+        sa.Column("failure_detail", sa.Text(), nullable=True),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("replay_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("tenant_id", sa.UUID(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["reservation_id"],
+            ["public.cbt_ai_credit_reservations.id"],
+            ondelete="SET NULL",
+        ),
+        sa.ForeignKeyConstraint(["tenant_id"], ["public.tenants.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id"),
+        sa.UniqueConstraint(
+            "tenant_id",
+            "actor_type",
+            "actor_id",
+            "operation",
+            "idempotency_key",
+            name="uq_cbt_ai_idempotency_actor_operation_key",
+        ),
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_idempotency_tenant_status",
+        "cbt_ai_idempotency_records",
+        ["tenant_id", "status", "created_at"],
+        unique=False,
+        schema="public",
+    )
+    op.create_index(
+        "ix_cbt_ai_idempotency_reservation",
+        "cbt_ai_idempotency_records",
+        ["reservation_id"],
+        unique=False,
+        schema="public",
+    )
+
+
 def downgrade() -> None:
+    """Remove the fresh-install schema; this destroys all application data."""
+    # 20261001_cbt_ai_idempotency
+    op.drop_index(
+        "ix_cbt_ai_idempotency_reservation",
+        table_name="cbt_ai_idempotency_records",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_ai_idempotency_tenant_status",
+        table_name="cbt_ai_idempotency_records",
+        schema="public",
+    )
+    op.drop_table("cbt_ai_idempotency_records", schema="public")
+
+    # 20260930_assessment_component_examinable
+    op.drop_column(
+        "assessment_components",
+        "is_examinable",
+        schema="public",
+    )
+
+    # 20260930_cbt_actor_auth_add_cbt_actor_authorization
+    op.drop_index(
+        "ix_cbt_actor_refresh_tokens_authorization_consumed",
+        table_name="cbt_actor_refresh_tokens",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_actor_refresh_tokens_authorization_expiry",
+        table_name="cbt_actor_refresh_tokens",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_actor_refresh_tokens_authorization_id",
+        table_name="cbt_actor_refresh_tokens",
+        schema="public",
+    )
+    op.drop_table("cbt_actor_refresh_tokens", schema="public")
+
+    op.drop_index(
+        "ix_cbt_actor_authorizations_absolute_expiry",
+        table_name="cbt_actor_authorizations",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_actor_authorizations_admin_revoked",
+        table_name="cbt_actor_authorizations",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_actor_authorizations_teacher_account_revoked",
+        table_name="cbt_actor_authorizations",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_actor_authorizations_teacher_membership_revoked",
+        table_name="cbt_actor_authorizations",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_actor_authorizations_tenant_role",
+        table_name="cbt_actor_authorizations",
+        schema="public",
+    )
+    op.drop_table("cbt_actor_authorizations", schema="public")
+
+    # 20260930_cbt_ai_quota_add_cbt_ai_quota_accounting
     """Downgrade schema."""
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(
+        "ix_cbt_ai_credit_ledger_tenant_created", table_name="cbt_ai_credit_ledger", schema="public"
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_ledger_reservation", table_name="cbt_ai_credit_ledger", schema="public"
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_ledger_purchase", table_name="cbt_ai_credit_ledger", schema="public"
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_ledger_allocation", table_name="cbt_ai_credit_ledger", schema="public"
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_ledger_account_created",
+        table_name="cbt_ai_credit_ledger",
+        schema="public",
+    )
+    op.drop_table("cbt_ai_credit_ledger", schema="public")
+    op.drop_index(
+        "ix_cbt_ai_quota_requests_tenant_status",
+        table_name="cbt_ai_quota_requests",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_ai_quota_requests_requester_status",
+        table_name="cbt_ai_quota_requests",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_ai_quota_requests_pending",
+        table_name="cbt_ai_quota_requests",
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.drop_table("cbt_ai_quota_requests", schema="public")
+    op.drop_index(
+        "ix_cbt_ai_credit_reservations_tenant_status",
+        table_name="cbt_ai_credit_reservations",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_reservations_pending_expiry",
+        table_name="cbt_ai_credit_reservations",
+        schema="public",
+        postgresql_where=sa.text("status = 'pending'"),
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_reservations_account_status",
+        table_name="cbt_ai_credit_reservations",
+        schema="public",
+    )
+    op.drop_table("cbt_ai_credit_reservations", schema="public")
+    op.drop_index(
+        "ix_cbt_ai_weekly_quotas_tenant_week", table_name="cbt_ai_weekly_quotas", schema="public"
+    )
+    op.drop_table("cbt_ai_weekly_quotas", schema="public")
+    op.drop_index(
+        "ix_cbt_ai_extra_credit_balances_tenant",
+        table_name="cbt_ai_extra_credit_balances",
+        schema="public",
+    )
+    op.drop_table("cbt_ai_extra_credit_balances", schema="public")
+    op.drop_index(
+        "ix_cbt_ai_credit_allocations_tenant_created",
+        table_name="cbt_ai_credit_allocations",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_allocations_recipient",
+        table_name="cbt_ai_credit_allocations",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_ai_credit_allocations_admin",
+        table_name="cbt_ai_credit_allocations",
+        schema="public",
+    )
+    op.drop_table("cbt_ai_credit_allocations", schema="public")
+    op.drop_index(
+        "ix_cbt_ai_quota_purchases_tenant_status",
+        table_name="cbt_ai_quota_purchases",
+        schema="public",
+    )
+    op.drop_index(
+        "ix_cbt_ai_quota_purchases_created", table_name="cbt_ai_quota_purchases", schema="public"
+    )
+    op.drop_index(
+        "ix_cbt_ai_quota_purchases_admin", table_name="cbt_ai_quota_purchases", schema="public"
+    )
+    op.drop_table("cbt_ai_quota_purchases", schema="public")
+    op.drop_index(
+        "uq_cbt_ai_quota_accounts_tenant_admin",
+        table_name="cbt_ai_quota_accounts",
+        schema="public",
+        postgresql_where=sa.text("tenant_admin_id IS NOT NULL"),
+    )
+    op.drop_index(
+        "uq_cbt_ai_quota_accounts_teacher",
+        table_name="cbt_ai_quota_accounts",
+        schema="public",
+        postgresql_where=sa.text("teacher_membership_id IS NOT NULL"),
+    )
+    op.drop_index(
+        "ix_cbt_ai_quota_accounts_tenant_actor_type",
+        table_name="cbt_ai_quota_accounts",
+        schema="public",
+    )
+    op.drop_table("cbt_ai_quota_accounts", schema="public")
+    op.drop_table("cbt_ai_tenant_credit_balances", schema="public")
+
+    # PostgreSQL enum types survive table drops unless removed explicitly.
+    # Remove them so downgrade -> upgrade cycles are repeatable.
+    for enum_name in (
+        "cbt_ai_credit_ledger_event_type",
+        "cbt_ai_credit_ledger_bucket",
+        "cbt_ai_quota_request_status",
+        "cbt_ai_credit_reservation_status",
+        "cbt_ai_quota_purchase_status",
+        "ai_quota_actor_type",
+    ):
+        postgresql.ENUM(name=enum_name, schema="public").drop(
+            op.get_bind(),
+            checkfirst=True,
+        )
+
+    # 20260927_add_elective_groups_and_selections
+    op.drop_index(
+        "ix_student_elective_selections_curriculum_subject",
+        table_name="student_elective_selections",
+    )
+    op.drop_index(
+        "ix_student_elective_selections_student_group", table_name="student_elective_selections"
+    )
+    op.drop_table("student_elective_selections")
+    op.drop_index("ix_curriculum_subjects_elective_group", table_name="curriculum_subjects")
+    op.drop_constraint(
+        "ck_compulsory_subject_has_no_elective_group", "curriculum_subjects", type_="check"
+    )
+    op.drop_constraint(
+        "fk_curriculum_subjects_elective_group", "curriculum_subjects", type_="foreignkey"
+    )
+    op.drop_column("curriculum_subjects", "elective_group_id")
+    op.drop_index(
+        "ix_curriculum_elective_groups_tenant_curriculum", table_name="curriculum_elective_groups"
+    )
+    op.drop_table("curriculum_elective_groups")
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_index(
         "ix_report_card_subject_components_tenant_line_position",

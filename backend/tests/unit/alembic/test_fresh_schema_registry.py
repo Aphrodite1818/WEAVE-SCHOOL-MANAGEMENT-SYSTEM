@@ -1,8 +1,12 @@
 """Regression checks for the fresh Alembic schema baseline."""
 
+from io import StringIO
 from pathlib import Path
+import re
 
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from alembic.script import ScriptDirectory
 from sqlalchemy import CheckConstraint
 from sqlalchemy.orm import configure_mappers
@@ -77,6 +81,8 @@ def test_alembic_has_one_current_schema_head_and_one_root_baseline() -> None:
     assert script.get_heads() == [BASELINE_REVISION]
     head = script.get_revision(BASELINE_REVISION)
     assert head is not None
+    assert head.down_revision is None
+    assert len(list(script.walk_revisions())) == 1
 
     roots = [
         revision
@@ -153,3 +159,32 @@ def test_progression_run_count_constraints_match_v2_contract() -> None:
         "failed_students",
     ):
         assert column_name in count_total
+
+
+def test_frozen_baseline_emits_all_registered_tables_without_database_access() -> None:
+    backend_root = Path(__file__).resolve().parents[3]
+    script = ScriptDirectory.from_config(Config(str(backend_root / "alembic.ini")))
+    baseline = script.get_revision(BASELINE_REVISION)
+    output = StringIO()
+    context = MigrationContext.configure(
+        dialect_name="postgresql",
+        opts={"as_sql": True, "output_buffer": output, "literal_binds": True},
+    )
+    with Operations.context(context):
+        baseline.module.upgrade()
+    sql = output.getvalue()
+    created_tables = set(re.findall(r"CREATE TABLE (?:public\.)?(\w+)", sql))
+    expected_tables = {table.name for table in Base.metadata.tables.values()}
+    assert created_tables == expected_tables
+    assert "CREATE EXTENSION IF NOT EXISTS btree_gist" in sql
+    assert "CREATE TRIGGER trg_comment_templates_no_distinct_range_overlap" in sql
+    assert "'student_elective_selection'" in sql
+    assert "is_examinable BOOLEAN DEFAULT true NOT NULL" in sql
+    assert "uq_cbt_ai_idempotency" in sql
+
+    output.seek(0)
+    output.truncate()
+    with Operations.context(context):
+        baseline.module.downgrade()
+    dropped_tables = set(re.findall(r"DROP TABLE (?:public\.)?(\w+)", output.getvalue()))
+    assert dropped_tables == created_tables
