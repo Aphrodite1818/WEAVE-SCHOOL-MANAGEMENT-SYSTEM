@@ -66,9 +66,15 @@ def test_resolver_wiring(monkeypatch):
     monkeypatch.setattr(factory.settings, "CBT_AI_IMAGE_SEARCH_PROVIDER", "openverse")
     result = factory.CBTProviderFactory.get_image_resolver()
     assert isinstance(result, factory.ImageResolver)
-    assert isinstance(result.search_provider, factory.OpenverseImageSearchProvider)
-    assert isinstance(result.evaluation_provider, factory.GeminiImageEvaluationProvider)
+    assert isinstance(result.search_provider, factory.CombinedImageSearchProvider)
+    assert isinstance(
+        result.search_provider.providers[0],
+        factory.WikimediaCommonsImageSearchProvider,
+    )
+    assert isinstance(result.search_provider.providers[1], factory.OpenverseImageSearchProvider)
+    assert isinstance(result.evaluation_provider, factory.GeminiContactSheetImageEvaluationProvider)
     assert isinstance(result.generation_provider, factory.MiniMaxImageGenerationProvider)
+    assert isinstance(result.materializer, factory.PreviewImageMaterializer)
 
 
 def test_resolver_honors_subclass_overrides():
