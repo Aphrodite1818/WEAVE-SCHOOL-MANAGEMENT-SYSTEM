@@ -36,6 +36,7 @@ from app.modules.classes.models import (
     ClassRoom,
     Department,
 )
+import app.modules.student_academics.assessment_examinability  # noqa: F401
 from app.modules.student_academics.curriculum_models import (
     ClassTermDepartmentAssignment,
     Curriculum,
@@ -324,7 +325,7 @@ def build_bootstrap_sections(
                 is_active=row.is_active,
             )
             for row in component_rows
-            if row.is_active and row.assessment_scheme_id in visible_schemes
+            if row.is_active and row.is_examinable and row.assessment_scheme_id in visible_schemes
         ]
     )
 

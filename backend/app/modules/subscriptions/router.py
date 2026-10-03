@@ -26,7 +26,8 @@ from app.modules.subscriptions.payment_integrity import (
 )
 from app.modules.subscriptions.payment_integrity import process_paystack_webhook_secure
 from app.modules.subscriptions.payment_settlement import settle_verified_term_payment
-from app.modules.subscriptions.providers.paystack import PaystackClient
+from app.modules.payments.enums import PaymentPurpose
+from app.modules.payments.service import PaymentEngine
 from app.modules.subscriptions.repository import SubscriptionRepository
 from app.modules.subscriptions.schemas import (
     FreeTermActivationRequest,
@@ -141,11 +142,21 @@ async def verify_term_plan_checkout(
         raise NotFoundException("Payment transaction not found.")
     if transaction.tenant_id != current_admin.tenant_id:
         raise ForbiddenException("You do not have access to this term payment.")
-    provider_response = await PaystackClient().verify_transaction(reference=reference)
+    verified = await PaymentEngine.verify_transaction(
+        reference=reference,
+        expected_amount_kobo=transaction.amount_kobo,
+        expected_currency=transaction.currency,
+        expected_metadata={
+            "payment_purpose": PaymentPurpose.TERM_SUBSCRIPTION.value,
+            "tenant_id": str(transaction.tenant_id),
+            "academic_term_id": str(transaction.academic_term_id),
+            "plan_code": transaction.plan_code.value,
+        },
+    )
     entitlement = await settle_verified_term_payment(
         db,
         transaction,
-        provider_response,
+        verified.raw_payload,
     )
     if entitlement is None:
         raise ConflictException(

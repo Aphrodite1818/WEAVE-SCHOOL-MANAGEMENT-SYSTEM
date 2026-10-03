@@ -18,6 +18,8 @@ import app.models  # noqa: F401
 from app.config.logging import get_logger
 from app.shared.base_model import Base
 
+# Fresh installs are created directly from current ORM metadata, so their Alembic
+# stamp must match the consolidated Alembic head. Update it with future revisions.
 BASELINE_REVISION = "20260911_initial_schema"
 _BOOTSTRAP_LOCK_KEY = 8_733_241_109_202_609_11
 _ALEMBIC_VERSION_TABLE = "alembic_version"

@@ -163,6 +163,7 @@ export const navGroups = {
           icon: GraduationCap,
         },
         { label: "Assigned Subjects", to: "/teacher/subjects", icon: BookOpen },
+        { label: "Results", to: "/teacher/results", icon: ClipboardList },
         { label: "Calendar", to: "/teacher/calendar", icon: CalendarDays },
         {
           label: "Attendance",

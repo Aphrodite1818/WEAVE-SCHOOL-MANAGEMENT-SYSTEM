@@ -62,6 +62,7 @@ def _verified_payload(transaction: PaymentTransaction) -> dict:
         "data": {
             "id": 901122,
             "status": "success",
+            "reference": transaction.reference,
             "amount": transaction.amount_kobo,
             "currency": transaction.currency,
             "metadata": {

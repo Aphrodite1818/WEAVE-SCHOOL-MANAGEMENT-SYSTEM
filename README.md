@@ -1,4 +1,4 @@
-# Weave School Management SaaS
+# Weave CLOUD SPACE
 
 Weave is a multi-tenant school management SaaS for running core school operations across administrators, teachers, parents, students, and platform superadmins. The repository is a monorepo with a FastAPI backend and a React/Vite frontend.
 
@@ -166,7 +166,9 @@ Use `/health/ready` for deployment readiness and `/health/live` for process live
 
 ## PostgreSQL and Alembic
 
-`20260911_initial_schema` is the frozen initial production schema. It is the only baseline revision and has no predecessor. Once staging or production uses it, do not edit, replace, or squash it.
+`20260911_initial_schema` is the single frozen fresh-database baseline, consolidated on 2026-10-03 for migration to a new repository. It includes all schema changes through CBT AI idempotency and has no predecessor. The former incremental revision files have been removed.
+
+Use this history only with a new, empty PostgreSQL database. Existing databases stamped with a removed revision cannot upgrade using this history; retain their original migration history and handle their transition separately. Do not stamp or reset an existing database automatically. After the new repository starts using this baseline, keep it frozen and add revisions for future changes. A downgrade to `base` deletes application tables and data; rollback for an existing deployment requires its original code/history and a verified backup.
 
 On application startup, Weave acquires a PostgreSQL transaction advisory lock and inspects the `public` schema. An empty database is initialized from the complete SQLAlchemy model registry, required PostgreSQL extensions are created, and `alembic_version` is stamped to the baseline in the same transaction. Concurrent first starts therefore serialize safely.
 

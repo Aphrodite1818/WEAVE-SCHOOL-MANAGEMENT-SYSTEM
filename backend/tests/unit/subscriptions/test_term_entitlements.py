@@ -332,7 +332,7 @@ async def test_free_activation_is_draft_only_and_never_calls_paystack() -> None:
             new=AsyncMock(),
         ),
         patch(
-            "app.modules.subscriptions.term_entitlement_service.PaystackClient.initialize_transaction",
+            "app.modules.subscriptions.term_entitlement_service.PaymentEngine.initialize_checkout",
             new=AsyncMock(),
         ) as paystack,
     ):
@@ -390,14 +390,12 @@ async def test_checkout_initializes_paystack_with_delta_amount() -> None:
         ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
         patch(
-            "app.modules.subscriptions.term_entitlement_service.PaystackClient.initialize_transaction",
+            "app.modules.subscriptions.term_entitlement_service.PaymentEngine.initialize_checkout",
             new=AsyncMock(
-                return_value={
-                    "data": {
-                        "authorization_url": "https://paystack.test/checkout",
-                        "access_code": "access-code",
-                    }
-                }
+                return_value=SimpleNamespace(
+                    authorization_url="https://paystack.test/checkout",
+                    access_code="access-code",
+                )
             ),
         ) as initialize,
     ):
@@ -446,7 +444,7 @@ async def test_checkout_reuses_same_pending_paystack_session() -> None:
         ),
         patch.object(TermPlanEntitlementService, "amount_kobo", side_effect=_price),
         patch(
-            "app.modules.subscriptions.term_entitlement_service.PaystackClient.initialize_transaction",
+            "app.modules.subscriptions.term_entitlement_service.PaymentEngine.initialize_checkout",
             new=AsyncMock(),
         ) as initialize,
     ):

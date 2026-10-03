@@ -31,6 +31,15 @@ from app.modules.student_academics.curriculum_v2_schemas import (
 from app.modules.student_academics.curriculum_v2_service import AcademicCurriculumService
 from app.modules.student_academics.curriculum_bulk_service import add_curriculum_subjects
 from app.modules.student_academics.curriculum_copy_service import copy_curriculum
+from app.modules.student_academics.elective_schemas import (
+    ElectiveGroupCreate,
+    ElectiveGroupResponse,
+    ElectiveGroupUpdate,
+)
+from app.modules.student_academics.elective_service import (
+    ElectiveAwareCurriculumService,
+    ElectivePolicyService,
+)
 from app.modules.student_academics.specialization_workspace import specialization_workspace
 from app.modules.student_academics.setup_readiness import get_setup_readiness
 from app.modules.student_academics.service import StudentAcademicService
@@ -57,13 +66,98 @@ async def get_specialization_workspace(
     return await specialization_workspace(db, current_admin.tenant_id, academic_term_id)
 
 
+@router.get(
+    "/levels/{academic_level_id}/elective-groups",
+    response_model=list[ElectiveGroupResponse],
+)
+async def list_elective_groups(
+    academic_level_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await ElectivePolicyService.list_groups(
+        db,
+        tenant_id=current_admin.tenant_id,
+        academic_level_id=academic_level_id,
+    )
+
+
+@router.post(
+    "/levels/{academic_level_id}/elective-groups",
+    response_model=ElectiveGroupResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_elective_group(
+    academic_level_id: uuid.UUID,
+    payload: ElectiveGroupCreate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await ElectivePolicyService.create_group(
+        db,
+        tenant_id=current_admin.tenant_id,
+        academic_level_id=academic_level_id,
+        payload=payload,
+    )
+
+
+@router.patch(
+    "/elective-groups/{elective_group_id}",
+    response_model=ElectiveGroupResponse,
+)
+async def update_elective_group(
+    elective_group_id: uuid.UUID,
+    payload: ElectiveGroupUpdate,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await ElectivePolicyService.update_group(
+        db,
+        tenant_id=current_admin.tenant_id,
+        elective_group_id=elective_group_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/elective-groups/{elective_group_id}/archive",
+    response_model=ElectiveGroupResponse,
+)
+async def archive_elective_group(
+    elective_group_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await ElectivePolicyService.archive_group(
+        db,
+        tenant_id=current_admin.tenant_id,
+        elective_group_id=elective_group_id,
+    )
+
+
+@router.post(
+    "/elective-groups/{elective_group_id}/restore",
+    response_model=ElectiveGroupResponse,
+)
+async def restore_elective_group(
+    elective_group_id: uuid.UUID,
+    db: DbSession,
+    current_admin: CurrentTenantAdmin,
+):
+    return await ElectivePolicyService.restore_group(
+        db,
+        tenant_id=current_admin.tenant_id,
+        elective_group_id=elective_group_id,
+    )
+
+
 @router.get("/levels/{academic_level_id}/curriculum", response_model=CurriculumResponse)
 async def get_curriculum(
     academic_level_id: uuid.UUID,
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    return await AcademicCurriculumService.get_curriculum(
+    return await ElectiveAwareCurriculumService.get_curriculum(
         db, current_admin.tenant_id, academic_level_id
     )
 
@@ -79,7 +173,7 @@ async def add_curriculum_subject(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    return await AcademicCurriculumService.add_subject(
+    return await ElectiveAwareCurriculumService.add_subject(
         db, current_admin.tenant_id, academic_level_id, payload
     )
 
@@ -123,7 +217,7 @@ async def update_curriculum_subject(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    return await AcademicCurriculumService.update_subject(
+    return await ElectiveAwareCurriculumService.update_subject(
         db, current_admin.tenant_id, curriculum_subject_id, payload
     )
 
@@ -137,7 +231,7 @@ async def activate_curriculum_subject(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    return await AcademicCurriculumService.activate_subject(
+    return await ElectiveAwareCurriculumService.activate_subject(
         db, current_admin.tenant_id, curriculum_subject_id
     )
 
@@ -151,7 +245,7 @@ async def deactivate_curriculum_subject(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    return await AcademicCurriculumService.deactivate_subject(
+    return await ElectiveAwareCurriculumService.deactivate_subject(
         db, current_admin.tenant_id, curriculum_subject_id
     )
 
@@ -165,7 +259,7 @@ async def delete_curriculum_subject(
     db: DbSession,
     current_admin: CurrentTenantAdmin,
 ):
-    return await AcademicCurriculumService.hard_delete_subject(
+    return await ElectiveAwareCurriculumService.hard_delete_subject(
         db, current_admin.tenant_id, curriculum_subject_id
     )
 

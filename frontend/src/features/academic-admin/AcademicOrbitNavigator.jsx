@@ -40,7 +40,18 @@ const getBottomNavObstruction = (viewportHeight) => {
   if (!bottomNav) return 0;
 
   const rect = bottomNav.getBoundingClientRect();
-  return Math.max(0, viewportHeight - rect.top);
+  // The mobile bottom-nav remains mounted in installed desktop PWAs but is hidden
+  // by responsive CSS. A display:none element reports a zero-sized rect at y=0;
+  // treating that as an obstruction collapses the usable height and clamps Y drag.
+  if (
+    rect.width <= 0 ||
+    rect.height <= 0 ||
+    rect.bottom <= 0 ||
+    rect.top >= viewportHeight
+  ) {
+    return 0;
+  }
+  return Math.max(0, viewportHeight - Math.max(0, rect.top));
 };
 
 const getViewport = () => {

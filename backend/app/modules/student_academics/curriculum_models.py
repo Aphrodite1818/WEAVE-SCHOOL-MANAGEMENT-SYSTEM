@@ -9,12 +9,27 @@ and which specialization a class uses for that exact term.
 from __future__ import annotations
 
 import uuid
+from enum import Enum
 
-from sqlalchemy import Boolean, ForeignKey, ForeignKeyConstraint, Index, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.base_model import BaseModel
+
+
+class ElectiveGroupLifecycle(str, Enum):
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
 
 
 class Curriculum(BaseModel):
@@ -32,6 +47,41 @@ class Curriculum(BaseModel):
             "academic_level_id",
             name="uq_curricula_tenant_level",
         ),
+    )
+
+
+class CurriculumElectiveGroup(BaseModel):
+    """Persistent choice policy for elective subjects in one level curriculum."""
+
+    __tablename__ = "curriculum_elective_groups"
+
+    curriculum_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("curricula.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    minimum_choices: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    maximum_choices: Mapped[int] = mapped_column(Integer, nullable=False)
+    lifecycle: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=ElectiveGroupLifecycle.ACTIVE.value,
+        server_default=ElectiveGroupLifecycle.ACTIVE.value,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_curriculum_elective_groups_tenant_id"),
+        UniqueConstraint(
+            "tenant_id", "curriculum_id", "name", name="uq_curriculum_elective_group_name"
+        ),
+        CheckConstraint("minimum_choices >= 0", name="ck_elective_group_min_nonnegative"),
+        CheckConstraint("maximum_choices >= 1", name="ck_elective_group_max_positive"),
+        CheckConstraint("minimum_choices <= maximum_choices", name="ck_elective_group_min_lte_max"),
+        CheckConstraint("lifecycle IN ('ACTIVE', 'ARCHIVED')", name="ck_elective_group_lifecycle"),
+        Index("ix_curriculum_elective_groups_tenant_curriculum", "tenant_id", "curriculum_id"),
     )
 
 
@@ -54,6 +104,11 @@ class CurriculumSubject(BaseModel):
         default=False,
         server_default="false",
     )
+    elective_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_elective_groups.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -69,10 +124,59 @@ class CurriculumSubject(BaseModel):
             name="uq_curriculum_subject_tenant_curriculum_subject",
         ),
         UniqueConstraint("tenant_id", "id", name="uq_curriculum_subjects_tenant_id"),
+        CheckConstraint(
+            "is_elective OR elective_group_id IS NULL",
+            name="ck_compulsory_subject_has_no_elective_group",
+        ),
         Index(
             "ix_curriculum_subjects_tenant_curriculum",
             "tenant_id",
             "curriculum_id",
+        ),
+        Index("ix_curriculum_subjects_elective_group", "tenant_id", "elective_group_id"),
+    )
+
+
+class StudentElectiveSelection(BaseModel):
+    """The student's current authoritative elective subject selection.
+
+    Selections intentionally do not carry a term id: they persist across terms until
+    the student changes them. Result rows preserve historical academic evidence.
+    """
+
+    __tablename__ = "student_elective_selections"
+
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("students.id", ondelete="CASCADE"), nullable=False
+    )
+    elective_group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_elective_groups.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    curriculum_subject_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("curriculum_subjects.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "student_id",
+            "curriculum_subject_id",
+            name="uq_student_elective_selection_subject",
+        ),
+        Index(
+            "ix_student_elective_selections_student_group",
+            "tenant_id",
+            "student_id",
+            "elective_group_id",
+        ),
+        Index(
+            "ix_student_elective_selections_curriculum_subject",
+            "tenant_id",
+            "curriculum_subject_id",
         ),
     )
 

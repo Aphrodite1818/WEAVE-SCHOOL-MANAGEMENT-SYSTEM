@@ -32,3 +32,4 @@ class CBTSyncEntityType(str, PyEnum):
     TEACHER_ASSIGNMENT = "teacher_assignment"
 
     STUDENT_ENROLLMENT = "student_enrollment"
+    STUDENT_ELECTIVE_SELECTION = "student_elective_selection"

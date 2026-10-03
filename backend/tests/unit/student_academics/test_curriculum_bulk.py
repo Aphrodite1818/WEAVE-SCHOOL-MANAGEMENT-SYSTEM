@@ -14,12 +14,13 @@ SERVICE = "app.modules.student_academics.curriculum_bulk_service"
 
 
 def batch():
+    # Elective-group validation has dedicated contract tests. Keep this fixture
+    # compulsory so these tests isolate atomic bulk writes and department scopes.
     return CurriculumSubjectsBulkCreate(
         subjects=[
             {"subject_id": uuid4()},
             {
                 "subject_id": uuid4(),
-                "is_elective": True,
                 "academic_level_department_ids": [uuid4(), uuid4()],
             },
         ]
