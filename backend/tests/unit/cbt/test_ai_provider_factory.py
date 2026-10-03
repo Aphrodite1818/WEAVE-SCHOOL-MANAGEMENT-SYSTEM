@@ -1,0 +1,99 @@
+"""Factory selection and resolver wiring without external provider calls."""
+
+import pytest
+
+from app.modules.cbt.ai.authoring.providers import factory
+
+
+@pytest.fixture(autouse=True)
+def optional_credentials(monkeypatch):
+    for name in (
+        "GEMINI_API_KEY",
+        "MINIMAX_API_KEY",
+        "OPENVERSE_CLIENT_ID",
+        "OPENVERSE_CLIENT_SECRET",
+    ):
+        monkeypatch.setattr(factory.settings, name, None)
+
+
+@pytest.mark.parametrize("name", ["gemini", "minimax"])
+def test_question_and_evaluation_selection(monkeypatch, name):
+    monkeypatch.setattr(factory.settings, "CBT_AI_QUESTION_PROVIDER", name)
+    monkeypatch.setattr(
+        factory.settings, "CBT_AI_IMAGE_PROVIDER", "minimax" if name == "gemini" else "gemini"
+    )
+    question = factory.CBTProviderFactory.get_question_provider()
+    evaluation = factory.CBTProviderFactory.get_image_evaluation_provider()
+    assert isinstance(question, factory.BaseQuestionGenerationProvider)
+    assert isinstance(evaluation, factory.BaseImageEvaluationProvider)
+    assert question.provider_name == evaluation.provider_name == name
+    assert not question.is_configured()
+
+
+@pytest.mark.parametrize("name", ["gemini", "minimax"])
+def test_image_generation_selection(monkeypatch, name):
+    monkeypatch.setattr(factory.settings, "CBT_AI_IMAGE_PROVIDER", name)
+    result = factory.CBTProviderFactory.get_image_generation_provider()
+    assert isinstance(result, factory.BaseImageGenerationProvider)
+    assert result.provider_name == name
+
+
+def test_search_selection(monkeypatch):
+    monkeypatch.setattr(factory.settings, "CBT_AI_IMAGE_SEARCH_PROVIDER", "openverse")
+    result = factory.CBTProviderFactory.get_image_search_provider()
+    assert isinstance(result, factory.BaseImageSearchProvider)
+    assert result.is_configured()
+
+
+@pytest.mark.parametrize(
+    "setting,method",
+    [
+        ("CBT_AI_QUESTION_PROVIDER", "get_question_provider"),
+        ("CBT_AI_QUESTION_PROVIDER", "get_image_evaluation_provider"),
+        ("CBT_AI_IMAGE_PROVIDER", "get_image_generation_provider"),
+        ("CBT_AI_IMAGE_SEARCH_PROVIDER", "get_image_search_provider"),
+    ],
+)
+def test_unsupported_provider(monkeypatch, setting, method):
+    monkeypatch.setattr(factory.settings, setting, "unsupported")
+    with pytest.raises(factory.CBTProviderFactoryError, match="Unsupported CBT AI"):
+        getattr(factory.CBTProviderFactory, method)()
+
+
+def test_resolver_wiring(monkeypatch):
+    monkeypatch.setattr(factory.settings, "CBT_AI_QUESTION_PROVIDER", "gemini")
+    monkeypatch.setattr(factory.settings, "CBT_AI_IMAGE_PROVIDER", "minimax")
+    monkeypatch.setattr(factory.settings, "CBT_AI_IMAGE_SEARCH_PROVIDER", "openverse")
+    result = factory.CBTProviderFactory.get_image_resolver()
+    assert isinstance(result, factory.ImageResolver)
+    assert isinstance(result.search_provider, factory.CombinedImageSearchProvider)
+    assert isinstance(
+        result.search_provider.providers[0],
+        factory.WikimediaCommonsImageSearchProvider,
+    )
+    assert isinstance(result.search_provider.providers[1], factory.OpenverseImageSearchProvider)
+    assert isinstance(result.evaluation_provider, factory.GeminiContactSheetImageEvaluationProvider)
+    assert isinstance(result.generation_provider, factory.MiniMaxImageGenerationProvider)
+    assert isinstance(result.materializer, factory.PreviewImageMaterializer)
+
+
+def test_resolver_honors_subclass_overrides():
+    search, evaluation, generation = object(), object(), object()
+
+    class CustomFactory(factory.CBTProviderFactory):
+        @staticmethod
+        def get_image_search_provider():
+            return search
+
+        @staticmethod
+        def get_image_evaluation_provider():
+            return evaluation
+
+        @staticmethod
+        def get_image_generation_provider():
+            return generation
+
+    result = CustomFactory.get_image_resolver()
+    assert result.search_provider is search
+    assert result.evaluation_provider is evaluation
+    assert result.generation_provider is generation

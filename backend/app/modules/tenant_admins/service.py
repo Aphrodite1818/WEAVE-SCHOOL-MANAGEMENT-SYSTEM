@@ -15,6 +15,7 @@ from app.modules.auth_identity.models import ActorType, IdentifierType
 from app.modules.auth_identity.schemas import AuthIdentityCreate
 from app.modules.auth_identity.service import AuthIdentityService
 from app.modules.auth.account_email_guard import AccountEmailGuard
+from app.modules.cbt.auth.service import CBTActorAuthorizationService
 from app.modules.classes.models import ClassRoom
 from app.modules.parents.models import Parent, ParentInvitation, ParentInvitationStatus
 from app.modules.students.models import (
@@ -125,10 +126,20 @@ class TenantAdminService:
     ) -> TenantAdminResponse | None:
         """Update a tenant admin account"""
 
-        admin = await TenantAdminRepository.get_by_id(db=db, admin_id=admin_id)
+        admin = await TenantAdminRepository.get_by_id(
+            db=db,
+            admin_id=admin_id,
+            lock=True,
+        )
 
         if admin is None:
             raise NotFoundException("Tenant admin not found")
+
+        was_cbt_eligible = bool(
+            admin.is_active
+            and admin.is_verified
+            and admin.account_status == TenantAdminStatus.ACTIVE
+        )
 
         update_data = payload.model_dump(exclude_unset=True)
 
@@ -173,6 +184,19 @@ class TenantAdminService:
                 db=db,
                 actor_type=ActorType.TENANT_ADMIN,
                 actor_id=admin.id,
+            )
+
+        is_cbt_eligible = bool(
+            admin.is_active
+            and admin.is_verified
+            and admin.account_status == TenantAdminStatus.ACTIVE
+        )
+        if was_cbt_eligible and not is_cbt_eligible:
+            await CBTActorAuthorizationService.revoke_for_tenant_admin(
+                db,
+                tenant_id=admin.tenant_id,
+                tenant_admin_id=admin.id,
+                reason="tenant_admin_access_revoked",
             )
 
         if "last_login_at" in update_data and update_data["last_login_at"] is not None:

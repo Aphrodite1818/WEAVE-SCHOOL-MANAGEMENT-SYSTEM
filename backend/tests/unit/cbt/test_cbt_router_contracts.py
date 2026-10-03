@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi.routing import APIRoute
 
+from app.modules.cbt.auth.router import router as auth_router
 from app.modules.cbt.branding.router import router as branding_router
 from app.modules.cbt.results.router import (
     router as results_router,
@@ -22,6 +23,23 @@ def _route_keys(router) -> set[tuple[str, str]]:
 def test_machine_cbt_routes_expose_result_ingestion_and_branding_projection() -> None:
     assert ("POST", "/results") in _route_keys(results_router)
     assert ("GET", "/branding") in _route_keys(branding_router)
+
+
+def test_staff_refresh_requires_idempotency_header() -> None:
+    refresh_route = next(
+        route
+        for route in auth_router.routes
+        if isinstance(route, APIRoute)
+        and route.path == "/auth/staff/refresh"
+        and "POST" in route.methods
+    )
+
+    idempotency_header = next(
+        parameter
+        for parameter in refresh_route.dependant.header_params
+        if parameter.alias == "Idempotency-Key"
+    )
+    assert idempotency_header.field_info.is_required() is True
 
 
 def test_tenant_admin_audit_routes_are_read_only() -> None:

@@ -359,6 +359,8 @@ export const academicService = {
       `/teachers/academics/results${queryString(params)}`,
       requestOptions,
     ),
+  saveTeacherResult: (payload) =>
+    api.post("/teachers/academics/results", payload),
 
   listMyResults: (requestOptions) =>
     api.get("/students/academics/results", requestOptions),

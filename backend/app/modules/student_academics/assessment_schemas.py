@@ -6,6 +6,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.modules.student_academics.models import AssessmentSchemeStatus
 
+# Ensure direct imports of this schema module see the same mapped column as the
+# application model registry and Alembic metadata.
+import app.modules.student_academics.assessment_examinability  # noqa: E402,F401
+
 
 _PATCH_NULL_ERROR = "cannot be null; omit the field to leave the current value unchanged"
 
@@ -23,6 +27,7 @@ class AssessmentComponentCreate(AssessmentInput):
     code: str | None = Field(default=None, max_length=30)
     maximum_score: Decimal = Field(gt=0, le=100, max_digits=5, decimal_places=2)
     position: int = Field(ge=0)
+    is_examinable: bool = True
 
 
 class AssessmentComponentUpdate(AssessmentInput):
@@ -31,8 +36,9 @@ class AssessmentComponentUpdate(AssessmentInput):
     maximum_score: Decimal | None = Field(
         default=None, gt=0, le=100, max_digits=5, decimal_places=2
     )
+    is_examinable: bool | None = None
 
-    @field_validator("name", "maximum_score", mode="before")
+    @field_validator("name", "maximum_score", "is_examinable", mode="before")
     @classmethod
     def reject_null_non_clearable_fields(cls, value, info):
         if value is None:
@@ -54,6 +60,7 @@ class AssessmentComponentResponse(AssessmentOutput):
     maximum_score: Decimal
     position: int
     is_active: bool
+    is_examinable: bool = True
 
 
 class AssessmentSchemeCreate(AssessmentInput):

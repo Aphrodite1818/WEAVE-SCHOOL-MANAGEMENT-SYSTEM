@@ -33,6 +33,7 @@ from app.modules.attendance.router import (
 from app.modules.auth.router import router as auth_router
 from app.modules.bulk_imports.router import router as bulk_import_router
 from app.modules.cbt.academics.router import router as cbt_academics_router
+from app.modules.cbt.ai.router import router as cbt_ai_router
 from app.modules.cbt.auth.router import router as cbt_auth_router
 from app.modules.cbt.branding.router import router as cbt_branding_router
 from app.modules.cbt.pairing.router import router as cbt_pairing_router
@@ -63,6 +64,7 @@ from app.modules.media.router import router as media_router
 from app.modules.metrics.events import register_metrics_cache_invalidation_events
 from app.modules.metrics.router import router as metrics_router
 from app.modules.parents.router import router as parent_router
+from app.modules.payments.router import router as payments_router
 from app.modules.realtime.broker import realtime_broker
 from app.modules.realtime.router import router as realtime_router
 from app.modules.report_cards.bulk_router import router as bulk_report_card_router
@@ -293,6 +295,7 @@ def create_app() -> FastAPI:
     app.include_router(parent_attendance_router, prefix=API_V1_PREFIX)
     app.include_router(cbt_pairing_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_auth_router, prefix=f"{API_V1_PREFIX}/cbt")
+    app.include_router(cbt_ai_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_academics_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_branding_router, prefix=f"{API_V1_PREFIX}/cbt")
     app.include_router(cbt_results_router, prefix=f"{API_V1_PREFIX}/cbt")
@@ -352,6 +355,7 @@ def create_app() -> FastAPI:
     app.include_router(student_report_card_router, prefix=API_V1_PREFIX)
     app.include_router(parent_report_card_router, prefix=API_V1_PREFIX)
     app.include_router(tenant_search_router, prefix=API_V1_PREFIX)
+    app.include_router(payments_router, prefix=API_V1_PREFIX)
     app.include_router(subscriptions_router, prefix=API_V1_PREFIX)
     app.include_router(user_guides_router, prefix=API_V1_PREFIX)
 

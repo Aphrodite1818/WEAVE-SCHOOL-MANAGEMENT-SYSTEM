@@ -11,7 +11,7 @@ from app.core.cache.base import build_cache_key
 from app.core.cache.manager import CacheManager
 from app.modules.subscriptions.constants import (
     DEFAULT_CURRENCY,
-    PAYSTACK_AMOUNT_SETTING_FIELDS,
+    TERM_AMOUNT_SETTING_FIELDS,
 )
 from app.modules.subscriptions.plans import get_plan_entitlements
 from app.modules.subscriptions.subscription_enums import BillingInterval
@@ -61,7 +61,7 @@ class PublicSubscriptionCatalogueService:
     def _amount_kobo(plan: SubscriptionPlan) -> int:
         if plan == SubscriptionPlan.FREE:
             return 0
-        field_name = PAYSTACK_AMOUNT_SETTING_FIELDS[plan][BillingInterval.TERM]
+        field_name = TERM_AMOUNT_SETTING_FIELDS[plan][BillingInterval.TERM]
         value = getattr(settings, field_name, None)
         return int(value or 0)
 

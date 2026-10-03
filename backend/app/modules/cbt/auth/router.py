@@ -2,9 +2,12 @@
 #          cbt/auth/router.py            #
 # ====================================== #
 
+from uuid import UUID
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Header,
     Request,
 )
 
@@ -13,10 +16,15 @@ from app.core.exceptions import UnauthorizedException
 from app.core.rate_limits.auth_rate_limits import AuthRateLimitService
 from app.modules.cbt.auth.schemas import (
     AuthenticatedCBTServer,
+    CBTActorRefreshRequest,
+    CBTActorTokenPair,
     CBTStaffAuthResponse,
     CBTStaffLoginRequest,
 )
-from app.modules.cbt.auth.service import CBTStaffAuthService
+from app.modules.cbt.auth.service import (
+    CBTActorAuthorizationService,
+    CBTStaffAuthService,
+)
 from app.modules.cbt.dependencies import CurrentCBTServer
 
 
@@ -85,3 +93,23 @@ async def authenticate_staff(
     )
 
     return result
+
+
+@router.post(
+    "/auth/staff/refresh",
+    response_model=CBTActorTokenPair,
+)
+async def refresh_staff_authorization(
+    payload: CBTActorRefreshRequest,
+    db: DbSession,
+    current_server: CurrentCBTServer,
+    idempotency_key: UUID = Header(..., alias="Idempotency-Key"),
+) -> CBTActorTokenPair:
+    """Rotate one CBT staff cloud authorization without extending its hard expiry."""
+
+    return await CBTActorAuthorizationService.refresh_actor_authorization(
+        db,
+        current_server=current_server,
+        refresh_token=payload.refresh_token,
+        idempotency_key=idempotency_key,
+    )
