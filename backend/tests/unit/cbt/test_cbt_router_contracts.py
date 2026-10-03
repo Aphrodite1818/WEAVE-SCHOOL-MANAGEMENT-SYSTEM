@@ -39,7 +39,7 @@ def test_staff_refresh_requires_idempotency_header() -> None:
         for parameter in refresh_route.dependant.header_params
         if parameter.alias == "Idempotency-Key"
     )
-    assert idempotency_header.required is True
+    assert idempotency_header.field_info.is_required() is True
 
 
 def test_tenant_admin_audit_routes_are_read_only() -> None:
