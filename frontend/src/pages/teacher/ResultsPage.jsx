@@ -119,7 +119,7 @@ function ResultsPage() {
     } finally {
       setRosterLoading(false);
     }
-  }, [selectedAssignmentId, session?.id, term?.id]);
+  }, [selectedAssignmentId, session, term]);
 
   useEffect(() => {
     void loadAssignment();
