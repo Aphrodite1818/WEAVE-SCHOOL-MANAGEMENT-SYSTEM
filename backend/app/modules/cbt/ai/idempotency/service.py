@@ -184,9 +184,10 @@ class CBTAIIdempotentAuthoringService:
                     ),
                 )
             else:
-                prepared_request, reference_images = (
-                    await CBTAIService._prepare_regeneration_request(request)
-                )
+                (
+                    prepared_request,
+                    reference_images,
+                ) = await CBTAIService._prepare_regeneration_request(request)
                 authoring_result = await authoring_service.regenerate_question(
                     request=prepared_request,
                     expected_question_type=request.existing_question.question_type,
@@ -215,7 +216,9 @@ class CBTAIIdempotentAuthoringService:
             )
             settled = True
             final_response = (
-                CBTAIService._build_generation_response(result=authoring_result, settlement=settlement)
+                CBTAIService._build_generation_response(
+                    result=authoring_result, settlement=settlement
+                )
                 if isinstance(request, AIGenerateQuestionsRequest)
                 else CBTAIService._build_regeneration_response(
                     result=authoring_result, settlement=settlement
@@ -508,9 +511,7 @@ class CBTAIIdempotentAuthoringService:
         record.failure_code = None
         record.failure_detail = None
         record.completed_at = datetime.now(timezone.utc)
-        record.replay_expires_at = record.completed_at + timedelta(
-            seconds=AI_REPLAY_TTL_SECONDS
-        )
+        record.replay_expires_at = record.completed_at + timedelta(seconds=AI_REPLAY_TTL_SECONDS)
         await AIIdempotencyRepository.save(db, record)
         await db.commit()
 

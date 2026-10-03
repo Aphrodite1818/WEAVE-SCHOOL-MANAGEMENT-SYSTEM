@@ -200,9 +200,9 @@ class WikimediaCommonsImageSearchProvider(BaseImageSearchProvider):
         if not isinstance(extmetadata, dict):
             extmetadata = {}
 
-        license_name = self._metadata_value(extmetadata, "LicenseShortName") or self._metadata_value(
-            extmetadata, "UsageTerms"
-        )
+        license_name = self._metadata_value(
+            extmetadata, "LicenseShortName"
+        ) or self._metadata_value(extmetadata, "UsageTerms")
         if not license_name:
             return self._reject_candidate(page, "missing_license")
         if not self._license_allows_commercial_reuse(license_name):

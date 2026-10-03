@@ -45,7 +45,9 @@ def _membership(*, status: TeacherMembershipStatus = TeacherMembershipStatus.ACT
 
 
 @pytest.mark.asyncio
-async def test_teacher_suspension_revokes_cbt_authorizations_in_same_service_flow(monkeypatch) -> None:
+async def test_teacher_suspension_revokes_cbt_authorizations_in_same_service_flow(
+    monkeypatch,
+) -> None:
     membership = _membership()
     actor = SimpleNamespace(tenant_id=membership.tenant_id)
     db = SimpleNamespace(commit=AsyncMock(), refresh=AsyncMock())

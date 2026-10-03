@@ -71,11 +71,14 @@ def test_non_examinable_component_is_not_projected_to_cbt() -> None:
     component = _component(is_examinable=False)
     scheme = SimpleNamespace(status=AssessmentSchemeStatus.ACTIVE)
 
-    assert project_assessment_component(
-        _Session((component, scheme)),
-        uuid4(),
-        component.id,
-    ) is None
+    assert (
+        project_assessment_component(
+            _Session((component, scheme)),
+            uuid4(),
+            component.id,
+        )
+        is None
+    )
 
 
 def test_examinable_component_projection_keeps_existing_cbt_contract() -> None:

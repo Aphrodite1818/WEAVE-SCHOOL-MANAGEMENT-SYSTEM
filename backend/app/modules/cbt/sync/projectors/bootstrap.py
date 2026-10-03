@@ -325,9 +325,7 @@ def build_bootstrap_sections(
                 is_active=row.is_active,
             )
             for row in component_rows
-            if row.is_active
-            and row.is_examinable
-            and row.assessment_scheme_id in visible_schemes
+            if row.is_active and row.is_examinable and row.assessment_scheme_id in visible_schemes
         ]
     )
 

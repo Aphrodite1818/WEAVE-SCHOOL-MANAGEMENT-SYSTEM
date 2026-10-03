@@ -53,9 +53,7 @@ class AIReplayCache:
     ) -> None:
         redis = get_runtime_redis()
         if redis is None:
-            raise AIReplayStoreUnavailableError(
-                "Redis is unavailable for CBT AI result recovery."
-            )
+            raise AIReplayStoreUnavailableError("Redis is unavailable for CBT AI result recovery.")
         try:
             await redis.set(
                 cls._key(record_id),
@@ -71,9 +69,7 @@ class AIReplayCache:
     async def load(cls, record_id: UUID) -> dict[str, Any] | None:
         redis = get_runtime_redis()
         if redis is None:
-            raise AIReplayStoreUnavailableError(
-                "Redis is unavailable for CBT AI result recovery."
-            )
+            raise AIReplayStoreUnavailableError("Redis is unavailable for CBT AI result recovery.")
         try:
             value = await redis.get(cls._key(record_id))
         except RedisError as exc:

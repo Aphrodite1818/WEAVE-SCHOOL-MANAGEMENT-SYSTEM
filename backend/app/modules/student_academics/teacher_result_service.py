@@ -116,9 +116,17 @@ class TeacherResultService:
                 "This subject is not available to the student's class specialization for this term."
             )
 
-        if assignment.effective_from and term.end_date and assignment.effective_from > term.end_date:
+        if (
+            assignment.effective_from
+            and term.end_date
+            and assignment.effective_from > term.end_date
+        ):
             raise ConflictException("Teacher assignment starts after the term ends.")
-        if assignment.effective_to and term.start_date and assignment.effective_to < term.start_date:
+        if (
+            assignment.effective_to
+            and term.start_date
+            and assignment.effective_to < term.start_date
+        ):
             raise ConflictException("Teacher assignment ends before the term starts.")
 
         existing = await StudentAcademicRepository.get_result_by_scope(
@@ -170,9 +178,7 @@ class TeacherResultService:
                 existing,
             )
             merged_scores = {
-                component.id: score.score
-                for component, score in existing_rows
-                if score is not None
+                component.id: score.score for component, score in existing_rows if score is not None
             }
 
         for score_input in payload.component_scores:

@@ -119,7 +119,9 @@ class _MiniMaxHTTPProvider:
             return
         message = base_response.get("status_msg")
         raise MiniMaxProviderError(
-            message.strip() if isinstance(message, str) and message.strip() else "MiniMax provider request failed.",
+            message.strip()
+            if isinstance(message, str) and message.strip()
+            else "MiniMax provider request failed.",
             provider_code=status_code,
         )
 
@@ -419,7 +421,9 @@ class MiniMaxImageGenerationProvider(_MiniMaxHTTPProvider, BaseImageGenerationPr
         if not normalized_prompt:
             raise ValueError("Image generation prompt cannot be empty.")
         if reference_images:
-            raise ValueError("MiniMax image generation does not support reference images in this adapter.")
+            raise ValueError(
+                "MiniMax image generation does not support reference images in this adapter."
+            )
 
         aspect_ratio = "1:1"
         if metadata:

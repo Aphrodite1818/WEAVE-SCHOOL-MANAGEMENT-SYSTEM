@@ -156,9 +156,7 @@ class CBTActorAuthorizationService:
 
         if identity.role == "teacher":
             if identity.membership_id is None:
-                raise ForbiddenException(
-                    detail="This account is not authorized to use CBT"
-                )
+                raise ForbiddenException(detail="This account is not authorized to use CBT")
             authorization_kwargs.update(
                 teacher_account_id=identity.actor_id,
                 teacher_membership_id=identity.membership_id,
@@ -391,9 +389,7 @@ class CBTActorAuthorizationService:
 
         # A Redis write can succeed before the SQL transaction later fails. Such
         # a stale receipt must never become an authorization source of truth.
-        await CBTActorRefreshRecoveryService.delete_best_effort(
-            authorization_id=authorization.id
-        )
+        await CBTActorRefreshRecoveryService.delete_best_effort(authorization_id=authorization.id)
         return None
 
     @staticmethod

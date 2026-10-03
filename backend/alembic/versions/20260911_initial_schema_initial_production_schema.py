@@ -6798,7 +6798,6 @@ def upgrade() -> None:
         """
     )
 
-
     # 20260927_add_elective_groups_and_selections
     op.create_table(
         "curriculum_elective_groups",

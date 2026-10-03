@@ -249,9 +249,7 @@ class ContactSheetImageResolver(ImageResolver):
                     logger.warning(
                         "cbt.ai.image_resolution.evaluation.retrying",
                         extra={
-                            "image_evaluation_provider": _provider_name(
-                                self.evaluation_provider
-                            ),
+                            "image_evaluation_provider": _provider_name(self.evaluation_provider),
                             "image_search_query": normalized_search_query,
                             "image_evaluation_mode": evaluation_mode,
                             "image_evaluation_attempt": evaluation_attempt,
@@ -266,9 +264,7 @@ class ContactSheetImageResolver(ImageResolver):
                 logger.exception(
                     "cbt.ai.image_resolution.evaluation.failed",
                     extra={
-                        "image_evaluation_provider": _provider_name(
-                            self.evaluation_provider
-                        ),
+                        "image_evaluation_provider": _provider_name(self.evaluation_provider),
                         "image_search_query": normalized_search_query,
                         "image_search_queries": search_queries,
                         "image_review_candidate_count": len(materialized_candidates),

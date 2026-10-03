@@ -51,7 +51,9 @@ class CombinedImageSearchProvider(BaseImageSearchProvider):
             extra={
                 "image_search_query": normalized_query,
                 "image_search_limit": limit,
-                "image_search_sources": [self._provider_name(provider) for provider in active_providers],
+                "image_search_sources": [
+                    self._provider_name(provider) for provider in active_providers
+                ],
                 "image_search_source_count": len(active_providers),
             },
         )

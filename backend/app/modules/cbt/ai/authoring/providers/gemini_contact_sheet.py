@@ -79,7 +79,9 @@ class GeminiContactSheetImageEvaluationProvider(GeminiImageEvaluationProvider):
             raise GeminiProviderError("Gemini returned an invalid image evaluation decision.")
         if decision == "use_candidate":
             if type(selected_index) is not int or not 0 <= selected_index < candidate_count:
-                raise GeminiProviderError("Gemini selected an invalid contact-sheet candidate index.")
+                raise GeminiProviderError(
+                    "Gemini selected an invalid contact-sheet candidate index."
+                )
         else:
             selected_index = None
 

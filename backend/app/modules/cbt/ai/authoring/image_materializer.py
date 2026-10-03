@@ -304,10 +304,7 @@ class ImageMaterializer:
             raise InvalidImageError("CBT image payload exceeds the maximum allowed size.")
 
         actual_sha256 = hashlib.sha256(raw).hexdigest()
-        if (
-            expected_sha256 is not None
-            and actual_sha256.casefold() != expected_sha256.casefold()
-        ):
+        if expected_sha256 is not None and actual_sha256.casefold() != expected_sha256.casefold():
             raise InvalidImageError("Image SHA-256 does not match the supplied payload.")
 
         return await asyncio.to_thread(

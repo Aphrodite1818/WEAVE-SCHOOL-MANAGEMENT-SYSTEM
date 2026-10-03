@@ -11,9 +11,7 @@ from app.modules.cbt.ai.authoring.service import QuestionAuthoringService
 
 
 def test_authoring_request_defaults_difficulty_to_medium() -> None:
-    payload, _ = QuestionAuthoringService._prepare_authoring_request(
-        {"visual_mode": "text_only"}
-    )
+    payload, _ = QuestionAuthoringService._prepare_authoring_request({"visual_mode": "text_only"})
 
     assert payload["difficulty"] == "medium"
 
@@ -37,7 +35,7 @@ def test_authoring_request_rejects_unsupported_difficulty_before_provider_use() 
 def test_generation_prompt_defines_difficulty_as_level_relative_cognitive_demand() -> None:
     prompt = build_question_generation_prompt()
 
-    assert '`easy`, `medium`, or `difficult`' in prompt
+    assert "`easy`, `medium`, or `difficult`" in prompt
     assert "relative to the supplied academic_level" in prompt
     assert "cognitive demand and application" in prompt
     assert "material beyond the requested level" in prompt

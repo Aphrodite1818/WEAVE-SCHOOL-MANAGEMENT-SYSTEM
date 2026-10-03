@@ -25,9 +25,7 @@ def test_request_hash_is_stable_for_equivalent_payloads() -> None:
 
 def test_request_hash_changes_when_logical_request_changes() -> None:
     first = CBTAIIdempotentAuthoringService._request_hash(_request())
-    second = CBTAIIdempotentAuthoringService._request_hash(
-        _request("Cover respiration")
-    )
+    second = CBTAIIdempotentAuthoringService._request_hash(_request("Cover respiration"))
     assert first != second
 
 

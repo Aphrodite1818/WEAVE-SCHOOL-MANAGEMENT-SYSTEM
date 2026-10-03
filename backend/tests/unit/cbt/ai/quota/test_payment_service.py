@@ -54,7 +54,9 @@ def test_quote_rejects_checkout_when_unit_price_is_not_configured(monkeypatch) -
 async def test_checkout_calculates_total_server_side_and_passes_trusted_amount(monkeypatch) -> None:
     tenant_id = uuid4()
     admin_id = uuid4()
-    monkeypatch.setattr(ai_quota_pricing, "PAYSTACK_CALLBACK_URL", "https://example.com/billing/subscription/verify")
+    monkeypatch.setattr(
+        ai_quota_pricing, "PAYSTACK_CALLBACK_URL", "https://example.com/billing/subscription/verify"
+    )
     monkeypatch.setattr(ai_quota_pricing, "CBT_AI_CREDIT_UNIT_PRICE_KOBO", 40)
     monkeypatch.setattr(ai_quota_pricing, "CBT_AI_MINIMUM_PURCHASE_CREDITS", 100)
     monkeypatch.setattr(
@@ -244,14 +246,17 @@ async def test_webhook_settlement_rejects_tampered_amount_before_crediting(monke
 @pytest.mark.parametrize("environment", [EnvironmentType.STAGING, EnvironmentType.PRODUCTION])
 @pytest.mark.parametrize("callback", [None, "", "   "])
 async def test_missing_ai_callback_never_falls_back_to_subscription(
-    monkeypatch, environment, callback,
+    monkeypatch,
+    environment,
+    callback,
 ) -> None:
     monkeypatch.setattr(ai_quota_pricing, "ENV", environment)
     monkeypatch.setattr(ai_quota_pricing, "CBT_AI_CREDIT_UNIT_PRICE_KOBO", 2000)
     monkeypatch.setattr(ai_quota_pricing, "CBT_AI_MINIMUM_PURCHASE_CREDITS", 1)
     monkeypatch.setattr(ai_quota_pricing, "PAYSTACK_AI_CREDIT_CALLBACK_URL", callback)
     monkeypatch.setattr(
-        ai_quota_pricing, "PAYSTACK_CALLBACK_URL",
+        ai_quota_pricing,
+        "PAYSTACK_CALLBACK_URL",
         "https://example.com/billing/subscription/verify",
     )
     create_pending = AsyncMock()
@@ -261,8 +266,11 @@ async def test_missing_ai_callback_never_falls_back_to_subscription(
 
     with pytest.raises(AIQuotaConflictError, match="PAYSTACK_AI_CREDIT_CALLBACK_URL"):
         await AIQuotaPaymentService.initialize_purchase_checkout(
-            SimpleNamespace(), tenant_id=uuid4(), tenant_admin_id=uuid4(),
-            email="admin@example.com", credits=10,
+            SimpleNamespace(),
+            tenant_id=uuid4(),
+            tenant_admin_id=uuid4(),
+            email="admin@example.com",
+            credits=10,
         )
 
     create_pending.assert_not_awaited()

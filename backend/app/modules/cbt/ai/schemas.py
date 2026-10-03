@@ -99,7 +99,9 @@ class AIGenerateQuestionsRequest(CBTAISchemaBase):
     @model_validator(mode="after")
     def validate_generation_shape(self) -> Self:
         if self.question_type_counts is not None:
-            if any(type(count) is not int or count < 0 for count in self.question_type_counts.values()):
+            if any(
+                type(count) is not int or count < 0 for count in self.question_type_counts.values()
+            ):
                 raise ValueError("question_type_counts values must be non-negative integers")
             if sum(self.question_type_counts.values()) != self.question_count:
                 raise ValueError("question_type_counts must sum to question_count")
@@ -132,9 +134,13 @@ class AIExistingQuestion(CBTAISchemaBase):
             raise ValueError("A single-choice question must have exactly one correct option")
         if self.question_type == "multiple_choice":
             if correct_count < 2:
-                raise ValueError("A multiple-choice question must have at least two correct options")
+                raise ValueError(
+                    "A multiple-choice question must have at least two correct options"
+                )
             if correct_count == len(self.options):
-                raise ValueError("A multiple-choice question must have at least one incorrect option")
+                raise ValueError(
+                    "A multiple-choice question must have at least one incorrect option"
+                )
         return self
 
 

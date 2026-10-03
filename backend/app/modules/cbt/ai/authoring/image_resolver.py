@@ -212,7 +212,9 @@ def _candidate_identity(candidate: ImageCandidate) -> tuple[str, ...]:
     return ("fallback", source, (candidate.title or "").strip().casefold())
 
 
-def _dedupe_candidates(candidate_groups: Sequence[Sequence[ImageCandidate]]) -> list[ImageCandidate]:
+def _dedupe_candidates(
+    candidate_groups: Sequence[Sequence[ImageCandidate]],
+) -> list[ImageCandidate]:
     merged: list[ImageCandidate] = []
     seen: set[tuple[str, ...]] = set()
     for group in candidate_groups:
@@ -529,9 +531,7 @@ class ImageResolver:
                     logger.warning(
                         "cbt.ai.image_resolution.evaluation.retrying",
                         extra={
-                            "image_evaluation_provider": _provider_name(
-                                self.evaluation_provider
-                            ),
+                            "image_evaluation_provider": _provider_name(self.evaluation_provider),
                             "image_search_query": normalized_search_query,
                             "image_evaluation_attempt": evaluation_attempt,
                             "image_error_type": type(exc).__name__,
@@ -545,9 +545,7 @@ class ImageResolver:
                 logger.exception(
                     "cbt.ai.image_resolution.evaluation.failed",
                     extra={
-                        "image_evaluation_provider": _provider_name(
-                            self.evaluation_provider
-                        ),
+                        "image_evaluation_provider": _provider_name(self.evaluation_provider),
                         "image_search_query": normalized_search_query,
                         "image_search_queries": search_queries,
                         "image_review_candidate_count": len(materialized_candidates),

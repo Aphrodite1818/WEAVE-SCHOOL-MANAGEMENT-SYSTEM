@@ -42,9 +42,7 @@ class CBTActorAuthorizationRepository:
         *,
         lock: bool = False,
     ) -> CBTActorAuthorization | None:
-        query = select(CBTActorAuthorization).where(
-            CBTActorAuthorization.id == authorization_id
-        )
+        query = select(CBTActorAuthorization).where(CBTActorAuthorization.id == authorization_id)
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)
@@ -199,9 +197,7 @@ class CBTActorRefreshTokenRepository:
         *,
         lock: bool = False,
     ) -> CBTActorRefreshToken | None:
-        query = select(CBTActorRefreshToken).where(
-            CBTActorRefreshToken.token_hash == token_hash
-        )
+        query = select(CBTActorRefreshToken).where(CBTActorRefreshToken.token_hash == token_hash)
         if lock:
             query = query.with_for_update()
         result = await db.execute(query)

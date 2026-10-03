@@ -375,7 +375,9 @@ async def test_refresh_token_reuse_with_different_operation_revokes_family(monke
 
 
 @pytest.mark.asyncio
-async def test_redis_outage_on_consumed_token_does_not_trigger_reuse_revocation(monkeypatch) -> None:
+async def test_redis_outage_on_consumed_token_does_not_trigger_reuse_revocation(
+    monkeypatch,
+) -> None:
     now = datetime(2026, 9, 30, 14, 30, tzinfo=timezone.utc)
     tenant_id = uuid4()
     authorization_id = uuid4()
@@ -539,7 +541,9 @@ async def test_authenticate_actor_returns_trusted_context(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_authenticate_actor_rejects_cross_tenant_token_before_eligibility(monkeypatch) -> None:
+async def test_authenticate_actor_rejects_cross_tenant_token_before_eligibility(
+    monkeypatch,
+) -> None:
     now = datetime(2026, 9, 30, 15, 0, tzinfo=timezone.utc)
     server = _server()
     authorization = SimpleNamespace(

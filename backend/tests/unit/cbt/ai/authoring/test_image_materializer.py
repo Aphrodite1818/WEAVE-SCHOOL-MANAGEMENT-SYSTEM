@@ -124,9 +124,7 @@ def test_wikimedia_svg_builds_raster_render_url() -> None:
     assert parsed.scheme == "https"
     assert parsed.netloc == "commons.wikimedia.org"
     assert parsed.path == "/w/index.php"
-    assert query["title"] == [
-        "Special:Redirect/file/Simple_diagram_of_animal_cell_(en).svg"
-    ]
+    assert query["title"] == ["Special:Redirect/file/Simple_diagram_of_animal_cell_(en).svg"]
     assert query["width"] == ["1600"]
 
 
@@ -160,8 +158,7 @@ async def test_wikimedia_svg_uses_raster_render_before_openverse_thumbnail() -> 
             "Simple_diagram_of_animal_cell_%28en%29.svg"
         ),
         thumbnail_url=(
-            "https://api.openverse.org/v1/images/"
-            "54719370-bce5-4f80-bcd9-8abbe3993bab/thumb/"
+            "https://api.openverse.org/v1/images/54719370-bce5-4f80-bcd9-8abbe3993bab/thumb/"
         ),
         mime_type="image/svg+xml",
     )
@@ -174,9 +171,7 @@ async def test_wikimedia_svg_uses_raster_render_before_openverse_thumbnail() -> 
     parsed = urlparse(requested_url)
     query = parse_qs(parsed.query)
     assert parsed.netloc == "commons.wikimedia.org"
-    assert query["title"] == [
-        "Special:Redirect/file/Simple_diagram_of_animal_cell_(en).svg"
-    ]
+    assert query["title"] == ["Special:Redirect/file/Simple_diagram_of_animal_cell_(en).svg"]
     assert query["width"] == ["1600"]
 
 
@@ -185,9 +180,7 @@ async def test_wikimedia_svg_falls_back_to_openverse_thumbnail_if_raster_fails()
     raw = _encoded_image("PNG")
     materializer = ImageMaterializer()
     thumbnail_url = "https://api.openverse.org/v1/images/example/thumb/"
-    materializer._download = AsyncMock(
-        side_effect=[ImageDownloadError("raster unavailable"), raw]
-    )
+    materializer._download = AsyncMock(side_effect=[ImageDownloadError("raster unavailable"), raw])
     candidate = ImageCandidate(
         source="wikimedia",
         source_url="https://commons.wikimedia.org/wiki/File:Example.svg",

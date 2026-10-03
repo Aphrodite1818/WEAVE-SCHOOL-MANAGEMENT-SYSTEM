@@ -172,9 +172,7 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
         request: Mapping[str, Any],
         reference_images: Sequence[ProviderImageInput] | None,
     ) -> list[dict[str, Any]]:
-        parts: list[dict[str, Any]] = [
-            {"text": json.dumps(dict(request), ensure_ascii=False)}
-        ]
+        parts: list[dict[str, Any]] = [{"text": json.dumps(dict(request), ensure_ascii=False)}]
         for index, image in enumerate(reference_images or ()):
             label = image.label or f"reference_image_{index}"
             parts.append({"text": f"Reference image `{label}`:"})
@@ -190,9 +188,7 @@ class GeminiQuestionGenerationProvider(_GeminiHTTPProvider, BaseQuestionGenerati
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         payload = {
             "systemInstruction": {"parts": [{"text": system_prompt}]},
-            "contents": [
-                {"role": "user", "parts": self._user_parts(request, reference_images)}
-            ],
+            "contents": [{"role": "user", "parts": self._user_parts(request, reference_images)}],
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "maxOutputTokens": self.max_output_tokens,
@@ -376,7 +372,9 @@ class GeminiImageGenerationProvider(_GeminiHTTPProvider, BaseImageGenerationProv
         if not normalized_prompt:
             raise ValueError("Image generation prompt cannot be empty.")
         if metadata:
-            normalized_prompt += "\nImage context: " + json.dumps(dict(metadata), ensure_ascii=False)
+            normalized_prompt += "\nImage context: " + json.dumps(
+                dict(metadata), ensure_ascii=False
+            )
 
         parts: list[dict[str, Any]] = [{"text": normalized_prompt}]
         for index, image in enumerate(reference_images or ()):

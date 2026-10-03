@@ -91,10 +91,7 @@ async def test_malformed_generation_gets_exactly_one_repair_attempt() -> None:
     assert resolver.calls == 0
     assert provider.repair_request["operation"] == "generation"
     assert provider.repair_request["invalid_questions"] == []
-    assert (
-        provider.repair_request["validation_feedback"]["error"]
-        == "malformed_structured_output"
-    )
+    assert provider.repair_request["validation_feedback"]["error"] == "malformed_structured_output"
 
 
 @pytest.mark.asyncio
